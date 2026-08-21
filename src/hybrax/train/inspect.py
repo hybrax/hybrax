@@ -11,7 +11,7 @@ Two responsibilities:
   tables for the :class:`ReactionInputs` / :class:`ReactionOutputs` axes
   of a wrapper, with names sourced from ``rhs_ode`` and ``controls``.
   Lets a user cross-reference each SCL vector slot with the underlying
-  bp-format entity it represents.
+  hybrax.format entity it represents.
 """
 
 from __future__ import annotations
@@ -397,7 +397,7 @@ def format_reaction_schema(
 ) -> str:
     """Return labeled tables for ReactionInputs + ReactionOutputs axes.
 
-    Each table row names the SCL_* axis, its shape, and the bp-format
+    Each table row names the SCL_* axis, its shape, and the hybrax.format
     entity names that map to each slot. 2-D Cin matrices render as one
     row with shape ``(n_rows, n_cols)`` followed by indented
     ``rows:``/``cols:`` lines naming the matrix axes.

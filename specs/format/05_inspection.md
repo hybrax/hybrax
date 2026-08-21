@@ -1,6 +1,6 @@
 # Inspection and Visualization
 
-Source: `bp_format/inspect.py`
+Source: `src/hybrax/format/inspect.py`
 
 ## Purpose
 
@@ -76,7 +76,7 @@ figure immediately, and return `None`.
 ## Examples
 
 ```python
-import bp_format as bp
+import hybrax.format as bp
 
 collection = bp.serialization.load_process_collection("data.json")
 process = collection.processes["run_1"]

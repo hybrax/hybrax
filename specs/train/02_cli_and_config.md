@@ -1,13 +1,13 @@
 # CLI, Config & Hooks
 
-Source: [`bp_train/cli.py`](../bp_train/cli.py),
-[`bp_train/run_config.py`](../bp_train/run_config.py),
-[`bp_train/utils.py`](../bp_train/utils.py),
-[`bp_train/defaults.py`](../bp_train/defaults.py)
+Source: [`src/hybrax/train/cli.py`](../../src/hybrax/train/cli.py),
+[`src/hybrax/train/run_config.py`](../../src/hybrax/train/run_config.py),
+[`src/hybrax/train/utils.py`](../../src/hybrax/train/utils.py),
+[`src/hybrax/train/defaults.py`](../../src/hybrax/train/defaults.py)
 
 ## Purpose
 
-Everything you touch from the outside: the `bp-train` subcommands, the JSON run
+Everything you touch from the outside: the `hybrax` subcommands, the JSON run
 config that drives them, and the `custom.py` hooks that let you swap in your own
 reaction/loss modules, scales, and optimizer. The
 [`custom.py` hooks reference](#custompy-hooks-reference) is the single, complete
@@ -16,15 +16,15 @@ list of every hook with its signature.
 ## The pipeline
 
 ```
-raw bp_format collection
-   │  bp-train prepare   (transform + validate + persist)
+raw hybrax.format collection
+   │  hybrax prepare   (transform + validate + persist)
    ▼
 prepare dir (prepared.json, prepare_config.json, prepare_diagnostics/)
-   │  bp-train train     (fit reaction + loss modules → run directory)
+   │  hybrax train     (fit reaction + loss modules → run directory)
    ▼
 run directory (config.json, custom.py, metrics.csv, checkpoints/, model/)
-   │  bp-train forward   (re-simulate, optionally export predictions and plots)
-   │  bp-train loo       (leave-one-process-out cross-validation)
+   │  hybrax forward   (re-simulate, optionally export predictions and plots)
+   │  hybrax loo       (leave-one-process-out cross-validation)
    ▼
 optional predictions.csv / prediction plots / loss curves / losses.csv / loo summary
 ```
@@ -37,9 +37,9 @@ internals.
 
 ## Subcommands
 
-### `bp-train prepare`
+### `hybrax prepare`
 
-Transform a raw bp-format process collection into a prepared artifact.
+Transform a raw hybrax.format process collection into a prepared artifact.
 
 | Flag | Required | Meaning |
 |---|---|---|
@@ -47,7 +47,7 @@ Transform a raw bp-format process collection into a prepared artifact.
 | `--output-dir` | yes | Output directory; prepare writes `prepared.json`, `prepare_config.json`, `prepare_diagnostics/`, and — when augmentation is configured — `augmented-data.png` into it. |
 | `--overwrite` | no | Overwrite an existing `prepared.json` in `--output-dir` (rewrites only prepare's own files; leaves any train/forward artifacts in the dir untouched). |
 
-### `bp-train train`
+### `hybrax train`
 
 Train one or more processes from a prepared artifact into a FAIR run directory.
 
@@ -62,7 +62,7 @@ Train one or more processes from a prepared artifact into a FAIR run directory.
 Console numeric formatting is config-only. `metrics.csv` records every optimizer
 update.
 
-### `bp-train forward`
+### `hybrax forward`
 
 Load one or more trained models and run one forward ODE pass per selected
 process (no training); exports configured predictions and plots and prints a loss
@@ -118,7 +118,7 @@ passed. Overwrite stages the complete replacement before replacing that
 subdirectory, so a failed result write leaves the prior results intact. Unrelated
 files directly in `--output-dir` are preserved.
 
-### `bp-train loo`
+### `hybrax loo`
 
 Leave-one/some-process-out cross-validation.
 Config-driven: the run config is the same as `train` plus an optional `loo` section.
@@ -184,7 +184,7 @@ A run can supply a `custom.py` module via `custom_py` in the config. (`forward`
 finds it from the model bundle instead: the path recorded in the run's
 `config.json` if it still exists on this machine, otherwise the `custom.py`
 copied into the run dir.) Hooks are looked up by name with
-[`get_hook(custom_module, "<name>", <default>)`](../bp_train/utils.py); a missing
+[`get_hook(custom_module, "<name>", <default>)`](../../src/hybrax/train/utils.py); a missing
 hook falls back to its default (or to a no-op for the `None`-default hooks). The
 module is imported with `load_custom_module`. A custom typed config object is
 produced by an optional `get_custom_config(raw_custom, config)` and reaches every
@@ -259,13 +259,13 @@ def estimate_all_scales(
     config,
 ) -> EstimatedScales
 ```
-Return the `SCALE_*` axes (as an [`EstimatedScales`](../bp_train/model_api.py))
+Return the `SCALE_*` axes (as an [`EstimatedScales`](../../src/hybrax/train/model_api.py))
 used to normalize state/rate/control vectors. Bare arrays are promoted to
 `LinearScaler` (`SCL = RAW / scale`, the default). Opt into affine scaling for
 one value axis by returning `AffineScaler(scale, offset)` for that field:
 
 ```python
-from bp_train import AffineScaler, EstimatedScales
+from hybrax.train import AffineScaler, EstimatedScales
 
 return EstimatedScales(
     ...,
@@ -282,7 +282,7 @@ reaction module. No default hook — when absent, every axis is a unit
 scaling). See [03_data_preparation.md](03_data_preparation.md#scale-estimation).
 
 `runtime_data` is a collection-free
-[`RuntimeDataContext`](../bp_train/runtime_context.py). Its `training_data`,
+[`RuntimeDataContext`](../../src/hybrax/train/runtime_context.py). Its `training_data`,
 `controls_store`, `rhs_ode`, `process_order`, and typed trace accessors expose
 the numeric inputs used by scale hooks without rebuilding or retaining a
 `BioProcessCollection`.
@@ -339,7 +339,7 @@ Top-level keys (unknown keys are rejected):
 needs the `data` section. All paths resolve relative to the config file's
 directory.
 
-**`data`** — [`DataConfig`](../bp_train/run_config.py)
+**`data`** — [`DataConfig`](../../src/hybrax/train/run_config.py)
 
 | Field | Type / default | Meaning |
 |---|---|---|
@@ -348,7 +348,7 @@ directory.
 | `targets` | tuple\|null = null | Explicit target names; null = derived. |
 | `target_source` | `auto` | `auto`/`process_variables`/`reactor_components`/`combined`. |
 
-**`train`** — [`TrainConfig`](../bp_train/run_config.py)
+**`train`** — [`TrainConfig`](../../src/hybrax/train/run_config.py)
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -363,7 +363,7 @@ directory.
 | `devices` | 1 | CPU devices to shard over; `"max"` = `min(n_proc, n_cpu)`. |
 | `allow_stateful_models` | false | Allow reaction modules with latent state (`n_latent > 0`); otherwise they fail fast. |
 
-**`solver`** — [`SolverConfig`](../bp_train/run_config.py)
+**`solver`** — [`SolverConfig`](../../src/hybrax/train/run_config.py)
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -372,24 +372,24 @@ directory.
 | `atol` | 1e-7 (>0) | Absolute tolerance. |
 | `jump_ts` | true | Pass `BioProcess.discrete_events` vector-field discontinuities as `jump_ts` hints. |
 
-**`checkpoint`** — [`CheckpointConfig`](../bp_train/run_config.py)
+**`checkpoint`** — [`CheckpointConfig`](../../src/hybrax/train/run_config.py)
 
 | Field | Default | Meaning |
 |---|---|---|
 | `every` | null | Periodic checkpoint cadence in epochs. Null selects `max(5, ceil(epochs / 20))`, giving at most 20 checkpoints; explicit fractional values are supported, and 0 disables periodic writes but not the mandatory final checkpoint. |
 
-**`output`** — [`OutputConfig`](../bp_train/run_config.py): `dir` (default
+**`output`** — [`OutputConfig`](../../src/hybrax/train/run_config.py): `dir` (default
 `output`) and `predictions` (`none` by default; also `parents` or `all`).
 
-**`logging`** — [`LoggingConfig`](../bp_train/run_config.py): `decimals` (4).
+**`logging`** — [`LoggingConfig`](../../src/hybrax/train/run_config.py): `decimals` (4).
 
-**`prepare`** — [`PrepareConfig`](../bp_train/run_config.py)
+**`prepare`** — [`PrepareConfig`](../../src/hybrax/train/run_config.py)
 
 | Field | Default | Meaning |
 |---|---|---|
-| `raw_input` | path (required) | Raw bp-format `BioProcessCollection` JSON. |
+| `raw_input` | path (required) | Raw hybrax.format `BioProcessCollection` JSON. |
 | `augmentation` | null | Persist deterministic synthetic `AugmentedBioProcess` children; see below. |
-| `strict_bp_format_validation` | false | Fail on bp-format validation warnings. |
+| `strict_format_validation` | false | Fail on hybrax.format validation warnings. |
 | `required_control_names` | () | Continuous controlled-feed/PV names that must exist (tuple, or per-process dict). |
 | `require_consistent_controls` | true | All processes share the same continuous controlled-feed/PV names. |
 | `process_rename_map` | {} | Old→new process-name map (used by the default transform). |
@@ -422,13 +422,13 @@ remain invalid. The stdlib parser and generated files retain its
 { "train": { "devices": "max" } }
 ```
 Use an integer instead of `"max"` to request a fixed device count, or set
-`BP_TRAIN_DEVICES=8 bp-train train --config …` (the environment wins). Resolved
+`HYBRAX_TRAIN_DEVICES=8 hybrax train --config …` (the environment wins). Resolved
 before JAX initializes; default 1. See
 [01_design_rationale.md](01_design_rationale.md#9-opt-in-multi-core-device-pooling).
 
 ## Example: `train-config.json`
 
-From [examples/00_e2e_sim/train-config.json](../examples/00_e2e_sim/train-config.json):
+A minimal training config:
 
 ```json
 {
@@ -452,7 +452,7 @@ From [examples/00_e2e_sim/train-config.json](../examples/00_e2e_sim/train-config
   }
 }
 ```
-with [examples/00_e2e_sim/forward-config.json](../examples/00_e2e_sim/forward-config.json):
+A matching forward config:
 
 ```json
 {
@@ -463,8 +463,8 @@ with [examples/00_e2e_sim/forward-config.json](../examples/00_e2e_sim/forward-co
 
 Run them with:
 ```bash
-bp-train prepare --config prepare-config.json --output-dir prepared
-bp-train train   --config train-config.json
-bp-train forward --config forward-config.json
-bp-train loo     --config loo-config.json
+hybrax prepare --config prepare-config.json --output-dir prepared
+hybrax train   --config train-config.json
+hybrax forward --config forward-config.json
+hybrax loo     --config loo-config.json
 ```

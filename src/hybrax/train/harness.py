@@ -215,7 +215,7 @@ def model_predict(
     a mismatch fails fast via :func:`~hybrax.train.validate_rhs_ode_compatibility`.
 
     To predict a subset, pass ``process_names`` — do **not** slice
-    ``collection.processes``. The bp-train metadata block carries its own
+    ``collection.processes``. The hybrax.train metadata block carries its own
     ``process_order``, so a hand-sliced collection fails when the controls store
     is rebuilt.
 
@@ -1332,7 +1332,7 @@ def train_collection(
 
         @partial(
             jax.pmap,
-            axis_name="bp_dev",
+            axis_name="hybrax_dev",
             devices=devices,
             in_axes=(
                 None,
@@ -1429,15 +1429,15 @@ def train_collection(
             (_l, (pert, totl, faild)), grads = eqx.filter_value_and_grad(
                 _local, has_aux=True
             )(params)
-            loss = jax.lax.psum(_l, "bp_dev") / bs
+            loss = jax.lax.psum(_l, "hybrax_dev") / bs
             grads = jax.tree_util.tree_map(
-                lambda g: jax.lax.psum(g, "bp_dev") / bs, grads
+                lambda g: jax.lax.psum(g, "hybrax_dev") / bs, grads
             )
             per_target = (
-                jax.lax.psum(jnp.sum(pert * wt[:, None], axis=0), "bp_dev") / bs
+                jax.lax.psum(jnp.sum(pert * wt[:, None], axis=0), "hybrax_dev") / bs
             )
-            per_sample = jax.lax.all_gather(totl, "bp_dev")
-            per_sample_fail = jax.lax.all_gather(faild, "bp_dev")
+            per_sample = jax.lax.all_gather(totl, "hybrax_dev")
+            per_sample_fail = jax.lax.all_gather(faild, "hybrax_dev")
             return loss, grads, per_target, per_sample, per_sample_fail
 
         def _step_fn(
@@ -1515,7 +1515,7 @@ def train_collection(
     def _make_gspmd_step():
         """Data-parallel step via ``jax.jit`` + GSPMD auto-sharding — the modern,
         future-proof replacement for the deprecated ``jax.pmap``. The batch axis is
-        sharded across an Auto-axis ``Mesh`` (``device_put`` with ``P('bp_dev')``);
+        sharded across an Auto-axis ``Mesh`` (``device_put`` with ``P('hybrax_dev')``);
         params/optimiser-state are replicated. The single full vmap-over-batch grad +
         optimiser update runs under one ``jit``, and XLA's SPMD partitioner splits the
         per-sample solves across devices and inserts the all-reduce for the
@@ -1535,9 +1535,9 @@ def train_collection(
         n_dev = min(jax.local_device_count(), bs)
         devices = jax.local_devices()[:n_dev]
         mesh = jax.make_mesh(
-            (n_dev,), ("bp_dev",), axis_types=(AxisType.Auto,), devices=devices
+            (n_dev,), ("hybrax_dev",), axis_types=(AxisType.Auto,), devices=devices
         )
-        S_batch = NamedSharding(mesh, P("bp_dev"))  # shard the leading batch axis
+        S_batch = NamedSharding(mesh, P("hybrax_dev"))  # shard the leading batch axis
         S_repl = NamedSharding(mesh, P())  # replicated
         pad_n = (-bs) % n_dev
         weight_full = jnp.concatenate(
@@ -1777,11 +1777,12 @@ def train_collection(
     _use_sharded = _n_shard > 1
     # pmap stays the DEFAULT sharded path: it is the only fast option on jax>=0.10.
     # shard_map (manual mode) crashes inside diffrax's nested filter_eval_shape
-    # (`assert not hlo_sharding.is_manual()`), and GSPMD auto-sharding (BP_GSPMD=1) is
-    # correct + patch-free but ~60x slower because XLA cannot partition the
-    # data-dependent ODE solve (it replicates the per-device work). pmap needs the
+    # (`assert not hlo_sharding.is_manual()`), and GSPMD auto-sharding
+    # (HYBRAX_GSPMD=1) is correct + patch-free but ~60x slower because XLA
+    # cannot partition the data-dependent ODE solve (it replicates the
+    # per-device work). pmap needs the
     # equinox closure-convert patch on jax>=0.10; GSPMD needs no patch.
-    _use_gspmd = os.environ.get("BP_GSPMD", "") not in ("", "0", "false", "False")
+    _use_gspmd = os.environ.get("HYBRAX_GSPMD", "") not in ("", "0", "false", "False")
     if _use_sharded and _use_gspmd:
         _make_step = _make_gspmd_step
     elif _use_sharded:

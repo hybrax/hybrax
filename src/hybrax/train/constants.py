@@ -1,1 +1,1 @@
-METADATA_NAMESPACE = "bp-train"
+METADATA_NAMESPACE = "hybrax.train"

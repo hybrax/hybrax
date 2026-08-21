@@ -1,8 +1,8 @@
-# bp-train Documentation
+# hybrax.train documentation
 
-bp-train fits **hybrid bioprocess ODE models**: it takes a
-[bp-format](../../bp-format) process collection, builds the mechanistic mass
-balance, lets you plug in neural / mechanistic reaction and loss modules via
+hybrax.train fits **hybrid bioprocess ODE models**: it takes a
+[`hybrax.format`](../format/README.md) process collection, builds the mechanistic
+mass balance, lets you plug in neural / mechanistic reaction and loss modules via
 `custom.py` hooks, and runs the prepare → train → forward / loo pipeline on
 JAX + Diffrax.
 
@@ -11,7 +11,7 @@ JAX + Diffrax.
 Read in this order:
 1. [Design Rationale](01_design_rationale.md) — the "why": SCL/RAW scaling, the
    shared solve, field-tag partitioning, mean aggregation.
-2. [CLI, Config & Hooks](02_cli_and_config.md) — the `bp-train` subcommands, the
+2. [CLI, Config & Hooks](02_cli_and_config.md) — the `hybrax` subcommands, the
    run-config schema, and the **full `custom.py` hooks reference**.
 3. [Data Preparation](03_data_preparation.md) — `prepare`, scale estimation,
    state/control layout, target selection.
@@ -26,24 +26,24 @@ Read in this order:
 
 | Module | Source | Documentation | Description |
 |--------|--------|---------------|-------------|
-| CLI | `bp_train/cli.py` | [02](02_cli_and_config.md) | `prepare` / `train` / `forward` / `loo` subcommands |
-| Run config | `bp_train/run_config.py` | [02](02_cli_and_config.md) | Pydantic config schema + path resolution |
-| Hooks / utils | `bp_train/utils.py`, `bp_train/defaults.py` | [02](02_cli_and_config.md) | `custom.py` discovery + default implementations |
-| Prepare | `bp_train/prepare.py` | [03](03_data_preparation.md) | Raw collection → `prepared.json` artifact |
-| Training data | `bp_train/training_data.py` | [03](03_data_preparation.md) | Batch assembly, target selection |
-| Controls | `bp_train/controls_store.py`, `bp_train/controls.py` | [03](03_data_preparation.md) | Runtime control evaluation + event sources |
-| Validation | `bp_train/validation.py` | [03](03_data_preparation.md) | bp-format + prepared-semantics checks |
-| Model API | `bp_train/model_api.py` | [04](04_reaction_and_loss.md) | `UserReactionModule` / `UserLossModule`, scales, field tags |
-| Defaults | `bp_train/defaults.py` | [04](04_reaction_and_loss.md) | `DefaultReactionModule` (MLP) / `DefaultLossModule` (MSE) |
-| Wrapper | `bp_train/wrapper.py` | [04](04_reaction_and_loss.md) | `HybridOdeWrapper` — ODE RHS bridge |
-| Dense grids | `bp_train/dense.py` | [04](04_reaction_and_loss.md) | Union-grid + jump-mask helpers for dense losses |
-| Harness | `bp_train/harness.py` | [05](05_train_forward_loo.md) | Training orchestrator, forward, dense exports |
-| Trainer | `bp_train/trainer.py` | [05](05_train_forward_loo.md) | Single-sample / batched loss evaluation |
-| Postprocessing | `bp_train/postprocessing.py` | [05](05_train_forward_loo.md) | Loss curves + `predictions.csv` export |
-| LOO | `bp_train/loo.py`, `bp_train/loo_metrics.py` | [05](05_train_forward_loo.md) | Leave-one/some-process-out cross-validation + metrics |
-| Checkpointing / logging | `bp_train/checkpointing.py`, `bp_train/logging.py` | [05](05_train_forward_loo.md) | Resumable snapshots + telemetry |
-| Serialization | `bp_train/serialization.py` | [06](06_serialization_inspect.md) | Save/load, reconstruction, provenance |
-| Inspection | `bp_train/inspect.py` | [06](06_serialization_inspect.md) | Trainable-structure + reaction-schema tables |
+| CLI | `src/hybrax/train/cli.py` | [02](02_cli_and_config.md) | `prepare` / `train` / `forward` / `loo` subcommands |
+| Run config | `src/hybrax/train/run_config.py` | [02](02_cli_and_config.md) | Pydantic config schema + path resolution |
+| Hooks / utils | `src/hybrax/train/utils.py`, `src/hybrax/train/defaults.py` | [02](02_cli_and_config.md) | `custom.py` discovery + default implementations |
+| Prepare | `src/hybrax/train/prepare.py` | [03](03_data_preparation.md) | Raw collection → `prepared.json` artifact |
+| Training data | `src/hybrax/train/training_data.py` | [03](03_data_preparation.md) | Batch assembly, target selection |
+| Controls | `src/hybrax/train/controls_store.py`, `src/hybrax/train/controls.py` | [03](03_data_preparation.md) | Runtime control evaluation + event sources |
+| Validation | `src/hybrax/train/validation.py` | [03](03_data_preparation.md) | hybrax.format + prepared-semantics checks |
+| Model API | `src/hybrax/train/model_api.py` | [04](04_reaction_and_loss.md) | `UserReactionModule` / `UserLossModule`, scales, field tags |
+| Defaults | `src/hybrax/train/defaults.py` | [04](04_reaction_and_loss.md) | `DefaultReactionModule` (MLP) / `DefaultLossModule` (MSE) |
+| Wrapper | `src/hybrax/train/wrapper.py` | [04](04_reaction_and_loss.md) | `HybridOdeWrapper` — ODE RHS bridge |
+| Dense grids | `src/hybrax/train/dense.py` | [04](04_reaction_and_loss.md) | Union-grid + jump-mask helpers for dense losses |
+| Harness | `src/hybrax/train/harness.py` | [05](05_train_forward_loo.md) | Training orchestrator, forward, dense exports |
+| Trainer | `src/hybrax/train/trainer.py` | [05](05_train_forward_loo.md) | Single-sample / batched loss evaluation |
+| Postprocessing | `src/hybrax/train/postprocessing.py` | [05](05_train_forward_loo.md) | Loss curves + `predictions.csv` export |
+| LOO | `src/hybrax/train/loo.py`, `src/hybrax/train/loo_metrics.py` | [05](05_train_forward_loo.md) | Leave-one/some-process-out cross-validation + metrics |
+| Checkpointing / logging | `src/hybrax/train/checkpointing.py`, `src/hybrax/train/logging.py` | [05](05_train_forward_loo.md) | Resumable snapshots + telemetry |
+| Serialization | `src/hybrax/train/serialization.py` | [06](06_serialization_inspect.md) | Save/load, reconstruction, provenance |
+| Inspection | `src/hybrax/train/inspect.py` | [06](06_serialization_inspect.md) | Trainable-structure + reaction-schema tables |
 
 ## `custom.py` hooks at a glance
 
@@ -109,25 +109,7 @@ Discrete events (applied as state jumps during the solve — not read by module)
  └─ controlled boluses & samples # mass-balance jumps at known event times
 ```
 
-## Examples
-
-The `examples/` directory contains end-to-end case studies and focused demos.
-
-| Directory | Organism / data | Demonstrates |
-|-----------|-----------------|--------------|
-| [`00_e2e_sim/`](../examples/00_e2e_sim) | Simulated | Custom reaction module learning RMC + modeled-PV rates; `estimate_all_scales`. The smallest complete prepare → train → forward → loo set. |
-| [`01_kittler_2022/fba_hyb/`](../examples/01_kittler_2022/fba_hyb) | E. coli fed-batch | FBA surrogate reaction module + Kendall uncertainty loss |
-| [`01_kittler_2022/structured/`](../examples/01_kittler_2022/structured) | E. coli fed-batch | Structured loss terms |
-| [`11_tub_2026/fba_hyb/`](../examples/11_tub_2026/fba_hyb) | V. natriegens | FBA surrogate with algebraic biomass + bounds-hinge loss |
-| [`11_tub_2026/migration/`](../examples/11_tub_2026/migration) | V. natriegens | Migration from legacy bp-format |
-| [`12_martens_2025_expanded/structured/`](../examples/12_martens_2025_expanded/structured) | CHO (simulated) | Dense-grid curvature penalty + between-measurement bounds |
-| [`12_martens_2025_expanded/migration/`](../examples/12_martens_2025_expanded/migration) | CHO (simulated) | Migration from legacy bp-format |
-| [`13_volume_integration/`](../examples/13_volume_integration) | Synthetic | Volume integration / dilution tracking |
-| [`14_dense_bounds_tradeoff/`](../examples/14_dense_bounds_tradeoff) | Synthetic | Reconstruction-versus-dense-bounds weight trade-off |
-
 ## See also
 
-- [bp-format documentation](../../bp-format/documentation/README.md) — the data
-  model, mechanistic RHS, and pseudobatch transform that bp-train builds on.
-- [specs/](../specs/README.md) — proposals, roadmaps, and investigations. Not a
-  description of current behaviour.
+- [`hybrax.format` documentation](../format/README.md) — the data model,
+  mechanistic RHS, and pseudobatch transform that `hybrax.train` builds on.

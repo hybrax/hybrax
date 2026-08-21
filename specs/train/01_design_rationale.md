@@ -1,23 +1,23 @@
 # Design Rationale
 
-This document explains the cross-cutting design decisions behind bp-train.
+This document explains the cross-cutting design decisions behind hybrax.train.
 Individual topic docs reference these sections for context.
 
-bp-train turns a [bp-format](../../bp-format) `BioProcessCollection` into a
+hybrax.train turns a [`hybrax.format`](../format/README.md) `BioProcessCollection` into a
 trainable hybrid ODE model: it builds the mechanistic mass balance from the
 process definition, lets you plug a neural / mechanistic **reaction module** and
 a **loss module** in via `custom.py` hooks, and runs the
 prepare → train → forward / loo pipeline on JAX + Diffrax.
 
-## 1. Built on bp-format, JAX, Diffrax, Equinox, optax
+## 1. Built on hybrax.format, JAX, Diffrax, Equinox, optax
 
-bp-train consumes the data structures and the mechanistic RHS from bp-format and
+hybrax.train consumes the data structures and the mechanistic RHS from hybrax.format and
 adds the training machinery:
 
-- **bp-format** owns the data model and `build_rhs_ode(process)` →
+- **hybrax.format** owns the data model and `build_rhs_ode(process)` →
   `RhsOde`, which formalizes which species/feeds/PVs are *modeled* (dynamic
   states whose rates the reaction module predicts) vs *controlled* (driven by
-  the recorded control signals). bp-train never re-derives layout — `RhsOde` is
+  the recorded control signals). hybrax.train never re-derives layout — `RhsOde` is
   the single source of truth for axis names and ordering.
 - **JAX** provides autodiff + JIT for the repeated forward solves.
 - **Diffrax** integrates the ODE with an adaptive solver and adjoint
@@ -29,13 +29,13 @@ adds the training machinery:
 ## 2. Scaled (SCL) vs physical (RAW) space
 
 Neural-ODE training is numerically fragile when state magnitudes span orders of
-magnitude (biomass ~g/L, volume ~L, cumulative feed ~L). bp-train integrates the
+magnitude (biomass ~g/L, volume ~L, cumulative feed ~L). hybrax.train integrates the
 ODE in **scaled space (SCL)** so every axis is O(1), which keeps gradients
 well-conditioned, then converts to **physical space (RAW)** only where the
 chemistry needs real units.
 
 Scaling is a single linear factor per semantic axis. The data-derived
-`SCALE_*` axes (see [`EstimatedScales`](../bp_train/model_api.py)) cover states,
+`SCALE_*` axes (see [`EstimatedScales`](../../src/hybrax/train/model_api.py)) cover states,
 rates, cumulative volumes, feed-media compositions, and process variables.
 Stateful
 reaction modules additionally own `SCALE_latent`. The physical SCL state is
@@ -47,7 +47,7 @@ SCL_integrated_state = [ SCL_state | SCL_latent ]
 ```
 
 with `SCALE_state` and `SCALE_integrated_state` the matching concatenations (see
-[`UserReactionModule.SCALE_state`](../bp_train/model_api.py)). Because scaling is
+[`UserReactionModule.SCALE_state`](../../src/hybrax/train/model_api.py)). Because scaling is
 linear, the same factor converts both a value and its time-derivative
 (`d(x/k)/dt = (dx/dt)/k`), so the `scale_*` / `unscale_*` helpers work for states
 and rates identically.
@@ -61,7 +61,7 @@ measurements to SCL space; the loss module reaches them via
 ## 3. Bounded physical-state solve
 
 The ODE is solved with a **bounded physical-state** integrator
-([`physical_solve.py`](../bp_train/physical_solve.py)) that applies discrete
+([`physical_solve.py`](../../src/hybrax/train/physical_solve.py)) that applies discrete
 jumps at control-event times. This replaced an earlier single pseudobatch solve:
 the pseudobatch accumulator is unbounded over a long fed-batch, which corrupted
 the reverse-mode adjoint and produced unstable gradients. Solving the bounded
@@ -80,10 +80,10 @@ not extra solver steps.
 
 What gets optimized is declared with field metadata, not a partition function:
 
-- [`trainable_field()`](../bp_train/model_api.py) marks an `eqx.Module` field's
-  array leaves as trainable; [`frozen_field()`](../bp_train/model_api.py) marks
+- [`trainable_field()`](../../src/hybrax/train/model_api.py) marks an `eqx.Module` field's
+  array leaves as trainable; [`frozen_field()`](../../src/hybrax/train/model_api.py) marks
   them frozen. **Untagged array leaves default to frozen.**
-- [`partition_trainable(module)`](../bp_train/model_api.py) splits any module
+- [`partition_trainable(module)`](../../src/hybrax/train/model_api.py) splits any module
   (including the whole wrapper) into `(trainable, static)` pytrees. The
   inheritance rule is *first explicit tag on the path wins*, so an untagged
   container lets its children's own tags through.
@@ -100,7 +100,7 @@ control (freeze some MLP layers), use the
 A loss module returns a dict of **named scalar losses**; the total for backprop
 is `mean(named_losses.values())`, not the sum.
 
-bp-train clips the **raw** gradient (`clip_by_global_norm`) *before* Adam. Mean
+hybrax.train clips the **raw** gradient (`clip_by_global_norm`) *before* Adam. Mean
 keeps the gradient magnitude independent of the term count, so a tuned
 `grad_clip_norm` keeps behaving the same as you add named terms — the clip stays
 dormant in normal training. Sum would scale the gradient by the term count, push
@@ -143,6 +143,6 @@ trainable controls. Every checkpoint directory is self-contained (it bundles
 Training can shard the process batch across CPU cores via `pmap` (~N speedup).
 This is **opt-in** and resolved *before* JAX initializes (the device count is
 fixed at import time): set `train.devices: N` (or `"max"`) in the config, or
-`BP_TRAIN_DEVICES=N` (the env var always wins). `"max"` resolves to
-`min(n_processes, n_cpus)`. Default is 1 device (unchanged behavior) so bp-train
+`HYBRAX_TRAIN_DEVICES=N` (the env var always wins). `"max"` resolves to
+`min(n_processes, n_cpus)`. Default is 1 device (unchanged behavior) so hybrax.train
 never competes for cores with other work. No effect on GPU.

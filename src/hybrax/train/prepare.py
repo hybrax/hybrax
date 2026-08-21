@@ -84,7 +84,7 @@ def _warn_on_validation_report(validation_report: dict[str, dict[str, object]]) 
         warnings.warn(
             "hybrax.format validation reported non-OK status for "
             f"{len(failed)} process(es); "
-            f"see metadata[{METADATA_NAMESPACE!r}]['bp_format_validation_raw'] "
+            f"see metadata[{METADATA_NAMESPACE!r}]['format_validation_raw'] "
             "for details",
             stacklevel=2,
         )
@@ -242,9 +242,9 @@ def prepare_artifact(
     raw_collection = load_raw_collection(input_path)
     validation_report = validate_for_training(
         raw_collection,
-        strict=prepare.strict_bp_format_validation,
+        strict=prepare.strict_format_validation,
     )
-    if not prepare.strict_bp_format_validation:
+    if not prepare.strict_format_validation:
         _warn_on_validation_report(validation_report)
 
     collection = deepcopy(raw_collection)
@@ -373,16 +373,16 @@ def prepare_artifact(
             str(augment_state_values),
         )
 
-    bp_train_metadata: dict[str, Any] = {
+    hybrax_train_metadata: dict[str, Any] = {
         "prepared_at": _utc_now_iso(),
         "source_input_path": _portable_input_path(input_path, output_path),
         "source_input_sha256": source_hash,
         "custom_py_sha256": custom_hash,
         "transform_hooks": transform_hooks,
         "dynamic_volume": True,
-        "bp_format_validation": prepared_validation_report,
-        "bp_format_validation_raw": validation_report,
-        "bp_format_validation_prepared": prepared_validation_report,
+        "format_validation": prepared_validation_report,
+        "format_validation_raw": validation_report,
+        "format_validation_prepared": prepared_validation_report,
         "prepared_semantics_validation": semantics_validation_report,
         "semantics_provenance": {
             "processes": semantics_provenance,
@@ -393,7 +393,7 @@ def prepare_artifact(
 
     for process_name, process in collection.processes.items():
         bundle = process_bundles[process_name]
-        bp_train_metadata["processes"][process_name] = {
+        hybrax_train_metadata["processes"][process_name] = {
             "name_controlled_Inflows": list(bundle.name_controlled_Inflows),
             "name_controlled_Outflows": list(bundle.name_controlled_Outflows),
             "name_controlled_PVs": list(bundle.name_controlled_PVs),
@@ -406,7 +406,7 @@ def prepare_artifact(
     # serialization._VOLATILE_NS_KEYS), so re-preparing identical data yields an
     # identical content_hash. Carries the resolved PrepareConfig, the custom.py
     # file hash, the raw-input hash, package versions, and a timestamp.
-    bp_train_metadata["provenance"] = {
+    hybrax_train_metadata["provenance"] = {
         "prepared_at": _utc_now_iso(),
         "prepare_config": prepare.model_dump(mode="json"),
         "custom_py_file_hash": (f"sha256:{custom_hash}" if custom_hash else None),
@@ -414,12 +414,12 @@ def prepare_artifact(
         "environment": environment_versions(),
     }
 
-    existing_metadata[METADATA_NAMESPACE] = bp_train_metadata
+    existing_metadata[METADATA_NAMESPACE] = hybrax_train_metadata
     collection.metadata = existing_metadata
 
     # Record the prepared collection's own stable content_hash (computed with the
     # provenance block excluded, so it is self-consistent and re-prepare-stable).
-    bp_train_metadata["provenance"]["content_hash"] = content_hash(collection)
+    hybrax_train_metadata["provenance"]["content_hash"] = content_hash(collection)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     augmentation_plot_path = output_dir / AUGMENTATION_PLOT_FILENAME
@@ -436,7 +436,7 @@ def prepare_artifact(
     # Standalone, inspectable record of how this prepare ran (clash-free with
     # train's config.json) — the hybrax.train provenance/metadata block, without the
     # bulk collection.
-    write_json(output_dir / "prepare_config.json", bp_train_metadata, default=str)
+    write_json(output_dir / "prepare_config.json", hybrax_train_metadata, default=str)
 
     if prepare.diagnostics:
         try:

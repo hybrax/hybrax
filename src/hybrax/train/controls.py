@@ -101,7 +101,7 @@ def _make_source_from_xy(
 def _eval_ppoly_numpy(
     breaks: np.ndarray, coeffs: np.ndarray, side: str, ts: Any
 ) -> np.ndarray:
-    """Pure-numpy cubic-PPoly eval (matches bp-format ``PPoly.__call__``).
+    """Pure-numpy cubic-PPoly eval (matches hybrax.format ``PPoly.__call__``).
 
     Power-basis pieces ``p(dt) = a + dt·(b + dt·(c + dt·d))`` with
     ``idx = searchsorted(breaks, t, side) - 1`` clamped to a valid piece. This
@@ -300,7 +300,7 @@ def collect_discrete_event_metadata(
 ) -> dict[str, Any]:
     """Collect true sample/bolus events for pseudobatch algebraic forcing.
 
-    bp-format owns event validation and species alignment. Signed Outflow deltas
+    hybrax.format owns event validation and species alignment. Signed Outflow deltas
     become positive removal magnitudes exactly once at this solver boundary.
     """
     t_end = float(process.time_axis.end)
@@ -308,7 +308,7 @@ def collect_discrete_event_metadata(
     bolus_events: list[tuple[float, float, list[float]]] = []
     ordering = get_process_ordering(process)
     if tuple(ordering.name_modeled_RMCs) != species_names:
-        raise ValueError("species_names must match bp-format's modeled RMC order")
+        raise ValueError("species_names must match hybrax.format's modeled RMC order")
 
     for event in extract_discrete_events(process, ordering):
         if event["t"] > t_end:
@@ -338,7 +338,7 @@ def collect_discrete_event_metadata(
 class ControlSourceBundle:
     """Categorised control sources from a process.
 
-    Layout mirrors bp-format ``ControlSplines`` — the continuous controls the
+    Layout mirrors hybrax.format ``ControlSplines`` — the continuous controls the
     RHS integrates via RhsOde's ``u`` argument. Discrete bolus/sample events are
     NOT controls here; they are applied as state jumps by the callbacks solve:
 

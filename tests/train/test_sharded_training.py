@@ -2,7 +2,7 @@
 
 The device count is fixed at JAX initialisation, so we exercise the sharded
 (pmap) step vs the single-device (vmap) step in subprocesses: one with
-``BP_TRAIN_DEVICES=1`` and one with ``=2``. A reordered three-process batch with
+``HYBRAX_TRAIN_DEVICES=1`` and one with ``=2``. A reordered three-process batch with
 distinct sample events forces one padded sharded row. The runs must train
 identically up to float32 cross-device reduction order.
 """
@@ -17,7 +17,7 @@ import pytest
 
 _TESTS_DIR = str(Path(__file__).resolve().parent)
 
-# Runs in a fresh interpreter so BP_TRAIN_DEVICES is honoured before JAX inits.
+# Runs in a fresh interpreter so HYBRAX_TRAIN_DEVICES is honoured before JAX inits.
 _SCRIPT = """
 import copy, dataclasses, json, sys
 sys.path.insert(0, {tests_dir!r})
@@ -136,12 +136,12 @@ print("RESULT_JSON " + json.dumps({{"devices": jax.device_count(), "row": row}})
 
 
 def _run(devices: str, *, gspmd: bool = False) -> dict:
-    env = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": devices}
+    env = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": devices}
     env.pop("XLA_FLAGS", None)  # let the bootstrap set the device count cleanly
     if gspmd:
-        env["BP_GSPMD"] = "1"
+        env["HYBRAX_GSPMD"] = "1"
     else:
-        env.pop("BP_GSPMD", None)
+        env.pop("HYBRAX_GSPMD", None)
     proc = subprocess.run(
         [sys.executable, "-c", _SCRIPT.format(tests_dir=_TESTS_DIR)],
         env=env,
@@ -159,12 +159,12 @@ def _run(devices: str, *, gspmd: bool = False) -> dict:
 def _run_telemetry(mode: str) -> dict:
     assert mode in ("vmap", "pmap", "gspmd")
     devices = "1" if mode == "vmap" else "2"
-    env = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": devices}
+    env = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": devices}
     env.pop("XLA_FLAGS", None)
     if mode == "gspmd":
-        env["BP_GSPMD"] = "1"
+        env["HYBRAX_GSPMD"] = "1"
     else:
-        env.pop("BP_GSPMD", None)
+        env.pop("HYBRAX_GSPMD", None)
     proc = subprocess.run(
         [sys.executable, "-c", _TELEMETRY_SCRIPT.format(tests_dir=_TESTS_DIR)],
         env=env,
@@ -224,7 +224,7 @@ def test_device_count_capped_at_cpu_count():
     env = {
         **os.environ,
         "JAX_PLATFORMS": "cpu",
-        "BP_TRAIN_DEVICES": "9999",
+        "HYBRAX_TRAIN_DEVICES": "9999",
     }
     env.pop("XLA_FLAGS", None)
     proc = subprocess.run(

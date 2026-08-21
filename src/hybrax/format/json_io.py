@@ -12,7 +12,7 @@ _PARSER_OPTIONS = {
     "allow_comments": True,
     "multiple_values": True,
 }
-_EOF_SENTINEL_VALUE = "__bp_format_eof_sentinel__"
+_EOF_SENTINEL_VALUE = "__hybrax_format_eof_sentinel__"
 _EOF_SENTINEL = f'\n"{_EOF_SENTINEL_VALUE}"'
 _ROOT_END_EVENTS = frozenset(
     {"null", "boolean", "number", "string", "end_map", "end_array"}

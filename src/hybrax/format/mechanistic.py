@@ -9,7 +9,7 @@ Public API: :func:`get_process_ordering`, :func:`get_control_splines`,
 :func:`build_state_splines`, :func:`build_algebraic_func`. See each
 function's own docstring for its call signature and output layout.
 
-Forward integration of the process lives in ``bp-train``; this module does
+Forward integration of the process lives in ``hybrax.train``; this module does
 not integrate. Rate inversion (recovering rate values from state splines)
 is not implemented.
 """

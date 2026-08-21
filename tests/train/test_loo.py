@@ -1304,7 +1304,7 @@ def test_worker_env_strips_inherited_host_device_pin(monkeypatch):
         "XLA_FLAGS", "--xla_force_host_platform_device_count=32 --xla_cpu_foo=1"
     )
     env = loo_mod._worker_env(3)
-    assert env["BP_TRAIN_DEVICES"] == "3"
+    assert env["HYBRAX_TRAIN_DEVICES"] == "3"
     assert "xla_force_host_platform_device_count" not in env.get("XLA_FLAGS", "")
     assert "--xla_cpu_foo=1" in env["XLA_FLAGS"]
 

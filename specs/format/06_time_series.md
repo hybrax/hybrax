@@ -1,6 +1,6 @@
 # TimeSeries
 
-Source: `bp_format/time_series/`
+Source: `src/hybrax/format/time_series/`
 
 ## Purpose
 
@@ -106,7 +106,7 @@ Both operands must share a `continuity_side` and dtype.
 
 ## `PPoly`
 
-`bp_format.time_series.PPoly` is the bare spline evaluator — an `eqx.Module`
+`hybrax.format.time_series.PPoly` is the bare spline evaluator — an `eqx.Module`
 with `breaks` and `coeffs` and no measurement data.
 
 | Member | Description |
@@ -171,7 +171,7 @@ above; see [03_serialization.md](03_serialization.md) for the full dataset I/O.
 
 ```python
 import jax.numpy as jnp
-from bp_format import TimeSeries
+from hybrax.format import TimeSeries
 
 ts = TimeSeries(
     times=jnp.array([0.0, 2.0, 4.0, 6.0, 8.0]),
@@ -184,7 +184,7 @@ ts.evaluate(3.0)        # raises: no spline yet
 ### Fitting and evaluating
 
 ```python
-from bp_format.splines import fit_timeseries_spline
+from hybrax.format.splines import fit_timeseries_spline
 
 fitted = fit_timeseries_spline(ts)          # smoothing_s=0 -> interpolating
 fitted.evaluate(3.0)

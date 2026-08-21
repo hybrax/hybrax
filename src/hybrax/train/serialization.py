@@ -142,8 +142,8 @@ _VOLATILE_NS_KEYS = frozenset(
         "source_input_path",
         "source_input_sha256",
         "custom_py_sha256",
-        "bp_format_validation_raw",
-        "bp_format_validation_prepared",
+        "format_validation_raw",
+        "format_validation_prepared",
         "prepared_semantics_validation",
         "semantics_provenance",
         "transform_hooks",
@@ -152,7 +152,7 @@ _VOLATILE_NS_KEYS = frozenset(
 
 
 def _strip_provenance(collection_dict: dict[str, Any]) -> dict[str, Any]:
-    """Return a copy of the collection dict with bp-train provenance removed.
+    """Return a copy of the collection dict with hybrax.train provenance removed.
 
     The provenance keys carry timestamps / hashes / validation reports and are
     excluded from ``content_hash`` so that re-preparing identical data yields an

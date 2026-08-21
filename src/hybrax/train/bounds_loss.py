@@ -19,7 +19,7 @@ BoundRecord = tuple[str, str, int, float, float]
 
 
 class BoundsViolationLossModule(DefaultLossModule):
-    """Default measurement MSE plus bp-format state and rate bound penalties.
+    """Default measurement MSE plus hybrax.format state and rate bound penalties.
 
     Violations are measured in RAW physical space and normalized by the matching
     offset-free derivative scale. By default they are evaluated on real

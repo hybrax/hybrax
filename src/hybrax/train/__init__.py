@@ -6,7 +6,7 @@ from __future__ import annotations
 # never competes for cores with other work. Enable with EITHER:
 #   * the config:  train.devices = 8 (or "max") in the --config JSON  (pre-scanned
 #     from argv here, since the device count must be fixed before JAX initialises)
-#   * the env var: BP_TRAIN_DEVICES=8  (always wins)
+#   * the env var: HYBRAX_TRAIN_DEVICES=8  (always wins)
 # Pick <= number of free cores. No effect on GPU (host-device flag is CPU-only).
 import gzip as _gzip
 import os as _os
@@ -16,7 +16,7 @@ from hybrax.format.json_io import load_json as _load_json
 from hybrax.format.json_io import loads_json as _loads_json
 
 
-def _bp_load_config():
+def _load_config():
     """Best-effort flat RunConfig dict from the pre-JAX ``--config`` argument."""
     _argv = _sys.argv
     _path = None
@@ -38,12 +38,12 @@ def _bp_load_config():
         return None
 
 
-def _bp_resolve_devices():
+def _resolve_devices():
     _argv = _sys.argv
     # The loo *orchestrator* (no --fold) trains nothing — it only dispatches
-    # per-fold worker subprocesses, each launched with its own BP_TRAIN_DEVICES.
+    # per-fold worker subprocesses, each launched with its own HYBRAX_TRAIN_DEVICES.
     # Force it onto a single device FIRST (before the env-var branch) so an
-    # exported BP_TRAIN_DEVICES — which is meant for the workers — does not make
+    # exported HYBRAX_TRAIN_DEVICES — which is meant for the workers — does not make
     # the idle orchestrator reserve the whole CPU pool. Workers (--fold present)
     # fall through to the env-var branch and honour the count the orchestrator
     # set for them.
@@ -51,11 +51,11 @@ def _bp_resolve_devices():
     _has_fold = any(_a == "--fold" or _a.startswith("--fold=") for _a in _argv)
     if _is_loo and not _has_fold:
         return None
-    _n = _os.environ.get("BP_TRAIN_DEVICES")
+    _n = _os.environ.get("HYBRAX_TRAIN_DEVICES")
     if _n is not None:
         return _n
     # config-driven train: read train.devices from the --config JSON
-    _loaded = _bp_load_config()
+    _loaded = _load_config()
     if _loaded is not None:
         _cfg, _ = _loaded
         _train = _cfg.get("train") if isinstance(_cfg, dict) else None
@@ -64,7 +64,7 @@ def _bp_resolve_devices():
     return None
 
 
-def _bp_read_prepared_json(_path):
+def _read_prepared_json(_path):
     """Read a prepared JSON file or prepare-output directory."""
     if _os.path.isdir(_path):
         for _name in ("prepared.json.gz", "prepared.json"):
@@ -77,7 +77,7 @@ def _bp_read_prepared_json(_path):
         return _loads_json(_f.read())
 
 
-def _bp_count_processes():
+def _count_processes():
     """Best-effort process count from the prepared JSON (pre-JAX).
 
     Used to resolve ``devices: "max"`` to ``min(n_processes, n_cpus)`` instead of every
@@ -90,7 +90,7 @@ def _bp_count_processes():
     _prepared = None
     _prepared_from_config = False
     _cfg_dir = None
-    _loaded = _bp_load_config()
+    _loaded = _load_config()
     if _loaded is not None:
         _cfg, _cfg_path = _loaded
         _cfg_dir = _os.path.dirname(_os.path.abspath(_cfg_path))
@@ -118,7 +118,7 @@ def _bp_count_processes():
         _candidates = [_prepared]
     for _path in _candidates:
         try:
-            _d = _bp_read_prepared_json(_path)
+            _d = _read_prepared_json(_path)
             for _k in ("processes", "process_order", "case_studies"):
                 if isinstance(_d, dict) and isinstance(_d.get(_k), (dict, list)):
                     return len(_d[_k]) or None
@@ -128,40 +128,41 @@ def _bp_count_processes():
 
 
 if "xla_force_host_platform_device_count" not in _os.environ.get("XLA_FLAGS", ""):
-    _bp_devices = _bp_resolve_devices()
-    if _bp_devices is not None:
-        if str(_bp_devices).strip().lower() in ("max", "all", "auto"):
+    _hybrax_devices = _resolve_devices()
+    if _hybrax_devices is not None:
+        if str(_hybrax_devices).strip().lower() in ("max", "all", "auto"):
             # "max" = as many devices as are *useful*: one per process, capped at cores.
             # Never every core — idle surplus devices oversubscribe the collective
-            # threadpool and deadlock the pmap rendezvous (see _bp_count_processes).
+            # threadpool and deadlock the pmap rendezvous (see _count_processes).
             _cores = _os.cpu_count() or 1
-            _nproc = _bp_count_processes()
-            _bp_devices = min(_cores, _nproc) if _nproc else _cores
+            _nproc = _count_processes()
+            _hybrax_devices = min(_cores, _nproc) if _nproc else _cores
         else:
             try:
-                _bp_devices = int(_bp_devices)
+                _hybrax_devices = int(_hybrax_devices)
             except (TypeError, ValueError):
-                _bp_devices = 1
+                _hybrax_devices = 1
         # Never expose more CPU devices than physical cores. Oversubscribed XLA
         # collective threads can starve past the AllReduce rendezvous timeout
         # (~20 s) and deadlock mid-training — and extra devices never speed up a
         # core-bound CPU run. Cap at cpu_count and warn if the user asked for more.
-        _bp_cap = _os.cpu_count() or 1
-        if _bp_devices > _bp_cap:
+        _device_cap = _os.cpu_count() or 1
+        if _hybrax_devices > _device_cap:
             _sys.stderr.write(
-                f"[hybrax.train] requested devices {_bp_devices} exceeds {_bp_cap} "
-                f"CPU cores; capping to {_bp_cap} (more devices than cores can "
+                f"[hybrax.train] requested devices {_hybrax_devices} "
+                f"exceeds {_device_cap} CPU cores; capping to {_device_cap} "
+                f"(more devices than cores can "
                 f"only deadlock the pmap collective, never speed it up).\n"
             )
-            _bp_devices = _bp_cap
-        if _bp_devices > 1:
+            _hybrax_devices = _device_cap
+        if _hybrax_devices > 1:
             _os.environ["XLA_FLAGS"] = (
                 _os.environ.get("XLA_FLAGS", "")
-                + f" --xla_force_host_platform_device_count={_bp_devices}"
+                + f" --xla_force_host_platform_device_count={_hybrax_devices}"
             ).strip()
 
 
-# Enable float64 (JAX x64) for the whole bp-train pipeline. Set after the XLA
+# Enable float64 (JAX x64) for the whole hybrax.train pipeline. Set after the XLA
 # device-count env above and before any array is created downstream.
 import jax as _jax  # noqa: E402
 

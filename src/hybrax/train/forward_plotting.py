@@ -1,4 +1,4 @@
-"""Best-effort prediction plots for ``bp-train forward``."""
+"""Best-effort prediction plots for ``hybrax forward``."""
 
 import logging
 from pathlib import Path

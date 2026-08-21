@@ -1,6 +1,6 @@
 # Mechanistic ODE Module
 
-Source: `bp_format/mechanistic.py`
+Source: `src/hybrax/format/mechanistic.py`
 
 ## Purpose
 
@@ -16,7 +16,7 @@ Turn a `BioProcess` into the pieces of an ODE:
 Everything here is `eqx.Module` and JIT-safe.
 
 **hybrax.format does not integrate.** It builds the right-hand side; running a
-solver over it is [bp-train](../../bp-train/documentation/README.md)'s job.
+solver over it is [`hybrax.train`](../train/README.md)'s job.
 
 ## `ProcessOrdering` — one layout, decided once
 
@@ -143,8 +143,8 @@ This split is the core contract of the module.
 
 Feed and sample flow rates are deliberately **not** in the expression symbol
 table. That keeps mass balance out of user code and makes it impossible to
-double-count a dilution term. (It is also why perfusion and evaporation are not
-expressible today — see [specs/](../specs/README.md).)
+double-count a dilution term. It is also why perfusion and evaporation are not
+expressible today.
 
 `print_rhs_ode` renders the two halves side by side; use it to check what you
 actually built.
@@ -219,7 +219,7 @@ The pseudobatch bundle is validated first: a `c*` trace without a matching
 
 ```python
 import jax.numpy as jnp
-import bp_format as bp
+import hybrax.format as bp
 
 ordering = bp.mechanistic.get_process_ordering(process)
 controls = bp.mechanistic.get_control_splines(process, ordering)
@@ -261,4 +261,4 @@ dc_dt = step(c, rates, controls(t), jnp.zeros(0), jnp.zeros(0))
 - [Data Model](02_data_model.md) — `BiologicalOde`, `ProcessOrdering`
 - [Inspection](05_inspection.md) — `print_rhs_ode`
 - [Splines](07_splines.md) — the state trajectories consumed here
-- [bp-train](../../bp-train/documentation/README.md) — integrates all of this
+- [`hybrax.train`](../train/README.md) — integrates all of this

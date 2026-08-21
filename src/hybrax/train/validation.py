@@ -20,9 +20,9 @@ def validate_for_training(
     strict: bool = False,
     require_biological_ode: bool = False,
 ) -> dict[str, dict[str, object]]:
-    """bp-train's training-readiness validator.
+    """hybrax.train's training-readiness validator.
 
-    Distinct from bp-format's own `validate_for_publication` (a
+    Distinct from hybrax.format's own `validate_for_publication` (a
     storage/publication concern), but composes the same
     `validate_cross_process_consistency` structural check rather than
     duplicating it — training data is expected to come from one coherent

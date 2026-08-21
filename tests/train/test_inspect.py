@@ -65,7 +65,7 @@ def test_format_reaction_schema_contains_all_axis_names():
         assert axis in text, f"axis {axis} missing from rendered schema"
 
 
-def test_format_reaction_schema_renders_bp_format_names():
+def test_format_reaction_schema_renders_hybrax_format_names():
     rhs_ode, controls = _mock_rhs_ode_and_controls()
     text = format_reaction_schema(rhs_ode, controls)
 

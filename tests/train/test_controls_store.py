@@ -594,7 +594,7 @@ def test_controls_store_rejects_unknown_process(tmp_path):
 def test_controls_store_rejects_different_control_order(tmp_path):
     prepared_json = _prepare_two_process(tmp_path)
     payload = json.loads(prepared_json.read_text(encoding="utf-8"))
-    process_md = payload["metadata"]["bp-train"]["processes"]["p2"]
+    process_md = payload["metadata"]["hybrax.train"]["processes"]["p2"]
     process_md["name_controlled_PVs"] = ["T", "CF"]
     prepared_json.write_text(json.dumps(payload), encoding="utf-8")
 

@@ -1,6 +1,6 @@
 # Simulation
 
-Source: `bp_format/simulation.py`
+Source: `src/hybrax/format/simulation.py`
 
 ## Purpose
 
@@ -174,7 +174,7 @@ pre-event state during reintegration.
 
 ```python
 import numpy as np
-from bp_format import Simulation, SimulationEvent
+from hybrax.format import Simulation, SimulationEvent
 
 sim = Simulation()
 

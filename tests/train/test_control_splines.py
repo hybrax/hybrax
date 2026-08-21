@@ -62,7 +62,7 @@ def test_spline_control_is_consumed_not_rejected():
     bundle = select_control_sources(_process_with_ph(fitted))
     src = bundle.sources_by_name["pH"]
     assert src.metadata.get("source") == "spline"
-    # Its numpy evaluator matches the bp-format PPoly (to float32).
+    # Its numpy evaluator matches the hybrax.format PPoly (to float32).
     tq = np.linspace(0.05, 0.95, 25)
     np.testing.assert_allclose(
         np.asarray(src.evaluator(tq)),
@@ -128,7 +128,7 @@ def _process_with_controls(name, controls) -> BioProcess:
     return process
 
 
-def test_direct_splines_rebase_different_grids_and_match_bp_format():
+def test_direct_splines_rebase_different_grids_and_match_hybrax_format():
     first = _global_cubic([0.0, 0.4, 1.0])
     second = _global_cubic([0.0, 0.7, 1.0], scale=2.0)
     process = _process_with_controls(

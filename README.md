@@ -3,12 +3,10 @@
 A JAX-compatible framework for standardized bioprocess data management,
 mechanistic modeling, and hybrid ODE training.
 
-Hybrax is a merger of what were previously separate `bp-format` and
-`bp-train` repos into one package. **Only the `hybrax.format` half has
-landed so far** — the data model, validation, serialization, and
-mechanistic-RHS-building library. `hybrax.train` (hybrid ODE training,
-leave-one-out CV, augmentation) is still a separate `bp-train` repo,
-pending its own migration into this one.
+Hybrax combines bioprocess data interchange and hybrid ODE training in one
+package. `hybrax.format` provides the data model, validation, serialization,
+and mechanistic right-hand side. `hybrax.train` provides preparation,
+augmentation, training, prediction, and leave-one-out cross-validation.
 
 ## Motivation
 
@@ -21,16 +19,15 @@ ODE integration for gradient-based hybrid model training.
 
 ## Installation
 
+For local development, create the uv environment with the development extras:
+
 ```bash
-pip install -e .
+uv sync --extra dev
 ```
 
-For development:
-```bash
-pip install -e ".[dev]"
-```
+Run tests with `uv run pytest`. Add `-n 12` to use 12 pytest-xdist workers.
 
-## Quick Start
+## Quick start
 
 ```python
 import hybrax.format as bp
@@ -66,6 +63,8 @@ fig = bp.plot_process(process)
 | `hybrax.format.validate` | [specs/format/04](specs/format/04_validation.md) | Data integrity checks |
 | `hybrax.format.inspect` | [specs/format/05](specs/format/05_inspection.md) | Text printing and matplotlib visualization |
 | `hybrax.format.simulation` | [specs/format/09](specs/format/09_simulation.md) | Event bookkeeping for synthetic datasets |
+| `hybrax.train` | [specs/train](specs/train/README.md) | Preparation, hybrid ODE training, prediction, and cross-validation |
 
-See [specs/format/README.md](specs/format/README.md) for the full data
-structure diagram and a guided reading order through the design docs.
+See the [`hybrax.format` documentation](specs/format/README.md) for the data
+structure and the [`hybrax.train` documentation](specs/train/README.md) for the
+training workflow.

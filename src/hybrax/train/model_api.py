@@ -10,7 +10,7 @@ import jax.tree_util as jtu
 import numpy as np
 
 
-TRAINABLE_METADATA_KEY = "bp_train_trainable"
+TRAINABLE_METADATA_KEY = "hybrax_train_trainable"
 
 
 def trainable_field(**kwargs: Any) -> Any:
@@ -543,7 +543,7 @@ class UserReactionModule(eqx.Module):
     """Base for user-defined reaction modules.
 
     The module is the single source of truth for every ``SCALE_*`` vector in
-    bp-train. The wrapper queries scales via ``self.reaction_module.SCALE_*``;
+    hybrax.train. The wrapper queries scales via ``self.reaction_module.SCALE_*``;
     the trainer reads ``SCALE_state`` to convert measurements to SCL space.
 
     Subclasses inherit the scale fields below — they do NOT redeclare them;
@@ -1011,7 +1011,7 @@ class LossOutputs(eqx.Module):
 
     Total loss for backprop = ``mean(named_losses.values())`` (the harness
     stacks the values in ``loss_names`` order and takes the mean). Mean keeps
-    gradients in the same range as bp-train's historical default, so a tuned
+    gradients in the same range as hybrax.train's historical default, so a tuned
     ``grad_clip_norm`` keeps behaving the same as the term count grows. The set
     of keys is fixed per run and declared up front via
     ``UserLossModule.loss_names``; ``__call__`` must return exactly those keys

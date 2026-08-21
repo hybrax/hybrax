@@ -226,7 +226,9 @@ def _write_sample_semantics_custom_py(path: Path) -> None:
     path.write_text(
         "\n".join(
             [
-                "from hybrax.format.dataclasses import ReactorMediumComponent, TimeSeries",
+                "from hybrax.format.dataclasses import (",
+                "    ReactorMediumComponent, TimeSeries,",
+                ")",
                 "import jax.numpy as jnp",
                 "",
                 "def transform_process_collection(collection, config):",
@@ -550,7 +552,7 @@ def test_prepare_artifact_allows_hook_to_explicitly_regenerate_biological_ode(
     assert prepared_ode.rates == {"q_biomass": (None, None)}
 
 
-def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
+def test_prepare_artifact_writes_hybrax_train_metadata(tmp_path):
     output_dir = tmp_path / "prepared"
     custom_py = tmp_path / "custom.py"
     _write_sample_semantics_custom_py(custom_py)
@@ -562,7 +564,7 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
         )
 
     prepared = load_process_collection(output_dir / "prepared.json")
-    metadata = prepared.metadata["bp-train"]
+    metadata = prepared.metadata["hybrax.train"]
 
     assert metadata["process_order"] == list(prepared.processes.keys())
     # The raw input lives one level above the output dir (tmp_path/prepared-raw.json
@@ -573,13 +575,9 @@ def test_prepare_artifact_writes_bp_train_metadata(tmp_path):
     process_md = metadata["processes"][first_name]
     assert "sample_acc_name" not in process_md
     assert "name_extras" not in process_md
-    assert any(
-        not entry["ok"] for entry in metadata["bp_format_validation_raw"].values()
-    )
-    assert all(entry["ok"] for entry in metadata["bp_format_validation"].values())
-    assert all(
-        entry["ok"] for entry in metadata["bp_format_validation_prepared"].values()
-    )
+    assert any(not entry["ok"] for entry in metadata["format_validation_raw"].values())
+    assert all(entry["ok"] for entry in metadata["format_validation"].values())
+    assert all(entry["ok"] for entry in metadata["format_validation_prepared"].values())
     assert metadata["prepared_semantics_validation"][first_name]["ok"] is True
     semantics = metadata["semantics_provenance"]["processes"][first_name]
     assert semantics["changed_by_hooks"] == ["transform_process_collection"]
@@ -596,7 +594,7 @@ def test_prepare_artifact_does_not_persist_padded_control_arrays(tmp_path):
         )
 
     prepared = load_process_collection(output_dir / "prepared.json")
-    process_md = prepared.metadata["bp-train"]["processes"]["invalid"]
+    process_md = prepared.metadata["hybrax.train"]["processes"]["invalid"]
 
     assert "dense_grid" not in process_md
     assert "control_values" not in process_md
@@ -629,7 +627,7 @@ def test_prepare_artifact_respects_custom_control_order(tmp_path):
     )
 
     prepared = load_process_collection(output_dir / "prepared.json")
-    metadata = prepared.metadata["bp-train"]
+    metadata = prepared.metadata["hybrax.train"]
     first_name = metadata["process_order"][0]
     process_md = metadata["processes"][first_name]
 
@@ -648,7 +646,7 @@ def test_prepare_artifact_can_rename_processes(tmp_path):
     prepared = load_process_collection(output_dir / "prepared.json")
     assert list(prepared.processes.keys()) == ["process=p1", "process=p2"]
     assert prepared.processes["process=p1"].metadata.name == "process=p1"
-    assert prepared.metadata["bp-train"]["process_order"] == [
+    assert prepared.metadata["hybrax.train"]["process_order"] == [
         "process=p1",
         "process=p2",
     ]
@@ -670,7 +668,7 @@ def test_prepare_artifact_rename_provenance_tracks_changes(tmp_path):
     )
 
     prepared = load_process_collection(output_dir / "prepared.json")
-    prov = prepared.metadata["bp-train"]["semantics_provenance"]["processes"]
+    prov = prepared.metadata["hybrax.train"]["semantics_provenance"]["processes"]
     for new_name in ["process=p1", "process=p2"]:
         entry = prov[new_name]
         assert "transform_process_collection" in entry["changed_by_hooks"], (
@@ -743,7 +741,9 @@ def test_prepare_artifact_supports_transform_process_collection_hook(tmp_path):
     assert list(prepared.processes.keys()) == ["proc::p1", "proc::p2"]
     assert prepared.metadata["collection_transform_marker"] == "applied"
     assert (
-        prepared.metadata["bp-train"]["transform_hooks"]["transform_process_collection"]
+        prepared.metadata["hybrax.train"]["transform_hooks"][
+            "transform_process_collection"
+        ]
         == "transform_process_collection"
     )
 
@@ -819,7 +819,7 @@ def test_prepare_artifact_persists_feed_metadata(tmp_path):
         )
 
     prepared = load_process_collection(output_dir / "prepared.json")
-    metadata = prepared.metadata["bp-train"]
+    metadata = prepared.metadata["hybrax.train"]
     process_md = metadata["processes"]["p1"]
     feed_md = process_md["control_metadata"]["feed_A"]
     semantics = metadata["semantics_provenance"]["processes"]["p1"]
@@ -981,7 +981,7 @@ def test_resolve_prepared_path_dir_vs_file(tmp_path):
 
 
 def test_select_control_sources_uses_upstream_feed_medium_validation():
-    """Producer construction reuses bp-format's feed-medium validation."""
+    """Producer construction reuses hybrax.format's feed-medium validation."""
     process = BioProcess(
         metadata=BioProcessMetadata(name="p1", process_type="fed_batch"),
         time_axis=TimeAxis(unit="h", start=0.0, end=1.0, time_reference="start"),

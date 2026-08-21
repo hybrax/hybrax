@@ -432,9 +432,9 @@ def test_content_hash_stable_and_provenance_excluded():
     h1 = content_hash(_collection())
     # Re-built identical collection → identical hash.
     assert content_hash(_collection()) == h1
-    # A provenance block under the bp-train namespace must NOT change the hash.
+    # A provenance block under the hybrax.train namespace must NOT change the hash.
     with_prov = _collection()
-    with_prov.metadata["bp-train"] = {
+    with_prov.metadata["hybrax.train"] = {
         "provenance": {"timestamp": "2026-06-22T00:00:00"}
     }
     assert content_hash(with_prov) == h1

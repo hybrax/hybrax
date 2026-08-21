@@ -15,7 +15,7 @@ def load_custom_module(custom_py: str | Path | None) -> ModuleType | None:
     if not path.exists():
         raise FileNotFoundError(f"custom.py path does not exist: {path}")
 
-    spec = spec_from_file_location("bp_train_user_custom", path)
+    spec = spec_from_file_location("hybrax_train_user_custom", path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not load custom module from {path}")
 

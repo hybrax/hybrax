@@ -1,8 +1,8 @@
 # Serialization & Inspection
 
-Source: [`bp_train/serialization.py`](../bp_train/serialization.py),
-[`bp_train/inspect.py`](../bp_train/inspect.py),
-[`bp_train/checkpointing.py`](../bp_train/checkpointing.py)
+Source: [`src/hybrax/train/serialization.py`](../../src/hybrax/train/serialization.py),
+[`src/hybrax/train/inspect.py`](../../src/hybrax/train/inspect.py),
+[`src/hybrax/train/checkpointing.py`](../../src/hybrax/train/checkpointing.py)
 
 ## Purpose
 
@@ -128,7 +128,7 @@ collection you hand it is evaluation data only and never re-scales the model.
 ```python
 content_hash(collection) -> str      # sha256 of a collection's canonical content
 file_hash(path) -> str               # sha256 of a file
-environment_versions() -> dict[str, str]   # JAX / Diffrax / bp-format / … versions
+environment_versions() -> dict[str, str]   # JAX / Diffrax / hybrax.format / … versions
 ```
 
 These are recorded in the run's `config.json` and the prepared artifact so a
@@ -139,7 +139,7 @@ reload can detect a data/code mismatch and fail fast.
 Distributed workers consume runtime artifact format 4. Its shared arrays store
 all four process-aligned transport matrices: controlled and modeled Inflow
 composition, plus controlled and modeled Outflow retention. The loader rebuilds
-canonical parent RHS objects through bp-format, verifies biological-expression
+canonical parent RHS objects through hybrax.format, verifies biological-expression
 agreement and every cached parent/augmented row, then applies the selected
 process row before hooks or dynamics run. Format 3 is rejected rather than
 compatibility-mapped.
@@ -154,7 +154,7 @@ non-positive Outflow values/rates. The worker context remains collection-free.
 Print the two structure tables (the harness prints both at training start):
 
 ```python
-from bp_train import print_trainable_structure, print_reaction_schema
+from hybrax.train import print_trainable_structure, print_reaction_schema
 
 print_trainable_structure(wrapper.reaction_module, title="UserReactionModule")
 print_trainable_structure(wrapper.loss_module, title="UserLossModule")
@@ -176,8 +176,8 @@ print_reaction_schema(wrapper)
 ## Examples
 
 ```python
-from bp_format.serialization import load_process_collection
-from bp_train import model_load, model_predict, print_trainable_structure
+from hybrax.format.serialization import load_process_collection
+from hybrax.train import model_load, model_predict, print_trainable_structure
 
 wrapper, config = model_load("examples/00_e2e_sim/output_all")
 print_trainable_structure(wrapper.reaction_module)

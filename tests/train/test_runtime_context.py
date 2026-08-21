@@ -266,7 +266,7 @@ def test_parent_collection_is_filtered_before_deepcopy(monkeypatch):
     collection = replace(
         collection,
         metadata={
-            "bp-train": {
+            "hybrax.train": {
                 "process_order": list(collection.processes),
                 "processes": {name: {"marker": name} for name in collection.processes},
             },
@@ -280,8 +280,8 @@ def test_parent_collection_is_filtered_before_deepcopy(monkeypatch):
             copied_inputs.append(
                 (
                     tuple(value.processes),
-                    tuple(value.metadata["bp-train"]["process_order"]),
-                    tuple(value.metadata["bp-train"]["processes"]),
+                    tuple(value.metadata["hybrax.train"]["process_order"]),
+                    tuple(value.metadata["hybrax.train"]["processes"]),
                     value.metadata["trusted"],
                 )
             )
@@ -302,7 +302,7 @@ def test_parent_collection_is_filtered_before_deepcopy(monkeypatch):
 def test_selected_scale_context_exposes_only_deep_copied_parents():
     collection, runtime_data = _runtime_data()
     metadata = {
-        "bp-train": {
+        "hybrax.train": {
             "process_order": ["P0", "P0_aug", "P1", "P2"],
             "processes": {name: {"marker": name} for name in collection.processes},
             "trusted_setting": {"processes": {"P2": "preserve"}},
@@ -321,18 +321,18 @@ def test_selected_scale_context_exposes_only_deep_copied_parents():
         parent_collection.processes[name] is not collection.processes[name]
         for name in parent_collection.processes
     )
-    assert parent_collection.metadata["bp-train"]["process_order"] == ["P0", "P1"]
-    assert tuple(parent_collection.metadata["bp-train"]["processes"]) == (
+    assert parent_collection.metadata["hybrax.train"]["process_order"] == ["P0", "P1"]
+    assert tuple(parent_collection.metadata["hybrax.train"]["processes"]) == (
         "P0",
         "P1",
     )
     assert (
-        parent_collection.metadata["bp-train"]["trusted_setting"]
-        == (original_metadata["bp-train"]["trusted_setting"])
+        parent_collection.metadata["hybrax.train"]["trusted_setting"]
+        == (original_metadata["hybrax.train"]["trusted_setting"])
     )
     assert (
-        parent_collection.metadata["bp-train"]["trusted_setting"]
-        is not (collection.metadata["bp-train"]["trusted_setting"])
+        parent_collection.metadata["hybrax.train"]["trusted_setting"]
+        is not (collection.metadata["hybrax.train"]["trusted_setting"])
     )
     assert parent_collection.metadata["other"] == original_metadata["other"]
     assert selected.control_scale_evidence().cumulative_Inflows
@@ -342,8 +342,8 @@ def test_selected_scale_context_exposes_only_deep_copied_parents():
 @pytest.mark.parametrize(
     "metadata",
     (
-        {"bp-train": []},
-        {"bp-train": {"processes": []}},
+        {"hybrax.train": []},
+        {"hybrax.train": {"processes": []}},
     ),
 )
 def test_selected_parent_context_rejects_malformed_structural_metadata(metadata):

@@ -1025,7 +1025,7 @@ def test_custom_hook_can_preserve_zero_trace_after_builtin_clipping(tmp_path):
     child = prepared.processes["p1__aug_000"]
     np.testing.assert_array_equal(_state_series(child, "biomass").values, 0.0)
     assert (
-        prepared.metadata["bp-train"]["transform_hooks"]["augment_state_values"]
+        prepared.metadata["hybrax.train"]["transform_hooks"]["augment_state_values"]
         == "augment_state_values"
     )
 
@@ -1178,8 +1178,8 @@ def test_prepared_children_round_trip_with_stable_values_and_content_hash(tmp_pa
         _state_series(second.processes["p1__aug_001"], "biomass").values,
     )
     assert (
-        first.metadata["bp-train"]["provenance"]["content_hash"]
-        == second.metadata["bp-train"]["provenance"]["content_hash"]
+        first.metadata["hybrax.train"]["provenance"]["content_hash"]
+        == second.metadata["hybrax.train"]["provenance"]["content_hash"]
     )
 
 
@@ -1189,7 +1189,7 @@ def test_prepare_records_augmented_provenance(tmp_path):
         "prepared-provenance",
         augmentation=_augmentation_dict(n_children_per_process=1),
     )
-    metadata = prepared.metadata["bp-train"]
+    metadata = prepared.metadata["hybrax.train"]
     child_provenance = metadata["semantics_provenance"]["processes"]["p1__aug_000"]
 
     assert child_provenance["raw"] is None
@@ -1217,7 +1217,7 @@ def test_prepare_handles_transform_added_process_provenance(tmp_path):
         "prepared-added-process",
         custom_py=custom_py,
     )
-    provenance = prepared.metadata["bp-train"]["semantics_provenance"]["processes"][
+    provenance = prepared.metadata["hybrax.train"]["semantics_provenance"]["processes"][
         "added"
     ]
 
@@ -1246,7 +1246,7 @@ def test_transform_created_augmented_process_is_attributed_to_transform(tmp_path
         "prepared-transform-augmented-process",
         custom_py=custom_py,
     )
-    provenance = prepared.metadata["bp-train"]["semantics_provenance"]["processes"][
+    provenance = prepared.metadata["hybrax.train"]["semantics_provenance"]["processes"][
         "transform_child"
     ]
 

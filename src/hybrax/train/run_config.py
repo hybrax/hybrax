@@ -146,7 +146,7 @@ class AugmentationConfig(ConfigBase):
 class PrepareConfig(ConfigBase):
     raw_input: Path
     augmentation: AugmentationConfig | None = None
-    strict_bp_format_validation: bool = False
+    strict_format_validation: bool = False
     required_control_names: tuple[str, ...] | dict[str, tuple[str, ...]] = ()
     require_consistent_controls: bool = True
     process_rename_map: dict[str, str] = Field(default_factory=dict)
@@ -411,7 +411,7 @@ def _resolve_path(path: Path, *, base_dir: Path) -> Path:
 def resolve_prepared_path(path: Path) -> Path:
     """Resolve a prepared-data reference to the prepared.json file.
 
-    ``bp-train prepare`` writes its output into a directory
+    ``hybrax prepare`` writes its output into a directory
     (``<dir>/prepared.json``). Accept either that directory (resolve the bundled
     ``prepared.json[.gz]`` inside) or a plain prepared.json file, so ``train`` /
     ``forward`` / ``loo`` can point at the prepare output-dir directly.

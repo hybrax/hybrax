@@ -1,16 +1,16 @@
 # Data Preparation
 
-Source: [`bp_train/prepare.py`](../bp_train/prepare.py),
-[`bp_train/augmentation.py`](../bp_train/augmentation.py),
-[`bp_train/training_data.py`](../bp_train/training_data.py),
-[`bp_train/controls_store.py`](../bp_train/controls_store.py),
-[`bp_train/controls.py`](../bp_train/controls.py),
-[`bp_train/validation.py`](../bp_train/validation.py),
-[`bp_train/model_api.py`](../bp_train/model_api.py)
+Source: [`src/hybrax/train/prepare.py`](../../src/hybrax/train/prepare.py),
+[`src/hybrax/train/augmentation.py`](../../src/hybrax/train/augmentation.py),
+[`src/hybrax/train/training_data.py`](../../src/hybrax/train/training_data.py),
+[`src/hybrax/train/controls_store.py`](../../src/hybrax/train/controls_store.py),
+[`src/hybrax/train/controls.py`](../../src/hybrax/train/controls.py),
+[`src/hybrax/train/validation.py`](../../src/hybrax/train/validation.py),
+[`src/hybrax/train/model_api.py`](../../src/hybrax/train/model_api.py)
 
 ## Purpose
 
-Turn a raw bp-format collection into a `prepared.json` artifact that training can
+Turn a raw hybrax.format collection into a `prepared.json` artifact that training can
 consume directly, and define the state, control, and measured-target layouts that
 everything downstream uses. `prepare` does the data-side work once; `train` then
 estimates scales, builds runtime controls, and assembles batches from the
@@ -20,8 +20,8 @@ prepared artifact.
 
 - **Prepare once, train many.** Validation, process renaming, and control-source
   selection are deterministic and data-only, so they run in `prepare` and are
-  frozen into `prepared.json`. The artifact carries bp-train provenance
-  (`metadata["bp-train"]`: bp-format validation report, source/custom hashes,
+  frozen into `prepared.json`. The artifact carries hybrax.train provenance
+  (`metadata["hybrax.train"]`: hybrax.format validation report, source/custom hashes,
   environment versions, prepared semantics) so a run is reproducible.
 - **Controls are built at runtime.** `ControlsStore` refines continuous feeds
   into piecewise-linear dense signals the RHS evaluates at each `t`; discrete
@@ -41,7 +41,7 @@ load_raw_collection(input_json) -> BioProcessCollection
 prepare_artifact(loaded_config: LoadedRunConfig, output_dir, *, overwrite=False) -> BioProcessCollection
 ```
 
-- `load_raw_collection` accepts a bp-format `BioProcessCollection`, either
+- `load_raw_collection` accepts a hybrax.format `BioProcessCollection`, either
   in-memory or as a path to its JSON file. `case_id`/`organism`/`citation`
   (set when the collection is a published case study) are native fields on
   `BioProcessCollection` itself.
@@ -50,7 +50,7 @@ prepare_artifact(loaded_config: LoadedRunConfig, output_dir, *, overwrite=False)
   and the optional
   [`augment_state_values`](02_cli_and_config.md#augment_state_values) hook,
   validates, enforces the required and consistent continuous-control contract,
-  and writes the artifact. Normally invoked via `bp-train prepare`.
+  and writes the artifact. Normally invoked via `hybrax prepare`.
 
 ### Prepared augmentation
 
@@ -98,7 +98,7 @@ They are not claims of new physical offline samples, and augmentation does not a
 
 The 11 data-derived `SCALE_*` axes normalize physical vectors so the ODE
 integrates in O(1) space. The [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales)
-hook returns them as an [`EstimatedScales`](../bp_train/model_api.py). Bare
+hook returns them as an [`EstimatedScales`](../../src/hybrax/train/model_api.py). Bare
 arrays become frozen `LinearScaler` fields (`SCL = RAW / scale`, the default);
 a hook may return `AffineScaler(scale, offset)` for a value axis to opt into
 `SCL = (RAW - offset) / scale`. Use an offset when an axis varies over a small
@@ -170,7 +170,7 @@ The solver advances `SCL_integrated_state`; stateless modules have an empty
 per-axis scales and offsets (including zero-width parts). The reaction module
 reads each slice
 through [`ReactionInputs`](04_reaction_and_loss.md#reactioninputs); modeled vs
-controlled membership comes from bp-format's `RhsOde` (`name_modeled_*` /
+controlled membership comes from hybrax.format's `RhsOde` (`name_modeled_*` /
 `name_controlled_*`).
 
 The **continuous controls** the reaction module reads at time `t` (in SCL
@@ -183,13 +183,13 @@ as state jumps during the solve (below).
 
 ### Controls and event semantics
 
-[`ControlsStore`](../bp_train/controls_store.py) /
-[`PerProcessControls`](../bp_train/controls_store.py) hold per-process control
-accessors built from the bp-format collection, of two kinds:
+[`ControlsStore`](../../src/hybrax/train/controls_store.py) /
+[`PerProcessControls`](../../src/hybrax/train/controls_store.py) hold per-process control
+accessors built from the hybrax.format collection, of two kinds:
 
 - **Continuous controlled feeds and process variables** → exact process-local
   piecewise-linear signals (`build_linear_payload`) evaluated by the RHS at each
-  `t` (rates / cumulative / `Cin`). Valid bp-format splines are evaluated
+  `t` (rates / cumulative / `Cin`). Valid hybrax.format splines are evaluated
   directly instead.
 - **Discrete controlled bolus & sample events** → event arrays
   (`bolus_event_times/volumes/Cin`, `sample_event_times/volumes`) applied as
@@ -203,8 +203,8 @@ sample state jumps are handled by the callback itself. See
 
 ### Target selection
 
-[`TrainingDataStore`](../bp_train/training_data.py) indexes processes, measured
-targets, and measurement times; [`PerProcessTrainingData`](../bp_train/training_data.py)
+[`TrainingDataStore`](../../src/hybrax/train/training_data.py) indexes processes, measured
+targets, and measurement times; [`PerProcessTrainingData`](../../src/hybrax/train/training_data.py)
 holds one process's `y0`, measurement times, target values, and lengths. The
 loss fits whichever targets `target_source` selects (`TARGET_SOURCES`):
 
@@ -221,18 +221,18 @@ loss fits whichever targets `target_source` selects (`TARGET_SOURCES`):
 
 ### Validation
 
-- `validate_for_training(collection)` — bp-format per-process validation plus
+- `validate_for_training(collection)` — hybrax.format per-process validation plus
   cross-process structural consistency (`validate_cross_process_consistency`,
-  shared with bp-format's own `validate_for_publication`).
+  shared with hybrax.format's own `validate_for_publication`).
 - `ensure_required_controls(...)` — enforce `prepare.required_control_names`.
 - `summarize_process_semantics(process)` / `ensure_prepared_training_semantics`
-  — structural diagnostics used during prepare; `strict_bp_format_validation`
+  — structural diagnostics used during prepare; `strict_format_validation`
   promotes warnings to failures.
 
 ## Examples
 
 ```bash
-bp-train prepare --config prepare-config.json --output-dir prepared
+hybrax prepare --config prepare-config.json --output-dir prepared
 ```
 
 `prepare` writes standard-named files into `--output-dir`: `prepared.json` (the
@@ -250,14 +250,10 @@ floats.
 // prepare-config.json
 {
   "prepare": {
-    "raw_input": "../../bp-format/examples/01_kittler_2022/02_bp_format_data_all/data.json",
+    "raw_input": "data.json",
     "required_control_names": ["glucose_feed"]
   },
   // Defines transform_process_collection / augment_state_values.
   "custom_py": "custom.py"
 }
 ```
-
-A `transform_process_collection` hook that turns a fixed PV derivative into a
-learnable `r_<pv>` rate is shown in
-[examples/00_e2e_sim/custom.py](../examples/00_e2e_sim/custom.py).

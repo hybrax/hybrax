@@ -6,9 +6,8 @@ was in the reactor, what was fed, what was sampled, and what was measured — pl
 the tools to check that description, save it to JSON, and turn it into a
 differentiable ODE right-hand side.
 
-It does not train models and it does not integrate ODEs. That is
-`hybrax.train`, which builds on `hybrax.format` (not yet part of this repo —
-still a separate `bp-train` repo pending its own migration into hybrax).
+It does not train models and it does not integrate ODEs. `hybrax.train`
+provides those operations on top of `hybrax.format`.
 
 ## Getting Started
 
@@ -100,5 +99,5 @@ controls = bp.mechanistic.get_control_splines(process, ordering)
 
 ## See also
 
-- `hybrax.train` — trains hybrid ODE models on `hybrax.format` collections.
-  Not yet part of this repo (see note above).
+- [`hybrax.train`](../train/README.md) trains hybrid ODE models on
+  `hybrax.format` collections.

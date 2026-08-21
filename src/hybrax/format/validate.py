@@ -1211,8 +1211,8 @@ def validate_for_publication(
     Validate a collection for storage/publication as a coherent case study.
 
     This is hybrax.format's own concern (is this collection well-formed and
-    internally coherent), distinct from bp-train's training-readiness
-    concern (``bp_train.validate.validate_for_training``). Runs
+    internally coherent), distinct from hybrax.train's training-readiness
+    concern (``hybrax.train.validation.validate_for_training``). Runs
     :func:`validate_process` for every process, then
     :func:`validate_cross_process_consistency` and
     :func:`validate_augmented_parent_refs`.

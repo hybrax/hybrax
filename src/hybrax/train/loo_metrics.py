@@ -248,9 +248,9 @@ def _require_measurement_nodes(
     prediction grid ``pred_t``.
 
     Otherwise ``np.interp`` would silently draw a straight ramp across any
-    bolus/feed discontinuity that falls between two grid points. bp-train's export
+    bolus/feed discontinuity that falls between two grid points. hybrax.train's export
     splices the measurement grid into predictions.csv, so a violation means the file
-    was produced by an older bp-train and must be regenerated.
+    was produced by an older hybrax.train and must be regenerated.
     """
     pred_t = np.asarray(pred_t, dtype=float)
     meas_t = np.asarray(meas_t, dtype=float)
@@ -272,7 +272,8 @@ def _require_measurement_nodes(
         raise ValueError(
             f"predictions.csv has no grid node at measurement time(s) "
             f"{meas_t[off].tolist()} for process {process!r} target {target!r}; "
-            f"regenerate predictions.csv with the current bp-train (its export grid "
+            "regenerate predictions.csv with the current hybrax.train "
+            "(its export grid "
             f"must include the measurement times)."
         )
 
@@ -399,7 +400,7 @@ def compute_loo_metrics(
 
     Args:
         loo_output_dir: directory containing ``folds/<parent>/`` produced
-            by ``bp-train loo``.
+            by ``hybrax loo``.
         prepared_json: path to ``prepared.json`` *or* an already-loaded
             :class:`BioProcessCollection`. Source of measured values.
         target_names: explicit subset of targets to score. Defaults to the
@@ -525,7 +526,7 @@ def compute_metrics_from_predictions_csv(
 ) -> pd.DataFrame:
     """Compute the same metrics from a single ``predictions.csv``.
 
-    Useful for non-LOO ``bp-train train`` runs (one model, every process)
+    Useful for non-LOO ``hybrax train`` runs (one model, every process)
     so the same metric definitions apply uniformly.
     """
     if isinstance(prepared_json, BioProcessCollection):

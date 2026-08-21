@@ -39,22 +39,22 @@ def select_parent_collection(
 ) -> BioProcessCollection:
     """Copy a collection and retain the requested parents in canonical order."""
     metadata = collection.metadata
-    bp_train_metadata = (metadata or {}).get("bp-train")
-    if bp_train_metadata is not None:
-        if not isinstance(bp_train_metadata, dict):
-            raise ValueError("bp-train metadata must be a mapping")
-        filtered_bp_train_metadata = dict(bp_train_metadata)
-        if "process_order" in filtered_bp_train_metadata:
-            filtered_bp_train_metadata["process_order"] = list(parent_names)
-        if "processes" in filtered_bp_train_metadata:
-            if not isinstance(filtered_bp_train_metadata["processes"], dict):
-                raise ValueError("bp-train process metadata must be a mapping")
-            filtered_bp_train_metadata["processes"] = {
-                name: filtered_bp_train_metadata["processes"][name]
+    hybrax_train_metadata = (metadata or {}).get("hybrax.train")
+    if hybrax_train_metadata is not None:
+        if not isinstance(hybrax_train_metadata, dict):
+            raise ValueError("hybrax.train metadata must be a mapping")
+        filtered_hybrax_train_metadata = dict(hybrax_train_metadata)
+        if "process_order" in filtered_hybrax_train_metadata:
+            filtered_hybrax_train_metadata["process_order"] = list(parent_names)
+        if "processes" in filtered_hybrax_train_metadata:
+            if not isinstance(filtered_hybrax_train_metadata["processes"], dict):
+                raise ValueError("hybrax.train process metadata must be a mapping")
+            filtered_hybrax_train_metadata["processes"] = {
+                name: filtered_hybrax_train_metadata["processes"][name]
                 for name in parent_names
             }
         metadata = dict(metadata or {})
-        metadata["bp-train"] = filtered_bp_train_metadata
+        metadata["hybrax.train"] = filtered_hybrax_train_metadata
 
     return deepcopy(
         replace(

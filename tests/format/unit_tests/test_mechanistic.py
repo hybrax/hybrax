@@ -2,7 +2,7 @@
 
 Covers ``get_process_ordering``, ``get_control_splines``, ``build_rhs_ode``,
 ``extract_discrete_events``, ``build_state_splines``, and
-``build_algebraic_func``. Forward integration moved to ``bp-train`` and is
+``build_algebraic_func``. Forward integration moved to ``hybrax.train`` and is
 not exercised here.
 
 JAX-jit tests use ``eqx.filter_jit`` (the equinox-idiomatic way to JIT

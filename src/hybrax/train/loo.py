@@ -1,4 +1,4 @@
-"""Leave-one/some-process-out cross-validation for ``bp-train``.
+"""Leave-one/some-process-out cross-validation for ``hybrax.train``.
 
 Config-driven, mirroring ``train``: a ``loo`` section in the run config defines
 the folds (:class:`~hybrax.train.run_config.HoldoutSet` entries in
@@ -568,10 +568,10 @@ def _worker_cmd(
 
 def _worker_env(devices: int) -> dict[str, str]:
     env = dict(os.environ)
-    env["BP_TRAIN_DEVICES"] = str(int(devices))
+    env["HYBRAX_TRAIN_DEVICES"] = str(int(devices))
     env.setdefault("JAX_PLATFORMS", "cpu")
     # Strip any inherited host-device pin so the worker's import-time bootstrap
-    # re-derives the device count from BP_TRAIN_DEVICES. Otherwise a pre-set
+    # re-derives the device count from HYBRAX_TRAIN_DEVICES. Otherwise a pre-set
     # XLA_FLAGS=--xla_force_host_platform_device_count=K silently overrides the
     # per-fold count (every fold would expose K devices, reintroducing the
     # over-exposure deadlock the device cap exists to prevent).

@@ -1,6 +1,6 @@
 # Validation
 
-Source: `bp_format/validate.py`
+Source: `src/hybrax/format/validate.py`
 
 ## Purpose
 
@@ -18,7 +18,7 @@ where `VERDICT` is `PASS`, `FAIL`, or `SKIP` (a skipped check — one that does
 not apply to this process — still counts as `ok=True`). `check_name` is the
 validator's name minus its `validate_` prefix, e.g. `validate_bounds` reports
 as `bounds`. This is built by one shared helper (`_check_result` in
-`bp_format/validate.py`) so every check's message is unambiguous about what
+`src/hybrax/format/validate.py`) so every check's message is unambiguous about what
 was checked and why it failed, without having to parse prose.
 
 All 20 validators are exported from the package root: `bp.validate_process(...)`.
@@ -135,7 +135,7 @@ variable must have a measurement exactly at `process.time_axis.start`.
 everywhere).
 
 This matters because `process.volume.initial_volume` is implicitly anchored
-at `time_axis.start`, and bp-train seeds the ODE's initial condition from
+at `time_axis.start`, and hybrax.train seeds the ODE's initial condition from
 whichever timestamp is the earliest one shared by every training target — not
 necessarily `time_axis.start`. If a process's earliest actual measurement
 comes later (e.g. an unsampled pre-culture period), training would silently
@@ -313,8 +313,8 @@ argument you have to supply).
 `validate_process` on every process, plus `validate_cross_process_consistency`
 and `validate_augmented_parent_refs`. This is hybrax.format's own concern — is this
 collection well-formed and internally coherent enough to store or publish as a
-case study — distinct from bp-train's training-readiness concern
-(`bp_train.validate.validate_for_training`, which composes the same
+case study — distinct from hybrax.train's training-readiness concern
+(`hybrax.train.validation.validate_for_training`, which composes the same
 `validate_cross_process_consistency` check rather than duplicating it).
 
 Results are keyed by process name, with cross-process findings under
@@ -326,7 +326,7 @@ both always non-empty (at least one `PASS` entry on a clean collection).
 ### One process
 
 ```python
-import bp_format as bp
+import hybrax.format as bp
 
 collection = bp.serialization.load_process_collection("data.json")
 process = collection.processes["run_1"]

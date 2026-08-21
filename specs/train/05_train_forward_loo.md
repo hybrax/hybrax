@@ -1,12 +1,12 @@
 # Training, Forward & LOO
 
-Source: [`bp_train/harness.py`](../bp_train/harness.py),
-[`bp_train/trainer.py`](../bp_train/trainer.py),
-[`bp_train/postprocessing.py`](../bp_train/postprocessing.py),
-[`bp_train/loo.py`](../bp_train/loo.py),
-[`bp_train/loo_metrics.py`](../bp_train/loo_metrics.py),
-[`bp_train/checkpointing.py`](../bp_train/checkpointing.py),
-[`bp_train/logging.py`](../bp_train/logging.py)
+Source: [`src/hybrax/train/harness.py`](../../src/hybrax/train/harness.py),
+[`src/hybrax/train/trainer.py`](../../src/hybrax/train/trainer.py),
+[`src/hybrax/train/postprocessing.py`](../../src/hybrax/train/postprocessing.py),
+[`src/hybrax/train/loo.py`](../../src/hybrax/train/loo.py),
+[`src/hybrax/train/loo_metrics.py`](../../src/hybrax/train/loo_metrics.py),
+[`src/hybrax/train/checkpointing.py`](../../src/hybrax/train/checkpointing.py),
+[`src/hybrax/train/logging.py`](../../src/hybrax/train/logging.py)
 
 ## Purpose
 
@@ -17,7 +17,7 @@ the leave-one-process-out cross-validation that wraps both.
 
 ## Design Rationale
 
-- **Collection in, run directory out.** The harness takes a bp-format collection
+- **Collection in, run directory out.** The harness takes a hybrax.format collection
   (or a prepared JSON), builds the wrapper from the hooks, partitions trainable
   leaves, and drives the optax loop — writing a self-contained, resumable
   [run directory](02_cli_and_config.md#run-directory-layout).
@@ -42,11 +42,11 @@ train_from_prepared_json(prepared_json, *, config=None, custom_py=None,
                         runtime_config=None) -> TrainHarnessResult
 ```
 
-`config` is a [`TrainHarnessConfig`](../bp_train/harness.py) — the flat,
+`config` is a [`TrainHarnessConfig`](../../src/hybrax/train/harness.py) — the flat,
 harness-level mirror of the config sections (epochs, batch, optimizer, solver
 tolerances, checkpoint cadence, logging format, and optional holdout processes).
 Build it from a `RunConfig` with `train_harness_config_from_run_config(...)`, or
-let the CLI do it. The CLI path (`bp-train train --config …`) is the normal way
+let the CLI do it. The CLI path (`hybrax train --config …`) is the normal way
 in.
 
 ### What the loop does
@@ -60,13 +60,13 @@ in.
 - **Gradient clipping** is applied to the **raw** gradient before Adam — this is
   why the loss is mean-aggregated (see
   [01_design_rationale.md](01_design_rationale.md#6-mean-loss-aggregation)).
-- **Checkpointing** ([`checkpointing.py`](../bp_train/checkpointing.py)):
+- **Checkpointing** ([`checkpointing.py`](../../src/hybrax/train/checkpointing.py)):
   `checkpoint_every` is measured in epochs and may be fractional. The default
   automatic cadence is `max(5, ceil(epochs / 20))`, so it writes at most 20
   checkpoints. Explicit cadences are honored, all periodic checkpoints are
   retained, and a final checkpoint is mandatory. Checkpoints contain model and
   optimizer state only.
-- **Logging** ([`logging.py`](../bp_train/logging.py), `RunLogger`): every update
+- **Logging** ([`logging.py`](../../src/hybrax/train/logging.py), `RunLogger`): every update
   writes a console row and `metrics.csv` row with epoch, batch, and sample
   counters. Epoch mean loss and training-only duration appear on epoch-end rows.
   The completed run also writes final loss and global gradient-norm curves.
@@ -75,7 +75,7 @@ in.
 
 ### Result
 
-[`TrainHarnessResult`](../bp_train/harness.py) carries the `trained_wrapper`,
+[`TrainHarnessResult`](../../src/hybrax/train/harness.py) carries the `trained_wrapper`,
 `mean_loss_by_step`, per-process / per-target loss series, the batch composition
 per update, `updates_completed`, and timing (`compile_warmup_seconds`,
 `step_time_seconds`).
@@ -92,11 +92,11 @@ forward_from_collection(collection, *, model_path, config=None, custom_py=None,
 
 Loads a trained model and runs one forward ODE pass per selected process (no
 gradient steps; `step = -1`). Driven by the CLI `forward` subcommand, which is
-[fully config-driven](02_cli_and_config.md#bp-train-forward): the
+[fully config-driven](02_cli_and_config.md#hybrax-forward): the
 `forward-config.json` carries a `models` list (one entry = single model, more =
 ensemble) plus optional `data` and `output` blocks.
 
-- [`ForwardConfig`](../bp_train/harness.py) / [`ForwardResult`](../bp_train/harness.py)
+- [`ForwardConfig`](../../src/hybrax/train/harness.py) / [`ForwardResult`](../../src/hybrax/train/harness.py)
   carry the per-process losses and selected dense exports. Losses still cover
   every evaluated process. An omitted `ForwardConfig.target_source` inherits the
   model run's recorded training source; explicitly passing `"auto"` requests
@@ -104,7 +104,7 @@ ensemble) plus optional `data` and `output` blocks.
 - `compute_dense_exports(trained_wrapper, store, process_names, *,
   solver_max_steps, solver_rtol, solver_atol, solver_use_jump_ts,
   prediction_grid_n=200)` runs one batched solve and returns per-process
-  [`DenseProcessExport`](../bp_train/postprocessing.py) trajectories: time,
+  [`DenseProcessExport`](../../src/hybrax/train/postprocessing.py) trajectories: time,
   species, volume, cumulative modeled Inflows/Outflows, biological rates,
   separate physical modeled Inflow/Outflow rates, and auxiliary values.
   It is *the* single source of dense predictions for forward evaluation and
@@ -117,7 +117,7 @@ ensemble) plus optional `data` and `output` blocks.
   or `all` evaluated processes. `none` skips dense prediction solves. When a
   rerun selects no processes, stale prediction CSVs are removed.
 - Outputs are written by `export_predictions_csv` in
-  [`postprocessing.py`](../bp_train/postprocessing.py). Set `output.plots` to
+  [`postprocessing.py`](../../src/hybrax/train/postprocessing.py). Set `output.plots` to
   `true` to also write
   `<output-dir>/forward-results/plots/<process>.png` for every exported process.
   Plotting requires `output.predictions` to be `parents` or `all` and is
@@ -148,9 +148,9 @@ reconstruction altogether and reuses the trained scales as-is.
 ## Leave-one/some-process-out cross-validation
 
 `loo` is **config-driven**, like `train`: it takes the same run config plus an
-optional [`loo`](../bp_train/run_config.py) section. The CLI is
-`bp-train loo --config loo-config.json` (`--output-dir` overrides `output.dir`);
-`bp-train loo --resume <run_dir>` continues an interrupted run.
+optional [`loo`](../../src/hybrax/train/run_config.py) section. The CLI is
+`hybrax loo --config loo-config.json` (`--output-dir` overrides `output.dir`);
+`hybrax loo --resume <run_dir>` continues an interrupted run.
 
 ```jsonc
 "loo": {
@@ -169,21 +169,21 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
 }
 ```
 
-- **Folds** ([`resolve_folds`](../bp_train/loo.py)): explicit `per_fold_holdout_sets`
+- **Folds** ([`resolve_folds`](../../src/hybrax/train/loo.py)): explicit `per_fold_holdout_sets`
   (each `name` becomes the fold's `folds/<slug>/` directory; without one the slug
   is derived from the test process names), or — when omitted — one fold per
   parent group. **Augmentation is respected everywhere**: holding out any member
   of an augmentation group (a parent + its `AugmentedBioProcess` children)
   excludes the whole group from train, so a synthetic child can't leak its parent
   or siblings into the fold (a pinned `train` that does so fails fast).
-- **Parallel folds** ([`run_loo_cv`](../bp_train/loo.py) → per-fold
-  [`run_single_fold`](../bp_train/loo.py)): each fold trains as **its own
+- **Parallel folds** ([`run_loo_cv`](../../src/hybrax/train/loo.py) → per-fold
+  [`run_single_fold`](../../src/hybrax/train/loo.py)): each fold trains as **its own
   subprocess** (the JAX CPU device count is fixed per process). You set
   `parallel_folds` (default `1`, sequential) from what your RAM and CPU budget
   can hold. A JAX CPU device is not one CPU core: XLA may use several threads per
   device, so lower `parallel_folds` to reduce aggregate CPU use. With
   `devices_per_fold=null`, the orchestrator
-  ([`compute_parallel_split`](../bp_train/loo.py)) derives it as
+  ([`compute_parallel_split`](../../src/hybrax/train/loo.py)) derives it as
   `n_cpu // parallel_folds`, capped at the smallest fold's effective batch
   (`min(train size, train.batch_size)`) since a fold cannot expose more host
   devices than its `pmap` batch. Set `devices_per_fold` to a positive integer to
@@ -212,7 +212,7 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
   the top-level artifact anchor and manifest, and re-runs folds with missing or
   incomplete completion records. A present malformed or mismatched per-fold
   artifact-identity/fold-ID binding fails loudly before that fold is deleted.
-- **Per fold** → [`FoldResult`](../bp_train/loo.py): train on the fold's `train`
+- **Per fold** → [`FoldResult`](../../src/hybrax/train/loo.py): train on the fold's `train`
   set, forward on its `train ∪ test`, write to `<output_dir>/folds/<slug>/` (own
   lightweight model-state checkpoints plus final `trained_wrapper.eqx`,
   `losses.csv`, optional configured predictions, `loss_curve.png`, and
@@ -220,7 +220,7 @@ optional [`loo`](../bp_train/run_config.py) section. The CLI is
   default `none` scope skips prediction exports; `parents` includes every evaluated
   original process, including the holdout. Aggregate metrics remain holdout-only.
   Checkpoints do not contain prediction exports or plots.
-- **Aggregation** ([`LOOResult`](../bp_train/loo.py)): the orchestrator reads each
+- **Aggregation** ([`LOOResult`](../../src/hybrax/train/loo.py)): the orchestrator reads each
   fold's `losses.csv` back from disk and writes `loo_summary.csv`,
   `loo_aggregate.json`, and `loo_loss_curves.png` (holdout metrics averaged over
   each fold's `test` set; a single-fold run reports `NaN` for the cross-fold
@@ -244,7 +244,7 @@ checkpoint directory and explicitly select `parents` or `all`:
 ```
 
 ```bash
-bp-train forward --config forward-config.json --overwrite
+hybrax forward --config forward-config.json --overwrite
 ```
 
 The checkpoint's bundled configuration, custom module, and prepared data are
@@ -298,17 +298,3 @@ plt.ylabel(column)
 plt.legend()
 plt.savefig(f"output/forward/{column}.png", dpi=150, bbox_inches="tight")
 ```
-
-## Examples
-
-```bash
-# train, then re-simulate + export, then cross-validate
-bp-train train   --config examples/01_kittler_2022/fba_hyb/train-all-config.json
-bp-train forward --config examples/01_kittler_2022/fba_hyb/forward-config.json
-bp-train loo     --config examples/01_kittler_2022/fba_hyb/loo-config.json
-```
-
-The FBA-surrogate fold setup (`SRfba` reaction module + Kendall loss) is in
-[examples/01_kittler_2022/fba_hyb/](../examples/01_kittler_2022/fba_hyb/); a
-structured dense-grid run is in
-[examples/12_martens_2025_expanded/structured/](../examples/12_martens_2025_expanded/structured/).

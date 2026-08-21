@@ -1,6 +1,6 @@
 # Splines and the Pseudobatch Transform
 
-Source: `bp_format/splines.py`
+Source: `src/hybrax/format/splines.py`
 
 ## Purpose
 
@@ -250,7 +250,7 @@ The pipeline raises rather than producing plausible-looking wrong numbers:
 ### Build and use the transform
 
 ```python
-import bp_format as bp
+import hybrax.format as bp
 import jax.numpy as jnp
 
 process.pseudobatch_transform = bp.splines.build_pseudobatch_transform(process)

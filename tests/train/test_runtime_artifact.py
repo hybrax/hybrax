@@ -187,7 +187,7 @@ def _make_runtime_artifact_collection() -> BioProcessCollection:
         processes=processes,
         metadata={
             "case_study": {"case_id": "runtime-artifact-synthetic"},
-            "bp-train": {
+            "hybrax.train": {
                 "process_order": list(processes),
                 "processes": {name: {} for name in processes},
             },
@@ -341,11 +341,11 @@ def test_round_trip_parent_collection_is_filtered(
         process_order, producer_data.augmentation_parents
     )
     assert tuple(loaded.training_parent_collection.processes) == expected_parents
-    assert loaded.training_parent_collection.metadata["bp-train"][
+    assert loaded.training_parent_collection.metadata["hybrax.train"][
         "process_order"
     ] == list(expected_parents)
     assert (
-        tuple(loaded.training_parent_collection.metadata["bp-train"]["processes"])
+        tuple(loaded.training_parent_collection.metadata["hybrax.train"]["processes"])
         == expected_parents
     )
     assert (
@@ -712,17 +712,19 @@ def test_loader_rejects_invalid_parent_collection_identity(
         collection.processes[parent_names[0]] = child
         error = "contains an augmented process"
     elif mode == "process_order":
-        collection.metadata["bp-train"]["process_order"] = list(reversed(parent_names))
+        collection.metadata["hybrax.train"]["process_order"] = list(
+            reversed(parent_names)
+        )
         error = "structural metadata"
     elif mode == "process_order_type":
-        collection.metadata["bp-train"]["process_order"] = None
+        collection.metadata["hybrax.train"]["process_order"] = None
         error = "structural metadata"
     elif mode == "processes":
-        process_metadata = collection.metadata["bp-train"]["processes"]
+        process_metadata = collection.metadata["hybrax.train"]["processes"]
         process_metadata["wrong-parent"] = process_metadata.pop(parent_names[0])
         error = "structural metadata"
     else:
-        collection.metadata["bp-train"]["processes"] = None
+        collection.metadata["hybrax.train"]["processes"] = None
         error = "structural metadata"
     _rewrite_parent_collection(artifact, collection)
 

@@ -1,13 +1,13 @@
 # Data Model
 
-Source: `bp_format/dataclasses.py`
+Source: `src/hybrax/format/dataclasses.py`
 
 ## Purpose
 
 The data model describes a bioprocess experiment as nested Python dataclasses,
 from a single measurement up to a whole published case study. Everything here is
 a plain `@dataclass`; the one exception is `TimeSeries`, which lives in
-`bp_format/time_series/` and is an `eqx.Module` so it can cross a JAX JIT
+`src/hybrax/format/time_series/` and is an `eqx.Module` so it can cross a JAX JIT
 boundary (see [Design Rationale §1](01_design_rationale.md#1-jax-first-but-only-where-it-matters)).
 
 All classes are re-exported from the package root: `bp.TimeAxis`,
@@ -101,7 +101,7 @@ Bounds = Tuple[Optional[float], Optional[float]]   # (lower, upper)
 this type.
 
 **Bounds are metadata only.** They are never enforced by `RhsOde` or by any
-integrator. Downstream consumers — bp-train's loss module, for instance — read
+integrator. Downstream consumers — hybrax.train's loss module, for instance — read
 them off the process to build soft penalties such as "this concentration cannot
 go negative".
 
@@ -357,7 +357,7 @@ In JSON, augmented processes carry `"__type__": "AugmentedBioProcess"` plus
 `parent_process`.
 
 > No code in hybrax.format produces `AugmentedBioProcess` objects — the shape is
-> fixed so that consumers (bp-train's augmentation and LOO orchestrator) can
+> fixed so that consumers (hybrax.train's augmentation and LOO orchestrator) can
 > rely on it.
 
 ## Mechanistic ordering
@@ -365,7 +365,7 @@ In JSON, augmented processes carry `"__type__": "AugmentedBioProcess"` plus
 ### `ProcessOrdering`
 
 The single place that decides the layout of every state, control, and rate
-vector. Built by `bp_format.mechanistic.get_process_ordering(process)` and
+vector. Built by `hybrax.format.mechanistic.get_process_ordering(process)` and
 consumed by every other mechanistic factory.
 
 ```python
@@ -422,7 +422,7 @@ independent of case-study identity.
 ### A minimal batch process
 
 ```python
-import bp_format as bp
+import hybrax.format as bp
 import jax.numpy as jnp
 
 process = bp.BioProcess(

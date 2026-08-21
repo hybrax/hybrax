@@ -1,4 +1,4 @@
-"""End-to-end tests spanning bp-format input, training, and prediction."""
+"""End-to-end tests spanning hybrax.format input, training, and prediction."""
 
 from __future__ import annotations
 

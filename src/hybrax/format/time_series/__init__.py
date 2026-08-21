@@ -1,4 +1,4 @@
-"""bp_time_series package scaffolding."""
+"""hybrax.format.time_series package scaffolding."""
 
 from .ppoly import PPoly
 from .timeseries import TimeSeries

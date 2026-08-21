@@ -794,7 +794,7 @@ def test_wrapper_save_outputs_passes_latent_but_saves_physical_state_only():
     assert jnp.array_equal(outputs.auxiliary["SCL_latent"], jnp.asarray([3.0, 5.0]))
 
 
-def test_physical_rhs_passes_process_minimum_volume_to_bp_format():
+def test_physical_rhs_passes_process_minimum_volume_to_hybrax_format():
     process = _make_single_species_process(feed_rate=0.0)
     controls = ControlsStore.from_collection(
         BioProcessCollection(processes={"p1": process}, metadata={})

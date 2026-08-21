@@ -175,7 +175,7 @@ def _predictions_csv_header(
 
     The leading state block is ``[modeled_RMCs | modeled_PVs]``. Rate columns
     are derived from ``rate_names`` (i.e. ``rhs_ode.name_modeled_rates``); these
-    already carry the ``q_``/``r_`` prefix used in bp-format, so they are written
+    already carry the ``q_``/``r_`` prefix used in hybrax.format, so they are written
     verbatim.
     """
     return (

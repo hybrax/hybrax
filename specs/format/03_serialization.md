@@ -1,6 +1,6 @@
 # Serialization
 
-Source: `bp_format/serialization.py`, `bp_format/json_io.py`
+Source: `src/hybrax/format/serialization.py`, `src/hybrax/format/json_io.py`
 
 ## Purpose
 
@@ -270,7 +270,7 @@ Loading fails loudly rather than guessing, for:
 ### Round trip
 
 ```python
-import bp_format as bp
+import hybrax.format as bp
 from pathlib import Path
 
 bp.serialization.save_process_collection(collection, Path("output/"))

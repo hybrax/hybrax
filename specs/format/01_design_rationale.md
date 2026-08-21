@@ -36,15 +36,15 @@ nothing and cost mutability.
 - Plain dataclasses (`BioProcess` and friends) *are* mutable — pipeline steps
   assign `process.pseudobatch_transform = ...` in place.
 
-**float64 everywhere.** Importing `bp_format` sets `JAX_ENABLE_X64=true` before
+**float64 everywhere.** Importing `hybrax.format` sets `JAX_ENABLE_X64=true` before
 JAX loads. Pseudobatch math divides by an accumulated dilution factor and
 differentiates splines, and the mechanistic RHS's ODE integration compounds
 floating-point error over many steps; float32 loses too much in both. A
 `TimeSeries` constructed from float32 arrays raises rather than silently
 upcasting, so precision loss cannot enter through the data.
 
-**Importing is cheap.** `bp_format/__init__.py` resolves its exports lazily via
-`__getattr__`, so `import bp_format` does not pull in JAX, sympy, or matplotlib
+**Importing is cheap.** `src/hybrax/format/__init__.py` resolves its exports lazily via
+`__getattr__`, so `import hybrax.format` does not pull in JAX, sympy, or matplotlib
 until you touch something that needs them.
 
 ## 2. Two levels: collection → run → components
@@ -164,7 +164,7 @@ measurement timestamps nudged past a sampling event.
 
 hybrax.format uses **two** mechanisms, deliberately:
 
-**Validators return `(bool, str)`.** Everything in `bp_format/validate.py` reports
+**Validators return `(bool, str)`.** Everything in `src/hybrax/format/validate.py` reports
 rather than raises, so one pass collects every problem into a readable report
 instead of stopping at the first. `validate_process()` aggregates the
 per-process checks; `validate_cross_process_consistency()` adds cross-process

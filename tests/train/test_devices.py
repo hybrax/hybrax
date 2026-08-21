@@ -2,7 +2,7 @@
 ``--config`` file.
 
 The device count is fixed at import time (before JAX initialises) by scanning
-``sys.argv`` for ``--config`` (see ``_bp_load_config`` / ``_bp_resolve_devices``
+``sys.argv`` for ``--config`` (see ``_load_config`` / ``_resolve_devices``
 in ``hybrax/train/__init__.py``), so we exercise it in fresh subprocesses: each
 child sets ``sys.argv`` *before* ``import hybrax.train`` and reports
 ``jax.device_count()``.
@@ -37,7 +37,7 @@ def _device_count(
 ) -> int:
     env = {**os.environ, "JAX_PLATFORMS": "cpu"}
     env.pop("XLA_FLAGS", None)  # let the bootstrap set the device count cleanly
-    env.pop("BP_TRAIN_DEVICES", None)
+    env.pop("HYBRAX_TRAIN_DEVICES", None)
     if env_extra:
         env.update(env_extra)
     proc = subprocess.run(
@@ -67,9 +67,9 @@ def _make_config(tmp_path: Path, *, devices, prepared: str = "prepared.json") ->
 @_needs_2
 def test_config_devices_absolute_int(tmp_path: Path):
     """train.devices as a plain int is read straight from the --config JSON
-    (_bp_load_config's flat, non-"config"-wrapped branch)."""
+    (_load_config's flat, non-"config"-wrapped branch)."""
     config_path = _make_config(tmp_path, devices=2)
-    assert _device_count(["bp-train", "train", "--config", str(config_path)]) == 2
+    assert _device_count(["hybrax", "train", "--config", str(config_path)]) == 2
 
 
 @_needs_2
@@ -93,7 +93,7 @@ def test_devices_max_resolves_commented_prepared_forms(
             f.write(document)
 
     config_path = _make_config(tmp_path, devices="max", prepared=prepared.name)
-    argv = ["bp-train", "train", "--config", str(config_path)]
+    argv = ["hybrax", "train", "--config", str(config_path)]
     assert _device_count(argv) == min(2, _CPU)
 
 
@@ -110,7 +110,7 @@ def test_devices_config_relative_path_wins_over_cwd_collision(tmp_path: Path):
     )
     config_path = _make_config(config_dir, devices="max", prepared="prepared.json")
 
-    argv = ["bp-train", "train", "--config", str(config_path)]
+    argv = ["hybrax", "train", "--config", str(config_path)]
     assert _device_count(argv, cwd=tmp_path) == 1
 
 
@@ -120,7 +120,7 @@ def test_devices_alias_absolute_prepared(tmp_path: Path, alias: str):
     prepared = tmp_path / "prepared.json"
     prepared.write_text(json.dumps({"process_order": ["p1", "p2"]}), encoding="utf-8")
     config_path = _make_config(tmp_path, devices=alias, prepared=str(prepared))
-    argv = ["bp-train", "train", "--config", str(config_path)]
+    argv = ["hybrax", "train", "--config", str(config_path)]
     assert _device_count(argv) == min(2, _CPU)
 
 
@@ -129,4 +129,4 @@ def test_devices_max_relative_prepared_degrades(tmp_path: Path):
     neither cwd nor the config-file directory) degrades to cpu_count via the
     documented fallback — not a crash."""
     config_path = _make_config(tmp_path, devices="max", prepared="does_not_exist.json")
-    assert _device_count(["bp-train", "train", "--config", str(config_path)]) == _CPU
+    assert _device_count(["hybrax", "train", "--config", str(config_path)]) == _CPU

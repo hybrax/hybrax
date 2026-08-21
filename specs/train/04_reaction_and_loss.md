@@ -1,11 +1,11 @@
 # Reaction & Loss Modules
 
-Source: [`bp_train/model_api.py`](../bp_train/model_api.py),
-[`bp_train/defaults.py`](../bp_train/defaults.py),
-[`bp_train/runtime_context.py`](../bp_train/runtime_context.py),
-[`bp_train/bounds_loss.py`](../bp_train/bounds_loss.py),
-[`bp_train/wrapper.py`](../bp_train/wrapper.py),
-[`bp_train/dense.py`](../bp_train/dense.py)
+Source: [`src/hybrax/train/model_api.py`](../../src/hybrax/train/model_api.py),
+[`src/hybrax/train/defaults.py`](../../src/hybrax/train/defaults.py),
+[`src/hybrax/train/runtime_context.py`](../../src/hybrax/train/runtime_context.py),
+[`src/hybrax/train/bounds_loss.py`](../../src/hybrax/train/bounds_loss.py),
+[`src/hybrax/train/wrapper.py`](../../src/hybrax/train/wrapper.py),
+[`src/hybrax/train/dense.py`](../../src/hybrax/train/dense.py)
 
 ## Purpose
 
@@ -157,7 +157,7 @@ rates near zero. The single trainable leaf is the MLP
 
 ### `DefaultStatefulReactionModule`
 
-Import it from `bp_train.defaults` — unlike `DefaultReactionModule` it is not
+Import it from `hybrax.train.defaults` — unlike `DefaultReactionModule` it is not
 re-exported at the package top level. Using any module with `n_latent > 0` also
 requires `train.allow_stateful_models: true` in the config; otherwise training
 fails fast.
@@ -180,17 +180,17 @@ biases.
 
 ### Field tagging
 
-Declare trainable leaves with [`trainable_field()`](../bp_train/model_api.py),
+Declare trainable leaves with [`trainable_field()`](../../src/hybrax/train/model_api.py),
 frozen leaves with `frozen_field()`; untagged array leaves default to frozen.
-[`partition_trainable(module)`](../bp_train/model_api.py) splits the module into
+[`partition_trainable(module)`](../../src/hybrax/train/model_api.py) splits the module into
 `(trainable, static)`. The harness partitions the whole wrapper this way, so
 reaction- and loss-module trainable leaves are optimized together. Details in
 [01_design_rationale.md](01_design_rationale.md#5-trainable-partition-via-field-tags).
 
 ### The `HybridOdeWrapper` bridge
 
-[`HybridOdeWrapper`](../bp_train/wrapper.py) is the `eqx.Module` that joins your
-reaction module, the controls store, the `SCALE_*` axes, and the bp-format
+[`HybridOdeWrapper`](../../src/hybrax/train/wrapper.py) is the `eqx.Module` that joins your
+reaction module, the controls store, the `SCALE_*` axes, and the hybrax.format
 `RhsOde`. Its `__call__` is the ODE RHS: it assembles `ReactionInputs`, calls the
 reaction module, unscales the rates, and feeds the physical mass balance;
 `physical_save_outputs` produces the states/rates the loss module reads.
@@ -201,7 +201,7 @@ reaction module, unscales the rates, and feeds the physical mass balance;
 
 ## The loss module
 
-bp-train computes the training loss through a user-defined `UserLossModule`, the
+hybrax.train computes the training loss through a user-defined `UserLossModule`, the
 loss-side twin of `UserReactionModule`. You write one class that maps a
 `LossInputs` bundle to a dict of **named scalar losses**; the harness averages
 them for backprop, names every log column and loss-curve panel by the dict keys,
@@ -326,7 +326,7 @@ return LossOutputs(named_losses={"biomass": ..., "glucose": ..., "lwr_bnd/q_glc"
 ```
 
 - The **total** loss for backprop is `mean(named_losses.values())`.
-- Why mean and not sum: bp-train clips the **raw** gradient
+- Why mean and not sum: hybrax.train clips the **raw** gradient
   (`clip_by_global_norm`) *before* Adam. Mean keeps the gradient magnitude in
   the same range regardless of how many named terms you add, so a tuned
   `grad_clip_norm` keeps behaving the same — the clip stays dormant in normal
@@ -368,11 +368,11 @@ class MAELossModule(DefaultLossModule):
 ### Adding bounds penalties
 
 `BoundsViolationLossModule` retains the default measurement MSE and adds one
-squared-hinge term for each finite bp-format bound on a modeled reactor-medium
+squared-hinge term for each finite hybrax.format bound on a modeled reactor-medium
 component, modeled process variable, reactor volume, or `BiologicalOde` rate:
 
 ```python
-from bp_train import BoundsViolationLossModule, bound_records_from_collection
+from hybrax.train import BoundsViolationLossModule, bound_records_from_collection
 
 
 def build_loss_module(
@@ -392,7 +392,7 @@ equivalent `BiologicalOde` and to agree on each bound, and raises otherwise. It 
 only the training parents, so a bound declared on an augmented child is never read —
 children are governed by their parent's bounds.
 
-bp-format defaults reactor-medium component bounds to `(0.0, None)`; process
+hybrax.format defaults reactor-medium component bounds to `(0.0, None)`; process
 variables, reactor volume, and rates default to `(None, None)`. Set an RMC's
 bounds explicitly to `(None, None)` to opt out. The bounds loss module itself
 remains opt-in. Bounds for the same quantity must agree across all processes in
@@ -417,8 +417,7 @@ Each finite side is reported separately as `lwr_bnd/<state>`,
 `upr_bnd/<state>`, `lwr_bnd/rate/<rate>`, or `upr_bnd/rate/<rate>`. If a modeled
 state is named `V`, reactor-volume terms use the `volume/V` segment.
 Reconstruction targets share the loss-name namespace; any remaining actual
-collision is rejected during module construction. See
-[the TUB migration hook](../examples/11_tub_2026/migration/custom.py).
+collision is rejected during module construction.
 
 ### Adding other custom loss terms
 
@@ -498,11 +497,11 @@ alongside the existing measurement-grid fields. `jump_ts` is populated
 unconditionally so any loss (measurement or dense) can locate controls
 discontinuities.
 
-Three helpers in `bp_train` cover the typical needs (lifted from the structured
+Three helpers in `hybrax.train` cover the typical needs (lifted from the structured
 example, exported for reuse):
 
 ```python
-from bp_train import (
+from hybrax.train import (
     build_union_time_grid,
     dense_point_mask_away_from_jumps,
     dense_triple_mask_away_from_jumps,
@@ -569,10 +568,9 @@ segment — interpolation, costing no solver steps. So a finer dense grid does n
 subdivide the integration, does not move `fail_time`, and does not change which
 samples bail.
 
-(This was not always true. When output times *were* segment boundaries, one
+This was not always true. When output times *were* segment boundaries, one
 240 h / 11-measurement / 10-sample-event process went from 10 segments and 38 ODE
 steps at `dense_grid_n=None` to 108 segments and 229 steps at `dense_grid_n=100`.
-See [specs/two_tier_integration_grid.md](../specs/two_tier_integration_grid.md).)
 
 It is still not free: each dense point costs one interpolant evaluation per
 segment it lands in, and the `dense_*` arrays it populates are real arrays inside

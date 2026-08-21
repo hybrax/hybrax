@@ -463,7 +463,7 @@ class PerProcessControls(eqx.Module):
 
     Column axis follows
     ``[name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]``
-    matching bp-format ``ControlSplines``. All columns are consumed by
+    matching hybrax.format ``ControlSplines``. All columns are consumed by
     ``eval_u(t)`` to build RhsOde's ``u`` argument. Discrete bolus/sample events
     are NOT controls here — they are applied as state jumps by the callbacks
     solve from the ``*_event_*`` arrays. ``jump_ts`` carries genuine vector-field

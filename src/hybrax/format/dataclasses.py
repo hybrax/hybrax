@@ -16,7 +16,7 @@ _logger = get_logger(__name__)
 # Bounds metadata: ``(lower, upper)`` with ``None`` on either side meaning
 # unbounded. RMCs default to nonnegative; other carriers default unbounded.
 # Bounds are pure metadata: not enforced inside RhsOde / integrator. Consumers
-# (e.g. bp-train's loss generator) read them off the process to build
+# (e.g. hybrax.train's loss generator) read them off the process to build
 # soft-constraint penalties.
 Bounds = Tuple[Optional[float], Optional[float]]
 _NO_BOUNDS: Bounds = (None, None)
@@ -87,7 +87,7 @@ class ProcessOrdering:
     Ordering rules:
 
     - ``name_modeled_rates`` preserves the user-supplied insertion order of
-      ``BiologicalOde.rates`` (downstream consumers such as ``bp-train``
+      ``BiologicalOde.rates`` (downstream consumers such as ``hybrax.train``
       pass rate vectors in this order).
     - ``name_modeled_algebraic`` is topo-sorted by inter-algebraic
       dependencies; ties broken alphabetically.
@@ -551,7 +551,7 @@ class AugmentedBioProcess(BioProcess):
 
     This is a placeholder in v1: no augmentation logic produces these
     objects yet, but the data shape is fixed so downstream packages
-    (e.g. ``bp-train``'s LOO orchestrator) can rely on it.
+    (e.g. ``hybrax.train``'s LOO orchestrator) can rely on it.
     """
 
     parent_process: str
@@ -570,7 +570,7 @@ class BioProcessCollection:
     ``case_id``/``organism``/``citation`` set (all non-empty) mark this as a
     full case study from one publication/dataset. Left ``None`` (the default),
     this is raw/intermediate data with no case-study identity. ``metadata``
-    remains a free-form dict for arbitrary provenance (e.g. bp-train's
+    remains a free-form dict for arbitrary provenance (e.g. hybrax.train's
     namespaced metadata block).
     """
 

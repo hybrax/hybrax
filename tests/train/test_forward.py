@@ -1,4 +1,4 @@
-"""Tests for the `bp-train forward` CLI path and forward harness plumbing.
+"""Tests for the `hybrax forward` CLI path and forward harness plumbing.
 
 These tests exercise the pieces that do not require a real trained model:
 
@@ -1822,8 +1822,9 @@ def test_loo_scored_value_equals_training_framework_solve():
     # training-framework value == the exact solve at the measurement time; the
     # export now carries it as a node (same sample-grid value the loss module uses).
     train_val = float(c[node_mask][0])
-    # LOO-metric value == np.interp over the exported grid (what hybrax.train.loo_metrics
-    # and bp_bench.metrics do). Identical, because the measurement is now a node.
+    # LOO-metric value == np.interp over the exported grid (what
+    # hybrax.train.loo_metrics and bp_bench.metrics do). Identical, because the
+    # measurement is now a node.
     loo_val = float(np.interp(0.7, export.t, c))
     assert loo_val == pytest.approx(train_val, rel=1e-6)
     # the pre-fix behaviour (interpolating the uniform grid only) is materially off.

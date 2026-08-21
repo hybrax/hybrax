@@ -72,7 +72,7 @@ _SLUG_CHARACTERS = frozenset("+-._")
 class RhsNames:
     """Semantic RHS axes: enough to validate array shapes, never the equations.
 
-    The equations come back from bp-format's `build_rhs_ode()` on a training
+    The equations come back from hybrax.format's `build_rhs_ode()` on a training
     parent, so no biological expression is ever serialized.
     """
 
@@ -531,20 +531,20 @@ def _validate_training_parent_collection_identity(
     ):
         raise ValueError("training parent collection contains an augmented process")
 
-    bp_train_metadata = (collection.metadata or {}).get("bp-train")
-    if bp_train_metadata is None:
+    hybrax_train_metadata = (collection.metadata or {}).get("hybrax.train")
+    if hybrax_train_metadata is None:
         return
-    if not isinstance(bp_train_metadata, dict):
+    if not isinstance(hybrax_train_metadata, dict):
         raise ValueError("invalid training parent collection structural metadata")
-    if "process_order" in bp_train_metadata:
-        process_order = bp_train_metadata["process_order"]
+    if "process_order" in hybrax_train_metadata:
+        process_order = hybrax_train_metadata["process_order"]
         if (
             not isinstance(process_order, list)
             or tuple(process_order) != required_parent_names
         ):
             raise ValueError("invalid training parent collection structural metadata")
-    if "processes" in bp_train_metadata:
-        process_metadata = bp_train_metadata["processes"]
+    if "processes" in hybrax_train_metadata:
+        process_metadata = hybrax_train_metadata["processes"]
         if (
             not isinstance(process_metadata, dict)
             or tuple(process_metadata) != required_parent_names
