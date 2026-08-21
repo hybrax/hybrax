@@ -38,24 +38,31 @@ def select_parent_collection(
     parent_names: tuple[str, ...],
 ) -> BioProcessCollection:
     """Copy a collection and retain the requested parents in canonical order."""
-    copied_collection = deepcopy(collection)
-    parent_collection = replace(
-        copied_collection,
-        processes={name: copied_collection.processes[name] for name in parent_names},
-    )
-    bp_train_metadata = (parent_collection.metadata or {}).get("bp-train")
+    metadata = collection.metadata
+    bp_train_metadata = (metadata or {}).get("bp-train")
     if bp_train_metadata is not None:
         if not isinstance(bp_train_metadata, dict):
             raise ValueError("bp-train metadata must be a mapping")
-        if "process_order" in bp_train_metadata:
-            bp_train_metadata["process_order"] = list(parent_names)
-        if "processes" in bp_train_metadata:
-            if not isinstance(bp_train_metadata["processes"], dict):
+        filtered_bp_train_metadata = dict(bp_train_metadata)
+        if "process_order" in filtered_bp_train_metadata:
+            filtered_bp_train_metadata["process_order"] = list(parent_names)
+        if "processes" in filtered_bp_train_metadata:
+            if not isinstance(filtered_bp_train_metadata["processes"], dict):
                 raise ValueError("bp-train process metadata must be a mapping")
-            bp_train_metadata["processes"] = {
-                name: bp_train_metadata["processes"][name] for name in parent_names
+            filtered_bp_train_metadata["processes"] = {
+                name: filtered_bp_train_metadata["processes"][name]
+                for name in parent_names
             }
-    return parent_collection
+        metadata = dict(metadata or {})
+        metadata["bp-train"] = filtered_bp_train_metadata
+
+    return deepcopy(
+        replace(
+            collection,
+            processes={name: collection.processes[name] for name in parent_names},
+            metadata=metadata,
+        )
+    )
 
 
 def original_parent_processes(
@@ -121,6 +128,11 @@ class ProducerCollectionData:
     def process_order(self) -> tuple[str, ...]:
         return tuple(self.training_data.process_order)
 
+    @property
+    def parent_process_order(self) -> tuple[str, ...]:
+        """Canonical originals aligned with the cached rich trace tuples."""
+        return original_parent_processes(self.process_order, self.augmentation_parents)
+
     @classmethod
     def from_collection(
         cls,
@@ -149,9 +161,13 @@ class ProducerCollectionData:
 
         for process_name in process_order:
             process = collection.processes[process_name]
+            parent = getattr(process, "parent_process", None)
+            parents.append(parent)
+            if parent is not None:
+                continue
+
             start = float(process.time_axis.start)
             end = float(process.time_axis.end)
-            parents.append(getattr(process, "parent_process", None))
             time_bounds.append((start, end))
             modeled_traces.append(
                 tuple(
@@ -193,7 +209,7 @@ class ProducerCollectionData:
             self.process_order, self.augmentation_parents, selected_processes
         )
         parent_collection = select_parent_collection(collection, parent_names)
-        indices = tuple(self.process_order.index(name) for name in parent_names)
+        indices = tuple(self.parent_process_order.index(name) for name in parent_names)
         selected = RuntimeDataContext(
             training_data=self.training_data.select_processes(
                 parent_names, parent_collection

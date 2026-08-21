@@ -70,7 +70,10 @@ def _offline_measurement_times(process: BioProcess) -> np.ndarray:
 
 
 def _output_window_bounds(
-    collection: BioProcessCollection, process_order: list[str]
+    collection: BioProcessCollection,
+    process_order: list[str],
+    *,
+    modeled_rmc_names_by_process: Mapping[str, tuple[str, ...]] | None = None,
 ) -> tuple[float, int]:
     """Collection-wide constants that size the solver's per-segment output window.
 
@@ -111,9 +114,12 @@ def _output_window_bounds(
         if measured.size < 2:
             continue
         t0, t1 = float(measured[0]), float(measured[-1])
-        event_md = collect_discrete_event_metadata(
-            process, tuple(build_rhs_ode(process).name_modeled_RMCs)
+        species_names = (
+            tuple(build_rhs_ode(process).name_modeled_RMCs)
+            if modeled_rmc_names_by_process is None
+            else modeled_rmc_names_by_process[process_name]
         )
+        event_md = collect_discrete_event_metadata(process, species_names)
         events = np.asarray(
             list(event_md["sample_times"]) + list(event_md["bolus_times"]),
             dtype=np.float64,
@@ -947,6 +953,7 @@ class ControlsStore(eqx.Module):
         linear_names = [canonical_names[index] for index in linear_indices]
 
         reference_species: tuple[str, ...] | None = None
+        modeled_rmc_names_by_process: dict[str, tuple[str, ...]] = {}
         max_grid_length = 0
         max_spline_breaks = 0
         max_jump_ts_length = 0
@@ -956,6 +963,7 @@ class ControlsStore(eqx.Module):
             process = collection.processes[process_name]
             bundle = process_bundles[process_name]
             species_names = tuple(build_rhs_ode(process).name_modeled_RMCs)
+            modeled_rmc_names_by_process[process_name] = species_names
             if reference_species is None:
                 reference_species = species_names
             elif species_names != reference_species:
@@ -1076,7 +1084,9 @@ class ControlsStore(eqx.Module):
             }
 
         gap_fraction, measurements_per_gap = _output_window_bounds(
-            collection, process_order
+            collection,
+            process_order,
+            modeled_rmc_names_by_process=modeled_rmc_names_by_process,
         )
 
         shape_metadata = {
@@ -1138,8 +1148,14 @@ class ControlsStore(eqx.Module):
         self,
         process_names: tuple[str, ...],
         collection: BioProcessCollection,
+        *,
+        modeled_rmc_names: tuple[str, ...] | None = None,
     ) -> ControlsStore:
-        """Return a closed row-selected store without rebuilding controls."""
+        """Return a closed row-selected store without rebuilding controls.
+
+        ``modeled_rmc_names`` reuses a caller's already-validated canonical RHS
+        layout. Direct callers may omit it and retain the standalone fallback.
+        """
         if not process_names:
             raise ValueError("selected controls store must be non-empty")
         if tuple(collection.processes) != process_names:
@@ -1171,7 +1187,13 @@ class ControlsStore(eqx.Module):
         max_bolus_events = int(np.max(np.sum(np.asarray(bolus_event_mask), axis=1)))
 
         gap_fraction, measurements_per_gap = _output_window_bounds(
-            collection, process_names
+            collection,
+            process_names,
+            modeled_rmc_names_by_process=(
+                None
+                if modeled_rmc_names is None
+                else dict.fromkeys(process_names, modeled_rmc_names)
+            ),
         )
         shape_metadata = {
             **self.shape_metadata,

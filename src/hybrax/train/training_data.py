@@ -817,7 +817,9 @@ class TrainingDataStore(eqx.Module):
             name_modeled_Outflows=self.name_modeled_Outflows,
             rhs_ode=rhs_ode,
             controls_store=self.controls_store.select_processes(
-                process_names, collection
+                process_names,
+                collection,
+                modeled_rmc_names=tuple(self.rhs_ode.name_modeled_RMCs),
             ),
             Cin_controlled_Inflows=controlled_cin,
             Cin_modeled_Inflows=modeled_cin,

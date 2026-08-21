@@ -42,9 +42,11 @@ from bp_format.dataclasses import (
 )
 from diffrax_callbacks import PresetTimeCallback, diffeqsolve_with_callbacks
 
+import bp_train.controls_store as controls_store_module
 from bp_train.controls_store import ControlsStore, _output_window_bounds
 from bp_train.dense import build_union_time_grid
 from bp_train.physical_solve import _output_window, solve_physical_states
+from bp_train.training_data import TrainingDataStore
 
 from stateful_helpers import build_stateful_wrapper, default_stateful_scale_kwargs
 
@@ -228,6 +230,68 @@ def test_solve_raises_when_the_grid_violates_the_window_precondition():
 # --------------------------------------------------------------------------------
 # 2. The prepare-time bound really covers every gap.
 # --------------------------------------------------------------------------------
+
+
+def test_controls_store_reuses_rhs_names_for_output_bounds(monkeypatch):
+    processes = {
+        "a": _process("a", n_sample=2, n_bolus=1)[0],
+        "b": _process("b", n_sample=3, n_bolus=2, n_extra_meas=4)[0],
+    }
+    collection = BioProcessCollection(processes=processes, metadata={})
+    expected_bounds = _output_window_bounds(collection, list(processes))
+    build_calls = []
+    original_build_rhs_ode = controls_store_module.build_rhs_ode
+
+    def counted_build_rhs_ode(process):
+        build_calls.append(process.metadata.name)
+        return original_build_rhs_ode(process)
+
+    monkeypatch.setattr(controls_store_module, "build_rhs_ode", counted_build_rhs_ode)
+    store = ControlsStore.from_collection(collection)
+
+    assert build_calls == list(processes)
+    assert (
+        store.max_event_gap_fraction,
+        store.max_measurements_per_event_gap,
+    ) == expected_bounds
+
+
+def test_training_selection_reuses_rhs_names_for_output_bounds(monkeypatch):
+    processes = {
+        "a": _process("a", n_sample=2, n_bolus=1)[0],
+        "b": _process("b", n_sample=3, n_bolus=2, n_extra_meas=4)[0],
+    }
+    collection = BioProcessCollection(processes=processes, metadata={})
+    store = TrainingDataStore.from_collection(
+        collection, target_source="reactor_components"
+    )
+    selected_collection = BioProcessCollection(
+        processes={"b": processes["b"]}, metadata={}
+    )
+    expected_bounds = _output_window_bounds(selected_collection, ["b"])
+    build_calls = []
+    original_build_rhs_ode = controls_store_module.build_rhs_ode
+
+    def counted_build_rhs_ode(process):
+        build_calls.append(process.metadata.name)
+        return original_build_rhs_ode(process)
+
+    monkeypatch.setattr(controls_store_module, "build_rhs_ode", counted_build_rhs_ode)
+
+    standalone = store.controls_store.select_processes(("b",), selected_collection)
+    assert build_calls == ["b"]
+    assert (
+        standalone.max_event_gap_fraction,
+        standalone.max_measurements_per_event_gap,
+    ) == expected_bounds
+
+    build_calls.clear()
+    selected = store.select_processes(("b",), selected_collection)
+    assert build_calls == []
+    assert (
+        selected.controls_store.max_event_gap_fraction,
+        selected.controls_store.max_measurements_per_event_gap,
+    ) == expected_bounds
 
 
 @pytest.mark.parametrize("n_sample", [0, 1, 2, 5, 25])

@@ -25,6 +25,7 @@ from bp_format.dataclasses import (
     Volume,
 )
 
+import bp_train.runtime_context as runtime_context
 from bp_train.harness import _resolve_estimated_scales
 from bp_train.model_api import EstimatedScales
 from bp_train.runtime_context import (
@@ -220,6 +221,82 @@ def test_unselected_scale_context_does_not_expose_collection():
 
     assert not hasattr(runtime_data, "training_parent_collection")
     assert not hasattr(runtime_data, "control_scale_evidence")
+
+
+def test_rich_traces_are_extracted_only_for_canonical_parents(monkeypatch):
+    traced_processes = []
+    state_processes = []
+    sample_processes = []
+    original_trace = runtime_context._trace
+    original_raw_state_trace = runtime_context._raw_state_trace
+    original_sample_volume_events = runtime_context._sample_volume_events
+
+    def recording_trace(value, process_name, description):
+        traced_processes.append(process_name)
+        return original_trace(value, process_name, description)
+
+    def recording_raw_state_trace(process, name, start, end):
+        state_processes.append(process.metadata.name)
+        return original_raw_state_trace(process, name, start, end)
+
+    def recording_sample_volume_events(process, process_name):
+        sample_processes.append(process_name)
+        return original_sample_volume_events(process, process_name)
+
+    monkeypatch.setattr(runtime_context, "_trace", recording_trace)
+    monkeypatch.setattr(runtime_context, "_raw_state_trace", recording_raw_state_trace)
+    monkeypatch.setattr(
+        runtime_context, "_sample_volume_events", recording_sample_volume_events
+    )
+
+    collection, runtime_data = _runtime_data()
+
+    assert runtime_data.parent_process_order == ("P0", "P1", "P2")
+    assert set(traced_processes) == {"P0", "P1", "P2"}
+    assert state_processes == ["P0", "P1", "P2"]
+    assert sample_processes == ["P0", "P1", "P2"]
+    selected = runtime_data.select_training_parents(collection, ("P1", "P0_aug"))
+    assert selected.process_order == ("P0", "P1")
+    assert selected.process_time_bounds == ((0.0, 1.0), (0.0, 1.0))
+
+
+def test_parent_collection_is_filtered_before_deepcopy(monkeypatch):
+    collection, runtime_data = _runtime_data()
+    trusted_metadata = {"held_out_measurement": [123.0]}
+    collection = replace(
+        collection,
+        metadata={
+            "bp-train": {
+                "process_order": list(collection.processes),
+                "processes": {name: {"marker": name} for name in collection.processes},
+            },
+            "trusted": trusted_metadata,
+        },
+    )
+    copied_inputs = []
+
+    def recording_deepcopy(value):
+        if isinstance(value, BioProcessCollection):
+            copied_inputs.append(
+                (
+                    tuple(value.processes),
+                    tuple(value.metadata["bp-train"]["process_order"]),
+                    tuple(value.metadata["bp-train"]["processes"]),
+                    value.metadata["trusted"],
+                )
+            )
+        return deepcopy(value)
+
+    monkeypatch.setattr(runtime_context, "deepcopy", recording_deepcopy)
+
+    selected = runtime_data.select_training_parents(collection, ("P1", "P0_aug"))
+
+    assert copied_inputs == [
+        (("P0", "P1"), ("P0", "P1"), ("P0", "P1"), trusted_metadata)
+    ]
+    selected_metadata = selected.training_parent_collection.metadata
+    assert selected_metadata["trusted"] == trusted_metadata
+    assert selected_metadata["trusted"] is not trusted_metadata
 
 
 def test_selected_scale_context_exposes_only_deep_copied_parents():
@@ -486,13 +563,20 @@ def _with_rich_row_values(
     def trace(value):
         return (np.asarray([value]), np.asarray([value]))
 
+    parent_values = tuple(
+        value
+        for value, parent in zip(values, runtime_data.augmentation_parents, strict=True)
+        if parent is None
+    )
     return replace(
         runtime_data,
         training_data=training_data,
-        process_time_bounds=tuple((value, value + 1.0) for value in values),
-        modeled_volume_change_traces=tuple(((trace(value)),) for value in values),
-        raw_state_traces=tuple(((trace(value)),) for value in values),
-        sample_volume_event_traces=tuple(trace(value) for value in values),
+        process_time_bounds=tuple((value, value + 1.0) for value in parent_values),
+        modeled_volume_change_traces=tuple(
+            ((trace(value)),) for value in parent_values
+        ),
+        raw_state_traces=tuple(((trace(value)),) for value in parent_values),
+        sample_volume_event_traces=tuple(trace(value) for value in parent_values),
     )
 
 
