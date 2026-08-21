@@ -28,14 +28,20 @@ dependencies = [
     "jax>=0.4.30,<0.10.1",
     "jaxlib>=0.4.0",
     "numpy>=1.26",
-    "pandas>=2.3",
-    "equinox>=0.10.0",
+    "pandas>=3.0.5,<3.1",
+    "equinox>=0.13.8,<0.14",
     "scipy>=1.15.0",
-    "diffrax>=0.7.0",
-    "sympy>=1.10.0",
+    "diffrax>=0.7.2,<0.8",
+    "sympy>=1.14.0,<1.15",
     "ijson>=3.5.1",
     "matplotlib>=3.10.8",
+    "optax>=0.2.8,<0.3",
+    "optimistix>=0.1.0",
+    "pydantic>=2.5.2",
 ]
+
+[project.scripts]
+hybrax = "hybrax.train.cli:main"
 
 [project.optional-dependencies]
 dev = [
