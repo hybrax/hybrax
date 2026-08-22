@@ -29,7 +29,7 @@ network. This tutorial is four function calls that catch that early.
 ```{code-cell} ipython3
 import hybrax.format as hxf
 
-collection = hxf.serialization.load_process_collection("../_data/out/demo_batch/data.json")
+collection = hxf.serialization.load_process_collection("../../../examples/tutorial_02_look_at_it/data.json")
 process = collection.processes["run_1"]
 ```
 
@@ -110,7 +110,7 @@ feed metadata is wrong.
 ## What's next
 
 This tutorial has no output of its own: it reads the shared demo dataset directly from
-`./source/_data/out/demo_batch/`.
+`./examples/tutorial_02_look_at_it/`.
 
 - **[Tutorial 3](03_train.md)**: train a model on this dataset.
 - A check failed? [Errors](../troubleshooting/errors.md).

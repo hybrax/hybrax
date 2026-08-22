@@ -25,7 +25,7 @@ The walkthrough below shows the file in pieces, next to the reasoning for each o
 the whole thing at once: to copy, diff against your own, or just read top to bottom:
 
 :::{dropdown} Full `custom.py`
-```{literalinclude} _files/augmentation_custom.py
+```{literalinclude} ../../../examples/gallery_augmentation/custom.py
 :language: python
 :linenos:
 ```
@@ -42,8 +42,9 @@ WORK = Path("../_data/out/runs/gallery_augmentation").resolve()
 if WORK.exists():
     shutil.rmtree(WORK)
 WORK.mkdir(parents=True)
-shutil.copy(Path("../_data/out/demo_fedbatch/data.json").resolve(), WORK / "data.json")
-shutil.copy(Path("_files/augmentation_custom.py").resolve(), WORK / "custom.py")
+EXAMPLE = Path("../../../examples/gallery_augmentation").resolve()
+shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
+shutil.copy(EXAMPLE / "custom.py", WORK / "custom.py")
 
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
@@ -55,24 +56,7 @@ def hxt_cli(*args):
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
 
-(WORK / "prepare-config.json").write_text(textwrap.dedent("""\
-    {
-      "custom_py": "custom.py",
-      "prepare": {
-        "raw_input": "data.json",
-        "augmentation": {
-          "n_children_per_process": 5,
-          "n_time_points": 11,
-          "noise_std": {
-            "biomass": 0.05,
-            "glucose": 0.05,
-            "lactate": 0.05,
-            "product": 0.05
-          }
-        }
-      }
-    }
-    """))
+shutil.copy(EXAMPLE / "prepare-config.json", WORK / "prepare-config.json")
 ```
 
 Everything below runs in `WORK`, printed at the end: inspect, copy or modify the real
@@ -96,7 +80,7 @@ parent's own sampling: children are resampled, not resliced.
 
 ## Splines first
 
-```{literalinclude} _files/augmentation_custom.py
+```{literalinclude} ../../../examples/gallery_augmentation/custom.py
 :language: python
 :linenos:
 :lines: 21-27
@@ -141,7 +125,7 @@ trust the config blindly.
 
 ## Fixing what default noise gets wrong
 
-```{literalinclude} _files/augmentation_custom.py
+```{literalinclude} ../../../examples/gallery_augmentation/custom.py
 :language: python
 :linenos:
 :lines: 30-36

@@ -1,0 +1,16 @@
+{
+  "data": {
+    "prepared": "prepared"
+  },
+  "custom_py": "custom.py",
+  "train": {
+    "epochs": 5,
+    "seed": 0
+  },
+  "checkpoint": {
+    "every": 0
+  },
+  "output": {
+    "dir": "run_no_optin"
+  }
+}

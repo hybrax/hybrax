@@ -1,0 +1,166 @@
+{
+  "case_id": "demo_spline_jump",
+  "organism": "None (a physical decay process, not a cell culture)",
+  "citation": "Simulated data, bp-docs demo, not a real experiment.",
+  "metadata": null,
+  "processes": {
+    "run_1": {
+      "metadata": {
+        "name": "run_1",
+        "process_type": "fed_batch",
+        "notes": "Simulated single-species first-order decay with one feed bolus (documentation demo, pseudobatch splines gallery page)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 17.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "solute": {
+            "name": "solute",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  4.0,
+                  9.0,
+                  11.0,
+                  17.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  5.0,
+                  2.875847053598122,
+                  1.30469807636155,
+                  5.508475589670018,
+                  2.0728252770115683
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  4.0,
+                  9.0,
+                  11.0,
+                  17.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  1.0,
+                  1.0,
+                  1.0,
+                  1.0,
+                  1.0
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {
+          "solute_bolus": {
+            "name": "solute_bolus",
+            "unit": "L",
+            "is_controlled": true,
+            "is_continuous": false,
+            "values": {
+              "times": {
+                "__ndarray__": [
+                  10.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.15
+                ],
+                "dtype": "float64"
+              },
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            },
+            "type": "Inflow",
+            "feed_medium": {
+              "name": "solute_feed",
+              "density": 1.0,
+              "density_unit": "kg/L",
+              "components": {
+                "solute": {
+                  "name": "solute",
+                  "unit": "g/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 40.0
+                  }
+                },
+                "biomass": {
+                  "name": "biomass",
+                  "unit": "g/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "k_solute": {
+            "lower": 0.0,
+            "upper": null
+          }
+        },
+        "derivatives": {
+          "solute": "-k_solute * solute",
+          "biomass": "0"
+        }
+      }
+    }
+  }
+}

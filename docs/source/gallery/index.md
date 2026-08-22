@@ -8,9 +8,11 @@ lives. Each entry is a self-contained, executed example, most built on the fed-b
 demo dataset or an extended version of the batch one.
 
 Every entry's `.md` file is itself a real, executable notebook (MyST Markdown via
-myst-nb), living in `source/gallery/` with its runnable `custom.py` alongside it in
-`source/gallery/_files/`: clone the `bp-docs` source, install `hybrax`, and
-each page runs top to bottom exactly as shown here, no rendering required.
+myst-nb), living in `source/gallery/`. Its runnable `custom.py`, configs and frozen
+input data live alongside it in `hybrax`'s own top-level `examples/gallery_<name>/`:
+clone `hybrax`, install it, and each page runs top to bottom exactly as shown here,
+no rendering required — or run the `examples/` directory directly, no docs build
+needed at all.
 
 | Entry | Demonstrates |
 |---|---|

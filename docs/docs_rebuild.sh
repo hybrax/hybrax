@@ -15,6 +15,42 @@ rm -rf "$SRC/narrative"             # legacy: bp-docs no longer copies hybrax's 
 # Regenerate the demo datasets the tutorials/gallery execute against.
 "$PYTHON" "$SRC/_data/generate.py"
 
+# Keep hybrax/examples/*'s frozen demo-data snapshots in sync with the live
+# generator above. These files stay checked into git (examples/ works
+# standalone, without docs tooling), but every full rebuild refreshes them
+# from generate.py's current output, so a demo-data change never goes stale
+# unnoticed: if a rebuild changes something, it shows up as a normal
+# git diff in examples/ for review.
+OUT_DATA="$SRC/_data/out"
+EXAMPLES="$ROOT/../examples"
+sync_example() {
+    local dataset="$1" example="$2"
+    shift 2
+    for f in "$@"; do
+        [ -f "$OUT_DATA/$dataset/$f" ] && cp "$OUT_DATA/$dataset/$f" "$EXAMPLES/$example/$f"
+    done
+}
+sync_example demo_batch tutorial_02_look_at_it data.json
+sync_example demo_batch tutorial_03_train data.json
+sync_example demo_batch tutorial_04_your_first_custom_py data.json
+sync_example demo_batch tutorial_05_predict data.json ground_truth.json
+cp "$OUT_DATA/demo_batch/raw/offline.csv" "$EXAMPLES/tutorial_01_your_first_dataset/offline.csv"
+sync_example demo_batch gallery_dense_loss data.json
+sync_example demo_batch gallery_mechanistic_rates data.json ground_truth.json
+sync_example demo_batch gallery_freezing data.json
+sync_example demo_batch gallery_gaussian_process data.json
+sync_example demo_batch gallery_kan data.json
+sync_example demo_batch gallery_stateful data.json
+sync_example demo_batch gallery_loo data.json
+sync_example demo_fedbatch gallery_fed_batch data.json
+sync_example demo_fedbatch gallery_augmentation data.json
+sync_example demo_products gallery_knowledge_transfer data.json
+sync_example demo_ecoli_fba gallery_fba_hyb data.json
+sync_example demo_ecoli_blend gallery_pls_dfba data.json
+sync_example demo_optfed gallery_optfed data.json ground_truth.json
+sync_example demo_glutamine_decay gallery_glutamine_decay data.json ground_truth.json
+sync_example demo_spline_jump gallery_pseudobatch_splines data.json
+
 LOG="$SCRATCH/build.log"
 echo "Build log: $LOG  (tail -f \"$LOG\" in another terminal to watch progress)"
 BUILD_START=$(date +%s)

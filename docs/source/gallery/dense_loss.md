@@ -31,7 +31,7 @@ The walkthrough below shows the file in pieces, next to the reasoning for each o
 the whole thing at once: to copy, diff against your own, or just read top to bottom:
 
 :::{dropdown} Full `custom.py`
-```{literalinclude} _files/dense_loss_custom.py
+```{literalinclude} ../../../examples/gallery_dense_loss/custom.py
 :language: python
 :linenos:
 ```
@@ -40,7 +40,7 @@ the whole thing at once: to copy, diff against your own, or just read top to bot
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-import os, shutil, subprocess, sys, textwrap
+import os, shutil, subprocess, sys
 from pathlib import Path
 %matplotlib inline
 
@@ -48,8 +48,9 @@ WORK = Path("../_data/out/runs/gallery_dense_loss").resolve()
 if WORK.exists():
     shutil.rmtree(WORK)
 WORK.mkdir(parents=True)
-shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
-shutil.copy(Path("_files/dense_loss_custom.py").resolve(), WORK / "custom.py")
+EXAMPLE = Path("../../../examples/gallery_dense_loss").resolve()
+shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
+shutil.copy(EXAMPLE / "custom.py", WORK / "custom.py")
 
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
@@ -61,18 +62,9 @@ def hxt_cli(*args):
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
 
-(WORK / "prepare-config.json").write_text(
-    '{ "prepare": { "raw_input": "data.json" }, "custom_py": "custom.py" }\n')
-(WORK / "train-full.json").write_text(textwrap.dedent("""\
-    {
-      "data": { "prepared": "prepared" },
-      "custom_py": "custom.py",
-      "train": { "epochs": 800, "seed": 0, "learning_rate": 0.01 },
-      "output": { "dir": "run_full", "predictions": "parents" }
-    }
-    """))
-(WORK / "forward-config.json").write_text(
-    '{ "models": ["run_full"], "output": { "predictions": "parents", "plots": true } }\n')
+shutil.copy(EXAMPLE / "prepare-config.json", WORK / "prepare-config.json")
+shutil.copy(EXAMPLE / "train-full.json", WORK / "train-full.json")
+shutil.copy(EXAMPLE / "forward-config.json", WORK / "forward-config.json")
 
 import numpy as np
 import pandas as pd
@@ -118,7 +110,7 @@ declares `(0.0, None)` on every species, because a concentration cannot be negat
 know what a plausible rate range is. Attaching them is one `transform_process_collection`
 hook:
 
-```{literalinclude} _files/dense_loss_custom.py
+```{literalinclude} ../../../examples/gallery_dense_loss/custom.py
 :language: python
 :linenos:
 :lines: 118-125
@@ -129,7 +121,7 @@ enforced inside RhsOde or the integrator; downstream consumers read them off the
 to build soft-constraint penalties."* Nothing threads these bounds into hybrax.train
 automatically) the loss module below reads them itself, once, at construction:
 
-```{literalinclude} _files/dense_loss_custom.py
+```{literalinclude} ../../../examples/gallery_dense_loss/custom.py
 :language: python
 :linenos:
 :lines: 198-219
@@ -137,7 +129,7 @@ automatically) the loss module below reads them itself, once, at construction:
 
 ## 2. The hinge penalty, on the dense grid
 
-```{literalinclude} _files/dense_loss_custom.py
+```{literalinclude} ../../../examples/gallery_dense_loss/custom.py
 :language: python
 :linenos:
 :lines: 163-177
@@ -151,7 +143,7 @@ grid's own post-solver-failure mask.
 
 ## 3. Smoothness, without penalising real jumps
 
-```{literalinclude} _files/dense_loss_custom.py
+```{literalinclude} ../../../examples/gallery_dense_loss/custom.py
 :language: python
 :linenos:
 :lines: 179-189
@@ -209,17 +201,9 @@ loss:
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data_base.json")
-(WORK / "base.py").write_text(
-    (Path("../tutorials/_files/tutorial_04_custom.py")).read_text())
-(WORK / "train-base.json").write_text(textwrap.dedent("""\
-    {
-      "data": { "prepared": "prepared" },
-      "custom_py": "base.py",
-      "train": { "epochs": 800, "seed": 0, "learning_rate": 0.01 },
-      "output": { "dir": "run_base", "predictions": "parents" }
-    }
-    """))
+shutil.copy(EXAMPLE / "data.json", WORK / "data_base.json")
+shutil.copy(EXAMPLE / "base.py", WORK / "base.py")
+shutil.copy(EXAMPLE / "train-base.json", WORK / "train-base.json")
 hxt_cli("train", "--config", "train-base.json", "--overwrite")
 print(f"comparison run directory: ./{(WORK / 'run_base').relative_to(WORK.parents[4])}")
 

@@ -22,7 +22,7 @@ kernelspec:
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-import os, shutil, subprocess, sys, textwrap
+import os, shutil, subprocess, sys
 from pathlib import Path
 %matplotlib inline
 
@@ -30,8 +30,9 @@ WORK = Path("../_data/out/runs/tutorial_05").resolve()
 if WORK.exists():
     shutil.rmtree(WORK)
 WORK.mkdir(parents=True)
-shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
-shutil.copy(Path("_files/tutorial_04_custom.py").resolve(), WORK / "custom.py")
+EXAMPLE = Path("../../../examples/tutorial_05_predict").resolve()
+shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
+shutil.copy(EXAMPLE / "custom.py", WORK / "custom.py")
 
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
@@ -43,18 +44,9 @@ def hxt_cli(*args):
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
 
-(WORK / "prepare-config.json").write_text(
-    '{ "prepare": { "raw_input": "data.json" } }\n')
-(WORK / "train-config.json").write_text(textwrap.dedent("""\
-    {
-      "data": { "prepared": "prepared" },
-      "custom_py": "custom.py",
-      "train": { "epochs": 300, "seed": 0, "learning_rate": 0.01 },
-      "output": { "dir": "run" }
-    }
-    """))
-(WORK / "forward-config.json").write_text(
-    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
+shutil.copy(EXAMPLE / "prepare-config.json", WORK / "prepare-config.json")
+shutil.copy(EXAMPLE / "train-config.json", WORK / "train-config.json")
+shutil.copy(EXAMPLE / "forward-config.json", WORK / "forward-config.json")
 hxt_cli("prepare", "--config", "prepare-config.json",
              "--output-dir", "prepared", "--overwrite")
 hxt_cli("train", "--config", "train-config.json", "--overwrite")
@@ -156,7 +148,7 @@ data was generated with:
 import json
 import numpy as np
 
-truth = json.loads(Path("../_data/out/demo_batch/ground_truth.json").read_text())
+truth = json.loads(Path("../../../examples/tutorial_05_predict/ground_truth.json").read_text())
 learned_mu = float(export.q_rates[0, 0])     # q_biomass at t = 0
 print(f"learned q_biomass(t=0) : {learned_mu:.3f} 1/h")
 print(f"true mu_max            : {truth['mu_max']:.3f} 1/h")

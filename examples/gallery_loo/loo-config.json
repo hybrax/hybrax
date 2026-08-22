@@ -1,0 +1,13 @@
+{
+  "data": { "prepared": "prepared" },
+  "train": { "epochs": 550, "seed": 0, "learning_rate": 0.02 },
+  "checkpoint": { "every": 0 },
+  "output": { "dir": "loo_run" },
+  "loo": {
+    "per_fold_holdout_sets": [
+      {"test": ["run_1"]},
+      {"test": ["run_2"]},
+      {"test": ["run_3"]}
+    ]
+  }
+}

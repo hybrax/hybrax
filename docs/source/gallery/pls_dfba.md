@@ -40,7 +40,7 @@ The walkthrough below shows the file in pieces, next to the reasoning for each o
 the whole thing at once: to copy, diff against your own, or just read top to bottom:
 
 :::{dropdown} Full `custom.py`
-```{literalinclude} _files/pls_dfba_custom.py
+```{literalinclude} ../../../examples/gallery_pls_dfba/custom.py
 :language: python
 :linenos:
 ```
@@ -49,7 +49,7 @@ the whole thing at once: to copy, diff against your own, or just read top to bot
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-import os, shutil, subprocess, sys, textwrap
+import os, shutil, subprocess, sys
 from pathlib import Path
 %matplotlib inline
 
@@ -57,8 +57,9 @@ WORK = Path("../_data/out/runs/gallery_pls_dfba").resolve()
 if WORK.exists():
     shutil.rmtree(WORK)
 WORK.mkdir(parents=True)
-shutil.copy(Path("../_data/out/demo_ecoli_blend/data.json").resolve(), WORK / "data.json")
-shutil.copy(Path("_files/pls_dfba_custom.py").resolve(), WORK / "custom.py")
+EXAMPLE = Path("../../../examples/gallery_pls_dfba").resolve()
+shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
+shutil.copy(EXAMPLE / "custom.py", WORK / "custom.py")
 
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
@@ -70,18 +71,9 @@ def hxt_cli(*args):
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
 
-(WORK / "prepare-config.json").write_text(
-    '{ "prepare": { "raw_input": "data.json" }, "custom_py": "custom.py" }\n')
-(WORK / "train-config.json").write_text(textwrap.dedent("""\
-    {
-      "data": { "prepared": "prepared" },
-      "custom_py": "custom.py",
-      "train": { "epochs": 650, "seed": 0, "learning_rate": 0.01 },
-      "output": { "dir": "run", "predictions": "parents" }
-    }
-    """))
-(WORK / "forward-config.json").write_text(
-    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
+shutil.copy(EXAMPLE / "prepare-config.json", WORK / "prepare-config.json")
+shutil.copy(EXAMPLE / "train-config.json", WORK / "train-config.json")
+shutil.copy(EXAMPLE / "forward-config.json", WORK / "forward-config.json")
 
 import numpy as np
 import pandas as pd
@@ -125,7 +117,7 @@ the same real trade-off Negahban et al. 2026 optimize for with three real media.
 constant-valued controlled process variable does the job instead, the same mechanism
 [Knowledge transfer](knowledge_transfer.md) uses for product identity:
 
-```{literalinclude} _files/pls_dfba_custom.py
+```{literalinclude} ../../../examples/gallery_pls_dfba/custom.py
 :language: python
 :linenos:
 :lines: 46-56
@@ -133,7 +125,7 @@ constant-valued controlled process variable does the job instead, the same mecha
 
 ## The PLS component
 
-```{literalinclude} _files/pls_dfba_custom.py
+```{literalinclude} ../../../examples/gallery_pls_dfba/custom.py
 :language: python
 :linenos:
 :lines: 83-109
@@ -145,7 +137,7 @@ surrogate inputs. No activation function anywhere in `__call__`: real PLS is lin
 end to end, which is the whole reason it needs a low-rank bottleneck to handle
 collinear predictors in the first place, rather than just more capacity.
 
-```{literalinclude} _files/pls_dfba_custom.py
+```{literalinclude} ../../../examples/gallery_pls_dfba/custom.py
 :language: python
 :linenos:
 :lines: 112-118

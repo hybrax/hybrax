@@ -30,7 +30,7 @@ The walkthrough below shows the file in pieces, next to the reasoning for each o
 the whole thing at once: to copy, diff against your own, or just read top to bottom:
 
 :::{dropdown} Full `custom.py`
-```{literalinclude} _files/gaussian_process_custom.py
+```{literalinclude} ../../../examples/gallery_gaussian_process/custom.py
 :language: python
 :linenos:
 ```
@@ -39,7 +39,7 @@ the whole thing at once: to copy, diff against your own, or just read top to bot
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-import os, shutil, subprocess, sys, textwrap
+import os, shutil, subprocess, sys
 from pathlib import Path
 %matplotlib inline
 
@@ -47,8 +47,9 @@ WORK = Path("../_data/out/runs/gallery_gaussian_process").resolve()
 if WORK.exists():
     shutil.rmtree(WORK)
 WORK.mkdir(parents=True)
-shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
-shutil.copy(Path("_files/gaussian_process_custom.py").resolve(), WORK / "custom.py")
+EXAMPLE = Path("../../../examples/gallery_gaussian_process").resolve()
+shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
+shutil.copy(EXAMPLE / "custom.py", WORK / "custom.py")
 
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
@@ -60,18 +61,9 @@ def hxt_cli(*args):
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
 
-(WORK / "prepare-config.json").write_text(
-    '{ "prepare": { "raw_input": "data.json" } }\n')
-(WORK / "train-config.json").write_text(textwrap.dedent("""\
-    {
-      "data": { "prepared": "prepared" },
-      "custom_py": "custom.py",
-      "train": { "epochs": 800, "seed": 0, "learning_rate": 0.01 },
-      "output": { "dir": "run", "predictions": "parents" }
-    }
-    """))
-(WORK / "forward-config.json").write_text(
-    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
+shutil.copy(EXAMPLE / "prepare-config.json", WORK / "prepare-config.json")
+shutil.copy(EXAMPLE / "train-config.json", WORK / "train-config.json")
+shutil.copy(EXAMPLE / "forward-config.json", WORK / "forward-config.json")
 
 import numpy as np
 import pandas as pd
@@ -103,7 +95,7 @@ A squared-exponential kernel with automatic relevance determination (ARD): one
 lengthscale per input feature, so the module can learn that some state axes matter
 more than others to "how similar are these two states."
 
-```{literalinclude} _files/gaussian_process_custom.py
+```{literalinclude} ../../../examples/gallery_gaussian_process/custom.py
 :language: python
 :linenos:
 :lines: 28-49
@@ -116,7 +108,7 @@ outputs (`y`). Both start random and move under gradient descent, same as any ot
 
 ## The posterior
 
-```{literalinclude} _files/gaussian_process_custom.py
+```{literalinclude} ../../../examples/gallery_gaussian_process/custom.py
 :language: python
 :linenos:
 :lines: 51-67
@@ -131,7 +123,7 @@ just fit by a different procedure than a textbook GP.
 The predictive std goes straight into `auxiliary`, which hybrax.train threads into
 `predictions.csv` as extra columns: no new plumbing needed.
 
-```{literalinclude} _files/gaussian_process_custom.py
+```{literalinclude} ../../../examples/gallery_gaussian_process/custom.py
 :language: python
 :linenos:
 :lines: 70-72

@@ -32,7 +32,7 @@ WORK = Path("../_data/out/runs/gallery_pseudobatch_splines").resolve()
 if WORK.exists():
     shutil.rmtree(WORK)
 WORK.mkdir(parents=True)
-shutil.copy(Path("../_data/out/demo_spline_jump/data.json").resolve(), WORK / "data.json")
+shutil.copy(Path("../../../examples/gallery_pseudobatch_splines/data.json").resolve(), WORK / "data.json")
 ```
 
 ## The setup

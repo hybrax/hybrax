@@ -39,7 +39,7 @@ The walkthrough below shows the file in pieces, next to the reasoning for each o
 the whole thing at once: to copy, diff against your own, or just read top to bottom:
 
 :::{dropdown} Full `custom.py`
-```{literalinclude} _files/stateful_custom.py
+```{literalinclude} ../../../examples/gallery_stateful/custom.py
 :language: python
 :linenos:
 ```
@@ -48,7 +48,7 @@ the whole thing at once: to copy, diff against your own, or just read top to bot
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-import os, re, shutil, subprocess, sys, textwrap
+import os, re, shutil, subprocess, sys
 from pathlib import Path
 %matplotlib inline
 
@@ -56,8 +56,9 @@ WORK = Path("../_data/out/runs/gallery_stateful").resolve()
 if WORK.exists():
     shutil.rmtree(WORK)
 WORK.mkdir(parents=True)
-shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
-shutil.copy(Path("_files/stateful_custom.py").resolve(), WORK / "custom.py")
+EXAMPLE = Path("../../../examples/gallery_stateful").resolve()
+shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
+shutil.copy(EXAMPLE / "custom.py", WORK / "custom.py")
 
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
@@ -69,15 +70,14 @@ def hxt_cli(*args, check=True):
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
 
-(WORK / "prepare-config.json").write_text(
-    '{ "prepare": { "raw_input": "data.json" } }\n')
+shutil.copy(EXAMPLE / "prepare-config.json", WORK / "prepare-config.json")
 hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
 ```
 
 ## The module
 
-```{literalinclude} _files/stateful_custom.py
+```{literalinclude} ../../../examples/gallery_stateful/custom.py
 :language: python
 :linenos:
 :lines: 29-66
@@ -101,14 +101,7 @@ allowed to train silently:
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-(WORK / "train-no-optin.json").write_text(textwrap.dedent("""\
-    {
-      "data": { "prepared": "prepared" },
-      "custom_py": "custom.py",
-      "train": { "epochs": 5, "seed": 0 },
-      "output": { "dir": "run_no_optin" }
-    }
-    """))
+shutil.copy(EXAMPLE / "train-no-optin.json", WORK / "train-no-optin.json")
 ```
 
 ```{code-cell} ipython3
@@ -132,17 +125,8 @@ means that hybrax.train wants it to be a decision, not a side effect of adding a
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-(WORK / "train.json").write_text(textwrap.dedent("""\
-    {
-      "data": { "prepared": "prepared" },
-      "custom_py": "custom.py",
-      "train": { "epochs": 600, "seed": 0, "learning_rate": 0.01,
-                "allow_stateful_models": true },
-      "output": { "dir": "run" }
-    }
-    """))
-(WORK / "forward-config.json").write_text(
-    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
+shutil.copy(EXAMPLE / "train.json", WORK / "train.json")
+shutil.copy(EXAMPLE / "forward-config.json", WORK / "forward-config.json")
 ```
 
 ```{code-cell} ipython3

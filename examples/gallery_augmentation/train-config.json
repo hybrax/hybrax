@@ -1,0 +1,17 @@
+{
+  "data": {
+    "prepared": "prepared"
+  },
+  "custom_py": "custom.py",
+  "train": {
+    "epochs": 300,
+    "seed": 0,
+    "learning_rate": 0.02
+  },
+  "checkpoint": {
+    "every": 0
+  },
+  "output": {
+    "dir": "run"
+  }
+}

@@ -25,7 +25,7 @@ changes. However, the `Hybrax` data format is designed to accomodate a diverse s
 * [feeds, boluses and sampling volume changes](../gallery/fed_batch.md),
 <!-- UNLOCK -->
 * [chemical decay rates](../gallery/glutamine_decay.md), and
-* [modeled process variables](../gallery/<placeholder! please fix once the glu lands>).
+* [modeled process variables](../gallery/glutamine_decay.md).
 
 
 ## 1.1 Example data
@@ -34,7 +34,7 @@ changes. However, the `Hybrax` data format is designed to accomodate a diverse s
 :tags: [remove-input]
 
 from pathlib import Path
-RAW = Path("../_data/out/demo_batch/raw/offline.csv").resolve()
+RAW = Path("../../../examples/tutorial_01_your_first_dataset/offline.csv").resolve()
 print("".join(RAW.read_text().splitlines(keepends=True)[:6]), end="")
 print("...")
 ```

@@ -1,0 +1,16 @@
+{
+  "data": {
+    "prepared": "prepared"
+  },
+  "train": {
+    "epochs": 300,
+    "seed": 0
+  },
+  "checkpoint": {
+    "every": 0
+  },
+  "output": {
+    "dir": "run_default",
+    "predictions": "parents"
+  }
+}

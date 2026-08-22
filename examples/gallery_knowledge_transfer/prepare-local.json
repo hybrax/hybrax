@@ -1,0 +1,1 @@
+{ "prepare": { "raw_input": "local.json" }, "custom_py": "custom.py" }

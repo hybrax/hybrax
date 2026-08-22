@@ -22,7 +22,7 @@ machinery, not the model, so this page trains the plain default MLP throughout.
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-import json, os, shutil, subprocess, sys, textwrap
+import json, os, shutil, subprocess, sys
 from pathlib import Path
 %matplotlib inline
 
@@ -30,7 +30,8 @@ WORK = Path("../_data/out/runs/gallery_loo").resolve()
 if WORK.exists():
     shutil.rmtree(WORK)
 WORK.mkdir(parents=True)
-shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
+EXAMPLE = Path("../../../examples/gallery_loo").resolve()
+shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
 
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
@@ -42,8 +43,7 @@ def hxt_cli(*args):
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
 
-(WORK / "prepare-config.json").write_text(
-    '{ "prepare": { "raw_input": "data.json" } }\n')
+shutil.copy(EXAMPLE / "prepare-config.json", WORK / "prepare-config.json")
 hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
 ```
@@ -108,20 +108,7 @@ One fold per process, via the CLI. The config is a train config plus a `loo` sec
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-(WORK / "loo-config.json").write_text(textwrap.dedent("""\
-    {
-      "data": { "prepared": "prepared" },
-      "train": { "epochs": 550, "seed": 0, "learning_rate": 0.02 },
-      "output": { "dir": "loo_run" },
-      "loo": {
-        "per_fold_holdout_sets": [
-          {"test": ["run_1"]},
-          {"test": ["run_2"]},
-          {"test": ["run_3"]}
-        ]
-      }
-    }
-    """))
+shutil.copy(EXAMPLE / "loo-config.json", WORK / "loo-config.json")
 ```
 
 ```json

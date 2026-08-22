@@ -1,0 +1,1 @@
+{ "models": ["run_full"], "output": { "predictions": "parents", "plots": true } }

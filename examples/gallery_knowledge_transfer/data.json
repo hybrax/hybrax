@@ -1,0 +1,5888 @@
+{
+  "case_id": "demo_products",
+  "organism": "Five simulated E. coli-like product lines",
+  "citation": "Simulated data \u2014 bp-docs demo, not a real experiment.",
+  "metadata": null,
+  "processes": {
+    "H1_run_1": {
+      "metadata": {
+        "name": "H1_run_1",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 22.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.19003028109267836,
+                  0.23069653089192374,
+                  0.3148754288806823,
+                  0.4009378029223497,
+                  0.5106833774250582,
+                  0.6305459019012392,
+                  0.7726495021615369,
+                  0.8963461478601581,
+                  1.1802968529689726,
+                  1.5538365863392483,
+                  1.8974996649259612,
+                  1.8863973803776677,
+                  1.9078777438860364,
+                  1.9977327264581366,
+                  2.0433967071601695,
+                  2.00087695055252,
+                  1.9161185713174402
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  6.20533544942763,
+                  6.0548899618715275,
+                  6.003442598597404,
+                  5.403171331394986,
+                  5.38258458835909,
+                  4.784523064280203,
+                  3.503515091402343,
+                  3.0174188895981864,
+                  2.204501617009634,
+                  1.2813953622696745,
+                  0.20460881998554556,
+                  0.000566428960120025,
+                  6.069452663119643e-07,
+                  6.829232190461701e-10,
+                  6.494540273320433e-13,
+                  7.901355662971286e-16,
+                  9.170713758409263e-19
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.014638423379381768,
+                  0.03320991607397645,
+                  0.05353759811260428,
+                  0.0785164521768325,
+                  0.1204814104936294,
+                  0.1624291358224277,
+                  0.20062573936133243,
+                  0.2868401653736216,
+                  0.36314349214692926,
+                  0.4550792712290049,
+                  0.4546954443952886,
+                  0.4835226028666673,
+                  0.4652951277318218,
+                  0.4565947253909305,
+                  0.4562462687587622,
+                  0.4785190155414124
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H1_run_2": {
+      "metadata": {
+        "name": "H1_run_2",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 22.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.1141361848568491,
+                  0.1607030892535911,
+                  0.2039922942542711,
+                  0.20868010274057217,
+                  0.3168596821822358,
+                  0.38592267395563873,
+                  0.5229069016929491,
+                  0.5785001430906314,
+                  0.8082504788323865,
+                  0.9933377979097694,
+                  1.4012601640771563,
+                  1.546649833254762,
+                  2.142408950151318,
+                  2.4695682207244456,
+                  3.381370135300966,
+                  3.8991077369604974,
+                  3.8537980081891945
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  14.124410235650304,
+                  15.343144340253806,
+                  13.96158058580403,
+                  14.20541175936083,
+                  13.00550768433597,
+                  12.705859719421623,
+                  12.642232766303,
+                  11.721023023548119,
+                  11.90531821993145,
+                  11.769029843049978,
+                  9.930452992295619,
+                  8.587156701373694,
+                  7.1513680245771605,
+                  4.690216067052064,
+                  2.341095514877394,
+                  0.0438745263270178,
+                  2.8452152893571936e-08
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.008667115600283213,
+                  0.01964371476715072,
+                  0.033158214628144896,
+                  0.05023290422716097,
+                  0.079666736631103,
+                  0.0829493973179054,
+                  0.14584242048025256,
+                  0.19027280367327332,
+                  0.2422625768570357,
+                  0.3258235788608881,
+                  0.3571083971943411,
+                  0.5575582342437627,
+                  0.6817671454830684,
+                  0.8951435742610903,
+                  1.0680120256142642,
+                  0.973643803153399
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H1_run_3": {
+      "metadata": {
+        "name": "H1_run_3",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 22.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.11483219825451582,
+                  0.15685829746238072,
+                  0.18217141105024343,
+                  0.23943703071534525,
+                  0.3129769557943274,
+                  0.3530591423770499,
+                  0.5269634725926514,
+                  0.6258641907601727,
+                  0.776975695370241,
+                  1.1391787923155963,
+                  1.3855229951991497,
+                  1.902506121653592,
+                  2.200729927389945,
+                  2.9867538414769155,
+                  3.395387434925803,
+                  5.1477967959055615,
+                  5.611836840914775
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  27.148784436029466,
+                  27.270020369475525,
+                  25.31734060970718,
+                  25.80026672633396,
+                  27.607572689440246,
+                  25.57173742150673,
+                  26.165476934976567,
+                  24.93619081360691,
+                  25.921239852305035,
+                  23.200289599894134,
+                  22.77320361972665,
+                  23.98080290506612,
+                  19.602863782811095,
+                  18.09919388474541,
+                  14.220313540215969,
+                  10.791155529798662,
+                  7.105011963522588
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.008566297504485836,
+                  0.01656567061483213,
+                  0.03158381226479586,
+                  0.05554057887023549,
+                  0.06984862519906275,
+                  0.09979613640860506,
+                  0.14057423968318358,
+                  0.18709244663240757,
+                  0.24227760020970196,
+                  0.3666468406101257,
+                  0.4529349322532344,
+                  0.5702340238508028,
+                  0.6646098141843946,
+                  0.9189803281194969,
+                  1.093253622398562,
+                  1.6506673398802483
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H1_run_4": {
+      "metadata": {
+        "name": "H1_run_4",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 22.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.07531612754996053,
+                  0.10844191562935249,
+                  0.11151945621478047,
+                  0.14666257810658373,
+                  0.21159916501742976,
+                  0.2825975342637641,
+                  0.34773093300766955,
+                  0.41768342767101285,
+                  0.5133472611698361,
+                  0.6956519286982298,
+                  0.8264844568746781,
+                  1.1260397525235266,
+                  1.3934691793834282,
+                  1.9874383331223848,
+                  2.356159611549851,
+                  2.923029666785689,
+                  3.618421659991433
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  29.663514379188143,
+                  31.218940569690968,
+                  28.725444687909736,
+                  27.088072245291347,
+                  30.557940658296573,
+                  31.137277059291932,
+                  29.38679056899254,
+                  25.821209970049388,
+                  28.591706676410062,
+                  27.529794001954112,
+                  27.737689563466024,
+                  26.324457627568847,
+                  22.620602283294986,
+                  23.323475559553493,
+                  21.975271176350695,
+                  18.183532847682148,
+                  16.572486774163
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.005551230319841675,
+                  0.012817144195252598,
+                  0.022113410649317076,
+                  0.03600437501945578,
+                  0.04710733396242063,
+                  0.06383498335410048,
+                  0.083859022438553,
+                  0.11678900492016102,
+                  0.1564162045658749,
+                  0.1960638789075968,
+                  0.2846675410477089,
+                  0.3126486394335157,
+                  0.5067603092375935,
+                  0.5538520404060521,
+                  0.7398397269649242,
+                  1.0430576306460226
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H1_run_5": {
+      "metadata": {
+        "name": "H1_run_5",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 22.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.10396790718170579,
+                  0.12465237790195186,
+                  0.16980513203713157,
+                  0.2180493254515713,
+                  0.2837776348987253,
+                  0.35496178449629673,
+                  0.4151867352458727,
+                  0.6255709545594823,
+                  0.7848654429352762,
+                  0.9503034599404145,
+                  1.1659106080651898,
+                  1.6473714379091406,
+                  1.8921922272617948,
+                  2.624448090133187,
+                  3.3402956411361706,
+                  4.821390611830739,
+                  5.5476150546375145
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  25.79515031314529,
+                  26.55548048290399,
+                  24.914550300498817,
+                  23.820282870498684,
+                  24.823644877294253,
+                  24.782048202457496,
+                  24.995385626303328,
+                  24.571893814015365,
+                  23.906009458789192,
+                  22.447408766340427,
+                  21.95446519778803,
+                  20.833153501851093,
+                  17.88073962907964,
+                  18.025552452839086,
+                  14.536700470000891,
+                  11.537834388910067,
+                  7.516025215675153
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.007890128490826454,
+                  0.01897799896470824,
+                  0.027316303782978873,
+                  0.045302205202193545,
+                  0.07086791906900633,
+                  0.09549914791360986,
+                  0.13748190505108732,
+                  0.15682634221940792,
+                  0.24109544469844227,
+                  0.31949545012782316,
+                  0.3541504196915426,
+                  0.4692994120507611,
+                  0.6828751529658326,
+                  0.928454210084467,
+                  0.9890487035032319,
+                  1.4252480716242468
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H1_run_6": {
+      "metadata": {
+        "name": "H1_run_6",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 22.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.17635851262132438,
+                  0.24404357599204465,
+                  0.2781096524123249,
+                  0.3691115747655323,
+                  0.47938927571959983,
+                  0.615410630011204,
+                  0.7903688586736257,
+                  1.0575231069256037,
+                  1.269814948179427,
+                  1.7212732696476187,
+                  2.0997438866793785,
+                  2.738540539942256,
+                  3.2619646813789864,
+                  4.10474464711985,
+                  5.050621017910452,
+                  5.461145011279776,
+                  5.730218276960988
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  20.922131283698867,
+                  21.181712236790368,
+                  20.120356526460746,
+                  19.299819648454747,
+                  21.96568294799258,
+                  16.919042313559874,
+                  17.71218797975499,
+                  20.270653177934374,
+                  16.59235523143934,
+                  15.684365332944752,
+                  16.096206736101298,
+                  12.530146337140112,
+                  9.67676459032084,
+                  6.398973706761055,
+                  2.2231295679351644,
+                  2.8983113838542268e-05,
+                  1.3598710647136792e-14
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.375,
+                  2.75,
+                  4.125,
+                  5.5,
+                  6.875,
+                  8.25,
+                  9.625,
+                  11.0,
+                  12.375,
+                  13.75,
+                  15.125,
+                  16.5,
+                  17.875,
+                  19.25,
+                  20.625,
+                  22.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.012404013291410868,
+                  0.02972304461062522,
+                  0.0542794380501195,
+                  0.07939822457458064,
+                  0.12085858970819711,
+                  0.16386907694821956,
+                  0.2311153528556388,
+                  0.2668005809615736,
+                  0.39704899106965513,
+                  0.49441720108844134,
+                  0.7148671755705354,
+                  0.9195822156127518,
+                  1.0979905644050847,
+                  1.2842828909585677,
+                  1.4806960504049864,
+                  1.52394230468924
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H2_run_1": {
+      "metadata": {
+        "name": "H2_run_1",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 26.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.19915523723265896,
+                  0.2214995120445354,
+                  0.26810152969981377,
+                  0.3083139453204044,
+                  0.42080800658121875,
+                  0.49366857724462193,
+                  0.5606210827116119,
+                  0.7701483671087447,
+                  0.9136764251655277,
+                  1.2001853457862974,
+                  1.4316822734177177,
+                  1.5269427135142883,
+                  1.930386053352243,
+                  2.5154080885690973,
+                  3.060781477537011,
+                  3.5585034293909437,
+                  3.7370279578353736
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  26.63312608627919,
+                  25.575251331773693,
+                  28.207594523030174,
+                  23.805788920812862,
+                  22.641448960638677,
+                  24.62251095204813,
+                  23.48541644657442,
+                  23.664639700171456,
+                  23.40761796475342,
+                  23.46617610927047,
+                  20.711545259323675,
+                  19.706184358326894,
+                  17.466052914539507,
+                  15.832205268121488,
+                  14.51867986737413,
+                  10.73599844317711,
+                  7.356124369546179
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.01698723367273552,
+                  0.034528543037280264,
+                  0.05832943727029441,
+                  0.07052813851942372,
+                  0.12729280310980487,
+                  0.15040120942585447,
+                  0.22680340558927556,
+                  0.26218053588791446,
+                  0.35272848686524705,
+                  0.39700975822305506,
+                  0.540076054942302,
+                  0.6582864829334132,
+                  0.7808458784372296,
+                  1.0141619200297534,
+                  1.222678338596355,
+                  1.3585241314679142
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H2_run_2": {
+      "metadata": {
+        "name": "H2_run_2",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 26.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.12402723231986312,
+                  0.14520650566038198,
+                  0.17585808374272377,
+                  0.22070904002000694,
+                  0.26363718304692035,
+                  0.3205660073670725,
+                  0.3790806499658096,
+                  0.47333011401374175,
+                  0.48245300558637777,
+                  0.6881939495453241,
+                  0.8662333791235466,
+                  0.9739580770489167,
+                  1.0853856216574511,
+                  1.3174052141445478,
+                  1.738675866839321,
+                  1.9975512182060553,
+                  2.2111327524623996
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  9.855555339983628,
+                  9.843731706430075,
+                  8.963233386765033,
+                  9.218122936161555,
+                  9.564661392289855,
+                  8.201258571643082,
+                  8.606116429539806,
+                  8.302210941317561,
+                  7.490837481033858,
+                  7.606246409097053,
+                  5.53324812863991,
+                  5.931215627128897,
+                  4.579607397898297,
+                  3.813854961580789,
+                  2.8477640869388696,
+                  1.3196568083416422,
+                  0.17673651736494592
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.00962441467394534,
+                  0.018564860349193652,
+                  0.031097921153867183,
+                  0.048652808533598796,
+                  0.07318753146270399,
+                  0.08631655976892931,
+                  0.13370127667224505,
+                  0.16509210585398262,
+                  0.21748154517567403,
+                  0.2583893352367881,
+                  0.3093040788003755,
+                  0.4107700562637462,
+                  0.42937238225727437,
+                  0.5699827539239725,
+                  0.6487449202073706,
+                  0.6916777238348196
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H2_run_3": {
+      "metadata": {
+        "name": "H2_run_3",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 26.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.1790362002643884,
+                  0.2368449683441512,
+                  0.264143965928418,
+                  0.3333907606615358,
+                  0.3820951205932931,
+                  0.4719400173291239,
+                  0.5411388011227213,
+                  0.6750510781580784,
+                  0.800293335923385,
+                  0.980652267874158,
+                  1.2051561861769613,
+                  1.3549881715302268,
+                  1.8633172665207272,
+                  2.0918075413594392,
+                  2.5038825567109977,
+                  2.807141986598022,
+                  3.829180579276311
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  19.39510545131715,
+                  19.594931235861093,
+                  18.307459909487985,
+                  18.332080170480488,
+                  16.4518281822643,
+                  18.063039932526475,
+                  18.672597968714033,
+                  16.323031849590542,
+                  16.728548550923485,
+                  14.650186430287478,
+                  13.674359399059957,
+                  13.084887788781021,
+                  12.0837145356448,
+                  10.110807080192524,
+                  8.613984365573458,
+                  5.8897415366115515,
+                  3.0508063785437884
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.01511396874710057,
+                  0.030779189922802888,
+                  0.053315070699176105,
+                  0.08216766512367854,
+                  0.11086312423410068,
+                  0.14105085039554408,
+                  0.20567188974238385,
+                  0.2392998233302851,
+                  0.2772849452223901,
+                  0.39095944366898716,
+                  0.4774085189718055,
+                  0.5600471798251024,
+                  0.7453262067569507,
+                  0.8356071470303518,
+                  0.9994936256759296,
+                  1.2660385297809988
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H2_run_4": {
+      "metadata": {
+        "name": "H2_run_4",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 26.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0835203497769678,
+                  0.10740163304374875,
+                  0.11650104693330116,
+                  0.14830691290046774,
+                  0.18081156354746056,
+                  0.1873781196915766,
+                  0.2587806918025807,
+                  0.3352183859170612,
+                  0.3881695508365107,
+                  0.45069298768213856,
+                  0.551477349586228,
+                  0.7195558455498606,
+                  0.788729805876776,
+                  1.0739453269623347,
+                  1.184605650161392,
+                  1.4154704092219883,
+                  1.7193852614141107
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  20.69493467132233,
+                  23.568011287927582,
+                  18.286677868604606,
+                  19.695761517837386,
+                  16.80736140757931,
+                  21.381542698912877,
+                  19.79378381194735,
+                  19.988206200429076,
+                  19.766237872326435,
+                  19.720076372490627,
+                  18.833434714016192,
+                  18.527037168020943,
+                  17.854911275523566,
+                  15.033503907908582,
+                  14.867027543127193,
+                  14.175805271524078,
+                  12.740229095369097
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.006278825818225592,
+                  0.013545229897343277,
+                  0.0193015293953711,
+                  0.03309902561121606,
+                  0.04746442416746223,
+                  0.05962835596588367,
+                  0.0847324165415086,
+                  0.11585458516670055,
+                  0.13241808119054982,
+                  0.19486083259443063,
+                  0.2234410408839092,
+                  0.2754959549974224,
+                  0.34745635280181836,
+                  0.4207223220372944,
+                  0.5212103132810356,
+                  0.6593943155682023
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H2_run_5": {
+      "metadata": {
+        "name": "H2_run_5",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 26.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.07733405610190934,
+                  0.09327241581256848,
+                  0.11408513323010712,
+                  0.14883132688275352,
+                  0.17324983951034173,
+                  0.21480103690453173,
+                  0.27896934868103074,
+                  0.2971154338601941,
+                  0.3310448338443265,
+                  0.4629763116756596,
+                  0.4715852297276033,
+                  0.5675084842068625,
+                  0.7440442250045081,
+                  0.8500246074065845,
+                  1.037592487521709,
+                  1.2996280467271195,
+                  1.474438617389235
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  13.422848152256806,
+                  14.79868024500182,
+                  14.59370793881024,
+                  12.221316589601521,
+                  13.964639109230113,
+                  13.435361095770086,
+                  13.37413742577706,
+                  13.217706425127862,
+                  12.296575500069913,
+                  11.805452934805421,
+                  11.977810788495256,
+                  10.53217908472643,
+                  10.039857154062133,
+                  9.857848114322698,
+                  8.9181072708593,
+                  8.10289372877148,
+                  6.363813937092437
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.005580041694051602,
+                  0.012784172246620658,
+                  0.018981201252423568,
+                  0.03233599254840854,
+                  0.04441575484750372,
+                  0.0551069179006312,
+                  0.07194551532504787,
+                  0.0935794171957079,
+                  0.13445214689772908,
+                  0.1544297371933923,
+                  0.1920776494471424,
+                  0.24031622257631893,
+                  0.2775856751107215,
+                  0.4003985876634956,
+                  0.5187357109778077,
+                  0.5559604551995507
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H2_run_6": {
+      "metadata": {
+        "name": "H2_run_6",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 26.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.1415416265578403,
+                  0.1720090956547582,
+                  0.21115805351190156,
+                  0.24240903293034227,
+                  0.34249609765010774,
+                  0.34445452400736165,
+                  0.4523869400487308,
+                  0.5785498749542146,
+                  0.5983244965263317,
+                  0.8127922702576852,
+                  1.0743711348919633,
+                  1.2030440024324753,
+                  1.4075855031454882,
+                  1.7528422196630555,
+                  2.052312182476693,
+                  2.4128205269539684,
+                  3.2272538421980843
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  27.17979881966885,
+                  27.71263607273659,
+                  27.50554610057052,
+                  28.613706300918057,
+                  27.131633460536992,
+                  23.566134619067395,
+                  24.330142327882058,
+                  26.079676232812727,
+                  25.25203745279238,
+                  25.403813334089232,
+                  24.35487735159898,
+                  22.116289705583007,
+                  21.924737224920076,
+                  19.771872818519785,
+                  18.637993694255126,
+                  15.693243737463222,
+                  13.218559303535558
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.625,
+                  3.25,
+                  4.875,
+                  6.5,
+                  8.125,
+                  9.75,
+                  11.375,
+                  13.0,
+                  14.625,
+                  16.25,
+                  17.875,
+                  19.5,
+                  21.125,
+                  22.75,
+                  24.375,
+                  26.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.011546706294646426,
+                  0.026722611260844638,
+                  0.040835875531295224,
+                  0.059187330739404284,
+                  0.0787113874050974,
+                  0.10084709086155776,
+                  0.1464995636526984,
+                  0.19139781135789405,
+                  0.2283371463385889,
+                  0.3123393251897276,
+                  0.36569363257751675,
+                  0.45813779563188406,
+                  0.5450216368549865,
+                  0.7031501461887538,
+                  0.8073095531583354,
+                  1.0542229511316459
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H3_run_1": {
+      "metadata": {
+        "name": "H3_run_1",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 20.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.08537120361336781,
+                  0.11225048626094611,
+                  0.1330383989605215,
+                  0.20501541526310418,
+                  0.22739023572544162,
+                  0.3033594324771623,
+                  0.3593952525548653,
+                  0.48969903331951536,
+                  0.5714660186987809,
+                  0.7974855045075371,
+                  1.0361062818678026,
+                  1.3432044699826486,
+                  1.4705394316023135,
+                  2.2118838848282967,
+                  2.454751206657311,
+                  2.9030813547057854,
+                  3.5872183830551743
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  10.776194982232289,
+                  9.72295265469488,
+                  10.93487470623925,
+                  10.498973958641681,
+                  10.43748168524343,
+                  9.629380665132759,
+                  10.379727295342319,
+                  9.093841403261278,
+                  9.111270050620478,
+                  8.555092268604854,
+                  7.018148649080033,
+                  7.13270315408627,
+                  5.986890988692472,
+                  3.9574713854684522,
+                  2.116522075625177,
+                  0.35632260774346597,
+                  6.043243214641981e-06
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.006071796187633659,
+                  0.012374610250715954,
+                  0.022830126497018845,
+                  0.03566246012613217,
+                  0.05219615345237843,
+                  0.07133661385574444,
+                  0.08822695483958466,
+                  0.14244077498124907,
+                  0.1572185180658508,
+                  0.21254825053474938,
+                  0.23999005149574518,
+                  0.34759278765550944,
+                  0.4774280428323358,
+                  0.5969953820031744,
+                  0.7547577735273865,
+                  0.7240429206454776
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H3_run_2": {
+      "metadata": {
+        "name": "H3_run_2",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 20.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.16221178953753593,
+                  0.19333670892062554,
+                  0.28236771842822106,
+                  0.33342636567631706,
+                  0.44314374293684233,
+                  0.545970589631075,
+                  0.6643070599605169,
+                  0.9254140152562207,
+                  1.1535476018334228,
+                  1.441423784320204,
+                  1.8570490363156418,
+                  2.23561296137958,
+                  2.2855136557169735,
+                  2.470125252087575,
+                  2.4524198239947954,
+                  2.366015059478566,
+                  2.270291108361259
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  7.674112035415179,
+                  6.268277149182858,
+                  7.130193323092939,
+                  7.221379684135874,
+                  6.65776874514684,
+                  5.907366630863038,
+                  6.236511576183042,
+                  4.827487012781242,
+                  4.354546847389615,
+                  3.1778125681002822,
+                  2.07159581821853,
+                  0.6616285831904187,
+                  0.0015990766132900022,
+                  1.4383086658590913e-07,
+                  1.2219350974880757e-11,
+                  1.164434160327584e-15,
+                  9.86987301805471e-20
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.010691214036668213,
+                  0.02522135320683423,
+                  0.046930662335316016,
+                  0.06696175949071974,
+                  0.09545389943124909,
+                  0.1274404308603644,
+                  0.17094948216299022,
+                  0.21628565003463984,
+                  0.2879358070873757,
+                  0.3613407168988063,
+                  0.46684815488928905,
+                  0.5839241483530245,
+                  0.49817813614540624,
+                  0.5375154171868286,
+                  0.4538646703517724,
+                  0.5375884463707596
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H3_run_3": {
+      "metadata": {
+        "name": "H3_run_3",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 20.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.04078532871661148,
+                  0.051386147842709104,
+                  0.06662378682302844,
+                  0.0874138765533475,
+                  0.11701850604916404,
+                  0.13769826178485842,
+                  0.1884221032498628,
+                  0.24275970658982934,
+                  0.3148272649152049,
+                  0.3892618319198672,
+                  0.48753579723658785,
+                  0.6329024968690493,
+                  0.801054817363064,
+                  1.031259127978461,
+                  1.4132701201014712,
+                  1.6085798499466122,
+                  2.201632677904514
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  29.40460739005604,
+                  30.35229758262271,
+                  29.15810034664072,
+                  25.041483891029877,
+                  29.816859531068264,
+                  28.445004350682346,
+                  28.504404408852153,
+                  30.029615633577833,
+                  29.697533126913505,
+                  28.806609479890913,
+                  26.065625496720134,
+                  25.01471617154445,
+                  26.759017300687017,
+                  27.37038422065012,
+                  25.813316057091523,
+                  25.058323581167134,
+                  22.11242030714901
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.0027995159909859515,
+                  0.006136325307668525,
+                  0.011676631927477777,
+                  0.016225604998118363,
+                  0.02733016370408212,
+                  0.03432812118022702,
+                  0.04655754587536163,
+                  0.06264670469319528,
+                  0.08316126381834135,
+                  0.10778284462265186,
+                  0.14099216021427027,
+                  0.18374647233443744,
+                  0.2551767015580526,
+                  0.3268874570128472,
+                  0.3835071126505661,
+                  0.5090469811784042
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H3_run_4": {
+      "metadata": {
+        "name": "H3_run_4",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 20.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.1069055912590085,
+                  0.14117810532127884,
+                  0.17679115076013338,
+                  0.22263861136663626,
+                  0.2933847881371029,
+                  0.39083876001034457,
+                  0.4525167190222912,
+                  0.5901662742011582,
+                  0.7858602848344258,
+                  0.9658244715623768,
+                  1.2344629445660087,
+                  1.6434651016524513,
+                  2.045862487448901,
+                  2.675628332750524,
+                  3.708250829633882,
+                  4.027234333743693,
+                  4.727191673054399
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  16.89343232618502,
+                  17.407473911006573,
+                  16.5815303676178,
+                  17.10315854771567,
+                  15.74015013380403,
+                  16.006632282704285,
+                  15.450385674024037,
+                  14.459190664389132,
+                  14.208523536294697,
+                  13.919605993149196,
+                  12.71880423558653,
+                  12.116334198787484,
+                  9.440690020574266,
+                  8.708444101417008,
+                  5.793775932018033,
+                  3.095219523357565,
+                  0.012621961564636726
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.007393769242003626,
+                  0.016395598478792316,
+                  0.028888946257167127,
+                  0.04058886727311296,
+                  0.06793703963617702,
+                  0.08952501897366612,
+                  0.12027424950351082,
+                  0.16476779304531855,
+                  0.1888845671535681,
+                  0.31121976253591893,
+                  0.3504280464419598,
+                  0.5028782509623123,
+                  0.5618856895879519,
+                  0.7663602314711024,
+                  1.004616232138971,
+                  1.2947453736327827
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H3_run_5": {
+      "metadata": {
+        "name": "H3_run_5",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 20.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.18276908625063204,
+                  0.245190158929736,
+                  0.3221211079644069,
+                  0.402932642569586,
+                  0.44574808826287116,
+                  0.5904590584511467,
+                  0.8063024179869168,
+                  0.957169995977425,
+                  1.425573564508894,
+                  1.5670830955771158,
+                  2.1213627441488345,
+                  2.726435352485801,
+                  3.4708934581227484,
+                  4.070694710863075,
+                  4.351272109652125,
+                  3.549226592955625,
+                  3.391941732056502
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  13.316675093235773,
+                  11.710149256516194,
+                  13.546973358733263,
+                  10.78609575718733,
+                  12.131413123247814,
+                  11.255234912172215,
+                  11.397979128797983,
+                  9.479858821499134,
+                  8.77251999658064,
+                  8.34797101664631,
+                  6.461447103830465,
+                  4.964372092191718,
+                  2.330703494891259,
+                  0.03603216063257249,
+                  5.7722121112400645e-09,
+                  6.528338277695299e-16,
+                  9.121350940183494e-23
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.011067045849122936,
+                  0.028195028870615417,
+                  0.05118768536503438,
+                  0.06393697106819644,
+                  0.10378676212797512,
+                  0.1601850711235629,
+                  0.19279602200031498,
+                  0.3108915242636008,
+                  0.3560415759857073,
+                  0.5023888039947361,
+                  0.6039739031537539,
+                  0.7641656988680631,
+                  0.9480344527815721,
+                  0.9551578949096565,
+                  0.8533867515795185,
+                  1.0762095332086807
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H3_run_6": {
+      "metadata": {
+        "name": "H3_run_6",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 20.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.10208280773723098,
+                  0.14139040787024135,
+                  0.14937407882987697,
+                  0.21476354799435213,
+                  0.2702302188248553,
+                  0.3861711000173367,
+                  0.4081584242647319,
+                  0.5519775643283508,
+                  0.716581511787029,
+                  0.934250111638057,
+                  1.1563910135519435,
+                  1.4901014346693018,
+                  1.718934122629463,
+                  2.3842552426147754,
+                  2.7639439988221843,
+                  2.915494426653871,
+                  2.9504864971676352
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  9.294162401524021,
+                  8.941538036797343,
+                  8.251367785368627,
+                  8.129624187984978,
+                  7.9032025254313645,
+                  8.479763626536906,
+                  8.34871683108995,
+                  7.46345603799589,
+                  7.199236720979026,
+                  6.4634943604898,
+                  5.024141120855201,
+                  4.370363728725436,
+                  3.3491574777954836,
+                  1.6056427665638384,
+                  0.07820355854633725,
+                  2.058867002205901e-06,
+                  3.5017545267344306e-11
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.25,
+                  2.5,
+                  3.75,
+                  5.0,
+                  6.25,
+                  7.5,
+                  8.75,
+                  10.0,
+                  11.25,
+                  12.5,
+                  13.75,
+                  15.0,
+                  16.25,
+                  17.5,
+                  18.75,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.006754923143611324,
+                  0.01475607120049028,
+                  0.02449438465512842,
+                  0.040946574315808594,
+                  0.05833976228250943,
+                  0.08676010632980616,
+                  0.10616822388407016,
+                  0.16120478900910298,
+                  0.2087313489336822,
+                  0.2452574633534983,
+                  0.35480568782501004,
+                  0.38308142835736364,
+                  0.5084895670298883,
+                  0.7139364687023927,
+                  0.6587693531387465,
+                  0.6299705199512866
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H4_run_1": {
+      "metadata": {
+        "name": "H4_run_1",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 25.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.17824655644805912,
+                  0.2366774339704903,
+                  0.27408042726624665,
+                  0.3226729560987803,
+                  0.43039347638128,
+                  0.45814343730586427,
+                  0.5727514236769468,
+                  0.6940513582936162,
+                  0.9154508781038619,
+                  1.1043815276515916,
+                  1.2512858414578698,
+                  1.4584685194707567,
+                  1.7931375899443562,
+                  2.095140107714698,
+                  2.2514960002189626,
+                  2.268832752901392,
+                  2.411769673660167
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  9.679337224876637,
+                  8.630879384723347,
+                  9.53841246420992,
+                  9.196266830643454,
+                  8.836104565337896,
+                  9.324985277046478,
+                  7.823669670666152,
+                  7.49363808832228,
+                  6.918235133444375,
+                  5.919285027485073,
+                  4.67521546525066,
+                  3.741808074792699,
+                  2.3599428658010217,
+                  1.0036292079433453,
+                  0.03789302910895084,
+                  6.871902501950537e-05,
+                  9.944969790020963e-08
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.013536307707292828,
+                  0.029681983676852434,
+                  0.045981208227148136,
+                  0.07176011006014228,
+                  0.10073104978915848,
+                  0.13875988690883376,
+                  0.15550987155726775,
+                  0.22937061356606933,
+                  0.2872087127319497,
+                  0.3491610073241267,
+                  0.4517235039022189,
+                  0.583954903926072,
+                  0.6332922339322287,
+                  0.76784938346398,
+                  0.6998902965695905,
+                  0.7275055920191345
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H4_run_2": {
+      "metadata": {
+        "name": "H4_run_2",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 25.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.08224792939576218,
+                  0.10822258387789263,
+                  0.12735255749014085,
+                  0.15622308184630998,
+                  0.1710684196457588,
+                  0.2147005293878541,
+                  0.3040019905657548,
+                  0.327370403806688,
+                  0.3793892778759881,
+                  0.5173063114185539,
+                  0.5839655536283842,
+                  0.7385761547172761,
+                  0.9631171926836306,
+                  1.0371200728304597,
+                  1.4476796507657195,
+                  1.6209093314771916,
+                  1.9901918434532262
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  19.62807528137475,
+                  20.469128552649057,
+                  19.946429357252455,
+                  21.264110752907104,
+                  19.861720811468913,
+                  19.862540688320877,
+                  17.583309333907433,
+                  20.1089810705486,
+                  17.712626480371387,
+                  17.74113332416488,
+                  17.971278145278614,
+                  16.75459887433228,
+                  15.85642895119734,
+                  14.550906109299486,
+                  14.92324577276391,
+                  12.681468735478834,
+                  11.861810814637687
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.0067609958991378715,
+                  0.01451340852778131,
+                  0.022799311068616927,
+                  0.03384031008327129,
+                  0.052272513423229035,
+                  0.06891893051595897,
+                  0.09712026853508894,
+                  0.10862179423915677,
+                  0.14152259415432059,
+                  0.16999128134428165,
+                  0.21938085618314163,
+                  0.2902308875558323,
+                  0.36054211490180155,
+                  0.4340734633821774,
+                  0.5227324214828356,
+                  0.668457666155207
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H4_run_3": {
+      "metadata": {
+        "name": "H4_run_3",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 25.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.11066597372092218,
+                  0.13239231819313443,
+                  0.1594654163332153,
+                  0.20886169109060498,
+                  0.24699344595409137,
+                  0.3099396410939974,
+                  0.3516293143580219,
+                  0.4625232524832939,
+                  0.5638137141089626,
+                  0.7136827144402853,
+                  0.828346732650438,
+                  0.9888078839575907,
+                  1.2996047384658813,
+                  1.5544335954109694,
+                  1.8292485256877755,
+                  2.2155648395022474,
+                  3.0919748766261876
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  27.364508738934905,
+                  27.07549641279921,
+                  29.242747546594806,
+                  28.211128841883774,
+                  27.601596414110748,
+                  27.631492068979526,
+                  26.625343546158394,
+                  28.815115861436276,
+                  27.027468038913334,
+                  26.232893968190286,
+                  26.088975358618807,
+                  23.600120676169364,
+                  20.633584388810238,
+                  19.326005575167006,
+                  19.82631450870197,
+                  17.727325984327674,
+                  16.549376280855743
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.008571147268477625,
+                  0.018878894342054028,
+                  0.029800197412395042,
+                  0.04672347000037484,
+                  0.06667369534773135,
+                  0.08437492665797294,
+                  0.10090485527158281,
+                  0.15832696597664048,
+                  0.1987627296604061,
+                  0.24033348436884033,
+                  0.2817956586400845,
+                  0.38291790340758386,
+                  0.45970986619062204,
+                  0.5763815078347989,
+                  0.631453352188566,
+                  0.8990530408850925
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H4_run_4": {
+      "metadata": {
+        "name": "H4_run_4",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 25.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.17668708073610662,
+                  0.23234243070663443,
+                  0.27518212594065716,
+                  0.3325991785270879,
+                  0.37723985939985394,
+                  0.5057656115701673,
+                  0.6322518080665303,
+                  0.6852005645845505,
+                  0.8969096889568856,
+                  1.118664427095735,
+                  1.3540721502941016,
+                  1.5565107710215684,
+                  1.8253136173486957,
+                  2.2497850674514437,
+                  3.0850067218701125,
+                  3.8296110039333273,
+                  4.439486243153916
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  26.900729638117017,
+                  27.50744821215899,
+                  24.51113189818918,
+                  27.913022998594677,
+                  23.997932770619766,
+                  29.303324371827678,
+                  25.007367189157296,
+                  22.227407538357976,
+                  23.807454659553482,
+                  21.529469521006558,
+                  22.91237463884534,
+                  18.437441361901364,
+                  17.71349123479689,
+                  17.95441582226131,
+                  15.140901743679432,
+                  12.186611338665742,
+                  9.067178796910497
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.012607555415451065,
+                  0.02908216417461997,
+                  0.04882185435737643,
+                  0.07305723300437035,
+                  0.1064065847114172,
+                  0.13499977242084024,
+                  0.1862993741606916,
+                  0.22881474196240337,
+                  0.2989405882219106,
+                  0.4200766920331317,
+                  0.47107366943567547,
+                  0.6825111896654641,
+                  0.6851050408617786,
+                  0.8937565839153465,
+                  1.1496445919444698,
+                  1.414888576759687
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H4_run_5": {
+      "metadata": {
+        "name": "H4_run_5",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 25.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.18141867058198774,
+                  0.23626027925319115,
+                  0.27718134594622873,
+                  0.29823445478519767,
+                  0.43671697635017026,
+                  0.49308594946905304,
+                  0.6552391713020075,
+                  0.6524937871659099,
+                  0.8405737223023431,
+                  0.9932915034813767,
+                  1.2399897859276052,
+                  1.6780974083569407,
+                  2.1681362890965343,
+                  2.3926353565526783,
+                  3.010275544032852,
+                  3.810859529666801,
+                  4.479878627646578
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  24.753834001382977,
+                  24.23747131732043,
+                  23.400006078384965,
+                  22.947995390532547,
+                  25.364097053911358,
+                  21.551546162924602,
+                  21.928215229498228,
+                  22.6076672688033,
+                  20.910871452878254,
+                  18.214942790531005,
+                  21.85611272681796,
+                  17.999032914818063,
+                  15.658851324615531,
+                  15.182006004212338,
+                  13.83065562010159,
+                  8.971494490575695,
+                  5.795255983051755
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.013825040820793697,
+                  0.03228857133868958,
+                  0.049097881823856875,
+                  0.07847631099838394,
+                  0.1096269193875375,
+                  0.1439225129474042,
+                  0.1869642130463537,
+                  0.2633183635850713,
+                  0.31872541488860634,
+                  0.3991799892688051,
+                  0.4800632679531033,
+                  0.6164333010083944,
+                  0.7529013577228381,
+                  1.0002583021441027,
+                  1.1396586828954014,
+                  1.5006189626589757
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "H4_run_6": {
+      "metadata": {
+        "name": "H4_run_6",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 25.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.06371729272300353,
+                  0.0749034156700221,
+                  0.0930893337428251,
+                  0.11241652804996927,
+                  0.142848724897155,
+                  0.16797348566316603,
+                  0.20917411122922572,
+                  0.23647550904895898,
+                  0.3215870149146536,
+                  0.3668801760287643,
+                  0.47417495026161044,
+                  0.6117814807460008,
+                  0.7375846318581629,
+                  0.8320527148049619,
+                  1.0753474904855402,
+                  1.110536389560036,
+                  1.7137862550082044
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  13.780259741012467,
+                  13.953759597096527,
+                  13.167203777291627,
+                  13.15808695589387,
+                  11.728277566723724,
+                  13.28280606285403,
+                  12.943843678548314,
+                  13.61304924264916,
+                  12.501125605451271,
+                  12.141073240707048,
+                  12.297023491148567,
+                  11.033925822127324,
+                  11.050483080752732,
+                  9.361514273826007,
+                  9.95722475570897,
+                  8.75294903301085,
+                  7.101455989306972
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5625,
+                  3.125,
+                  4.6875,
+                  6.25,
+                  7.8125,
+                  9.375,
+                  10.9375,
+                  12.5,
+                  14.0625,
+                  15.625,
+                  17.1875,
+                  18.75,
+                  20.3125,
+                  21.875,
+                  23.4375,
+                  25.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.0043990079043408955,
+                  0.011032412956319954,
+                  0.01833957601609321,
+                  0.024568062787361643,
+                  0.036180850097556914,
+                  0.054713839977388705,
+                  0.06705606231081784,
+                  0.08444308916456021,
+                  0.10666767289697736,
+                  0.13469357248821195,
+                  0.17028401949828612,
+                  0.18969342829601749,
+                  0.255361892345854,
+                  0.3142106613279697,
+                  0.39406999698262973,
+                  0.5074402894417975
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "T_run_1": {
+      "metadata": {
+        "name": "T_run_1",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 24.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.1,
+                  0.12614755018363583,
+                  0.1565995145919891,
+                  0.1949379493525317,
+                  0.267729002658359,
+                  0.3252122214580606,
+                  0.3781439895234532,
+                  0.4562249564098323,
+                  0.5936717534892163,
+                  0.6849149972314593,
+                  0.9594176095316128,
+                  1.1317804079999894,
+                  1.3203545868938062,
+                  1.5660148062701522,
+                  2.168050603398912,
+                  2.6982587593009018,
+                  3.3642553664731794
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  12.0,
+                  11.999338959910308,
+                  12.244362867277436,
+                  11.403536198901994,
+                  10.692130031107505,
+                  12.326938300162704,
+                  10.855244367752773,
+                  10.875413137163754,
+                  9.687707379003616,
+                  9.484948859549702,
+                  8.08749064647818,
+                  7.693515296842341,
+                  6.475951861594035,
+                  5.512942488869544,
+                  4.22803761315033,
+                  1.927935046685486,
+                  0.11682856293301812
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.007801200299770246,
+                  0.01513822182371612,
+                  0.030952698533515278,
+                  0.046996640798693666,
+                  0.07026176062402134,
+                  0.08588421590830121,
+                  0.12615377748117046,
+                  0.1499774509665686,
+                  0.19235021050570225,
+                  0.26470430511131193,
+                  0.3348841559211413,
+                  0.4101461833927853,
+                  0.4729907449497509,
+                  0.6136078807822186,
+                  0.7665825683594182,
+                  0.8635731759037768
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "T_run_2": {
+      "metadata": {
+        "name": "T_run_2",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 24.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.09,
+                  0.1076677101395564,
+                  0.136690616654695,
+                  0.168944200913511,
+                  0.21608498821714542,
+                  0.28142136412298946,
+                  0.3052695197116658,
+                  0.4392022893747651,
+                  0.5780740825620365,
+                  0.6642797410109677,
+                  0.8374572776466142,
+                  1.0254729421133562,
+                  1.3112355719469935,
+                  1.6125796686159115,
+                  2.100495382196487,
+                  2.6747530372295287,
+                  2.7462497132110006
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  14.0,
+                  14.269405121430632,
+                  14.038624619734657,
+                  14.188361596663848,
+                  14.638731637562989,
+                  12.445178047081324,
+                  12.79091942178939,
+                  13.032252901610635,
+                  13.532555820884971,
+                  11.919902852451505,
+                  12.62653069917193,
+                  9.497312569131909,
+                  9.219221642203651,
+                  7.901878767243198,
+                  6.3966226432485085,
+                  4.730731049482137,
+                  2.453320016482609
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.0069226707752727875,
+                  0.01641566443126868,
+                  0.027720679377105116,
+                  0.04270642681782461,
+                  0.05481590037152214,
+                  0.07544710922459613,
+                  0.1131473484800502,
+                  0.13649708139885752,
+                  0.2021056630667907,
+                  0.221792465124208,
+                  0.27602859379015315,
+                  0.3658341814805015,
+                  0.47923486461912423,
+                  0.5883562897371539,
+                  0.7256406253262971,
+                  0.8965278766057817
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "T_run_3": {
+      "metadata": {
+        "name": "T_run_3",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 24.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.05,
+                  0.06790594920637741,
+                  0.08194105907454945,
+                  0.09788653632838386,
+                  0.12012103206964266,
+                  0.1492767244499586,
+                  0.18988816354151095,
+                  0.2369364420232731,
+                  0.2931739337423224,
+                  0.32544876434725034,
+                  0.4633834158978887,
+                  0.5163664721906949,
+                  0.6673353984285266,
+                  0.9302088551154623,
+                  1.1329164203632849,
+                  1.5542636536614656,
+                  1.7178416335030158
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  26.0,
+                  26.254355733008445,
+                  27.07421508595275,
+                  29.970876405056636,
+                  27.292606951607418,
+                  24.639952164940507,
+                  23.502692004462045,
+                  27.89050343076314,
+                  26.36159748651368,
+                  23.106608871174608,
+                  25.57678258967583,
+                  22.389697282171294,
+                  21.519145598267716,
+                  22.726086084277757,
+                  22.370744204646616,
+                  20.386153591913622,
+                  16.93891582145866
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.004293780252011958,
+                  0.008543237807531955,
+                  0.014972741791538947,
+                  0.02329925645973663,
+                  0.03338874238550583,
+                  0.039770957779164375,
+                  0.054499553013886086,
+                  0.07954921535703754,
+                  0.10594573606806891,
+                  0.12472783827181379,
+                  0.17644175238904564,
+                  0.2111659500668126,
+                  0.29991756198851066,
+                  0.36191548690977193,
+                  0.45303170727208825,
+                  0.566038335458767
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "T_run_4": {
+      "metadata": {
+        "name": "T_run_4",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 24.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.18,
+                  0.24448520110357,
+                  0.28166226268259004,
+                  0.33475497971442647,
+                  0.4079619450004385,
+                  0.5185276843289935,
+                  0.5659350072630998,
+                  0.8103565700499138,
+                  1.033701271274548,
+                  1.2216216920775913,
+                  1.4485332936355206,
+                  1.4184423124840018,
+                  1.6745283283308237,
+                  1.762547759102541,
+                  1.607692620783839,
+                  1.5881685613684242,
+                  1.7098574543952807
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  6.0,
+                  6.263996983397749,
+                  5.54383740418542,
+                  5.62745230294815,
+                  5.516022413072559,
+                  3.9052749241703553,
+                  4.124781244740672,
+                  3.4988077572596907,
+                  2.349424457145508,
+                  1.9641751128318528,
+                  0.8997729030198307,
+                  0.1251267420428961,
+                  0.0011392942907482717,
+                  6.921109142444657e-06,
+                  5.223336276457458e-08,
+                  2.953213544779166e-10,
+                  1.845234004994752e-12
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.01464708226275004,
+                  0.029921288443040074,
+                  0.048991935745952134,
+                  0.06752792628767264,
+                  0.10399013654503879,
+                  0.15766359566343222,
+                  0.2003669199045014,
+                  0.25336182036426824,
+                  0.31363279181568604,
+                  0.42158307910514425,
+                  0.442240220170228,
+                  0.5143382198227588,
+                  0.46821179599878515,
+                  0.4356581671782049,
+                  0.4889309128315441,
+                  0.44566266453098524
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    }
+  }
+}

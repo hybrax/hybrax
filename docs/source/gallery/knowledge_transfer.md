@@ -31,7 +31,7 @@ The walkthrough below shows the file in pieces, next to the reasoning for each o
 the whole thing at once: to copy, diff against your own, or just read top to bottom:
 
 :::{dropdown} Full `custom.py`
-```{literalinclude} _files/knowledge_transfer_custom.py
+```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
 :language: python
 :linenos:
 ```
@@ -40,7 +40,7 @@ the whole thing at once: to copy, diff against your own, or just read top to bot
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-import os, shutil, subprocess, sys, textwrap
+import os, shutil, subprocess, sys
 from pathlib import Path
 %matplotlib inline
 
@@ -48,7 +48,8 @@ WORK = Path("../_data/out/runs/gallery_knowledge_transfer").resolve()
 if WORK.exists():
     shutil.rmtree(WORK)
 WORK.mkdir(parents=True)
-shutil.copy(Path("_files/knowledge_transfer_custom.py").resolve(), WORK / "custom.py")
+EXAMPLE = Path("../../../examples/gallery_knowledge_transfer").resolve()
+shutil.copy(EXAMPLE / "custom.py", WORK / "custom.py")
 
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
@@ -64,8 +65,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import hybrax.format as hxf
 
-_all = hxf.serialization.load_process_collection(
-    Path("../_data/out/demo_products/data.json").resolve())
+_all = hxf.serialization.load_process_collection(EXAMPLE / "data.json")
 _historical = {n: p for n, p in _all.processes.items() if not n.startswith("T_")}
 _t_train = {n: p for n, p in _all.processes.items() if n in ("T_run_1", "T_run_2")}
 _t_heldout = {n: p for n, p in _all.processes.items() if n in ("T_run_3", "T_run_4")}
@@ -78,17 +78,8 @@ hxf.serialization.save_process_collection(
     hxf.BioProcessCollection(processes=dict(_t_heldout)), WORK / "heldout.json")
 
 for variant in ("local", "pooled"):
-    (WORK / f"prepare-{variant}.json").write_text(
-        f'{{ "prepare": {{ "raw_input": "{variant}.json" }}, "custom_py": "custom.py" }}\n')
-    (WORK / f"train-{variant}.json").write_text(textwrap.dedent(f"""\
-        {{
-          "data": {{ "prepared": "prepared_{variant}" }},
-          "custom_py": "custom.py",
-          "train": {{ "epochs": 400, "seed": 0, "learning_rate": 0.01 }},
-          "checkpoint": {{ "every": 0 }},
-          "output": {{ "dir": "run_{variant}" }}
-        }}
-        """))
+    shutil.copy(EXAMPLE / f"prepare-{variant}.json", WORK / f"prepare-{variant}.json")
+    shutil.copy(EXAMPLE / f"train-{variant}.json", WORK / f"train-{variant}.json")
 ```
 
 ## Two products, one shared identity feature
@@ -104,7 +95,7 @@ same reaction module applies uniformly regardless of source process. A constant
 controlled process variable does exactly this job instead, using only existing,
 unmodified hybrax machinery:
 
-```{literalinclude} _files/knowledge_transfer_custom.py
+```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
 :language: python
 :linenos:
 :lines: 39-49
@@ -126,7 +117,7 @@ this two ways: several independent GP heads instead of one, and every head's
 inducing points anchored to a real bootstrap subsample of training data instead of
 free vectors.
 
-```{literalinclude} _files/knowledge_transfer_custom.py
+```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
 :language: python
 :linenos:
 :lines: 52-85
@@ -137,7 +128,7 @@ free vectors.
 `pseudo_targets` stays trainable: rates are never directly observed, only inferred
 through the ODE fit, unlike the real state locations.
 
-```{literalinclude} _files/knowledge_transfer_custom.py
+```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
 :language: python
 :linenos:
 :lines: 87-110
@@ -151,7 +142,7 @@ scaled down (5 heads here, not 30) and subsampled at the point level rather than
 experiment level, both for tractability inside hybrax.train's per-solver-step
 reaction-module call.
 
-```{literalinclude} _files/knowledge_transfer_custom.py
+```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
 :language: python
 :linenos:
 :lines: 113-132

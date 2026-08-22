@@ -50,7 +50,7 @@ The walkthrough below shows the file in pieces, next to the reasoning for each o
 the whole thing at once: to copy, diff against your own, or just read top to bottom:
 
 :::{dropdown} Full `custom.py`
-```{literalinclude} _files/optfed_custom.py
+```{literalinclude} ../../../examples/gallery_optfed/custom.py
 :language: python
 :linenos:
 ```
@@ -59,7 +59,7 @@ the whole thing at once: to copy, diff against your own, or just read top to bot
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-import os, shutil, subprocess, sys, textwrap
+import os, shutil, subprocess, sys
 from pathlib import Path
 %matplotlib inline
 
@@ -67,9 +67,10 @@ WORK = Path("../_data/out/runs/gallery_optfed").resolve()
 if WORK.exists():
     shutil.rmtree(WORK)
 WORK.mkdir(parents=True)
-shutil.copy(Path("../_data/out/demo_optfed/data.json").resolve(), WORK / "data.json")
-shutil.copy(Path("../_data/out/demo_optfed/ground_truth.json").resolve(), WORK / "ground_truth.json")
-shutil.copy(Path("_files/optfed_custom.py").resolve(), WORK / "custom.py")
+EXAMPLE = Path("../../../examples/gallery_optfed").resolve()
+shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
+shutil.copy(EXAMPLE / "ground_truth.json", WORK / "ground_truth.json")
+shutil.copy(EXAMPLE / "custom.py", WORK / "custom.py")
 
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
@@ -81,18 +82,9 @@ def hxt_cli(*args):
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
 
-(WORK / "prepare-config.json").write_text(
-    '{ "prepare": { "raw_input": "data.json" } }\n')
-(WORK / "train-config.json").write_text(textwrap.dedent("""\
-    {
-      "data": { "prepared": "prepared" },
-      "custom_py": "custom.py",
-      "train": { "epochs": 4000, "seed": 0, "learning_rate": 0.01 },
-      "output": { "dir": "run", "predictions": "parents" }
-    }
-    """))
-(WORK / "forward-config.json").write_text(
-    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
+shutil.copy(EXAMPLE / "prepare-config.json", WORK / "prepare-config.json")
+shutil.copy(EXAMPLE / "train-config.json", WORK / "train-config.json")
+shutil.copy(EXAMPLE / "forward-config.json", WORK / "forward-config.json")
 
 import json
 import jax
@@ -131,7 +123,7 @@ def r2_by_target(run_dir):
 
 ## The rate law
 
-```{literalinclude} _files/optfed_custom.py
+```{literalinclude} ../../../examples/gallery_optfed/custom.py
 :language: python
 :linenos:
 :lines: 24-40
@@ -146,7 +138,7 @@ variable contributes its own factor, `1/(1+v/K)` to suppress a rate,
 
 ## The reaction module
 
-```{literalinclude} _files/optfed_custom.py
+```{literalinclude} ../../../examples/gallery_optfed/custom.py
 :language: python
 :linenos:
 :lines: 43-73
@@ -158,7 +150,7 @@ and the four inhibition/activation constants. `Y_XrG`/`Y_PG` are
 `frozen_field()`s, not trained: the paper itself states these yields come
 from a genome-scale model, not the fitted parameters.
 
-```{literalinclude} _files/optfed_custom.py
+```{literalinclude} ../../../examples/gallery_optfed/custom.py
 :language: python
 :linenos:
 :lines: 75-109

@@ -1,0 +1,530 @@
+{
+  "case_id": "demo_glutamine_decay",
+  "organism": "CHO cell culture (Ulonska et al. 2018-inspired)",
+  "citation": "Simulated data \u2014 bp-docs demo, not a real experiment.",
+  "metadata": null,
+  "processes": {
+    "run_1": {
+      "metadata": {
+        "name": "run_1",
+        "process_type": "batch",
+        "notes": "Simulated CHO-like batch culture; glutamine decomposes to NH4 at a first-order rate (documentation demo)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 120.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  12.0,
+                  24.0,
+                  36.0,
+                  48.0,
+                  60.0,
+                  72.0,
+                  84.0,
+                  96.0,
+                  108.0,
+                  120.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.3,
+                  0.36203454383057615,
+                  0.40106264005127285,
+                  0.45777563206659394,
+                  0.5504008942855606,
+                  0.6275776148849956,
+                  0.6712460157463366,
+                  0.8187305317780652,
+                  1.0005392267643125,
+                  1.1063891756365654,
+                  1.3463206483457817
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "Gln": {
+            "name": "Gln",
+            "unit": "mol/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  12.0,
+                  24.0,
+                  36.0,
+                  48.0,
+                  60.0,
+                  72.0,
+                  84.0,
+                  96.0,
+                  108.0,
+                  120.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.006,
+                  0.005687966455156686,
+                  0.005023030289152038,
+                  0.0046642979832707526,
+                  0.004386960644081098,
+                  0.003899320447196669,
+                  0.0033080198103857617,
+                  0.0030008718479445683,
+                  0.0023989890924822578,
+                  0.0017249923807334034,
+                  0.001133369781194839
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "NH4": {
+            "name": "NH4",
+            "unit": "mol/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  12.0,
+                  24.0,
+                  36.0,
+                  48.0,
+                  60.0,
+                  72.0,
+                  84.0,
+                  96.0,
+                  108.0,
+                  120.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0005,
+                  0.0007647123825946021,
+                  0.0009779390844310055,
+                  0.0011782663610162675,
+                  0.0013395581783064668,
+                  0.0015530158136756432,
+                  0.001693082654289508,
+                  0.001873592820524767,
+                  0.0019448952090343264,
+                  0.0021205812952574607,
+                  0.0021249663683134625
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_Gln": null,
+          "r_Gln": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "Gln": "-q_Gln * biomass - r_Gln * Gln",
+          "NH4": "r_Gln * Gln"
+        }
+      }
+    },
+    "run_2": {
+      "metadata": {
+        "name": "run_2",
+        "process_type": "batch",
+        "notes": "Simulated CHO-like batch culture; glutamine decomposes to NH4 at a first-order rate (documentation demo)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 120.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  12.0,
+                  24.0,
+                  36.0,
+                  48.0,
+                  60.0,
+                  72.0,
+                  84.0,
+                  96.0,
+                  108.0,
+                  120.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.25,
+                  0.28907515042761617,
+                  0.3422104714847487,
+                  0.3819154720184057,
+                  0.4484389857362995,
+                  0.5159529032937363,
+                  0.6093361783652606,
+                  0.6670025853432672,
+                  0.8022751559649538,
+                  0.926679751048757,
+                  1.0242834431863277
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "Gln": {
+            "name": "Gln",
+            "unit": "mol/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  12.0,
+                  24.0,
+                  36.0,
+                  48.0,
+                  60.0,
+                  72.0,
+                  84.0,
+                  96.0,
+                  108.0,
+                  120.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.007,
+                  0.006537612856218733,
+                  0.00594217978587882,
+                  0.005453003451847275,
+                  0.005428762385382808,
+                  0.005079704361404669,
+                  0.00416950349787141,
+                  0.0039384863228433846,
+                  0.003123201626109352,
+                  0.0027593043316003585,
+                  0.0022864993047796178
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "NH4": {
+            "name": "NH4",
+            "unit": "mol/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  12.0,
+                  24.0,
+                  36.0,
+                  48.0,
+                  60.0,
+                  72.0,
+                  84.0,
+                  96.0,
+                  108.0,
+                  120.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0004,
+                  0.000683904862891599,
+                  0.0009991346574945708,
+                  0.0012407204929460887,
+                  0.001485437456672781,
+                  0.0017181727773344908,
+                  0.0018673562537879155,
+                  0.0021436295392039013,
+                  0.0021429381062570032,
+                  0.0023265589425340823,
+                  0.0025197146987350166
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_Gln": null,
+          "r_Gln": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "Gln": "-q_Gln * biomass - r_Gln * Gln",
+          "NH4": "r_Gln * Gln"
+        }
+      }
+    },
+    "run_3": {
+      "metadata": {
+        "name": "run_3",
+        "process_type": "batch",
+        "notes": "Simulated CHO-like batch culture; glutamine decomposes to NH4 at a first-order rate (documentation demo)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 120.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  12.0,
+                  24.0,
+                  36.0,
+                  48.0,
+                  60.0,
+                  72.0,
+                  84.0,
+                  96.0,
+                  108.0,
+                  120.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.35,
+                  0.40792450005472125,
+                  0.4719028867394208,
+                  0.5257685439560399,
+                  0.6599288794265866,
+                  0.7384935692183087,
+                  0.8368690089756841,
+                  0.9629805553958501,
+                  1.1328192314888517,
+                  1.2416504778228175,
+                  1.4479340098425806
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "Gln": {
+            "name": "Gln",
+            "unit": "mol/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  12.0,
+                  24.0,
+                  36.0,
+                  48.0,
+                  60.0,
+                  72.0,
+                  84.0,
+                  96.0,
+                  108.0,
+                  120.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.005,
+                  0.00434773342199861,
+                  0.0042590091722408225,
+                  0.003873430431809945,
+                  0.00328597108176987,
+                  0.0029443195537978634,
+                  0.0023008898715580067,
+                  0.0020172361501574402,
+                  0.0012852773394655382,
+                  0.0006919870432530048,
+                  3.99382683513897e-05
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "NH4": {
+            "name": "NH4",
+            "unit": "mol/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  12.0,
+                  24.0,
+                  36.0,
+                  48.0,
+                  60.0,
+                  72.0,
+                  84.0,
+                  96.0,
+                  108.0,
+                  120.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0006,
+                  0.0007882269139031505,
+                  0.001000191572471206,
+                  0.0011911560944123144,
+                  0.0013061175842560239,
+                  0.0015179567952790182,
+                  0.0015516825969464124,
+                  0.0016705466081785361,
+                  0.0017797467046499287,
+                  0.0017732127552606478,
+                  0.0018170351326845424
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {},
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_Gln": null,
+          "r_Gln": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "Gln": "-q_Gln * biomass - r_Gln * Gln",
+          "NH4": "r_Gln * Gln"
+        }
+      }
+    }
+  }
+}

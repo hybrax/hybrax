@@ -49,7 +49,7 @@ The walkthrough below shows the file in pieces, next to the reasoning for each o
 the whole thing at once: to copy, diff against your own, or just read top to bottom:
 
 :::{dropdown} Full `custom.py`
-```{literalinclude} _files/glutamine_decay_custom.py
+```{literalinclude} ../../../examples/gallery_glutamine_decay/custom.py
 :language: python
 :linenos:
 ```
@@ -58,7 +58,7 @@ the whole thing at once: to copy, diff against your own, or just read top to bot
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-import json, os, shutil, subprocess, sys, textwrap
+import json, os, shutil, subprocess, sys
 from pathlib import Path
 %matplotlib inline
 
@@ -66,9 +66,10 @@ WORK = Path("../_data/out/runs/gallery_glutamine_decay").resolve()
 if WORK.exists():
     shutil.rmtree(WORK)
 WORK.mkdir(parents=True)
-shutil.copy(Path("../_data/out/demo_glutamine_decay/data.json").resolve(), WORK / "data.json")
-shutil.copy(Path("../_data/out/demo_glutamine_decay/ground_truth.json").resolve(), WORK / "ground_truth.json")
-shutil.copy(Path("_files/glutamine_decay_custom.py").resolve(), WORK / "custom.py")
+EXAMPLE = Path("../../../examples/gallery_glutamine_decay").resolve()
+shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
+shutil.copy(EXAMPLE / "ground_truth.json", WORK / "ground_truth.json")
+shutil.copy(EXAMPLE / "custom.py", WORK / "custom.py")
 
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
@@ -80,18 +81,9 @@ def hxt_cli(*args):
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
 
-(WORK / "prepare-config.json").write_text(
-    '{ "prepare": { "raw_input": "data.json" } }\n')
-(WORK / "train-config.json").write_text(textwrap.dedent("""\
-    {
-      "data": { "prepared": "prepared" },
-      "custom_py": "custom.py",
-      "train": { "epochs": 400, "seed": 0, "learning_rate": 0.02 },
-      "output": { "dir": "run", "predictions": "parents" }
-    }
-    """))
-(WORK / "forward-config.json").write_text(
-    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
+shutil.copy(EXAMPLE / "prepare-config.json", WORK / "prepare-config.json")
+shutil.copy(EXAMPLE / "train-config.json", WORK / "train-config.json")
+shutil.copy(EXAMPLE / "forward-config.json", WORK / "forward-config.json")
 
 import numpy as np
 import pandas as pd
@@ -171,7 +163,7 @@ each trusted to carry whatever unit bridges their own term. See
 
 ## The reaction module
 
-```{literalinclude} _files/glutamine_decay_custom.py
+```{literalinclude} ../../../examples/gallery_glutamine_decay/custom.py
 :language: python
 :linenos:
 :lines: 19-43

@@ -22,7 +22,7 @@ The quickstart ran these commands. This tutorial explains them.
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-import os, shutil, subprocess, sys, textwrap
+import os, shutil, subprocess, sys
 from pathlib import Path
 %matplotlib inline
 
@@ -30,7 +30,8 @@ WORK = Path("../_data/out/runs/tutorial_03").resolve()
 if WORK.exists():
     shutil.rmtree(WORK)
 WORK.mkdir(parents=True)
-shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
+EXAMPLE = Path("../../../examples/tutorial_03_train").resolve()
+shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
 
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
@@ -67,8 +68,7 @@ everything the model does is visible in three specific rates.
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-(WORK / "prepare-config.json").write_text(
-    '{ "prepare": { "raw_input": "data.json" } }\n')
+shutil.copy(EXAMPLE / "prepare-config.json", WORK / "prepare-config.json")
 ```
 
 ```json
@@ -111,15 +111,8 @@ print("top-level keys:", sorted(prep)[:8])
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-(WORK / "train-config.json").write_text(textwrap.dedent("""\
-    {
-      "data": { "prepared": "prepared" },
-      "train": { "epochs": 300, "seed": 0 },
-      "output": { "dir": "run" }
-    }
-    """))
-(WORK / "forward-config.json").write_text(
-    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
+shutil.copy(EXAMPLE / "train-config.json", WORK / "train-config.json")
+shutil.copy(EXAMPLE / "forward-config.json", WORK / "forward-config.json")
 ```
 
 ```{code-cell} ipython3

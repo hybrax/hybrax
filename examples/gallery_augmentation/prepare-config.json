@@ -1,0 +1,16 @@
+{
+  "custom_py": "custom.py",
+  "prepare": {
+    "raw_input": "data.json",
+    "augmentation": {
+      "n_children_per_process": 5,
+      "n_time_points": 11,
+      "noise_std": {
+        "biomass": 0.05,
+        "glucose": 0.05,
+        "lactate": 0.05,
+        "product": 0.05
+      }
+    }
+  }
+}

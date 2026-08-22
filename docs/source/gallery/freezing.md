@@ -27,7 +27,7 @@ The walkthrough below shows the file in pieces, next to the reasoning for each o
 the whole thing at once: to copy, diff against your own, or just read top to bottom:
 
 :::{dropdown} Full `custom.py`
-```{literalinclude} _files/freezing_custom.py
+```{literalinclude} ../../../examples/gallery_freezing/custom.py
 :language: python
 :linenos:
 ```
@@ -36,7 +36,7 @@ the whole thing at once: to copy, diff against your own, or just read top to bot
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-import os, shutil, subprocess, sys, textwrap
+import os, shutil, subprocess, sys
 from pathlib import Path
 %matplotlib inline
 
@@ -44,8 +44,9 @@ WORK = Path("../_data/out/runs/gallery_freezing").resolve()
 if WORK.exists():
     shutil.rmtree(WORK)
 WORK.mkdir(parents=True)
-shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
-shutil.copy(Path("_files/freezing_custom.py").resolve(), WORK / "custom.py")
+EXAMPLE = Path("../../../examples/gallery_freezing").resolve()
+shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
+shutil.copy(EXAMPLE / "custom.py", WORK / "custom.py")
 
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
@@ -57,18 +58,9 @@ def hxt_cli(*args):
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
 
-(WORK / "prepare-config.json").write_text(
-    '{ "prepare": { "raw_input": "data.json" } }\n')
-(WORK / "train-config.json").write_text(textwrap.dedent("""\
-    {
-      "data": { "prepared": "prepared" },
-      "custom_py": "custom.py",
-      "train": { "epochs": 600, "seed": 0, "learning_rate": 0.02 },
-      "output": { "dir": "run" }
-    }
-    """))
-(WORK / "forward-config.json").write_text(
-    '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
+shutil.copy(EXAMPLE / "prepare-config.json", WORK / "prepare-config.json")
+shutil.copy(EXAMPLE / "train-config.json", WORK / "train-config.json")
+shutil.copy(EXAMPLE / "forward-config.json", WORK / "forward-config.json")
 
 hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
@@ -79,7 +71,7 @@ printed at the end, under "Everything this produced": inspect, copy or modify th
 
 ## The split
 
-```{literalinclude} _files/freezing_custom.py
+```{literalinclude} ../../../examples/gallery_freezing/custom.py
 :language: python
 :linenos:
 :lines: 26-40
@@ -141,14 +133,7 @@ unfrozen_src = (WORK / "custom.py").read_text().replace(
     "encoder: eqx.nn.MLP = trainable_field()",
 )
 (WORK / "custom_unfrozen.py").write_text(unfrozen_src)
-(WORK / "train-config-unfrozen.json").write_text(textwrap.dedent("""\
-    {
-      "data": { "prepared": "prepared" },
-      "custom_py": "custom_unfrozen.py",
-      "train": { "epochs": 600, "seed": 0, "learning_rate": 0.02 },
-      "output": { "dir": "run_unfrozen" }
-    }
-    """))
+shutil.copy(EXAMPLE / "train-config-unfrozen.json", WORK / "train-config-unfrozen.json")
 ```
 
 ```{code-cell} ipython3
