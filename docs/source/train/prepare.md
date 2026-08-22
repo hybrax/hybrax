@@ -169,4 +169,4 @@ advanced; see [Gallery](../gallery/index.md).
 - [Configuration](config.md): the `prepare` section in context.
 - [Validating and inspecting](../format/validate_and_inspect.md): do this before preparing.
 - [Training](train.md): what consumes the artifact.
-- [custom.py at a glance](hooks_cheatsheet.md).
+- [Customization](hooks_cheatsheet.md).

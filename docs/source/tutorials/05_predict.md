@@ -215,6 +215,6 @@ the gallery, each as a self-contained example:
 - [Fed-batch: feeds, boluses and samples](../gallery/fed_batch.md)
 - [Mechanistic models](../gallery/mechanistic_rates.md): real kinetics, partially trained
 - [Custom losses on the dense grid](../gallery/dense_loss.md)
-- [Cross-validation](../train/loo.md): how well does this generalise to a run it never saw?
+- [Cross-Validation](../train/loo.md): how well does this generalise to a run it never saw?
 - [Ensembles](../train/forward.md#ensembles): averaging several trained models for a
   cheap uncertainty estimate

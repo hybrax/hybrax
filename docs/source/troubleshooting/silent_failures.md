@@ -12,12 +12,14 @@ before you need them, because none of them announce themselves.
 ## 1. A misspelled hook name
 
 **The failure.** `custom.py` defines `build_reaction_modul`. hybrax looks hooks up by
-plain attribute lookup, finds nothing, and uses the default MLP. No warning, no log line.
-Your module never runs.
+plain attribute lookup, finds nothing, and uses the default MLP. Nothing raises. Your
+module never runs.
 
 **Why it is hard to spot.** Training works. The loss goes down. It is just not your model.
 
-**How to catch it.**
+**How to catch it.** Every `prepare`, `train` and `loo` run logs which hooks it found at
+startup: `<stage> hooks detected: ...` and `<stage> hooks default: ...`. A hook you meant
+to customise showing up in the `default` line is the tell. Failing that:
 
 ```python
 import hybrax.train as hxt
@@ -29,7 +31,7 @@ If you wrote a module with a field called `mu_max` and the structure shows
 `reaction_module.mlp.layers[0].weight`, the default is running.
 
 **Rule of thumb.** If an edit to `custom.py` appears to change nothing at all, it probably
-changed nothing at all. Check the spelling first, every time.
+changed nothing at all. Check the startup log line, then the spelling, every time.
 
 ---
 
@@ -122,7 +124,7 @@ answering different questions.
 > If you unscaled the inputs to compute in physical units, scale the output back.
 
 Never mix. Ask "what space is this number in?" at every line of `__call__`. See
-[The reaction module](../train/reaction_module.md#the-sclraw-convention).
+[The Reaction Module](../train/reaction_module.md#the-sclraw-convention).
 
 ---
 
@@ -180,7 +182,7 @@ in hybrax.format or the solver enforces it.
 **Why it exists.** Bounds are *metadata*, so downstream consumers (hybrax.train's loss module) can build soft penalties from a declaration you made once in the data.
 
 **Fix.** If you want the constraint enforced, write the penalty. See
-[The loss module](../train/loss_module.md#adding-a-physical-penalty).
+[The Loss Module](../train/loss_module.md#adding-a-physical-penalty).
 
 ---
 

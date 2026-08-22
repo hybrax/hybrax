@@ -248,5 +248,5 @@ data the scaling in particular matters a great deal: see
 - **Get your own data in** → [Tutorial 1](../tutorials/01_your_first_dataset.md).
 - **Understand the words used above** → [Concepts and vocabulary](concepts.md).
 - **Replace the model** → [Tutorial 4](../tutorials/04_your_first_custom_py.md), then
-  [the reaction module](../train/reaction_module.md).
+  [the Reaction Module](../train/reaction_module.md).
 - **Fed-batch, boluses, sampling** → [Gallery: fed-batch](../gallery/fed_batch.md).

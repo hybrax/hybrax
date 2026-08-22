@@ -268,7 +268,7 @@ Run the example yourself at `./source/_data/out/runs/gallery_optfed/`.
 - [PLS-dFBA](pls_dfba.md): the same controlled-process-variable-as-extra
   -input mechanism, there feeding a learned component instead of closed-form
   kinetics.
-- [The reaction module](../train/reaction_module.md): `frozen_field`,
+- [The Reaction Module](../train/reaction_module.md): `frozen_field`,
   `trainable_field`, and everything else a `UserReactionModule` can return.
 - [The Bioprocess ODE](../format/bioprocess_ode.md): `biological_ode`,
   `algebraic`, and the `X_active` pattern this page reuses.

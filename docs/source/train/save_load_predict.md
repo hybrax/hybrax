@@ -1,7 +1,9 @@
-# Saving, loading and predicting
+# The Python API
 
-> Only the trainable parameters are saved; everything else is rebuilt, which is what
-> makes run directories portable, and what makes one loading function dangerous.
+> Every other stage runs from the command line. This one runs from a script: loading a
+> trained model, predicting with it, and reading its provenance, all in Python. Only the
+> trainable parameters are saved; everything else is rebuilt, which is what makes run
+> directories portable, and what makes one loading function dangerous.
 
 ## What is on disk
 
@@ -23,11 +25,15 @@ run/
 ├── config.json          exactly what was run
 ├── custom.py            your hooks, frozen
 ├── prepared.json.gz     the data, frozen
-├── metrics.csv
+├── metrics.csv          per-step loss and timing
+├── losses.csv           final per-process, per-target loss
+├── predictions.csv      dense trajectories, if output.predictions selects any
+├── loss_curve.png
+├── grad_norm_curve.png
 ├── model/
 │   ├── params.eqx       trainable parameters only
 │   └── opt_state.eqx    optimizer state, for resuming
-└── checkpoints/step_NNNNN/    ... the same again, per checkpoint
+└── checkpoints/step_NNNNN/    the same again, per checkpoint, plus train_state.json
 ```
 
 You can copy a run directory to another machine and load it, provided hybrax is
@@ -87,7 +93,7 @@ bundled data. On a fast run that can dominate the wall clock: set `every` coarse
 that checkpointing is not the bottleneck.
 
 For LOO, resuming is a first-class command: `hybrax loo --resume RUN_DIR` re-runs only
-the folds that never finished. See [Cross-validation](loo.md).
+the folds that never finished. See [Cross-Validation](loo.md).
 
 ## Provenance
 

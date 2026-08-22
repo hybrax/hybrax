@@ -11,12 +11,13 @@
 
 ## Layout
 
-`hybrax` and `bp-docs` are separate repositories, normally checked out as siblings:
-
 ```
-bpbench/
-├── hybrax/        # the data model, mechanistic RHS, and training
-└── bp-docs/       # these docs
+hybrax/
+├── src/hybrax/
+│   ├── format/     the data model, mechanistic RHS
+│   └── train/      hybrid ODE training
+├── tests/
+└── pyproject.toml
 ```
 
 ## Install
@@ -72,17 +73,7 @@ environment always wins over the config file. See [Training](../train/train.md).
 
 ## Building these docs
 
-The docs live in `bp-docs` and are built against the *installed* package:
-
-```bash
-python -m pip install -r bp-docs/requirements.txt
-bash bp-docs/docs_rebuild.sh
-```
-
-That regenerates the demo datasets, executes every tutorial and gallery page for real,
-and writes the site to `bp-docs/html/`. Open `html/index.html` directly: it works from
-`file://`, search included. A cold build takes a few minutes; afterwards only pages whose
-source changed are re-executed.
+TODO: this section will be rewritten once the docs land inside `hybrax`.
 
 ## See also
 

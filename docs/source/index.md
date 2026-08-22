@@ -83,6 +83,17 @@ format/further_reading
 :caption: hybrax.train guide
 :hidden:
 train/index
+train/config
+train/hooks_cheatsheet
+train/prepare
+train/train
+train/reaction_module
+train/loss_module
+train/scaling
+train/forward
+train/loo
+train/save_load_predict
+train/further_reading
 ```
 
 ```{toctree}

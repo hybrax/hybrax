@@ -205,7 +205,7 @@ to reach for this.
 
 Run the example yourself at `./source/_data/out/runs/gallery_stateful/`.
 
-- [The reaction module](../train/reaction_module.md): the general contract this module
+- [The Reaction Module](../train/reaction_module.md): the general contract this module
   follows.
 - [Mechanistic models](mechanistic_rates.md): a reaction module built from explicit
   kinetics, no latent state at all.

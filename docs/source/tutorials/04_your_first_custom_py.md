@@ -281,5 +281,5 @@ Run the tutorial yourself at `./source/_data/out/runs/tutorial_04/`.
 
 - **[Tutorial 5](05_predict.md)**: use the trained model.
 - Real kinetics instead of a bare MLP: [Gallery: mechanistic models](../gallery/mechanistic_rates.md).
-- Every hook, with signatures: [custom.py at a glance](../train/hooks_cheatsheet.md).
+- Every hook, with signatures: [Customization](../train/hooks_cheatsheet.md).
 - More on scales: [Scaling](../train/scaling.md).

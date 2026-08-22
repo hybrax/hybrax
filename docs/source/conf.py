@@ -25,6 +25,7 @@ extensions = [
     "sphinx.ext.napoleon",     # Google-style docstrings
     "sphinx.ext.viewcode",     # [source] links
     "sphinx.ext.intersphinx",  # external refs only (python/numpy/jax)
+    "sphinx.ext.mathjax",      # renders the dollarmath below
     "sphinx_copybutton",
     "sphinx_design",           # dropdown directive (full-file listings in the gallery)
 ]
@@ -110,7 +111,7 @@ napoleon_use_param = napoleon_use_rtype = napoleon_use_ivar = True
 napoleon_preprocess_types = True
 
 # --- MyST ---
-myst_enable_extensions = ["colon_fence", "deflist", "fieldlist",
+myst_enable_extensions = ["colon_fence", "deflist", "dollarmath", "fieldlist",
                           "linkify", "substitution", "tasklist"]
 myst_heading_anchors = 3
 

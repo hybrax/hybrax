@@ -260,7 +260,7 @@ way SR-KAN's own extraction pipeline does.
 
 Run the example yourself at `./source/_data/out/runs/gallery_kan/`.
 
-- [The reaction module](../train/reaction_module.md): `auxiliary`, and
+- [The Reaction Module](../train/reaction_module.md): `auxiliary`, and
   everything else a `UserReactionModule` can return.
 - [Gaussian process reaction module](gaussian_process.md): another
   reaction-module architecture, with its own way of reading out what it

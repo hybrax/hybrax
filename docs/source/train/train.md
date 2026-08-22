@@ -7,6 +7,19 @@
 hybrax train --config train-config.json [--overwrite] [--epochs N]
 ```
 
+## Setup, in order
+
+Before the first step, training resolves five hooks from `custom.py`:
+`build_learning_rate` → `build_optimizer` → `estimate_all_scales` →
+`build_reaction_module` → `build_loss_module`. Two more, `transform_process_collection`
+and `augment_state_values`, already ran during `prepare`. See
+[Customization](hooks_cheatsheet.md) for the full table, with every signature.
+
+This page covers `build_learning_rate` and `build_optimizer` below: they are purely a
+training concern. The other three are substantial enough to need their own page each:
+[The Reaction Module](reaction_module.md), [The Loss Module](loss_module.md),
+[Scaling](scaling.md).
+
 ## What one step does
 
 For each process in the batch:
@@ -149,7 +162,7 @@ Each checkpoint directory is **self-contained**: parameters, optimizer state, co
 at a run directory to get that step's predictions or plots; checkpoints themselves
 carry neither, by design (see [Forward](forward.md)).
 
-See [Saving, loading and predicting](save_load_predict.md).
+See [The Python API](save_load_predict.md).
 
 ## Reading the output
 
@@ -182,5 +195,5 @@ concentration plot and obvious in the rate one.
 
 - [Scaling](scaling.md): fix this before tuning anything here.
 - [Forward](forward.md): what to do with the result.
-- [Cross-validation](loo.md), whether it generalises.
+- [Cross-Validation](loo.md), whether it generalises.
 - [Errors](../troubleshooting/errors.md).

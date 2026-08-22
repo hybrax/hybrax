@@ -164,7 +164,7 @@ it before fitting anything.
 - **A feed naming a species that is not in `reactor_medium.components`** also raises: 
   hybrax.format will not invent a state for it.
 - **Modeled feeds exist.** `is_controlled=False` on a feed means the *model* predicts the
-  flow rate. That is an advanced case; see [the reaction module](../train/reaction_module.md).
+  flow rate. That is an advanced case; see [the Reaction Module](../train/reaction_module.md).
 
 ## See also
 

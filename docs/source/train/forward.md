@@ -143,5 +143,5 @@ export.t, export.c_species, export.q_rates, export.v_real
 ## See also
 
 - [Tutorial 5](../tutorials/05_predict.md): a walkthrough.
-- [Cross-validation](loo.md): for held-out performance done properly.
-- [Saving, loading and predicting](save_load_predict.md).
+- [Cross-Validation](loo.md): for held-out performance done properly.
+- [The Python API](save_load_predict.md).

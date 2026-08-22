@@ -1,4 +1,4 @@
-# Cross-validation (LOO)
+# Cross-Validation (LOO)
 
 > Train one model per fold with some processes held out, then aggregate how well each
 > held-out run was predicted.
@@ -56,9 +56,11 @@ full run of this.
 
 ```
 loo_run/
+├── config.json          run status and provenance, updated as folds complete
 ├── loo-config.json      bundled verbatim: this is what --resume reads
 ├── custom.py
 ├── prepared.json
+├── runtime-artifact/    shared runtime state every fold worker reads
 ├── folds/
 │   └── <slug>/          a complete run directory per fold
 │       ├── model/ metrics.csv losses.csv predictions.csv (if output.predictions is set) …

@@ -1,4 +1,4 @@
-# hybrax.train guide
+# Overview
 
 > hybrax.train takes a hybrax.format dataset, lets you plug in a model for the biology, and fits
 > it by differentiating through an ODE solve. For the data side, see
@@ -12,26 +12,57 @@
 Four commands. Everything you customise happens through one optional `custom.py`, and
 every hook in it has a working default.
 
-Each command's real output, on disk:
+None of these directory names are automatic. `prepare` requires `--output-dir`
+explicitly; `train` and `loo` both fall back to the same literal `output/` if you set
+neither `--output-dir` nor `output.dir`, so anything beyond a single throwaway run needs
+a name you chose. Only `forward` has a real default: `<first model>/forward`, nested
+inside the model's own run directory, unless you point it elsewhere.
+
+A typical layout, one command's output per directory:
 
 ```
-prepared/               prepare's output: the training problem
+prepared/                prepare's output
+├── prepared.json
+├── prepare_config.json
+└── prepare_diagnostics/
+
 run/                     train's output
-└── forward/             forward's output, written inside it
+├── config.json
+├── custom.py
+├── metrics.csv
+├── losses.csv
+├── model/
+└── checkpoints/step_NNNNN/
+
 loo_run/                 loo's output
-└── folds/<slug>/        one full run/ directory per fold
+├── loo-config.json
+├── folds/<slug>/        one run/ per fold
+└── loo_summary.csv
+
+forward/                 forward's output
+├── forward-results/losses.csv
+├── predictions.csv
+└── plots/
 ```
 
 Full listings are on each stage's own page: [Prepare](prepare.md#what-it-writes),
-[Saving, loading and predicting](save_load_predict.md#what-is-on-disk),
-[Forward](forward.md#what-it-produces), [Cross-validation](loo.md#what-it-produces).
+[The Python API](save_load_predict.md#what-is-on-disk),
+[Forward](forward.md#what-it-produces), [Cross-Validation](loo.md#what-it-produces).
 
 ## What is actually being fitted
 
-```
-d(state)/dt  =  biology(rates)                              ← the reaction module
-              + transport(feeds, dilution, samples, volume)  ← hybrax.format, already written
-```
+$$
+\frac{d\,\mathrm{state}}{dt} \;=\; \mathrm{biology}(\mathrm{state}, \mathrm{RATES}) \;+\; \mathrm{transport}(\mathrm{state}, \mathrm{controls})
+$$
+
+`biology` and `transport` are both hybrax.format's: fixed the moment your dataset is
+prepared, and covered in full on [The Bioprocess ODE](../format/bioprocess_ode.md#the-split).
+The one term hybrax.format leaves open is `RATES`, and supplying it is the entire job of
+the reaction module:
+
+$$
+\mathrm{RATES} = \mathrm{reaction\_module}(t, \mathrm{inputs})
+$$
 
 Training differentiates the *whole solve* (solver steps, event jumps, spline
 evaluations) with respect to the reaction module's parameters, and descends. That is why
@@ -45,31 +76,31 @@ than in ordinary supervised learning.
 | Page | Read it when |
 |---|---|
 | [Configuration](config.md) | Always. It is the surface you actually touch. |
-| [Prepare](prepare.md) | You want to know what happens between data and training. |
+| [Customization](hooks_cheatsheet.md) | Every hook, signature, default, and where it fires. |
 
-**The model: the two halves you write**
+**Prepare and train**
 
 | Page | Read it when |
 |---|---|
-| [The reaction module](reaction_module.md) | You are replacing the default MLP. |
-| [Scaling](scaling.md) | Right after. In practice this is not optional. |
-| [The loss module](loss_module.md) | Plain MSE on every target is not what you want. |
+| [Prepare](prepare.md) | You want to know what happens between data and training. |
+| [Training](train.md) | Optimizers, schedules, batching, devices. |
+| [The Reaction Module](reaction_module.md) | You are replacing the default MLP. |
+| [The Loss Module](loss_module.md) | Plain MSE on every target is not what you want. |
+| [Scaling](scaling.md) | Right after the loss module. In practice this is not optional. |
 
 **Running it**
 
 | Page | Read it when |
 |---|---|
-| [Training](train.md) | Optimizers, schedules, batching, devices. |
 | [Forward](forward.md) | You have a model and want trajectories out of it. |
-| [Cross-validation](loo.md) | You need to know whether it generalises. |
-| [Saving, loading, predicting](save_load_predict.md) | Checkpoints, resuming, the Python API. |
+| [Cross-Validation](loo.md) | You need to know whether it generalises. |
+| [The Python API](save_load_predict.md) | Loading, predicting and resuming from a script, not the CLI. |
 
 **Reference**
 
 | Page | |
 |---|---|
-| [custom.py at a glance](hooks_cheatsheet.md) | Every hook, signature, default, and where it fires. |
-| [Further reading](further_reading.md) | The dense reference and the example projects. |
+| [Further Reading](further_reading.md) | The dense reference and the example projects. |
 
 ## Defaults, and what replacing them costs
 
@@ -103,7 +134,9 @@ drop it from the targets.
 :class: warning
 Hooks are found by plain attribute lookup. `build_reaction_modul` is not an error: it is
 a silent fall back to the default. If an edit to `custom.py` appears to change nothing,
-check the spelling first.
+check the spelling first. Every `prepare`, `train` and `loo` run logs which hooks it found
+at startup, `<stage> hooks detected: ...` and `<stage> hooks default: ...`: check that line
+before you go looking any further.
 :::
 
 ## See also
@@ -111,19 +144,3 @@ check the spelling first.
 - [Quickstart](../start/quickstart.md): the whole pipeline in three commands.
 - [Concepts and vocabulary](../start/concepts.md): SCL, RAW, targets, folds.
 - [Design rationale](../under_the_hood/design_rationale.md): why it is built this way.
-
-```{toctree}
-:maxdepth: 1
-:hidden:
-config
-prepare
-reaction_module
-scaling
-loss_module
-train
-forward
-loo
-save_load_predict
-hooks_cheatsheet
-further_reading
-```

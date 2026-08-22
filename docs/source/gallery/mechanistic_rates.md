@@ -191,7 +191,7 @@ longer low-glucose tail for `Ks`, a run with product measured *after* growth sto
 
 Run the example yourself at `./source/_data/out/runs/gallery_structured_rates/`.
 
-- [The reaction module](../train/reaction_module.md): the general SCL/RAW contract this
+- [The Reaction Module](../train/reaction_module.md): the general SCL/RAW contract this
   module follows.
 - [Tutorial 4](../tutorials/04_your_first_custom_py.md): the MLP version of the same
   problem, for comparison.

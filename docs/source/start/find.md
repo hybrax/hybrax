@@ -45,15 +45,15 @@ learned; scan for your row.
 | train something, anything, right now | [Quickstart](quickstart.md) |
 | understand the config file | [Configuration](../train/config.md) |
 | know what `prepare` actually does | [Prepare](../train/prepare.md) |
-| replace the neural network that predicts rates | [The reaction module](../train/reaction_module.md) |
+| replace the neural network that predicts rates | [The Reaction Module](../train/reaction_module.md) |
 | put real kinetics in instead of a bare MLP | [Gallery: mechanistic models](../gallery/mechanistic_rates.md) |
-| change the loss, or add a penalty term | [The loss module](../train/loss_module.md) |
+| change the loss, or add a penalty term | [The Loss Module](../train/loss_module.md) |
 | penalise something *between* measurements | [Gallery: dense losses](../gallery/dense_loss.md) |
 | fix badly conditioned training | [Scaling](../train/scaling.md) |
-| choose what is optimized and what is frozen | [The reaction module](../train/reaction_module.md) |
+| choose what is optimized and what is frozen | [The Reaction Module](../train/reaction_module.md) |
 | use a learning-rate schedule | [Training](../train/train.md) |
 | use more than one CPU core | [Training](../train/train.md) |
-| resume an interrupted run | [Saving, loading and predicting](../train/save_load_predict.md) |
+| resume an interrupted run | [The Python API](../train/save_load_predict.md) |
 
 ## Evaluating
 
@@ -61,12 +61,12 @@ learned; scan for your row.
 |---|---|
 | re-simulate with a trained model | [Forward](../train/forward.md) |
 | get dense trajectories and rates as CSV | [Forward](../train/forward.md) |
-| cross-validate | [Cross-validation](../train/loo.md), worked: [Gallery](../gallery/loo.md) |
+| cross-validate | [Cross-Validation](../train/loo.md), worked: [Gallery](../gallery/loo.md) |
 | do a cheap holdout check without a full LOO run | `holdout_processes`: [Gallery: cross-validation](../gallery/loo.md) |
 | average several models and get a spread | [Forward](../train/forward.md) |
-| load a trained model in Python and predict | [Saving, loading and predicting](../train/save_load_predict.md) |
-| see which parameters are actually being trained | `print_trainable_structure`: [The reaction module](../train/reaction_module.md) |
-| map array indices back to biological names | `print_reaction_schema`: [The reaction module](../train/reaction_module.md) |
+| load a trained model in Python and predict | [The Python API](../train/save_load_predict.md) |
+| see which parameters are actually being trained | `print_trainable_structure`: [The Reaction Module](../train/reaction_module.md) |
+| map array indices back to biological names | `print_reaction_schema`: [The Reaction Module](../train/reaction_module.md) |
 
 ## When it goes wrong
 

@@ -1,4 +1,4 @@
-# The reaction module
+# The Reaction Module
 
 > The object that predicts biological rates inside the ODE solve: the half of the model
 > that is actually yours. On real data, the default MLP is rarely what you want.
@@ -200,6 +200,6 @@ Without it you get a clear `ValueError`. See [Gallery](../gallery/index.md).
 ## See also
 
 - [Scaling](scaling.md), where `scale_kwargs` comes from. Read it next.
-- [The loss module](loss_module.md): the other half.
+- [The Loss Module](loss_module.md): the other half.
 - [Gallery: mechanistic models](../gallery/mechanistic_rates.md): real kinetics.
 - [API reference](../autoapi/hybrax/train/model_api/index).

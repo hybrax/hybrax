@@ -18,15 +18,22 @@ kernelspec:
 
 ## The split
 
-```
-d(state)/dt  =  BIOLOGICAL          ← yours: BiologicalOde, in terms of named rates
-              + PHYSICAL            ← generated: feed inflow, dilution, sample outflow, dV/dt
-```
+$$
+\frac{d\,\mathrm{state}}{dt} \;=\; \mathrm{biology}(\mathrm{state}, \mathrm{RATES}) \;+\; \mathrm{transport}(\mathrm{state}, \mathrm{controls})
+$$
 
-Everything hybrax.format does here is in service of that line. You never write the physical
-half, and you cannot get it wrong by forgetting a term, but you *can* get it wrong by
-describing the volume badly, which is why [Volume, feeds and
-events](volume_feeds_events.md) comes first.
+- **`biology`**: yours to declare, as `biological_ode`, in terms of named rates (`q_*`,
+  `r_*`). Auto-generated if you do not write it.
+- **`transport`**: generated. Feed inflow, dilution, sample outflow, `dV/dt`. You never
+  write this half, and you cannot get it wrong by forgetting a term.
+- **`RATES`**: the one input `biology` does not fix. Declaring `biological_ode` fixes the
+  *shape* of the rate vector (its names, and how each one enters a derivative), not its
+  values. Where the numbers come from is a modeling choice made elsewhere: see [What is
+  actually being fitted](../train/index.md#what-is-actually-being-fitted) for the learned
+  case.
+
+You *can* still get `transport` wrong indirectly, by describing the volume badly, which is
+why [Volume, feeds and events](volume_feeds_events.md) comes first.
 
 ## Seeing it
 
@@ -178,7 +185,7 @@ Related helpers, for when you are building your own integrator:
 ## See also
 
 - [Volume, feeds and events](volume_feeds_events.md), where the physical half comes from.
-- [The reaction module](../train/reaction_module.md): what supplies the rates.
+- [The Reaction Module](../train/reaction_module.md): what supplies the rates.
 - [Gallery: mechanistic models](../gallery/mechanistic_rates.md): real kinetics in place
   of a bare network.
 - [Gallery: glutamine decay](../gallery/glutamine_decay.md): one declared rate feeding

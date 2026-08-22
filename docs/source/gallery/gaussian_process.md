@@ -253,7 +253,7 @@ Run the example yourself at `./source/_data/out/runs/gallery_gaussian_process/`.
   across products.
 - [Mechanistic models](mechanistic_rates.md): a reaction module built from explicit
   kinetics instead.
-- [The reaction module](../train/reaction_module.md): `auxiliary`, and everything else
+- [The Reaction Module](../train/reaction_module.md): `auxiliary`, and everything else
   a `UserReactionModule` can return.
 
 ## References

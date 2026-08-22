@@ -167,6 +167,6 @@ for defaults you do not want to repeat in every config file.
 
 ## See also
 
-- [custom.py at a glance](hooks_cheatsheet.md): every hook in one table.
+- [Customization](hooks_cheatsheet.md): every hook in one table.
 - [Prepare](prepare.md) · [Training](train.md) · [Forward](forward.md): per-stage detail.
 - [Errors](../troubleshooting/errors.md): config errors and their fixes.

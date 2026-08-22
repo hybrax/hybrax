@@ -54,7 +54,7 @@ files it produced.
 ## A cheap first check: `holdout_processes`
 
 Before committing to N full trainings, hold out one process inside a single run. This
-is Python-API-only (see [Cross-validation](../train/loo.md#holdout-without-cross-validation)):
+is Python-API-only (see [Cross-Validation](../train/loo.md#holdout-without-cross-validation)):
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -206,7 +206,7 @@ plotting all work on it exactly like any other trained run.
 
 Run the example yourself at `./source/_data/out/runs/gallery_loo/`.
 
-- [Cross-validation](../train/loo.md): the full reference, including parallelism and
+- [Cross-Validation](../train/loo.md): the full reference, including parallelism and
   resuming.
 - [Forward](../train/forward.md): what to do with a trained fold.
 - [Augmentation](augmentation.md): why LOO needs to be group-aware.

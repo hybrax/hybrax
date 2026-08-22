@@ -1,4 +1,4 @@
-# The loss module
+# The Loss Module
 
 > Turns one solved trajectory into a dict of **named** scalar losses, whose **mean** is
 > what gets differentiated. Needed as soon as plain MSE on every target is not what you
@@ -188,7 +188,7 @@ See [Gallery: dense losses](../gallery/dense_loss.md).
 
 ## See also
 
-- [The reaction module](reaction_module.md): the other half.
+- [The Reaction Module](reaction_module.md): the other half.
 - [Gallery: dense losses](../gallery/dense_loss.md): a full custom loss.
 - [Design rationale](../under_the_hood/design_rationale.md): the mean-versus-sum argument.
 - [API reference](../autoapi/hybrax/train/model_api/index).

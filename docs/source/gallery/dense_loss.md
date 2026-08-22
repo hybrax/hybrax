@@ -255,7 +255,7 @@ Image(filename=str(WORK / "run_full/forward/forward-results/plots/run_1.png"))
 
 Run the example yourself at `./source/_data/out/runs/gallery_dense_loss/`.
 
-- [The loss module](../train/loss_module.md#the-dense-grid): `dense_grid_n` and every
+- [The Loss Module](../train/loss_module.md#the-dense-grid): `dense_grid_n` and every
   `dense_*` field.
 - [Tutorial 4](../tutorials/04_your_first_custom_py.md): the reaction module and scales
   this builds on.

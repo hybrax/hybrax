@@ -268,7 +268,7 @@ Run the example yourself at `./source/_data/out/runs/gallery_glutamine_decay/`.
   parameters" question, asked of a Monod-form rate law instead.
 - [OptFed](optfed.md): a rate law with real kinetic structure, and the same
   "identifiability needs the true value inside the sampled range" lesson.
-- [The reaction module](../train/reaction_module.md): `trainable_field` and
+- [The Reaction Module](../train/reaction_module.md): `trainable_field` and
   everything else a `UserReactionModule` can return.
 
 ## References

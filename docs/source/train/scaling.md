@@ -162,5 +162,5 @@ Three signals, in order of usefulness:
 
 - [Tutorial 4](../tutorials/04_your_first_custom_py.md): a working hook, with the
   before/after numbers.
-- [The reaction module](reaction_module.md): the consumer of these scales.
+- [The Reaction Module](reaction_module.md): the consumer of these scales.
 - [Silent failures](../troubleshooting/silent_failures.md).

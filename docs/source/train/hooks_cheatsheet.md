@@ -1,4 +1,4 @@
-# `custom.py` at a glance
+# Customization
 
 > Every hook hybrax looks for, what it does, when it fires, and what happens if you
 > omit it.
@@ -12,11 +12,13 @@ the file itself.
 :::{admonition} A misspelled name is silent
 :class: danger
 `build_reaction_modul` is not an error. It is a hook that does not exist, which means the
-default is used and your code never runs. Nothing is logged.
+default is used and your code never runs.
 
-If an edit to `custom.py` appears to have had no effect, check the spelling before
-anything else. This is the single most common cause of "my custom module isn't doing
-anything".
+Every `prepare`, `train` and `loo` run does log which hooks it found, at startup:
+`<stage> hooks detected: ...` and `<stage> hooks default: ...`. Nothing *raises*, but the
+evidence is right there if you check it. If an edit to `custom.py` appears to have had no
+effect, check that line before anything else. This is the single most common cause of "my
+custom module isn't doing anything".
 :::
 
 ## The seven hooks
@@ -96,7 +98,7 @@ into the config. `get_config()` wins if both exist.
 
 **`dense_grid_n`** is a *property on your loss module*, not a hook, but it behaves like
 an extension point: declaring it makes the trainer populate every `dense_*` field on
-`LossInputs`. See [The loss module](loss_module.md#the-dense-grid).
+`LossInputs`. See [The Loss Module](loss_module.md#the-dense-grid).
 
 ## A minimal complete `custom.py`
 
@@ -145,6 +147,6 @@ A runnable version, with the scale hook filled in, is in
 ## See also
 
 - [Configuration](config.md): how `custom_py` and `custom` are wired in.
-- [The reaction module](reaction_module.md) · [Scaling](scaling.md) ·
-  [The loss module](loss_module.md): the hooks that do the work.
+- [The Reaction Module](reaction_module.md) · [Scaling](scaling.md) ·
+  [The Loss Module](loss_module.md): the hooks that do the work.
 - [Silent failures](../troubleshooting/silent_failures.md).

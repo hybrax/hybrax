@@ -255,7 +255,7 @@ Run the example yourself at `./source/_data/out/runs/gallery_fba_hyb/`.
   product and a media-blend-aware PLS component.
 - [Gaussian process reaction module](gaussian_process.md): another closed-form,
   non-neural-network reaction module, same `auxiliary` mechanism.
-- [The reaction module](../train/reaction_module.md): `auxiliary`, and everything
+- [The Reaction Module](../train/reaction_module.md): `auxiliary`, and everything
   else a `UserReactionModule` can return.
 
 ## References

@@ -1,4 +1,4 @@
-# Further reading
+# Further Reading
 
 > Where the exhaustive reference and the real example projects live.
 

@@ -171,4 +171,4 @@ Run the example yourself at `./source/_data/out/runs/gallery_fed_batch/`.
   dataset.
 - [Time series and splines](../format/time_series_and_splines.md): the pseudobatch
   transform, which this dataset is exactly the motivating case for.
-- [The reaction module](../train/reaction_module.md): `ReactionInputs` in full.
+- [The Reaction Module](../train/reaction_module.md): `ReactionInputs` in full.
