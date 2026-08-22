@@ -1,0 +1,4 @@
+source/autoapi/
+source/_data/out/
+_scratch/
+.jupyter_cache/

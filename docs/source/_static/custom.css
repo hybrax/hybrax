@@ -1,0 +1,76 @@
+code, .sig, .pre { font-size: 0.92em; }
+article dl.field-list > dd { margin-bottom: 0.6em; }
+
+/* --- executed-cell output ------------------------------------------------
+   Long stdout from a code-cell (a training log, a big table) previously grew
+   the page indefinitely and only scrolled horizontally. Cap it to roughly 10
+   lines and let it scroll vertically instead, like a terminal pane. Scoped to
+   `.cell_output` so it never touches ordinary code blocks or literalinclude
+   listings, which should stay fully visible. */
+.cell_output pre {
+  max-height: 17em;
+  overflow-y: auto;
+}
+
+/* --- theme-aware diagrams -------------------------------------------------
+   Each diagram ships as two transparent SVGs (dark ink / light ink); show
+   only the one that matches the current theme. Same light/dark switching
+   logic as the sidebar logo above. */
+.theme-diagram { max-width: 100%; height: auto; }
+.theme-diagram.diagram-dark { display: none; }
+body[data-theme="dark"] .theme-diagram.diagram-light { display: none; }
+body[data-theme="dark"] .theme-diagram.diagram-dark { display: block; }
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) .theme-diagram.diagram-light { display: none; }
+  body:not([data-theme="light"]) .theme-diagram.diagram-dark { display: block; }
+}
+
+/* --- logo ---------------------------------------------------------------
+   The artwork is a transparent cutout with dark navy outlines, which all but
+   disappears against furo's dark background. Give it a light backdrop in dark
+   mode only. */
+.sidebar-logo {
+  max-width: 11rem;
+  margin: 0 auto 0.4rem;
+}
+body[data-theme="dark"] .sidebar-logo,
+body[data-theme="dark"] .sidebar-logo-container {
+  background: #f5f6f8;
+  border-radius: 0.6rem;
+  padding: 0.35rem;
+}
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) .sidebar-logo,
+  body:not([data-theme="light"]) .sidebar-logo-container {
+    background: #f5f6f8;
+    border-radius: 0.6rem;
+    padding: 0.35rem;
+  }
+}
+
+/* --- collapsible sidebar captions -----------------------------------------
+   Furo only makes individual pages collapsible when the toctree nests them;
+   with a flat toctree (this site's structure) no caption is ever collapsible.
+   custom.js turns each top-level caption ("HYBRAX.FORMAT GUIDE", "GALLERY", ...)
+   into the toggle itself, expanded by default only for the section holding
+   the current page. */
+.sidebar-tree p.caption {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+.sidebar-tree p.caption .caption-toggle-icon svg {
+  color: var(--color-foreground-muted);
+  transition: transform 0.2s ease-in-out;
+}
+.sidebar-tree p.caption.collapsed .caption-toggle-icon svg {
+  transform: rotate(-90deg);
+}
+.sidebar-tree p.caption + ul {
+  overflow: hidden;
+}
+.sidebar-tree p.caption.collapsed + ul {
+  display: none;
+}
