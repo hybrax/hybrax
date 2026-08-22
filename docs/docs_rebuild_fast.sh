@@ -23,7 +23,7 @@
 # Always finish with a clean docs_rebuild.sh run before calling anything done.
 set -euo pipefail
 PYTHON="/home/mgotsmy/anaconda3/envs/bench13/bin/python"
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # bp-docs/
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # hybrax/docs/
 SRC="$ROOT/source"; OUT="$ROOT/html"; SCRATCH="$ROOT/_scratch"
 JUPYTER_EXECUTE="$ROOT/jupyter_execute"
 mkdir -p "$SCRATCH"

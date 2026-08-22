@@ -17,6 +17,9 @@ hybrax/
 │   ├── format/     the data model, mechanistic RHS
 │   └── train/      hybrid ODE training
 ├── tests/
+├── specs/          numbered technical design docs
+├── examples/       runnable tutorial and gallery walkthroughs
+├── docs/           this Sphinx site
 └── pyproject.toml
 ```
 
@@ -35,6 +38,7 @@ the same thing.
 | Extra | Command | Gives you |
 |---|---|---|
 | Development | `pip install -e "./hybrax[dev]"` | pytest, ruff, black, flake8, mypy, ipdb, jupyter, openpyxl |
+| Docs | `pip install -e "./hybrax[docs]"` | Sphinx, furo, myst-nb, autoapi, and the rest of the toolchain that builds this site |
 
 Plotting (`plot_process`, `plot_collection`) needs no extra: matplotlib is a base
 dependency.
@@ -73,7 +77,27 @@ environment always wins over the config file. See [Training](../train/train.md).
 
 ## Building these docs
 
-TODO: this section will be rewritten once the docs land inside `hybrax`.
+This site lives under `docs/` in the `hybrax` repo. From the repo root:
+
+```bash
+pip install -e ".[docs]"
+```
+
+or, via conda:
+
+```bash
+conda env create -f docs/environment.yml
+```
+
+Then, from `docs/`:
+
+```bash
+bash docs_rebuild.sh
+```
+
+builds `html/` from scratch (not committed; regenerated on demand). Open
+`docs/html/index.html` to preview. `docs_rebuild_fast.sh` does an incremental
+rebuild for local iteration.
 
 ## See also
 

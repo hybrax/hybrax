@@ -1,50 +1,32 @@
-# bp-docs
+# hybrax docs
 
-Private documentation for **hybrax**. This repo holds the Sphinx project under
-`source/` and the rendered site under `html/` (committed), so the docs can be shared
-without publishing them publicly.
+The Sphinx project for hybrax's documentation site, under `source/`.
 
-## Reading the docs (colleagues)
+## Building
 
-```bash
-git clone https://github.com/Gotsmy/bp-docs
-```
-
-Then open `html/index.html` in a browser. It works from `file://`, no server needed,
-and search works too. To get the latest version later, run `git pull`.
-
-## Rebuilding / publishing (maintainer)
-
-The build documents the **sibling** package, so it expects this layout:
-
-```
-bpbench/
-├── hybrax/       # github.com/hybrax/hybrax
-└── bp-docs/      # this repo
-```
-
-One-time setup: install `hybrax` and the doc tooling into the project env.
+One-time setup, from the `hybrax` repo root:
 
 ```bash
-PY=/home/mgotsmy/anaconda3/envs/bench13/bin/python
-"$PY" -m pip install -e ../hybrax
-"$PY" -m pip install -r requirements.txt
+uv sync --extra docs
 ```
 
-Then:
+or, via conda:
 
-- `bash docs_rebuild.sh` rebuilds `html/` locally, with no git changes. Open
-  `html/index.html` to preview.
-- `bash docs_publish.sh` rebuilds, then commits `html/` and pushes so colleagues can
-  pull.
+```bash
+conda env create -f docs/environment.yml
+```
+
+Then, from `docs/`:
+
+- `bash docs_rebuild.sh` does a full rebuild into `html/` (regenerated from
+  scratch, not committed). Open `html/index.html` to preview.
+- `bash docs_rebuild_fast.sh` does an incremental rebuild for local iteration.
 
 ## Notes
 
-- The API reference is generated with **sphinx-autoapi**, which parses `hybrax`'s
-  source statically and never imports it. `hybrax.train`'s import-time device
-  bootstrap and the heavy JAX stack never run during a build.
-- `source/autoapi/`, `source/narrative/`, and `_scratch/` are generated each build and
-  are gitignored. `html/` is intentionally tracked: it's the shared artifact.
-- `hybrax` is a **read-only input**; nothing here writes into it.
-- To make the docs public later, enable GitHub Pages on this repo, serving `html/`.
-  The committed site becomes live with no other change.
+- The API reference is generated with **sphinx-autoapi**, which parses
+  `hybrax`'s source statically and never imports it. `hybrax.train`'s
+  import-time device bootstrap and the heavy JAX stack never run during a
+  build.
+- `source/autoapi/`, `source/_data/out/`, `_scratch/`, and `html/` are all
+  generated each build and are gitignored, not committed.

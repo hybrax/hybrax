@@ -94,7 +94,7 @@ os.environ.setdefault("MPLCONFIGDIR", str(_HERE.parent / "_scratch" / "mpl"))
 # under train/, so it is picked up automatically as
 # autoapi/hybrax/train/diffrax_callbacks/...
 autoapi_type = "python"
-autoapi_dirs = ["../../hybrax/src/hybrax/format", "../../hybrax/src/hybrax/train"]
+autoapi_dirs = ["../../src/hybrax/format", "../../src/hybrax/train"]
 autoapi_root = "autoapi"
 autoapi_keep_files = False
 autoapi_add_toctree_entry = False     # we place autoapi/index in index.md ourselves

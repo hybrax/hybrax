@@ -57,6 +57,17 @@ dev = [
     "ipykernel>=7.2.0",
     "openpyxl>=3.1.5",
 ]
+docs = [
+    "sphinx>=7.2",
+    "furo>=2024.1",
+    "myst-nb>=1.1",
+    "linkify-it-py>=2.0",
+    "sphinx-autoapi>=3.1",
+    "sphinx-copybutton>=0.5",
+    "sphinx-design>=0.6",
+    "jupyter-cache>=1.0",
+    "ipykernel>=6.29",
+]
 
 [project.urls]
 Homepage = "https://github.com/hybrax/hybrax"
