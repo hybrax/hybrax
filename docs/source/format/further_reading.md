@@ -11,15 +11,15 @@ places to look is one too many.
 | Layer | Where | Use it for |
 |---|---|---|
 | **This guide** | you are here | Learning, and remembering how something fits together. |
-| **API reference** | [`bp_format`](../autoapi/bp_format/index) | Every signature, every field, every default. Generated from source, so it cannot drift. |
-| **Package documentation** | `bp-format/documentation/*.md` in the repo | The dense reference: exhaustive field semantics, design arguments in full, per-module write-ups. Written for agents; correct but heavy going. |
+| **API reference** | [`hybrax.format`](../autoapi/hybrax/format/index) | Every signature, every field, every default. Generated from source, so it cannot drift. |
+| **Package documentation** | `hybrax/specs/format/*.md` in the repo | The dense reference: exhaustive field semantics, design arguments in full, per-module write-ups. Written for agents; correct but heavy going. |
 
 The third layer is intentionally not rendered here. It is in the package repository, and
 its relative links resolve when you read it there.
 
 ## Package documentation index
 
-In `bp-format/documentation/`:
+In `hybrax.format/documentation/`:
 
 | File | Covers |
 |---|---|
@@ -49,5 +49,5 @@ something is the way it is: never for behaviour.
 
 ## See also
 
-- [bp-train guide](../train/index.md): the other half of the stack.
+- [hybrax.train guide](../train/index.md): the other half of the stack.
 - [Design rationale](../under_the_hood/design_rationale.md): the architectural decisions.

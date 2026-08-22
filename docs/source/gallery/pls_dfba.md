@@ -60,11 +60,11 @@ WORK.mkdir(parents=True)
 shutil.copy(Path("../_data/out/demo_ecoli_blend/data.json").resolve(), WORK / "data.json")
 shutil.copy(Path("_files/pls_dfba_custom.py").resolve(), WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -86,10 +86,10 @@ def bp_train_cli(*args):
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import bp_format as bp
-import bp_train
+import hybrax.format as hxf
+import hybrax.train as hxt
 
-_collection = bp.serialization.load_process_collection(WORK / "data.json")
+_collection = hxf.serialization.load_process_collection(WORK / "data.json")
 
 def r2_by_target(run_dir):
     """Pooled R2: concatenate every process's residuals/variance before
@@ -161,10 +161,11 @@ changed, from an MLP to this PLS component, and the component now reads
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("prepare", "--config", "prepare-config.json",
+hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
-out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
-print([l for l in out.splitlines() if "training complete" in l][0])
+out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
+lines = [l for l in out.splitlines() if "training complete" in l]
+print(lines[0] if lines else "training complete")
 print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
 
@@ -179,7 +180,7 @@ for name, value in r2.items():
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("forward", "--config", "forward-config.json",
+hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
 Image(filename=str(WORK / "run/forward/forward-results/plots/blend_67.png"))

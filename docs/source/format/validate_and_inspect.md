@@ -22,12 +22,12 @@ the aggregate collect **all** problems in one pass, so you fix a dataset once in
 discovering issues one failed run at a time.
 
 ```{code-cell} ipython3
-import bp_format as bp
+import hybrax.format as hxf
 
-collection = bp.serialization.load_process_collection("../_data/out/demo_fedbatch/data.json")
+collection = hxf.serialization.load_process_collection("../_data/out/demo_fedbatch/data.json")
 process = collection.processes["fedbatch_1"]
 
-ok, messages = bp.validate_process(process)
+ok, messages = hxf.validate_process(process)
 print("ok:", ok)
 for line in messages:
     print(" ", line)
@@ -38,7 +38,7 @@ ones: principally that every run has the same structure, so a model trained on o
 be applied to another.
 
 ```{code-cell} ipython3
-ok, per_process = bp.validate_for_publication(collection)
+ok, per_process = hxf.validate_for_publication(collection)
 print("ok:", ok, "| sections:", list(per_process))
 ```
 
@@ -75,7 +75,7 @@ so it is not part of `validate_process`:
 import json
 truth = json.loads(open("../_data/out/demo_fedbatch/ground_truth.json").read())
 
-ok, message, total_change = bp.validate_volume_consistency(
+ok, message, total_change = hxf.validate_volume_consistency(
     process, final_volume=truth["final_volume"])
 print(f"ok={ok}   total volume change = {total_change:+.4f} L\n")
 print(message)
@@ -89,7 +89,7 @@ When it does not, the discrepancy tells you which stream is mis-scaled.
 ### As text
 
 ```{code-cell} ipython3
-bp.print_process_structure(process, verbosity=1)
+hxf.print_process_structure(process, verbosity=1)
 ```
 
 `verbosity` runs 1 to 3: 1 is one line per object, 3 prints values.
@@ -104,33 +104,33 @@ bp.print_process_structure(process, verbosity=1)
 ```
 
 ```{code-cell} ipython3
-fig = bp.plot_process(process)
+fig = hxf.plot_process(process)
 ```
 
-Needs the plotting extra (`pip install -e "./bp-format[plotting]"`). One panel per
-variable, shared x-axis. What you are looking for is the stuff a table hides: a trace
-that never moves, a jump where no event happened, a run that starts before inoculation.
+One panel per variable, shared x-axis. What you are looking for is the stuff a table
+hides: a trace that never moves, a jump where no event happened, a run that starts
+before inoculation.
 
 ### As equations
 
 The most under-used call in the package:
 
 ```{code-cell} ipython3
-bp.print_rhs_ode(process)
+hxf.print_rhs_ode(process)
 ```
 
 This is the assembled right-hand side: the biological half you must supply, and the
-physical half bp-format already wrote. Compare it against the fed-batch structure you
+physical half hybrax.format already wrote. Compare it against the fed-batch structure you
 described: every feed should appear, every sample should appear, and nothing should
 appear twice.
 
 ## Gotchas
 
-- **`bp.inspect` is not a module handle**, so `bp.inspect.plot_process` raises on a
-  fresh import. Always use `bp.plot_process(...)` on the root; see [Limits and
+- **`hxf.inspect` is not a module handle**, so `hxf.inspect.plot_process` raises on a
+  fresh import. Always use `hxf.plot_process(...)` on the root; see [Limits and
   gotchas](limits_and_gotchas.md) for why.
 - **`plot_timeseries` is not root-exported**: import it as
-  `from bp_format.inspect import plot_timeseries`.
+  `from hybrax.format.inspect import plot_timeseries`.
 - **`validate_process` raises `TypeError`** if handed something that is not a
   `BioProcess`. That one *is* a hard error, because it is a programming mistake rather
   than a data-quality issue.

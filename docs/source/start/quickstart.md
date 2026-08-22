@@ -32,12 +32,12 @@ if WORK.exists():
 WORK.mkdir(parents=True)
 shutil.copy(DATA / "data.json", WORK / "data.json")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    """Run the bp-train CLI in WORK and return its combined output."""
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    """Run the hybrax.train CLI in WORK and return its combined output."""
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -77,7 +77,7 @@ Everything below assumes that file is in your working directory.
 
 ## 1. Write two config files
 
-bp-train is driven by JSON config files. They are small. This is the whole prepare
+hybrax.train is driven by JSON config files. They are small. This is the whole prepare
 config:
 
 ```json
@@ -120,17 +120,17 @@ Two things to know now, and no more:
 ## 2. Prepare
 
 ```bash
-bp-train prepare --config prepare-config.json --output-dir prepared
+hybrax prepare --config prepare-config.json --output-dir prepared
 ```
 
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-tail(bp_train_cli("prepare", "--config", "prepare-config.json",
+tail(hxt_cli("prepare", "--config", "prepare-config.json",
               "--output-dir", "prepared", "--overwrite"), n=3)
 ```
 
-`prepare` reads your bp-format file and writes a **prepared artifact**: the dataset
+`prepare` reads your hybrax.format file and writes a **prepared artifact**: the dataset
 plus everything derived from it that training needs: the control splines, the state and
 control layout, which measured quantities are the fit targets. Training never touches
 the raw file again, so a prepared artifact is a reproducible starting point.
@@ -141,17 +141,17 @@ each run's controls. Worth a look the first time you prepare your own data.
 ## 3. Train
 
 ```bash
-bp-train train --config train-config.json
+hybrax train --config train-config.json
 ```
 
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
+out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
 tail(out, n=1, match="training complete")
 ```
 
-That is a hybrid ODE model: bp-format supplies the mass balance, and a small neural
+That is a hybrid ODE model: hybrax.format supplies the mass balance, and a small neural
 network (the default reaction module) supplies the three specific rates
 `q_biomass`, `q_glucose`, `q_product`. You did not choose the network, the loss, or the
 optimizer; every one of those is a default you can replace later.
@@ -159,7 +159,7 @@ optimizer; every one of those is a default you can replace later.
 ## 4. Forward
 
 ```bash
-bp-train forward --config forward-config.json
+hybrax forward --config forward-config.json
 ```
 
 with `forward-config.json` requesting predictions and plots explicitly: both default to
@@ -168,7 +168,7 @@ off, since a dense re-solve and a rendered figure cost more than a bare loss num
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("forward", "--config", "forward-config.json",
+hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 print((WORK / "run/forward/forward-results/losses.csv").read_text())
 ```

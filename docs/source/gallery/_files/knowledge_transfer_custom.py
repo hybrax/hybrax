@@ -11,10 +11,10 @@ Builds on gaussian_process.md's GPReactionModule. Two changes:
    50% of the training data experiments" (scaled down: K heads / n_anchors
    here, not 30, and subsampled at the point level rather than the
    experiment level -- both simplifications made for tractability inside
-   bp-train's per-solver-step reaction-module call, not hidden).
+   hybrax.train's per-solver-step reaction-module call, not hidden).
 2. A constant-valued controlled process variable, `is_new_product`, encodes
    which product a given process belongs to: a one-hot identity feature,
-   using only existing bp-format/bp-train machinery (no framework change).
+   using only existing hybrax machinery (no framework change).
    Attached at prepare time via transform_process_collection.
 """
 
@@ -23,9 +23,10 @@ import jax.numpy as jnp
 import jax.scipy.linalg as jsl
 import numpy as np
 
-import bp_format as bp
-from bp_format.time_series import TimeSeries
-from bp_train import (
+import hybrax.format as hxf
+from hybrax.format.mechanistic import build_rhs_ode
+from hybrax.format.time_series import TimeSeries
+from hybrax.train import (
     EstimatedScales,
     ReactionInputs,
     ReactionOutputs,
@@ -40,7 +41,7 @@ def transform_process_collection(collection, config):
     for name, process in collection.processes.items():
         is_new = 1.0 if name.startswith("T_") else 0.0
         times = process.reactor_medium.components["biomass"].concentration.times
-        process.process_variables["is_new_product"] = bp.ProcessVariable(
+        process.process_variables["is_new_product"] = hxf.ProcessVariable(
             name="is_new_product", unit="-", is_controlled=True,
             values=TimeSeries(times=times, values=np.full(times.shape, is_new)),
             bounds=(0.0, 1.0),
@@ -103,21 +104,24 @@ class EnsembleGPReactionModule(UserReactionModule):
         rate_std = jnp.std(means, axis=0)
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=mean,
-            SCL_modeled_FVCs_rates=jnp.zeros(0),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
+            SCL_modeled_Inflows_rates=jnp.zeros(0),
             auxiliary={"rate_std": rate_std},
         )
 
 
-def build_reaction_module(*, seed, runtime_context, **kwargs):
+def build_reaction_module(*, seed, training_parent_collection, **kwargs):
     scale_kwargs = {k: v for k, v in kwargs.items() if k.startswith("SCALE_")}
-    rhs = runtime_context.training_data.rhs_ode
-    runtime_data = runtime_context.data
+    first_process = next(iter(training_parent_collection.processes.values()))
+    rhs = build_rhs_ode(first_process)
     rmc_names = list(rhs.name_modeled_RMCs)
     scaler = scale_kwargs["SCALE_modeled_RMCs"]
 
     pool = []
-    for i, name in enumerate(runtime_data.process_order):
-        traces = [runtime_data.raw_state_trace(i, n) for n in rmc_names]
+    for name, process in training_parent_collection.processes.items():
+        traces = [(np.asarray(process.reactor_medium.components[n].concentration.times),
+                   np.asarray(process.reactor_medium.components[n].concentration.values))
+                  for n in rmc_names]
         values = np.stack([tr[1] for tr in traces], axis=1)   # RAW, (n_t, n_rmc)
         scl_values = np.asarray(scaler.scale_value(jnp.asarray(values)))
         is_new = 1.0 if name.startswith("T_") else 0.0
@@ -162,13 +166,17 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
             max(runtime_data.initial_volume(i) for i in range(n_processes))),
-        SCALE_modeled_FVCs_cumulative=empty,
-        SCALE_modeled_FVCs_rates=empty,
-        SCALE_controlled_FVCs_cumulative=empty,
-        SCALE_controlled_FVCs_rates=empty,
+        SCALE_modeled_Inflows_cumulative=empty,
+        SCALE_modeled_Inflows_rates=empty,
+        SCALE_modeled_Outflows_cumulative=empty,
+        SCALE_modeled_Outflows_rates=empty,
+        SCALE_controlled_Inflows_cumulative=empty,
+        SCALE_controlled_Inflows_rates=empty,
+        SCALE_controlled_Outflows_cumulative=empty,
+        SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=jnp.ones(n_PV),
-        SCALE_controlled_FVCs_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_FVCs)), 1.0),
-        SCALE_modeled_FVCs_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_FVCs)), 1.0),
+        SCALE_controlled_Inflows_Cin=jnp.maximum(
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+        SCALE_modeled_Inflows_Cin=jnp.maximum(
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
     )

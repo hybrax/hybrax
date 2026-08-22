@@ -1,25 +1,25 @@
 # Design Rationale
 
-This document explains the cross-cutting design decisions behind **bp-format** and
-**bp-train**. Individual module/topic docs reference these sections for context.
+This document explains the cross-cutting design decisions behind **hybrax.format** and
+**hybrax.train**. Individual module/topic docs reference these sections for context.
 
-The two packages form one stack:
+Two halves form one stack:
 
-- **bp-format** owns the data model and the mechanistic right-hand side. It turns a
+- **hybrax.format** owns the data model and the mechanistic right-hand side. It turns a
   bioprocess definition into JAX-compatible data structures and a differentiable ODE
   RHS (`build_rhs_ode(process)` → `RhsOde`), formalizing which species / feeds / process
   variables are *modeled* (dynamic states) vs *controlled* (driven by recorded signals).
-- **bp-train** consumes those structures and adds the training machinery: it lets you
+- **hybrax.train** consumes those structures and adds the training machinery: it lets you
   plug a neural / mechanistic **reaction module** and a **loss module** in via `custom.py`
   hooks and runs the prepare → train → forward / loo pipeline on JAX + Diffrax + optax.
-  bp-train never re-derives layout: `RhsOde` is the single source of truth for axis
+  hybrax.train never re-derives layout: `RhsOde` is the single source of truth for axis
   names and ordering.
 
 ---
 
 ## Shared foundation: JAX-first architecture
 
-Both packages are built on [JAX](https://github.com/google/jax) and
+Both halves are built on [JAX](https://github.com/google/jax) and
 [Equinox](https://github.com/patrick-kidger/equinox) to support:
 
 - **Automatic differentiation (AD):** Gradient-based optimization of hybrid bioprocess
@@ -31,7 +31,7 @@ Both packages are built on [JAX](https://github.com/google/jax) and
   manual loop code.
 
 **Why Equinox?** Equinox provides `eqx.Module`, a frozen dataclass that registers as a
-JAX pytree. Objects like `TimeSeries`, `ControlSplines`, `RhsOde`, and (in bp-train) the
+JAX pytree. Objects like `TimeSeries`, `ControlSplines`, `RhsOde`, and (in hybrax.train) the
 reaction module, loss module, controls store, and wrapper can be passed into and out of
 JIT-compiled functions without manual pytree registration. `eqx.filter_jit` automatically
 separates static (non-differentiable) fields from dynamic (array) leaves.
@@ -49,7 +49,7 @@ separates static (non-differentiable) fields from dynamic (array) leaves.
 
 ---
 
-## bp-format
+## hybrax.format
 
 ### 1. Hierarchical data model
 
@@ -145,7 +145,7 @@ interpolation, not linear, to preserve correct discontinuity behavior in the bac
 
 Bioprocess data comes from diverse sources, with common errors like negative feed volumes,
 missing biomass component, mismatched times/values lengths, feed media that omit reactor
-species, or measurement times coinciding with sampling events. bp-format validates early
+species, or measurement times coinciding with sampling events. hybrax.format validates early
 and explicitly. All validation functions return `(bool, str)` tuples, so callers can
 collect **all** issues in one pass and present a comprehensive report rather than failing
 on the first error. `validate_process()` runs single-process checks;
@@ -153,14 +153,14 @@ on the first error. `validate_process()` runs single-process checks;
 
 ---
 
-## bp-train
+## hybrax.train
 
-### 1. Built on bp-format, JAX, Diffrax, Equinox, optax
+### 1. Built on hybrax.format, JAX, Diffrax, Equinox, optax
 
-bp-train consumes the data structures and mechanistic RHS from bp-format and adds training:
+hybrax.train consumes the data structures and mechanistic RHS from hybrax.format and adds training:
 
-- **bp-format** owns the data model and `build_rhs_ode(process)` → `RhsOde` (the single
-  source of truth for axis names and ordering; bp-train never re-derives layout).
+- **hybrax.format** owns the data model and `build_rhs_ode(process)` → `RhsOde` (the single
+  source of truth for axis names and ordering; hybrax.train never re-derives layout).
 - **JAX** provides autodiff + JIT for the repeated forward solves.
 - **Diffrax** integrates the ODE with an adaptive solver and adjoint backprop.
 - **Equinox** makes the reaction module, loss module, controls store, and wrapper JAX
@@ -170,16 +170,16 @@ bp-train consumes the data structures and mechanistic RHS from bp-format and add
 ### 2. Scaled (SCL) vs physical (RAW) space
 
 Neural-ODE training is numerically fragile when state magnitudes span orders of magnitude
-(biomass ~g/L, volume ~L, cumulative feed ~L). bp-train integrates the ODE in **scaled
+(biomass ~g/L, volume ~L, cumulative feed ~L). hybrax.train integrates the ODE in **scaled
 space (SCL)** so every axis is O(1) (keeping gradients well-conditioned) then converts
 to **physical space (RAW)** only where the chemistry needs real units.
 
-Scaling is a single linear factor per semantic axis (13 `SCALE_*` axes on
+Scaling is a single linear factor per semantic axis (15 `SCALE_*` axes on
 `EstimatedScales`, covering states, rates, cumulative volumes, feed compositions, and
 process variables). The integrated SCL state vector is
 
 ```
-SCL_state = [ modeled_RMCs | modeled_PVs | V_in_cumulative | modeled_FVCs_cumulative ]
+SCL_state = [ modeled_RMCs | modeled_PVs | V | modeled_Inflows_cumulative | modeled_Outflows_cumulative ]
 ```
 
 Because scaling is linear, the same factor converts a value and its time-derivative
@@ -219,7 +219,7 @@ the `build_optimizer` hook with `optax.masked` / `optax.multi_transform`.
 ### 6. Mean loss aggregation
 
 A loss module returns a dict of **named scalar losses**; the total for backprop is
-`mean(named_losses.values())`, not the sum. bp-train clips the **raw** gradient
+`mean(named_losses.values())`, not the sum. hybrax.train clips the **raw** gradient
 (`clip_by_global_norm`) *before* Adam. Mean keeps gradient magnitude independent of the
 term count, so a tuned `grad_clip_norm` behaves the same as you add named terms. Sum would
 scale the gradient by the term count, push it past the clip threshold, and (because the
@@ -230,14 +230,14 @@ on stiff neural-ODE problems. For weighted-sum behavior, scale individual terms 
 ### 7. Discrete events as differentiable state jumps
 
 Boluses and samples are applied at their known event times as **discrete, differentiable
-state jumps** (not continuous ramps in the RHS. The bounded solve (§3) runs as a sequence
+state jumps** (not continuous ramps in the RHS). The bounded solve (§3) runs as a sequence
 of segment solves with jumps applied *between* segments via `diffrax_callbacks`
 (`PresetTimeCallback`), so the adjoint stays standard and correct (gradient through a
 preset jump matches the analytic value to ~9 digits). At a coincident timestamp the jump
 is ordered **sample first** (well-mixed removal: concentrations unchanged, volume drops)
 **then bolus** (dilute from the post-sample volume and add the fed mass). Loss is sampled
 only at measurement timestamps, so a measurement strictly before a bolus is unaffected by
-it. Continuous controlled feeds are not events) they are piecewise-linear signals
+it. Continuous controlled feeds are not events: they are piecewise-linear signals
 evaluated inside the RHS at each `t`.
 
 ### 8. Trainable-partition-only serialization
@@ -253,6 +253,6 @@ See [Saving, loading and predicting](../train/save_load_predict.md).
 
 Training can shard the process batch across CPU cores via `pmap` (~N speedup). This is
 **opt-in** and resolved *before* JAX initializes (the device count is fixed at import
-time): set `train.devices: N` (or `"max"`) in the config, or `BP_TRAIN_DEVICES=N` (the env
+time): set `train.devices: N` (or `"max"`) in the config, or `HYBRAX_TRAIN_DEVICES=N` (the env
 var always wins). `"max"` resolves to `min(n_processes, n_cpus)`. Default is 1 device, so
-bp-train never competes for cores with other work. No effect on GPU.
+hybrax.train never competes for cores with other work. No effect on GPU.

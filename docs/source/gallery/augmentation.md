@@ -45,11 +45,11 @@ WORK.mkdir(parents=True)
 shutil.copy(Path("../_data/out/demo_fedbatch/data.json").resolve(), WORK / "data.json")
 shutil.copy(Path("_files/augmentation_custom.py").resolve(), WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -103,7 +103,7 @@ parent's own sampling: children are resampled, not resliced.
 ```
 
 Augmentation resamples each modeled state onto new timepoints, and that needs a fitted
-spline, not just the raw measured samples. A freshly loaded bp-format file has none:
+spline, not just the raw measured samples. A freshly loaded hybrax.format file has none:
 without this hook, `prepare` fails fast with `"modeled state 'biomass' requires a
 spline"` rather than guessing. `custom_py` must be set at the top level of the config
 (not inside `prepare`) for `prepare` to pick this hook up at all.
@@ -111,7 +111,7 @@ spline"` rather than guessing. `custom_py` must be set at the top level of the c
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-out = bp_train_cli("prepare", "--config", "prepare-config.json",
+out = hxt_cli("prepare", "--config", "prepare-config.json",
                "--output-dir", "prepared", "--overwrite")
 for line in out.splitlines():
     if "UserWarning: " in line:
@@ -127,7 +127,7 @@ from IPython.display import Image
 Image(filename=str(WORK / "prepared/augmented-data.png"))
 ```
 
-`bp-train prepare` writes this diagnostic automatically whenever `augmentation` is
+`hybrax prepare` writes this diagnostic automatically whenever `augmentation` is
 configured: grey dots are the synthetic children, the blue line is the fitted spline,
 red dots the real measurements. Worth checking before training on it: noise that looks
 wrong here will look wrong in every downstream fit too.
@@ -154,26 +154,25 @@ transform and can repair them: here, a running maximum.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-import bp_format as bp
-from bp_train.augmentation import augment_process_collection
-from bp_train.prepare import load_raw_collection
-from bp_train.run_config import AugmentationConfig, PrepareConfig, RunConfig
+import hybrax.format as hxf
+import hybrax.train as hxt
+from hybrax.train import augmentation, prepare, run_config
 
 import importlib.util
 spec = importlib.util.spec_from_file_location("custom", str(WORK / "custom.py"))
 custom = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(custom)
 
-raw = load_raw_collection(str(WORK / "data.json"))
+raw = prepare.load_raw_collection(str(WORK / "data.json"))
 raw = custom.transform_process_collection(raw, None)
-run_config = RunConfig(prepare=PrepareConfig(
+cfg = run_config.RunConfig(prepare=run_config.PrepareConfig(
     raw_input=str(WORK / "data.json"),
-    augmentation=AugmentationConfig(
+    augmentation=run_config.AugmentationConfig(
         n_children_per_process=5, n_time_points=11,
         noise_std={"biomass": 0.05, "glucose": 0.05, "lactate": 0.05, "product": 0.05},
     ),
 ))
-augmented = augment_process_collection(raw, run_config, custom.augment_state_values)
+augmented = augmentation.augment_process_collection(raw, cfg, custom.augment_state_values)
 
 children = [n for n, p in augmented.processes.items() if hasattr(p, "parent_process")]
 print(f"{len(children)} synthetic children from 1 parent")
@@ -204,8 +203,9 @@ for name in children[:3]:
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
-print([l for l in out.splitlines() if "training complete" in l][0])
+out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
+lines = [l for l in out.splitlines() if "training complete" in l]
+print(lines[0] if lines else "training complete")
 ```
 
 Nothing about training changes: augmentation happens entirely at `prepare` time, and by
@@ -235,7 +235,7 @@ print(f"prepared augmentation diagnostic: ./{(WORK / 'prepared/augmented-data.pn
   afterward, but check the diagnostic plot for any state where this matters.
 - **Cross-validation must stay group-aware.** A parent and its synthetic children carry
   the same information; splitting them across train and holdout leaks the answer. Use
-  bp-train's LOO ([worked example](loo.md)), which handles this for you.
+  hybrax.train's LOO ([worked example](loo.md)), which handles this for you.
 - **This does not manufacture new information.** It resamples and perturbs what one run
   already told you; it cannot substitute for an experiment you have not run.
 

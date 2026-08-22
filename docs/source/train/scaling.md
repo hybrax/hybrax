@@ -14,7 +14,7 @@ own error control (`rtol`, `atol`) also applies across a shared state vector, so
 absolute tolerance appropriate for glucose is meaningless for a trace species. Everything
 downstream inherits the conditioning of the worst axis.
 
-So bp-train **integrates in scaled (SCL) space**, where every axis is O(1), and converts
+So hybrax.train **integrates in scaled (SCL) space**, where every axis is O(1), and converts
 to physical (RAW) units only where the chemistry needs them.
 
 ## Why one linear factor per axis
@@ -54,7 +54,7 @@ The whole job is: for each axis, what is a characteristic magnitude?
 
 **State axes** are easy: how big does this species get, anywhere in the data. The hook
 receives a `RuntimeDataContext`, collection-free numeric traces rather than raw
-bp-format objects: `raw_state_trace(process_index, name)` returns that state's exact
+hybrax.format objects: `raw_state_trace(process_index, name)` returns that state's exact
 `(times, values)`.
 
 ```python
@@ -110,7 +110,7 @@ matrices, controlled PVs, and the biological rate vector. `SCALE_modeled_PVs` de
 empty; the rest are required.
 
 Exact field names and shapes are in the
-[API reference](../autoapi/bp_train/model_api/index), and `print_reaction_schema` will
+[API reference](../autoapi/hybrax/train/model_api/index), and `print_reaction_schema` will
 show you the shapes for *your* dataset, which is faster than reading either.
 
 For a process with no feeds and no process variables, most axes are `jnp.zeros(0)`. That
@@ -127,8 +127,9 @@ affine scaling, useful when a quantity varies over a narrow band far from zero
 :class: warning
 Rate scaling must be offset-free, because the value/derivative equivalence above only
 holds for a pure multiplication. Supplying an `AffineScaler` with a non-zero offset for
-`SCALE_modeled_BiologicalOde_rates`, `SCALE_controlled_FVCs_rates` or
-`SCALE_modeled_FVCs_rates` is rejected.
+`SCALE_modeled_BiologicalOde_rates`, `SCALE_controlled_Inflows_rates`,
+`SCALE_controlled_Outflows_rates`, `SCALE_modeled_Inflows_rates` or
+`SCALE_modeled_Outflows_rates` is rejected.
 :::
 
 ## How do I know it worked?
@@ -152,8 +153,9 @@ Three signals, in order of usefulness:
 - **Scales are frozen, never trained.** They are a property of the dataset.
 - **Do not duplicate scales onto your inputs.** They live on the reaction module; read
   them via `inputs.reaction_module.SCALE_*` or its helpers.
-- **`forward_from_collection` re-runs this hook** on whatever collection you hand it;
-  `model_predict` does not. Two paths, two behaviours: see
+- **`forward_from_collection` re-runs this hook**, but always against the run's own
+  recorded training input, never against the collection you hand it for evaluation.
+  Scales never drift from what the model was trained under: see
   [Silent failures](../troubleshooting/silent_failures.md).
 
 ## See also

@@ -36,7 +36,7 @@ version, stated plainly:
   condition threaded into the reaction module, an added wiring cost this
   page's teaching point doesn't need. The *mechanism*, independent
   multiplicative terms, is fully real; the *count* of terms is smaller.
-- This page fits every constant by bp-train's ordinary gradient descent through
+- This page fits every constant by hybrax.train's ordinary gradient descent through
   the whole ODE, once, with no sparsification. The paper's own Stage II runs an
   F-test-based backward term-elimination search over 13 significance levels to
   select a smaller model; Stage III then solves an orthogonal-collocation
@@ -71,11 +71,11 @@ shutil.copy(Path("../_data/out/demo_optfed/data.json").resolve(), WORK / "data.j
 shutil.copy(Path("../_data/out/demo_optfed/ground_truth.json").resolve(), WORK / "ground_truth.json")
 shutil.copy(Path("_files/optfed_custom.py").resolve(), WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -100,10 +100,10 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import bp_format as bp
-import bp_train
+import hybrax.format as hxf
+import hybrax.train as hxt
 
-_collection = bp.serialization.load_process_collection(WORK / "data.json")
+_collection = hxf.serialization.load_process_collection(WORK / "data.json")
 
 def r2_by_target(run_dir):
     """Pooled R2: concatenate every process's residuals/variance before
@@ -134,7 +134,7 @@ def r2_by_target(run_dir):
 ```{literalinclude} _files/optfed_custom.py
 :language: python
 :linenos:
-:lines: 23-39
+:lines: 24-40
 ```
 
 `_eyring` is Eq. 4e verbatim, vectorized: given a scalar temperature and
@@ -149,7 +149,7 @@ variable contributes its own factor, `1/(1+v/K)` to suppress a rate,
 ```{literalinclude} _files/optfed_custom.py
 :language: python
 :linenos:
-:lines: 42-72
+:lines: 43-73
 ```
 
 Twenty trainable scalars: 4 per Eyring instance (`log_A`, `log_Ea_R`,
@@ -161,7 +161,7 @@ from a genome-scale model, not the fitted parameters.
 ```{literalinclude} _files/optfed_custom.py
 :language: python
 :linenos:
-:lines: 74-107
+:lines: 75-109
 ```
 
 `temperature` comes in through `unscale_controlled_PVs(inputs.SCL_controlled_PVs)`,
@@ -183,10 +183,11 @@ biomass), no manual `Xr/X` correction is needed inside `__call__` at all,
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("prepare", "--config", "prepare-config.json",
+hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
-out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
-print([l for l in out.splitlines() if "training complete" in l][0])
+out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
+lines = [l for l in out.splitlines() if "training complete" in l]
+print(lines[0] if lines else "training complete")
 print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
 
@@ -201,7 +202,7 @@ for name, value in r2.items():
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("forward", "--config", "forward-config.json",
+hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
 Image(filename=str(WORK / "run/forward/forward-results/plots/T_high.png"))
@@ -217,7 +218,7 @@ high temperature, not a fixed rate blind to `temperature` at all.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-wrapper, cfg = bp_train.model_load(str(WORK / "run"))
+wrapper, cfg = hxt.model_load(str(WORK / "run"))
 m = wrapper.reaction_module
 fitted_Teq_K = 290.0 + 40.0 * jax.nn.sigmoid(m.eyring_raw_Teq)
 fitted_Teq_C = np.asarray(fitted_Teq_K) - 273.15

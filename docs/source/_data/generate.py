@@ -82,8 +82,8 @@ from pathlib import Path
 
 import numpy as np
 
-import bp_format as bp
-from bp_format.time_series import TimeSeries
+import hybrax.format as hxf
+from hybrax.format.time_series import TimeSeries
 
 OUT = Path(__file__).parent / "out"
 
@@ -156,9 +156,9 @@ def _simulate_batch(s0: float, x0: float) -> dict[str, np.ndarray]:
     }
 
 
-def _batch_process(name: str, meas: dict[str, np.ndarray]) -> bp.BioProcess:
+def _batch_process(name: str, meas: dict[str, np.ndarray]) -> hxf.BioProcess:
     components = {
-        species: bp.ReactorMediumComponent(
+        species: hxf.ReactorMediumComponent(
             name=species,
             unit="g/L",
             concentration=TimeSeries(
@@ -169,22 +169,22 @@ def _batch_process(name: str, meas: dict[str, np.ndarray]) -> bp.BioProcess:
         )
         for species, values in meas.items()
     }
-    return bp.BioProcess(
-        metadata=bp.BioProcessMetadata(
+    return hxf.BioProcess(
+        metadata=hxf.BioProcessMetadata(
             name=name,
             process_type="batch",
             notes="Simulated E. coli batch culture on glucose (documentation demo).",
         ),
-        time_axis=bp.TimeAxis(
+        time_axis=hxf.TimeAxis(
             unit="h", start=0.0, end=BATCH_END, time_reference="inoculation"
         ),
         # A true batch: no feeds, no boluses, no sampling volume.
-        volume=bp.Volume(initial_volume=1.0, unit="L"),
-        reactor_medium=bp.ReactorMedium(
+        volume=hxf.Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=hxf.ReactorMedium(
             name="defined_medium", density=1.0, density_unit="kg/L",
             components=components,
         ),
-        # biological_ode is left None on purpose -> bp-format auto-generates
+        # biological_ode is left None on purpose -> hybrax.format auto-generates
         #   q_biomass, q_glucose, q_product  with  d<c>/dt = q_<c> * biomass
     )
 
@@ -203,7 +203,7 @@ def build_demo_batch() -> None:
             "glucose": _noisy(rng, truth["glucose"], 0.0),
             "product": _noisy(rng, truth["product"], 0.0),
         }
-        # t=0 is measured exactly: bp-train requires a t0 value for every target.
+        # t=0 is measured exactly: hybrax.train requires a t0 value for every target.
         for species in meas:
             meas[species][0] = truth[species][0]
 
@@ -217,13 +217,13 @@ def build_demo_batch() -> None:
     header = "run,time_h,biomass_gL,glucose_gL,product_gL"
     (out / "raw" / "offline.csv").write_text("\n".join([header, *csv_rows]) + "\n")
 
-    collection = bp.BioProcessCollection(
+    collection = hxf.BioProcessCollection(
         case_id="demo_batch",
         organism="Escherichia coli",
         citation="Simulated data — bp-docs demo, not a real experiment.",
         processes=processes,
     )
-    bp.serialization.save_process_collection(collection, out / "data.json")
+    hxf.serialization.save_process_collection(collection, out / "data.json")
 
     (out / "ground_truth.json").write_text(json.dumps({
         "mu_max": MU_MAX, "Ks": KS, "Y_XS": Y_XS, "m_s": M_S,
@@ -355,7 +355,7 @@ def build_demo_fedbatch() -> None:
         meas[species][0] = at_samples(species)[0]
 
     components = {
-        species: bp.ReactorMediumComponent(
+        species: hxf.ReactorMediumComponent(
             name=species, unit="g/L",
             concentration=TimeSeries(times=FB_SAMPLE_TIMES.astype(float),
                                      values=values.astype(float)),
@@ -364,20 +364,20 @@ def build_demo_fedbatch() -> None:
         for species, values in meas.items()
     }
 
-    feed_medium = bp.FeedMedium(
+    feed_medium = hxf.FeedMedium(
         name="glucose_feed", density=1.0, density_unit="kg/L",
         components={
             # Every reactor species needs an explicit feed concentration —
             # "absent" and "unrecorded" must not be confusable.
-            "glucose": bp.FeedMediumComponent(
+            "glucose": hxf.FeedMediumComponent(
                 name="glucose", unit="g/L",
-                concentration=bp.StaticVariable(FB_FEED_C_GLUCOSE)),
-            "biomass": bp.FeedMediumComponent(
-                name="biomass", unit="g/L", concentration=bp.StaticVariable(0.0)),
-            "lactate": bp.FeedMediumComponent(
-                name="lactate", unit="g/L", concentration=bp.StaticVariable(0.0)),
-            "product": bp.FeedMediumComponent(
-                name="product", unit="g/L", concentration=bp.StaticVariable(0.0)),
+                concentration=hxf.StaticVariable(FB_FEED_C_GLUCOSE)),
+            "biomass": hxf.FeedMediumComponent(
+                name="biomass", unit="g/L", concentration=hxf.StaticVariable(0.0)),
+            "lactate": hxf.FeedMediumComponent(
+                name="lactate", unit="g/L", concentration=hxf.StaticVariable(0.0)),
+            "product": hxf.FeedMediumComponent(
+                name="product", unit="g/L", concentration=hxf.StaticVariable(0.0)),
         },
     )
 
@@ -386,18 +386,18 @@ def build_demo_fedbatch() -> None:
     v_in_online = np.interp(online_t, t_grid, sim["v_in"])
 
     volume_changes = {
-        "glucose_feed": bp.Inflow(
+        "glucose_feed": hxf.Inflow(
             name="glucose_feed", unit="L", is_controlled=True, is_continuous=True,
             values=TimeSeries(times=online_t, values=v_in_online),
             feed_medium=feed_medium,
         ),
-        "glucose_bolus": bp.Inflow(
+        "glucose_bolus": hxf.Inflow(
             name="glucose_bolus", unit="L", is_controlled=True, is_continuous=False,
             values=TimeSeries(times=FB_BOLUS_TIMES.astype(float),
                               values=np.full(FB_BOLUS_TIMES.shape, FB_BOLUS_VOLUME)),
             feed_medium=feed_medium,
         ),
-        "sampling": bp.Outflow(
+        "sampling": hxf.Outflow(
             name="sampling", unit="L", is_controlled=True, is_continuous=False,
             # samples are negative by convention; t=0 is not a draw
             values=TimeSeries(times=FB_SAMPLE_TIMES[1:].astype(float),
@@ -409,35 +409,35 @@ def build_demo_fedbatch() -> None:
     # One controlled process variable, measured online.
     do_pct = 40.0 + 8.0 * np.exp(-online_t / 6.0) + rng.normal(0.0, 0.4, online_t.shape)
     process_variables = {
-        "dissolved_oxygen": bp.ProcessVariable(
+        "dissolved_oxygen": hxf.ProcessVariable(
             name="dissolved_oxygen", unit="%", is_controlled=True,
             values=TimeSeries(times=online_t, values=do_pct),
             bounds=(0.0, 100.0),
         )
     }
 
-    process = bp.BioProcess(
-        metadata=bp.BioProcessMetadata(
+    process = hxf.BioProcess(
+        metadata=hxf.BioProcessMetadata(
             name="fedbatch_1", process_type="fed_batch",
             notes="Simulated CHO-like mammalian fed-batch: constant feed + "
                   "2 boluses + sampling, lactate as a byproduct.",
         ),
-        time_axis=bp.TimeAxis(unit="h", start=0.0, end=FB_END,
+        time_axis=hxf.TimeAxis(unit="h", start=0.0, end=FB_END,
                               time_reference="inoculation"),
-        volume=bp.Volume(initial_volume=1.0, unit="L",
+        volume=hxf.Volume(initial_volume=1.0, unit="L",
                          volume_changes=volume_changes),
-        reactor_medium=bp.ReactorMedium(name="defined_medium", density=1.0,
+        reactor_medium=hxf.ReactorMedium(name="defined_medium", density=1.0,
                                         density_unit="kg/L", components=components),
         process_variables=process_variables,
     )
 
-    collection = bp.BioProcessCollection(
+    collection = hxf.BioProcessCollection(
         case_id="demo_fedbatch",
         organism="Chinese hamster ovary (CHO) cell line",
         citation="Simulated data — bp-docs demo, not a real experiment.",
         processes={"fedbatch_1": process},
     )
-    bp.serialization.save_process_collection(collection, out / "data.json")
+    hxf.serialization.save_process_collection(collection, out / "data.json")
 
     (out / "ground_truth.json").write_text(json.dumps({
         "mu_max": MAM_MU_MAX, "Ks": MAM_KS, "Y_XS": MAM_Y_XS, "m_s": MAM_M_S,
@@ -511,9 +511,9 @@ def _simulate_products(mu_max, ks, y_xs, m_s, alpha, beta, end, s0, x0):
     return t_grid, traj
 
 
-def _products_process(name: str, meas: dict[str, np.ndarray], sample_times, end: float) -> bp.BioProcess:
+def _products_process(name: str, meas: dict[str, np.ndarray], sample_times, end: float) -> hxf.BioProcess:
     components = {
-        species: bp.ReactorMediumComponent(
+        species: hxf.ReactorMediumComponent(
             name=species, unit="g/L",
             concentration=TimeSeries(times=np.asarray(sample_times, dtype=float),
                                       values=np.asarray(values, dtype=float)),
@@ -521,14 +521,14 @@ def _products_process(name: str, meas: dict[str, np.ndarray], sample_times, end:
         )
         for species, values in meas.items()
     }
-    return bp.BioProcess(
-        metadata=bp.BioProcessMetadata(
+    return hxf.BioProcess(
+        metadata=hxf.BioProcessMetadata(
             name=name, process_type="batch",
             notes="Simulated batch culture (documentation demo, knowledge transfer).",
         ),
-        time_axis=bp.TimeAxis(unit="h", start=0.0, end=end, time_reference="inoculation"),
-        volume=bp.Volume(initial_volume=1.0, unit="L"),
-        reactor_medium=bp.ReactorMedium(name="defined_medium", density=1.0,
+        time_axis=hxf.TimeAxis(unit="h", start=0.0, end=end, time_reference="inoculation"),
+        volume=hxf.Volume(initial_volume=1.0, unit="L"),
+        reactor_medium=hxf.ReactorMedium(name="defined_medium", density=1.0,
                                         density_unit="kg/L", components=components),
     )
 
@@ -564,13 +564,13 @@ def build_demo_products() -> None:
             run_name = f"{key}_run_{r + 1}"
             processes[run_name] = _products_process(run_name, meas, sample_times, end)
 
-    collection = bp.BioProcessCollection(
+    collection = hxf.BioProcessCollection(
         case_id="demo_products",
         organism="Five simulated E. coli-like product lines",
         citation="Simulated data — bp-docs demo, not a real experiment.",
         processes=processes,
     )
-    bp.serialization.save_process_collection(collection, out / "data.json")
+    hxf.serialization.save_process_collection(collection, out / "data.json")
 
     (out / "ground_truth.json").write_text(json.dumps(
         {k: dict(zip(["mu_max", "Ks", "Y_XS", "m_s", "alpha", "beta", "end_h"], v))
@@ -696,7 +696,7 @@ def build_demo_ecoli_fba() -> None:
         for species in meas:
             meas[species][0] = truth[species][0]
         components = {
-            species: bp.ReactorMediumComponent(
+            species: hxf.ReactorMediumComponent(
                 name=species, unit="g/L",
                 concentration=TimeSeries(times=ECOLI_SAMPLE_TIMES.astype(float),
                                           values=values.astype(float)),
@@ -704,24 +704,24 @@ def build_demo_ecoli_fba() -> None:
             )
             for species, values in meas.items()
         }
-        processes[name] = bp.BioProcess(
-            metadata=bp.BioProcessMetadata(
+        processes[name] = hxf.BioProcess(
+            metadata=hxf.BioProcessMetadata(
                 name=name, process_type="batch",
                 notes="Forward-simulated from a real surrogate-FBA model (documentation demo).",
             ),
-            time_axis=bp.TimeAxis(unit="h", start=0.0, end=ECOLI_T_END, time_reference="inoculation"),
-            volume=bp.Volume(initial_volume=1.0, unit="L"),
-            reactor_medium=bp.ReactorMedium(name="M9_glucose", density=1.0,
+            time_axis=hxf.TimeAxis(unit="h", start=0.0, end=ECOLI_T_END, time_reference="inoculation"),
+            volume=hxf.Volume(initial_volume=1.0, unit="L"),
+            reactor_medium=hxf.ReactorMedium(name="M9_glucose", density=1.0,
                                             density_unit="kg/L", components=components),
         )
 
-    collection = bp.BioProcessCollection(
+    collection = hxf.BioProcessCollection(
         case_id="demo_ecoli_fba",
         organism="Escherichia coli (core metabolism, Orth/Fleming/Palsson 2010)",
         citation="Simulated via a surrogate-FBA forward model — bp-docs demo, not a real experiment.",
         processes=processes,
     )
-    bp.serialization.save_process_collection(collection, out / "data.json")
+    hxf.serialization.save_process_collection(collection, out / "data.json")
 
 
 ECOLI_BLEND_RUNS = {
@@ -752,7 +752,7 @@ def build_demo_ecoli_blend() -> None:
         for species in meas:
             meas[species][0] = truth[species][0]
         components = {
-            species: bp.ReactorMediumComponent(
+            species: hxf.ReactorMediumComponent(
                 name=species, unit="g/L",
                 concentration=TimeSeries(times=ECOLI_SAMPLE_TIMES.astype(float),
                                           values=values.astype(float)),
@@ -760,24 +760,24 @@ def build_demo_ecoli_blend() -> None:
             )
             for species, values in meas.items()
         }
-        processes[name] = bp.BioProcess(
-            metadata=bp.BioProcessMetadata(
+        processes[name] = hxf.BioProcess(
+            metadata=hxf.BioProcessMetadata(
                 name=name, process_type="batch",
                 notes="Forward-simulated from a real surrogate-FBA model, blend-dependent (documentation demo).",
             ),
-            time_axis=bp.TimeAxis(unit="h", start=0.0, end=ECOLI_T_END, time_reference="inoculation"),
-            volume=bp.Volume(initial_volume=1.0, unit="L"),
-            reactor_medium=bp.ReactorMedium(name="M9_glucose_blend", density=1.0,
+            time_axis=hxf.TimeAxis(unit="h", start=0.0, end=ECOLI_T_END, time_reference="inoculation"),
+            volume=hxf.Volume(initial_volume=1.0, unit="L"),
+            reactor_medium=hxf.ReactorMedium(name="M9_glucose_blend", density=1.0,
                                             density_unit="kg/L", components=components),
         )
 
-    collection = bp.BioProcessCollection(
+    collection = hxf.BioProcessCollection(
         case_id="demo_ecoli_blend",
         organism="Escherichia coli (core metabolism, Orth/Fleming/Palsson 2010)",
         citation="Simulated via a surrogate-FBA forward model — bp-docs demo, not a real experiment.",
         processes=processes,
     )
-    bp.serialization.save_process_collection(collection, out / "data.json")
+    hxf.serialization.save_process_collection(collection, out / "data.json")
 
 
 # ===========================================================================
@@ -901,15 +901,15 @@ def build_demo_optfed() -> None:
     out.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(20260814)
 
-    feed_medium = bp.FeedMedium(
+    feed_medium = hxf.FeedMedium(
         name="optfed_feed", density=1.0, density_unit="kg/L",
         components={
-            "glucose": bp.FeedMediumComponent(
-                name="glucose", unit="g/L", concentration=bp.StaticVariable(OPTFED_GF)),
-            "biomass": bp.FeedMediumComponent(
-                name="biomass", unit="g/L", concentration=bp.StaticVariable(0.0)),
-            "product": bp.FeedMediumComponent(
-                name="product", unit="g/L", concentration=bp.StaticVariable(0.0)),
+            "glucose": hxf.FeedMediumComponent(
+                name="glucose", unit="g/L", concentration=hxf.StaticVariable(OPTFED_GF)),
+            "biomass": hxf.FeedMediumComponent(
+                name="biomass", unit="g/L", concentration=hxf.StaticVariable(0.0)),
+            "product": hxf.FeedMediumComponent(
+                name="product", unit="g/L", concentration=hxf.StaticVariable(0.0)),
         },
     )
 
@@ -931,7 +931,7 @@ def build_demo_optfed() -> None:
             meas[species][0] = at_samples(species)[0]
 
         components = {
-            species: bp.ReactorMediumComponent(
+            species: hxf.ReactorMediumComponent(
                 name=species, unit="g/L",
                 concentration=TimeSeries(times=OPTFED_SAMPLE_TIMES.astype(float),
                                          values=values.astype(float)),
@@ -942,7 +942,7 @@ def build_demo_optfed() -> None:
 
         v_in_online = np.interp(OPTFED_SAMPLE_TIMES, t_grid, sim["v_in"])
         volume_changes = {
-            "glucose_feed": bp.Inflow(
+            "glucose_feed": hxf.Inflow(
                 name="glucose_feed", unit="L", is_controlled=True, is_continuous=True,
                 values=TimeSeries(times=OPTFED_SAMPLE_TIMES.astype(float),
                                   values=v_in_online.astype(float)),
@@ -951,7 +951,7 @@ def build_demo_optfed() -> None:
         }
 
         process_variables = {
-            "temperature": bp.ProcessVariable(
+            "temperature": hxf.ProcessVariable(
                 name="temperature", unit="degC", is_controlled=True,
                 values=TimeSeries(times=OPTFED_SAMPLE_TIMES.astype(float),
                                   values=np.full(OPTFED_SAMPLE_TIMES.shape, temperature_c)),
@@ -959,20 +959,20 @@ def build_demo_optfed() -> None:
             ),
         }
 
-        processes[name] = bp.BioProcess(
-            metadata=bp.BioProcessMetadata(
+        processes[name] = hxf.BioProcess(
+            metadata=hxf.BioProcessMetadata(
                 name=name, process_type="fed_batch",
                 notes="Simulated from OptFed's non-competitive-inhibition rate "
                       "law with Eyring temperature dependence (documentation demo).",
             ),
-            time_axis=bp.TimeAxis(unit="h", start=0.0, end=OPTFED_END,
+            time_axis=hxf.TimeAxis(unit="h", start=0.0, end=OPTFED_END,
                                   time_reference="inoculation"),
-            volume=bp.Volume(initial_volume=1.0, unit="L", volume_changes=volume_changes),
-            reactor_medium=bp.ReactorMedium(name="defined_medium", density=1.0,
+            volume=hxf.Volume(initial_volume=1.0, unit="L", volume_changes=volume_changes),
+            reactor_medium=hxf.ReactorMedium(name="defined_medium", density=1.0,
                                             density_unit="kg/L", components=components),
             process_variables=process_variables,
         )
-        processes[name].biological_ode = bp.BiologicalOde(
+        processes[name].biological_ode = hxf.BiologicalOde(
             algebraic={"X_active": "biomass - product"},
             rates={"q_biomass": (None, None), "q_glucose": (None, None),
                    "q_product": (None, None)},
@@ -983,13 +983,13 @@ def build_demo_optfed() -> None:
             },
         )
 
-    collection = bp.BioProcessCollection(
+    collection = hxf.BioProcessCollection(
         case_id="demo_optfed",
         organism="Escherichia coli (recombinant protein production, OptFed-inspired)",
         citation="Simulated data — bp-docs demo, not a real experiment.",
         processes=processes,
     )
-    bp.serialization.save_process_collection(collection, out / "data.json")
+    hxf.serialization.save_process_collection(collection, out / "data.json")
 
     (out / "ground_truth.json").write_text(json.dumps({
         "eyring_deg": OPTFED_E_DEG, "eyring_pi": OPTFED_E_PI, "eyring_alpha": OPTFED_E_ALPHA,
@@ -1079,19 +1079,19 @@ def build_demo_glutamine_decay() -> None:
             meas[species][0] = sim[species][0]   # first sample noise-free
 
         components = {
-            "biomass": bp.ReactorMediumComponent(
+            "biomass": hxf.ReactorMediumComponent(
                 name="biomass", unit="g/L",
                 concentration=TimeSeries(times=GLN_SAMPLE_TIMES.astype(float),
                                          values=meas["biomass"].astype(float)),
                 bounds=(0.0, None),
             ),
-            "Gln": bp.ReactorMediumComponent(
+            "Gln": hxf.ReactorMediumComponent(
                 name="Gln", unit="mol/L",
                 concentration=TimeSeries(times=GLN_SAMPLE_TIMES.astype(float),
                                          values=meas["Gln"].astype(float)),
                 bounds=(0.0, None),
             ),
-            "NH4": bp.ReactorMediumComponent(
+            "NH4": hxf.ReactorMediumComponent(
                 name="NH4", unit="mol/L",
                 concentration=TimeSeries(times=GLN_SAMPLE_TIMES.astype(float),
                                          values=meas["NH4"].astype(float)),
@@ -1099,19 +1099,19 @@ def build_demo_glutamine_decay() -> None:
             ),
         }
 
-        processes[name] = bp.BioProcess(
-            metadata=bp.BioProcessMetadata(
+        processes[name] = hxf.BioProcess(
+            metadata=hxf.BioProcessMetadata(
                 name=name, process_type="batch",
                 notes="Simulated CHO-like batch culture; glutamine decomposes "
                       "to NH4 at a first-order rate (documentation demo).",
             ),
-            time_axis=bp.TimeAxis(unit="h", start=0.0, end=GLN_END,
+            time_axis=hxf.TimeAxis(unit="h", start=0.0, end=GLN_END,
                                   time_reference="inoculation"),
-            volume=bp.Volume(initial_volume=1.0, unit="L"),
-            reactor_medium=bp.ReactorMedium(name="defined_medium", density=1.0,
+            volume=hxf.Volume(initial_volume=1.0, unit="L"),
+            reactor_medium=hxf.ReactorMedium(name="defined_medium", density=1.0,
                                             density_unit="kg/L", components=components),
         )
-        processes[name].biological_ode = bp.BiologicalOde(
+        processes[name].biological_ode = hxf.BiologicalOde(
             rates={"q_biomass": (None, None), "q_Gln": (None, None),
                    "r_Gln": (None, None)},
             derivatives={
@@ -1121,13 +1121,13 @@ def build_demo_glutamine_decay() -> None:
             },
         )
 
-    collection = bp.BioProcessCollection(
+    collection = hxf.BioProcessCollection(
         case_id="demo_glutamine_decay",
         organism="CHO cell culture (Ulonska et al. 2018-inspired)",
         citation="Simulated data — bp-docs demo, not a real experiment.",
         processes=processes,
     )
-    bp.serialization.save_process_collection(collection, out / "data.json")
+    hxf.serialization.save_process_collection(collection, out / "data.json")
     (out / "ground_truth.json").write_text(json.dumps({
         "q_biomass": GLN_Q_BIOMASS, "q_Gln": GLN_Q_GLN, "r_Gln": GLN_R_GLN,
     }, indent=2))
@@ -1176,28 +1176,28 @@ def build_demo_spline_jump() -> None:
     meas = _noisy(rng, truth, 0.0)
     meas[0] = truth[0]   # t=0 measured exactly
 
-    feed_medium = bp.FeedMedium(
+    feed_medium = hxf.FeedMedium(
         name="solute_feed", density=1.0, density_unit="kg/L",
         components={
-            "solute": bp.FeedMediumComponent(
-                name="solute", unit="g/L", concentration=bp.StaticVariable(SJ_C_FEED)),
-            "biomass": bp.FeedMediumComponent(
-                name="biomass", unit="g/L", concentration=bp.StaticVariable(0.0)),
+            "solute": hxf.FeedMediumComponent(
+                name="solute", unit="g/L", concentration=hxf.StaticVariable(SJ_C_FEED)),
+            "biomass": hxf.FeedMediumComponent(
+                name="biomass", unit="g/L", concentration=hxf.StaticVariable(0.0)),
         },
     )
 
-    process = bp.BioProcess(
-        metadata=bp.BioProcessMetadata(
+    process = hxf.BioProcess(
+        metadata=hxf.BioProcessMetadata(
             name="run_1", process_type="fed_batch",
             notes="Simulated single-species first-order decay with one feed "
                   "bolus (documentation demo, pseudobatch splines gallery page).",
         ),
-        time_axis=bp.TimeAxis(unit="h", start=0.0, end=SJ_T_END,
+        time_axis=hxf.TimeAxis(unit="h", start=0.0, end=SJ_T_END,
                               time_reference="inoculation"),
-        volume=bp.Volume(
+        volume=hxf.Volume(
             initial_volume=SJ_V0, unit="L",
             volume_changes={
-                "solute_bolus": bp.Inflow(
+                "solute_bolus": hxf.Inflow(
                     name="solute_bolus", unit="L", is_controlled=True,
                     is_continuous=False,
                     values=TimeSeries(times=np.array([SJ_T_JUMP]),
@@ -1206,19 +1206,19 @@ def build_demo_spline_jump() -> None:
                 ),
             },
         ),
-        reactor_medium=bp.ReactorMedium(
+        reactor_medium=hxf.ReactorMedium(
             name="defined_medium", density=1.0, density_unit="kg/L",
             components={
-                "solute": bp.ReactorMediumComponent(
+                "solute": hxf.ReactorMediumComponent(
                     name="solute", unit="g/L",
                     concentration=TimeSeries(times=SJ_SAMPLE_TIMES.astype(float),
                                              values=meas.astype(float)),
                     bounds=(0.0, None),
                 ),
-                # A flat, non-dynamic placeholder: bp-format's biomass check
+                # A flat, non-dynamic placeholder: hybrax.format's biomass check
                 # expects a 'biomass' component on every process, even one like
                 # this with no growth at all. It plays no role in the demo.
-                "biomass": bp.ReactorMediumComponent(
+                "biomass": hxf.ReactorMediumComponent(
                     name="biomass", unit="g/L",
                     concentration=TimeSeries(
                         times=SJ_SAMPLE_TIMES.astype(float),
@@ -1227,19 +1227,19 @@ def build_demo_spline_jump() -> None:
                 ),
             },
         ),
-        biological_ode=bp.BiologicalOde(
+        biological_ode=hxf.BiologicalOde(
             rates={"k_solute": (0.0, None)},
             derivatives={"solute": "-k_solute * solute", "biomass": "0"},
         ),
     )
 
-    collection = bp.BioProcessCollection(
+    collection = hxf.BioProcessCollection(
         case_id="demo_spline_jump",
         organism="None (a physical decay process, not a cell culture)",
         citation="Simulated data, bp-docs demo, not a real experiment.",
         processes={"run_1": process},
     )
-    bp.serialization.save_process_collection(collection, out / "data.json")
+    hxf.serialization.save_process_collection(collection, out / "data.json")
 
     (out / "ground_truth.json").write_text(json.dumps({
         "k_solute": SJ_K, "v0": SJ_V0, "c0": SJ_C0, "t_end": SJ_T_END,

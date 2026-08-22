@@ -1,11 +1,11 @@
 # `custom.py` at a glance
 
-> Every hook bp-train looks for, what it does, when it fires, and what happens if you
+> Every hook hybrax looks for, what it does, when it fires, and what happens if you
 > omit it.
 
 ## How discovery works
 
-`custom.py` is a plain Python module. bp-train looks up each hook **by name**, with an
+`custom.py` is a plain Python module. hybrax looks up each hook **by name**, with an
 ordinary attribute lookup. There is no registration, no decorator and no base class for
 the file itself.
 
@@ -57,12 +57,14 @@ def estimate_all_scales(runtime_data, target_names, config): ...
     #    runtime_data.controls_store, always available, no separate argument needed.
 
 def build_reaction_module(*, target_names, process_names, config, seed,
-                          runtime_context, **scale_kwargs): ...
-    # -> UserReactionModule.  runtime_context wraps the same RuntimeDataContext
-    #    plus the resolved EstimatedScales (also unpacked into **scale_kwargs).
+                          training_parent_collection, **scale_kwargs): ...
+    # -> UserReactionModule.  training_parent_collection is the BioProcessCollection
+    #    used for training; build_rhs_ode(process) on one of its processes gives you
+    #    layout. The resolved EstimatedScales fields arrive separately, unpacked
+    #    into **scale_kwargs.
 
 def build_loss_module(*, target_names, process_names, config, seed,
-                      runtime_context): ...
+                      training_parent_collection): ...
     # -> UserLossModule
 
 def build_learning_rate(custom_cfg, train_cfg, total_updates): ...
@@ -102,7 +104,7 @@ The two hooks that matter most, for a batch process with no feeds:
 
 ```python
 import equinox as eqx, jax, jax.numpy as jnp, numpy as np
-from bp_train import (EstimatedScales, ReactionOutputs,
+from hybrax.train import (EstimatedScales, ReactionOutputs,
                       UserReactionModule, trainable_field)
 
 class MyModule(UserReactionModule):
@@ -118,7 +120,8 @@ class MyModule(UserReactionModule):
         del t
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.mlp(inputs.SCL_modeled_RMCs),
-            SCL_modeled_FVCs_rates=jnp.zeros(self.n_modeled_FVCs),
+            SCL_modeled_Inflows_rates=jnp.zeros(self.n_modeled_Inflows),
+            SCL_modeled_Outflows_rates=jnp.zeros(self.n_modeled_Outflows),
         )
 
 def build_reaction_module(*, seed, **kwargs):

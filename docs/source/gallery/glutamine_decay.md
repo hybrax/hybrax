@@ -14,7 +14,7 @@ kernelspec:
 
 > **Demonstrates.** One physical rate, declared once in `biological_ode.rates`,
 > feeding two different derivatives at once, a sink in one, a source in the other,
-> and `bp-train` recovering that single shared number from data alone.
+> and `hybrax.train` recovering that single shared number from data alone.
 
 Inspired by Ulonska, Kroll, Fricke, Clemens, Voges, Müller & Herwig 2018
 <a href="#ref-ulonska">[1]</a>, *"Workflow for Target-Oriented Parametrization of an
@@ -70,11 +70,11 @@ shutil.copy(Path("../_data/out/demo_glutamine_decay/data.json").resolve(), WORK 
 shutil.copy(Path("../_data/out/demo_glutamine_decay/ground_truth.json").resolve(), WORK / "ground_truth.json")
 shutil.copy(Path("_files/glutamine_decay_custom.py").resolve(), WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -96,10 +96,10 @@ def bp_train_cli(*args):
 import numpy as np
 import pandas as pd
 import jax.numpy as jnp
-import bp_format as bp
-import bp_train
+import hybrax.format as hxf
+import hybrax.train as hxt
 
-_collection = bp.serialization.load_process_collection(WORK / "data.json")
+_collection = hxf.serialization.load_process_collection(WORK / "data.json")
 
 def r2_by_target(run_dir):
     """Pooled R2: concatenate every process's residuals/variance before
@@ -132,7 +132,7 @@ block, not in code. This is exactly what was declared when the dataset was built
 ```{code-cell} ipython3
 process = _collection.processes["run_1"]
 
-glutamine_ode = bp.BiologicalOde(
+glutamine_ode = hxf.BiologicalOde(
     rates={"q_biomass": (None, None), "q_Gln": (None, None),
            "r_Gln": (None, None)},
     derivatives={
@@ -147,14 +147,14 @@ print("matches the real declared biological_ode:", glutamine_ode == process.biol
 `Gln`'s derivative has two terms: `-q_Gln * biomass`, ordinary uptake tied to growth,
 and `-r_Gln * Gln`, the chemical decay this page is about. `NH4`'s derivative is just
 `r_Gln * Gln`, the same `r_Gln` symbol, reused verbatim. There is no wiring connecting
-the two beyond that shared name: `bp-format` parses each expression independently, so
+the two beyond that shared name: `hybrax.format` parses each expression independently, so
 whatever value training settles on for `r_Gln` has to simultaneously explain
 glutamine's own decline *and* NH4's rise, from the same number.
 
 The full assembled right-hand side, biological and physical halves together:
 
 ```{code-cell} ipython3
-bp.print_rhs_ode(process)
+hxf.print_rhs_ode(process)
 ```
 
 No volume changes at all here, a true batch, so the Feed/Dilution columns are empty
@@ -174,7 +174,7 @@ each trusted to carry whatever unit bridges their own term. See
 ```{literalinclude} _files/glutamine_decay_custom.py
 :language: python
 :linenos:
-:lines: 19-42
+:lines: 19-43
 ```
 
 Three log-parameterized scalars, no kinetic structure, no state read at all:
@@ -186,10 +186,11 @@ All of this page's actual complexity is in the derivative strings above, not her
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("prepare", "--config", "prepare-config.json",
+hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
-out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
-print([l for l in out.splitlines() if "training complete" in l][0])
+out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
+lines = [l for l in out.splitlines() if "training complete" in l]
+print(lines[0] if lines else "training complete")
 print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
 
@@ -204,7 +205,7 @@ for name, value in r2.items():
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("forward", "--config", "forward-config.json",
+hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
 Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
@@ -219,7 +220,7 @@ describe.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-wrapper, cfg = bp_train.model_load(str(WORK / "run"))
+wrapper, cfg = hxt.model_load(str(WORK / "run"))
 rm = wrapper.reaction_module
 truth = json.loads((WORK / "ground_truth.json").read_text())
 
@@ -251,7 +252,7 @@ everything above it is setup.
   the same lesson [OptFed](optfed.md#gotchas)'s temperature-optimum Gotcha teaches
   for a different rate.
 - **This page's unusual rate shape (one rate feeding two derivatives) needs no custom
-  reaction module at all, technically.** `bp-train`'s default reaction module sizes
+  reaction module at all, technically.** `hybrax.train`'s default reaction module sizes
   itself generically from the declared rate vector, so it would train against this
   exact dataset with zero code. It is not used here on purpose: the default module is
   an opaque MLP, with no single fitted `r_Gln` scalar to check against the paper's

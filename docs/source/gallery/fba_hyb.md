@@ -21,7 +21,7 @@ kernelspec:
 Dynamic flux-balance analysis (dFBA) normally means solving a real linear program,
 `max c^T v` subject to `S.v = 0` and flux bounds, at every integration step. That is
 not something JAX can differentiate through or `vmap`/`jit` the way it does a neural
-network, and bp-train has no LP solver in its training loop. The fix, from Gotsmy &
+network, and hybrax.train has no LP solver in its training loop. The fix, from Gotsmy &
 Guillén-Gosálbez's FBA-Hyb <a href="#ref-fbahyb">[1]</a>: fit a closed-form,
 pole-free surrogate of the FBA solution **once, offline** (10,000 real linear
 programs solved outside the training loop), then embed that surrogate directly
@@ -58,11 +58,11 @@ WORK.mkdir(parents=True)
 shutil.copy(Path("../_data/out/demo_ecoli_fba/data.json").resolve(), WORK / "data.json")
 shutil.copy(Path("_files/fba_hyb_custom.py").resolve(), WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -84,10 +84,10 @@ def bp_train_cli(*args):
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import bp_format as bp
-import bp_train
+import hybrax.format as hxf
+import hybrax.train as hxt
 
-_collection = bp.serialization.load_process_collection(WORK / "data.json")
+_collection = hxf.serialization.load_process_collection(WORK / "data.json")
 
 def r2_by_target(run_dir):
     """Pooled R2: concatenate every process's residuals/variance before
@@ -134,7 +134,7 @@ what a real LP solve *would* do if you tried to differentiate through it.
 ```{literalinclude} _files/fba_hyb_custom.py
 :language: python
 :linenos:
-:lines: 69-105
+:lines: 69-106
 ```
 
 Two small MLPs predict `qG` (glucose uptake) and the FBA objective weights
@@ -143,7 +143,7 @@ squashed through `_bounded_softplus` to stay inside the range the surrogate was
 actually fit over. `n_S` (succinate) is fixed at `0.0`: this page has no deliberate
 product, only real *E. coli* overflow metabolism (growth versus maintenance versus
 acetate secretion), the same trade-off the surrogate was trained on. The predicted
-weights go out through `auxiliary`, which bp-train threads straight into
+weights go out through `auxiliary`, which hybrax.train threads straight into
 `predictions.csv`.
 
 ## Training
@@ -151,10 +151,11 @@ weights go out through `auxiliary`, which bp-train threads straight into
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("prepare", "--config", "prepare-config.json",
+hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
-out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
-print([l for l in out.splitlines() if "training complete" in l][0])
+out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
+lines = [l for l in out.splitlines() if "training complete" in l]
+print(lines[0] if lines else "training complete")
 print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
 
@@ -169,7 +170,7 @@ for name, value in r2.items():
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("forward", "--config", "forward-config.json",
+hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
 Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))

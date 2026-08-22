@@ -11,7 +11,7 @@ dense grid rather than only at the sparse measurement times:
    since the auto-generated ODE leaves rates unbounded).
 3. A smoothness penalty: the sum of squared second time-derivatives
    ("curvature") of each rate trajectory, masked away from genuine
-   discontinuities (bolus/sample jumps) with bp-train's own helper.
+   discontinuities (bolus/sample jumps) with hybrax.train's own helper.
 """
 
 import equinox as eqx
@@ -19,7 +19,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from bp_train import (
+from hybrax.format.mechanistic import build_rhs_ode
+from hybrax.train import (
     EstimatedScales,
     LossInputs,
     LossOutputs,
@@ -29,8 +30,8 @@ from bp_train import (
     dense_triple_mask_away_from_jumps,
     trainable_field,
 )
-from bp_train.dense import all_triple
-from bp_train.defaults import DefaultLossModule
+from hybrax.train.dense import all_triple
+from hybrax.train.defaults import DefaultLossModule
 
 
 # --------------------------------------------------------------------------
@@ -51,7 +52,8 @@ class BatchReactionModule(UserReactionModule):
         del t
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.mlp(inputs.SCL_modeled_RMCs),
-            SCL_modeled_FVCs_rates=jnp.zeros(0),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
+            SCL_modeled_Inflows_rates=jnp.zeros(0),
         )
 
 
@@ -92,20 +94,24 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
             max(runtime_data.initial_volume(i) for i in range(n_processes))),
-        SCALE_modeled_FVCs_cumulative=empty,
-        SCALE_modeled_FVCs_rates=empty,
-        SCALE_controlled_FVCs_cumulative=empty,
-        SCALE_controlled_FVCs_rates=empty,
+        SCALE_modeled_Inflows_cumulative=empty,
+        SCALE_modeled_Inflows_rates=empty,
+        SCALE_modeled_Outflows_cumulative=empty,
+        SCALE_modeled_Outflows_rates=empty,
+        SCALE_controlled_Inflows_cumulative=empty,
+        SCALE_controlled_Inflows_rates=empty,
+        SCALE_controlled_Outflows_cumulative=empty,
+        SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=empty,
-        SCALE_controlled_FVCs_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_FVCs)), 1.0),
-        SCALE_modeled_FVCs_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_FVCs)), 1.0),
+        SCALE_controlled_Inflows_Cin=jnp.maximum(
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+        SCALE_modeled_Inflows_Cin=jnp.maximum(
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
     )
 
 
 # --------------------------------------------------------------------------
-# 3. Attach rate bounds. bp-format's auto-generated BiologicalOde leaves every
+# 3. Attach rate bounds. hybrax.format's auto-generated BiologicalOde leaves every
 #    rate unbounded (Bounds = (None, None)); here we declare what we actually
 #    know about the biology, so the loss below has something to read.
 # --------------------------------------------------------------------------
@@ -176,7 +182,7 @@ class PhysicalConstraintsLoss(DefaultLossModule):
         rates = inputs.dense_RAW_modeled_BiologicalOde_rates
         curvature = (rates[2:] - 2.0 * rates[1:-1] + rates[:-2]) / (dt ** 2)
         # A bolus/sample creates a REAL kink; do not penalise curvature there.
-        # bp-train ships this exact helper for that purpose.
+        # hybrax.train ships this exact helper for that purpose.
         triple_mask = all_triple(valid) & dense_triple_mask_away_from_jumps(
             inputs.dense_t, inputs.jump_ts, jump_epsilon_h=2.0 * dt)
         smoothness = jnp.sum(jnp.square(curvature) * triple_mask[:, None]) \
@@ -189,20 +195,19 @@ class PhysicalConstraintsLoss(DefaultLossModule):
         })
 
 
-def build_loss_module(*, target_names, runtime_context, **kwargs):
-    # Bounds are read from the FIRST process. bp-format's cross-process
+def build_loss_module(*, target_names, training_parent_collection, **kwargs):
+    # Bounds are read from the FIRST process. hybrax.format's cross-process
     # consistency check guarantees every process shares the same structure.
-    rhs = runtime_context.training_data.rhs_ode
-    snapshot = runtime_context.data.bound_snapshots[0]
-    bounds_by_label = {label: (lower, upper)
-                       for label, source, axis, lower, upper in snapshot}
+    process = next(iter(training_parent_collection.processes.values()))
+    rhs = build_rhs_ode(process)
 
     def as_pair(bounds):
         lo, hi = bounds
         return (-jnp.inf if lo is None else lo), (jnp.inf if hi is None else hi)
 
-    state_bounds = [as_pair(bounds_by_label[n]) for n in rhs.name_modeled_RMCs]
-    rate_bounds = [as_pair(bounds_by_label[f"rate/{n}"])
+    state_bounds = [as_pair(process.reactor_medium.components[n].bounds)
+                    for n in rhs.name_modeled_RMCs]
+    rate_bounds = [as_pair(process.biological_ode.rates[n])
                    for n in rhs.name_modeled_rates]
 
     return PhysicalConstraintsLoss(

@@ -44,11 +44,11 @@ WORK.mkdir(parents=True)
 shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
 shutil.copy(Path("_files/structured_rates_custom.py").resolve(), WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -73,7 +73,7 @@ def bp_train_cli(*args):
 ```{literalinclude} _files/structured_rates_custom.py
 :language: python
 :linenos:
-:lines: 21-67
+:lines: 21-68
 ```
 
 Three things worth noting.
@@ -99,17 +99,18 @@ the dataset's components, this still works.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("prepare", "--config", "prepare-config.json",
+hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
-out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
-print([l for l in out.splitlines() if "training complete" in l][0])
+out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
+lines = [l for l in out.splitlines() if "training complete" in l]
+print(lines[0] if lines else "training complete")
 print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
 
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("forward", "--config", "forward-config.json",
+hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
 Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
@@ -124,9 +125,9 @@ training.
 :tags: [remove-input]
 
 import jax.numpy as jnp
-from bp_train import model_load
+import hybrax.train as hxt
 
-wrapper, cfg = model_load(str(WORK / "run"))
+wrapper, cfg = hxt.model_load(str(WORK / "run"))
 rm = wrapper.reaction_module
 truth = json.loads(Path("../_data/out/demo_batch/ground_truth.json").read_text())
 

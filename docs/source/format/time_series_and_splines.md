@@ -20,9 +20,9 @@ A `TimeSeries` can carry **discrete samples**, a **fitted spline**, or both.
 
 ```{code-cell} ipython3
 import numpy as np
-import bp_format as bp
+import hybrax.format as hxf
 
-samples = bp.TimeSeries(times=np.array([0.0, 2.0, 4.0, 6.0, 8.0]),
+samples = hxf.TimeSeries(times=np.array([0.0, 2.0, 4.0, 6.0, 8.0]),
                         values=np.array([0.1, 0.3, 0.9, 2.4, 4.1]))
 print("has samples:", samples.times is not None)
 print("has spline :", samples.breaks is not None)
@@ -52,7 +52,7 @@ be fitted.
 ### Fitting one
 
 ```{code-cell} ipython3
-from bp_format.splines import fit_timeseries_spline
+from hybrax.format.splines import fit_timeseries_spline
 
 fitted = fit_timeseries_spline(samples, smoothing_s=0.0)
 print("has spline now:", fitted.breaks is not None,
@@ -84,7 +84,7 @@ accepts them via `boundaries=`.
 
 ## Gotchas
 
-- **`PPoly` is not root-exported.** `from bp_format.time_series import PPoly`.
+- **`PPoly` is not root-exported.** `from hybrax.format.time_series import PPoly`.
 - **`TimeSeries` arithmetic exists** (`ts_a - ts_b`) with exact and approximate paths
   depending on whether the operands share breaks. Useful, but read the API reference
   before relying on the approximate path.
@@ -94,4 +94,4 @@ accepts them via `boundaries=`.
 - [The pseudobatch transform](pseudobatch_transform.md): fed-batch dilution correction,
   built on the spline machinery above.
 - [Volume, feeds and events](volume_feeds_events.md): where the dilution comes from.
-- [API reference](../autoapi/bp_format/splines/index).
+- [API reference](../autoapi/hybrax/format/splines/index).

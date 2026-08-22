@@ -18,7 +18,7 @@ kernelspec:
 
 Every module so far has been entirely trainable. Sometimes you want the opposite: a
 piece you trust and do not want the optimizer to move, alongside a small piece you
-actually want to fit. bp-train's answer is two field tags, not a separate optimizer
+actually want to fit. hybrax.train's answer is two field tags, not a separate optimizer
 mechanism: `trainable_field()` and `frozen_field()` on the module's own attributes.
 `partition_trainable` (what the optimizer actually sees) reads these tags straight off
 the module.
@@ -47,11 +47,11 @@ WORK.mkdir(parents=True)
 shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
 shutil.copy(Path("_files/freezing_custom.py").resolve(), WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -70,7 +70,7 @@ def bp_train_cli(*args):
 (WORK / "forward-config.json").write_text(
     '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
 
-bp_train_cli("prepare", "--config", "prepare-config.json",
+hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
 ```
 
@@ -94,14 +94,15 @@ module changes: this is still an ordinary `__call__` over `ReactionInputs`.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
-print([l for l in out.splitlines() if "training complete" in l][0])
+out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
+lines = [l for l in out.splitlines() if "training complete" in l]
+print(lines[0] if lines else "training complete")
 ```
 
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("forward", "--config", "forward-config.json",
+hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
 Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
@@ -115,10 +116,10 @@ source:
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-from bp_train import model_load, print_trainable_structure
+import hybrax.train as hxt
 
-wrapper, _cfg = model_load(str(WORK / "run"))
-print_trainable_structure(wrapper)
+wrapper, _cfg = hxt.model_load(str(WORK / "run"))
+hxt.print_trainable_structure(wrapper)
 ```
 
 Every `reaction_module.encoder.*` leaf reads `frozen`; every `reaction_module.head.*`
@@ -153,8 +154,9 @@ unfrozen_src = (WORK / "custom.py").read_text().replace(
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-out = bp_train_cli("train", "--config", "train-config-unfrozen.json", "--overwrite")
-print([l for l in out.splitlines() if "training complete" in l][0])
+out = hxt_cli("train", "--config", "train-config-unfrozen.json", "--overwrite")
+lines = [l for l in out.splitlines() if "training complete" in l]
+print(lines[0] if lines else "training complete")
 ```
 
 ```{code-cell} ipython3

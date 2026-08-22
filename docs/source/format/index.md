@@ -22,7 +22,7 @@ kernelspec:
 <img class="theme-diagram diagram-dark" src="../_static/diagram_format_pipeline_dark.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, BiologicalOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
 
 You write the left column once. The right column is generated, and is the single source
-of truth for layout everywhere downstream: bp-train never re-derives it.
+of truth for layout everywhere downstream: hybrax.train never re-derives it.
 
 ## The pages
 
@@ -42,19 +42,19 @@ of truth for layout everywhere downstream: bp-train never re-derives it.
 
 ```{code-cell} ipython3
 import numpy as np
-import bp_format as bp
+import hybrax.format as hxf
 
-process = bp.BioProcess(
-    metadata=bp.BioProcessMetadata(name="run_1", process_type="batch"),
-    time_axis=bp.TimeAxis(unit="h", start=0.0, end=10.0,
+process = hxf.BioProcess(
+    metadata=hxf.BioProcessMetadata(name="run_1", process_type="batch"),
+    time_axis=hxf.TimeAxis(unit="h", start=0.0, end=10.0,
                           time_reference="inoculation"),
-    volume=bp.Volume(initial_volume=1.0, unit="L"),
-    reactor_medium=bp.ReactorMedium(
+    volume=hxf.Volume(initial_volume=1.0, unit="L"),
+    reactor_medium=hxf.ReactorMedium(
         name="medium", density=1.0, density_unit="kg/L",
         components={
-            "biomass": bp.ReactorMediumComponent(
+            "biomass": hxf.ReactorMediumComponent(
                 name="biomass", unit="g/L",
-                concentration=bp.TimeSeries(
+                concentration=hxf.TimeSeries(
                     times=np.array([0.0, 5.0, 10.0]),
                     values=np.array([0.1, 1.2, 4.0]),
                 ),
@@ -63,7 +63,7 @@ process = bp.BioProcess(
     ),
 )
 
-ok, messages = bp.validate_process(process)
+ok, messages = hxf.validate_process(process)
 print("valid:", ok)
 print("auto-generated dynamics:", process.biological_ode.derivatives)
 ```
@@ -74,12 +74,12 @@ not what you meant.
 
 ## Two conventions to carry with you
 
-**Import as `bp`.** Every dataclass is re-exported from the package root
-(`bp.BioProcess`, `bp.TimeSeries`, …). Functions are grouped on module handles instead:
-`bp.serialization.*`, `bp.validate.*`, `bp.mechanistic.*`, `bp.splines.*`. The
-inspection helpers are the exception: `bp.plot_process` and friends are on the root.
+**Import as `hxf`.** Every dataclass is re-exported from the package root
+(`hxf.BioProcess`, `hxf.TimeSeries`, …). Functions are grouped on module handles instead:
+`hxf.serialization.*`, `hxf.validate.*`, `hxf.mechanistic.*`, `hxf.splines.*`. The
+inspection helpers are the exception: `hxf.plot_process` and friends are on the root.
 
-**Amounts, not concentrations, are what conserve.** bp-format tracks concentrations
+**Amounts, not concentrations, are what conserve.** hybrax.format tracks concentrations
 because that is what you measure, but every transport term it generates is derived from
 an amount balance. When something looks wrong, check the volume first.
 
@@ -87,6 +87,6 @@ an amount balance. When something looks wrong, check the volume first.
 
 - [Concepts and vocabulary](../start/concepts.md), if any term above was unfamiliar.
 - [Tutorial 1](../tutorials/01_your_first_dataset.md): the same material as a walkthrough.
-- [API reference](../autoapi/bp_format/index): every signature.
-- [bp-train](../train/index.md) Training a model on your imported data.
+- [API reference](../autoapi/hybrax/format/index): every signature.
+- [hybrax.train](../train/index.md) Training a model on your imported data.
 

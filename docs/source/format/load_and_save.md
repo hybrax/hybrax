@@ -16,12 +16,12 @@ kernelspec:
 
 ## The two functions
 
-They live on `bp.serialization`, not on the package root.
+They live on `hxf.serialization`, not on the package root.
 
 ```{code-cell} ipython3
-import bp_format as bp
+import hybrax.format as hxf
 
-collection = bp.serialization.load_process_collection("../_data/out/demo_batch/data.json")
+collection = hxf.serialization.load_process_collection("../_data/out/demo_batch/data.json")
 print(collection.case_id, "-", list(collection.processes))
 ```
 
@@ -37,8 +37,8 @@ A path may be a **file or a directory**. Given a directory, the loader looks for
 `data.json`, then `data.json.gz`.
 
 ```python
-bp.serialization.load_process_collection("datasets/ecoli_study")        # → .../data.json
-bp.serialization.load_process_collection("datasets/ecoli_study/data.json.gz")
+hxf.serialization.load_process_collection("datasets/ecoli_study")        # → .../data.json
+hxf.serialization.load_process_collection("datasets/ecoli_study/data.json.gz")
 ```
 
 Gzip is decided by the `.gz` suffix. For anything above a few megabytes it is worth it: 
@@ -150,10 +150,10 @@ import numpy as np
 out = Path("../_data/out/runs/roundtrip").resolve()
 out.mkdir(parents=True, exist_ok=True)
 with contextlib.redirect_stdout(io.StringIO()):
-    bp.serialization.save_process_collection(collection, out / "data.json")
+    hxf.serialization.save_process_collection(collection, out / "data.json")
 print(f"./{(out / 'data.json').relative_to(out.parents[4])}")
 
-again = bp.serialization.load_process_collection(out / "data.json")
+again = hxf.serialization.load_process_collection(out / "data.json")
 before = collection.processes["run_1"].reactor_medium.components["biomass"].concentration
 after  = again.processes["run_1"].reactor_medium.components["biomass"].concentration
 print("values identical:", np.array_equal(np.asarray(before.values),
@@ -162,8 +162,8 @@ print("values identical:", np.array_equal(np.asarray(before.values),
 
 ## Gotchas
 
-- **`save_*` / `load_*` are not on the package root.** `bp.save_process_collection` is
-  an `AttributeError`; use `bp.serialization.save_process_collection`.
+- **`save_*` / `load_*` are not on the package root.** `hxf.save_process_collection` is
+  an `AttributeError`; use `hxf.serialization.save_process_collection`.
 - **Saving does not validate.** Call [`validate_process`](validate_and_inspect.md)
   yourself; nothing stops you writing a file with a sign-flipped feed.
 - **Fitted splines are saved too.** A `TimeSeries` that carries spline coefficients
@@ -174,4 +174,4 @@ print("values identical:", np.array_equal(np.asarray(before.values),
 
 - [The data model](data_model.md): what the JSON is a picture of.
 - [Validating and inspecting](validate_and_inspect.md): do this after loading.
-- [API reference](../autoapi/bp_format/serialization/index).
+- [API reference](../autoapi/hybrax/format/serialization/index).

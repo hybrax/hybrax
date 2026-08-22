@@ -4,7 +4,7 @@ Two things a plain "just turn on augmentation" attempt misses:
 
 1. Augmentation resamples each modeled state onto new timepoints, which needs
    a fitted spline, not just the raw measured samples. `demo_fedbatch` (like
-   any freshly loaded bp-format file) has none yet: `transform_process_collection`
+   any freshly loaded hybrax.format file) has none yet: `transform_process_collection`
    fits one per modeled reactor-medium component before augmentation runs.
 2. Default augmentation adds independent Gaussian noise to every measured
    timepoint. That is fine for glucose or biomass, but ``product`` here is a
@@ -15,7 +15,7 @@ Two things a plain "just turn on augmentation" attempt misses:
 
 import numpy as np
 
-from bp_format.splines import fit_timeseries_spline
+from hybrax.format.splines import fit_timeseries_spline
 
 
 def transform_process_collection(collection, config):

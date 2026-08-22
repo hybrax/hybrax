@@ -12,7 +12,7 @@ kernelspec:
 
 # The Bioprocess ODE
 
-> What bp-format assembles from your description, how to read it, and how to replace
+> What hybrax.format assembles from your description, how to read it, and how to replace
 > the biological half with your own equations. Read the first two sections even if the
 > auto-generated ODE is already right for your process.
 
@@ -23,7 +23,7 @@ d(state)/dt  =  BIOLOGICAL          ← yours: BiologicalOde, in terms of named 
               + PHYSICAL            ← generated: feed inflow, dilution, sample outflow, dV/dt
 ```
 
-Everything bp-format does here is in service of that line. You never write the physical
+Everything hybrax.format does here is in service of that line. You never write the physical
 half, and you cannot get it wrong by forgetting a term, but you *can* get it wrong by
 describing the volume badly, which is why [Volume, feeds and
 events](volume_feeds_events.md) comes first.
@@ -31,12 +31,12 @@ events](volume_feeds_events.md) comes first.
 ## Seeing it
 
 ```{code-cell} ipython3
-import bp_format as bp
+import hybrax.format as hxf
 
-cs = bp.serialization.load_process_collection("../_data/out/demo_fedbatch/data.json")
+cs = hxf.serialization.load_process_collection("../_data/out/demo_fedbatch/data.json")
 process = cs.processes["fedbatch_1"]
 
-bp.print_rhs_ode(process)
+hxf.print_rhs_ode(process)
 ```
 
 Read it in two halves. Every `q_*` is something a model must supply. Everything else is
@@ -44,7 +44,7 @@ already written.
 
 ## The default biology
 
-If you do not provide `biological_ode`, bp-format generates one when the `BioProcess` is
+If you do not provide `biological_ode`, hybrax.format generates one when the `BioProcess` is
 constructed:
 
 ```{code-cell} ipython3
@@ -72,7 +72,7 @@ raises immediately, and the message tells you to supply your own `biological_ode
 `BiologicalOde` has three fields, all plain dictionaries of strings.
 
 ```{code-cell} ipython3
-process.biological_ode = bp.BiologicalOde(
+process.biological_ode = hxf.BiologicalOde(
     algebraic={"X_active": "biomass - product"},
     rates={"q_biomass": (None, None), "q_glucose": (None, None),
            "q_product": (None, None)},
@@ -82,7 +82,7 @@ process.biological_ode = bp.BiologicalOde(
         "product": "q_product * X_active",
     },
 )
-ok, message = bp.validate_biological_ode(process)     # validates the whole process
+ok, message = hxf.validate_biological_ode(process)     # validates the whole process
 print(ok, "|", message)
 ```
 
@@ -119,7 +119,7 @@ Everything downstream needs to agree on which array index is which species.
 `ProcessOrdering` is the single place that decides.
 
 ```{code-cell} ipython3
-from bp_format.mechanistic import get_process_ordering
+from hybrax.format.mechanistic import get_process_ordering
 
 ordering = get_process_ordering(process)
 print("modeled RMCs     :", ordering.name_modeled_RMCs)
@@ -141,13 +141,13 @@ Ordering rules: rates keep your insertion order, so a rate vector you build matc
 order you declared. Algebraic names are topologically sorted by dependency. Everything
 else is alphabetical.
 
-bp-train consumes this object and never re-derives layout. If you are writing anything
+hybrax.train consumes this object and never re-derives layout. If you are writing anything
 that indexes into a state vector, get the names from here rather than assuming.
 
 ## Building the callable
 
 ```{code-cell} ipython3
-from bp_format.mechanistic import build_rhs_ode
+from hybrax.format.mechanistic import build_rhs_ode
 
 rhs = build_rhs_ode(process)
 print(type(rhs).__name__)
@@ -157,8 +157,8 @@ print("feed composition matrix:", rhs.Cin_controlled_Inflows.shape,
 ```
 
 `RhsOde` is a JAX-compatible callable: given time, state, controls and a rate vector it
-returns `d(state)/dt`. It does **not** integrate: bp-format has no solver. Handing it to
-a solver is [bp-train](../train/index.md)'s job.
+returns `d(state)/dt`. It does **not** integrate: hybrax.format has no solver. Handing it to
+a solver is [hybrax.train](../train/index.md)'s job.
 
 Related helpers, for when you are building your own integrator:
 `build_algebraic_func` (evaluate the algebraic block alone), `extract_discrete_events`
@@ -183,4 +183,4 @@ Related helpers, for when you are building your own integrator:
   of a bare network.
 - [Gallery: glutamine decay](../gallery/glutamine_decay.md): one declared rate feeding
   two coupled derivatives at once.
-- [API reference](../autoapi/bp_format/mechanistic/index).
+- [API reference](../autoapi/hybrax/format/mechanistic/index).

@@ -70,7 +70,7 @@ def arrow(ax, p0, p1, c, *, style="-|>", lw=1.6, connectionstyle="arc3,rad=0"):
 
 
 # ---------------------------------------------------------------------------
-# Diagram 1: format/index.md — "what bp-format derives from your description"
+# Diagram 1: format/index.md — "what hybrax.format derives from your description"
 # ---------------------------------------------------------------------------
 def make_format_diagram(theme):
     c = THEMES[theme]

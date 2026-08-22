@@ -3,14 +3,14 @@
 **Get your fermentation data into one shape, then fit models to it without
 re-implementing the physics.**
 
-Two packages, one stack:
+One package, two halves:
 
-- **bp-format** is the data model. It describes a bioprocess run (what was in the
+- **hybrax.format** is the data model. It describes a bioprocess run (what was in the
   reactor, what was fed, what was sampled, what was measured) and turns that
   description into a differentiable ODE right-hand side. It knows about dilution,
   feed composition, boluses and sampling, so you don't have to write those terms
   again.
-- **bp-train** fits models on top of it. You plug in a reaction module (neural,
+- **hybrax.train** fits models on top of it. You plug in a reaction module (neural,
   mechanistic, or both) and a loss module; it runs `prepare → train → forward / loo`
   on JAX + Diffrax.
 
@@ -36,7 +36,7 @@ all wait until the [gallery](gallery/index.md).
 
 :::{note}
 Every code block in the Start-here, Tutorials and Gallery sections is **executed when
-these docs are built**, against the installed packages. If something on those pages is
+these docs are built**, against the installed package. If something on those pages is
 out of date, the build fails rather than the page silently lying to you.
 :::
 
@@ -64,7 +64,7 @@ tutorials/05_predict
 
 ```{toctree}
 :maxdepth: 1
-:caption: bp-format guide
+:caption: hybrax.format guide
 :hidden:
 format/index
 format/data_model
@@ -80,7 +80,7 @@ format/further_reading
 
 ```{toctree}
 :maxdepth: 1
-:caption: bp-train guide
+:caption: hybrax.train guide
 :hidden:
 train/index
 ```
@@ -127,6 +127,6 @@ contributors
 :maxdepth: 1
 :caption: API reference
 :hidden:
-autoapi/bp_format/index
-autoapi/bp_train/index
+autoapi/hybrax/format/index
+autoapi/hybrax/train/index
 ```

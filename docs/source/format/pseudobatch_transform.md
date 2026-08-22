@@ -33,10 +33,10 @@ reproduces exactly.
 
 ```{code-cell} ipython3
 import numpy as np
-import bp_format as bp
-from bp_format.splines import build_pseudobatch_transform
+import hybrax.format as hxf
+from hybrax.format.splines import build_pseudobatch_transform
 
-cs = bp.serialization.load_process_collection("../_data/out/demo_fedbatch/data.json")
+cs = hxf.serialization.load_process_collection("../_data/out/demo_fedbatch/data.json")
 process = cs.processes["fedbatch_1"]
 
 bundle = build_pseudobatch_transform(process)
@@ -86,7 +86,7 @@ evaluated in physical space.
 
 ADF and the feed correction are **piecewise constant**, and must be evaluated with step
 (nearest-neighbour) interpolation, not linear. Interpolating them linearly smears each
-discontinuity across the interval and breaks the backtransform near events. bp-format
+discontinuity across the interval and breaks the backtransform near events. hybrax.format
 does this correctly; it matters if you build your own.
 
 ## Gotchas
@@ -110,7 +110,7 @@ does this correctly; it matters if you build your own.
 - [Gallery: pseudobatch splines](../gallery/pseudobatch_splines.md): recovering a curve
   through a jump from just 5 measurements, checked against a known ground truth.
 - [Gallery: fed-batch](../gallery/fed_batch.md): the transform on a real process.
-- [API reference](../autoapi/bp_format/splines/index).
+- [API reference](../autoapi/hybrax/format/splines/index).
 
 ## References
 

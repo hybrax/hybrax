@@ -20,7 +20,7 @@ kernelspec:
 Inspired by Helleckes et al. 2024 <a href="#ref-helleckes2024">[1]</a>, whose headline result is
 that pooling data across products, "horizontal knowledge transfer," measurably helps
 a new product with few runs of its own, provided the historical products actually
-resemble it. This page reproduces that qualitative result natively in bp-train, on
+resemble it. This page reproduces that qualitative result natively in hybrax.train, on
 synthetic data, built on [the GP reaction module](gaussian_process.md). It is not a
 replication of their method (their model is fit by maximum-likelihood estimation on
 a precomputed rate target and pools via one-hot encoding or a PACOH meta-learned
@@ -50,11 +50,11 @@ if WORK.exists():
 WORK.mkdir(parents=True)
 shutil.copy(Path("_files/knowledge_transfer_custom.py").resolve(), WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -62,20 +62,20 @@ def bp_train_cli(*args):
 
 import numpy as np
 import matplotlib.pyplot as plt
-import bp_format as bp
+import hybrax.format as hxf
 
-_all = bp.serialization.load_process_collection(
+_all = hxf.serialization.load_process_collection(
     Path("../_data/out/demo_products/data.json").resolve())
 _historical = {n: p for n, p in _all.processes.items() if not n.startswith("T_")}
 _t_train = {n: p for n, p in _all.processes.items() if n in ("T_run_1", "T_run_2")}
 _t_heldout = {n: p for n, p in _all.processes.items() if n in ("T_run_3", "T_run_4")}
 
-bp.serialization.save_process_collection(
-    bp.BioProcessCollection(processes={**_historical, **_t_train}), WORK / "pooled.json")
-bp.serialization.save_process_collection(
-    bp.BioProcessCollection(processes=dict(_t_train)), WORK / "local.json")
-bp.serialization.save_process_collection(
-    bp.BioProcessCollection(processes=dict(_t_heldout)), WORK / "heldout.json")
+hxf.serialization.save_process_collection(
+    hxf.BioProcessCollection(processes={**_historical, **_t_train}), WORK / "pooled.json")
+hxf.serialization.save_process_collection(
+    hxf.BioProcessCollection(processes=dict(_t_train)), WORK / "local.json")
+hxf.serialization.save_process_collection(
+    hxf.BioProcessCollection(processes=dict(_t_heldout)), WORK / "heldout.json")
 
 for variant in ("local", "pooled"):
     (WORK / f"prepare-{variant}.json").write_text(
@@ -102,12 +102,12 @@ distinguishable cell lines, not re-seeded noise: see
 `ReactionInputs` has no "which process produced this state" field, by design: the
 same reaction module applies uniformly regardless of source process. A constant
 controlled process variable does exactly this job instead, using only existing,
-unmodified bp-format/bp-train machinery:
+unmodified hybrax machinery:
 
 ```{literalinclude} _files/knowledge_transfer_custom.py
 :language: python
 :linenos:
-:lines: 38-48
+:lines: 39-49
 ```
 
 `is_new_product` is `0.0` for every timepoint of every historical run, `1.0` for the
@@ -129,18 +129,18 @@ free vectors.
 ```{literalinclude} _files/knowledge_transfer_custom.py
 :language: python
 :linenos:
-:lines: 51-84
+:lines: 52-85
 ```
 
 `centers` is a `frozen_field()`: real `(state, is_new_product)` pairs pulled from
-`runtime_context` at construction time via `build_reaction_module`, never trained.
+`training_parent_collection` at construction time via `build_reaction_module`, never trained.
 `pseudo_targets` stays trainable: rates are never directly observed, only inferred
 through the ODE fit, unlike the real state locations.
 
 ```{literalinclude} _files/knowledge_transfer_custom.py
 :language: python
 :linenos:
-:lines: 86-108
+:lines: 87-110
 ```
 
 The final prediction is the mean across heads; the **spread across heads** stands in
@@ -148,19 +148,19 @@ for `rate_std`, replacing the closed-form single-GP variance from the previous p
 This mirrors Helleckes et al. 2024's <a href="#ref-helleckes2024">[1]</a> own "mean averaging
 ensemble... 30 GP models, each subsampling 50% of the training data experiments,"
 scaled down (5 heads here, not 30) and subsampled at the point level rather than the
-experiment level, both for tractability inside bp-train's per-solver-step
+experiment level, both for tractability inside hybrax.train's per-solver-step
 reaction-module call.
 
 ```{literalinclude} _files/knowledge_transfer_custom.py
 :language: python
 :linenos:
-:lines: 111-128
+:lines: 113-132
 ```
 
 `build_reaction_module` is the piece that changed shape from every other gallery
-page: it reads real training data through `runtime_context` *before* the module
-exists, using the reaction module's own `Scaler.scale_value()` to convert RAW states
-to the same SCL space the module will see at call time.
+page: it reads real training data through `training_parent_collection` *before* the
+module exists, using the reaction module's own `Scaler.scale_value()` to convert RAW
+states to the same SCL space the module will see at call time.
 
 ## Local vs. pooled
 
@@ -168,10 +168,11 @@ to the same SCL space the module will see at call time.
 :tags: [remove-input]
 
 for variant in ("local", "pooled"):
-    bp_train_cli("prepare", "--config", f"prepare-{variant}.json",
+    hxt_cli("prepare", "--config", f"prepare-{variant}.json",
              "--output-dir", f"prepared_{variant}", "--overwrite")
-    out = bp_train_cli("train", "--config", f"train-{variant}.json", "--overwrite")
-    print(variant, [l for l in out.splitlines() if "training complete" in l][0])
+    out = hxt_cli("train", "--config", f"train-{variant}.json", "--overwrite")
+    lines = [l for l in out.splitlines() if "training complete" in l]
+    print(variant, lines[0] if lines else "training complete")
 print(f"run directory: ./{(WORK).relative_to(WORK.parents[4])}")
 ```
 
@@ -191,14 +192,14 @@ products actually cover.
 
 sys.path.insert(0, str(WORK))
 from custom import transform_process_collection
-import bp_train
+import hybrax.train as hxt
 
-_heldout_raw = bp.serialization.load_process_collection(WORK / "heldout.json")
+_heldout_raw = hxf.serialization.load_process_collection(WORK / "heldout.json")
 _heldout = transform_process_collection(_heldout_raw, config=None)
 
 def r2_by_target(run_dir):
-    wrapper, cfg = bp_train.model_load(str(WORK / run_dir))
-    preds = bp_train.model_predict(wrapper, cfg, _heldout, grid_n=200)
+    wrapper, cfg = hxt.model_load(str(WORK / run_dir))
+    preds = hxt.model_predict(wrapper, cfg, _heldout, grid_n=200)
     species_order = list(wrapper.modeled_RMC_names)
     per_target = {s: [] for s in ("biomass", "glucose", "product")}
     for proc_name, export in preds.items():
@@ -240,8 +241,8 @@ fig, axes = plt.subplots(1, 3, figsize=(13, 3.5))
 _species_list = ("biomass", "glucose", "product")
 
 for run_dir, label, style in [("run_local", "local", "--"), ("run_pooled", "pooled", "-")]:
-    wrapper, cfg = bp_train.model_load(str(WORK / run_dir))
-    preds = bp_train.model_predict(wrapper, cfg, _heldout, grid_n=200)
+    wrapper, cfg = hxt.model_load(str(WORK / run_dir))
+    preds = hxt.model_predict(wrapper, cfg, _heldout, grid_n=200)
     export = preds[_process_name]
     species_order = list(wrapper.modeled_RMC_names)
     for ax, species in zip(axes, _species_list):
@@ -290,9 +291,9 @@ measured trajectory throughout.
   local's loss floor.** Watch for held-out R² getting *worse* while training loss
   keeps (barely) improving with more epochs: a sign of overfitting the
   majority-product data, not under-convergence.
-- **`build_reaction_module` needing `runtime_context`** (to pull real anchor data)
-  is the one place this page's hook signature differs from every simpler gallery
-  page's `(*, seed, **kwargs)`.
+- **`build_reaction_module` needing `training_parent_collection`** (to pull real
+  anchor data) is the one place this page's hook signature differs from every
+  simpler gallery page's `(*, seed, **kwargs)`.
 
 ## See also
 

@@ -10,7 +10,7 @@
 <img class="theme-diagram diagram-light" src="../_static/diagram_concepts_shape_light.svg" alt="hybrax-format data flows through hybrax prepare, hybrax train or loo, and hybrax forward to produce predictions, rates and metrics, with measured data, process transformation and augmentation, the reaction module, loss module, scales, optimizer, learning rate and old or new controls feeding into each stage.">
 <img class="theme-diagram diagram-dark" src="../_static/diagram_concepts_shape_dark.svg" alt="hybrax-format data flows through hybrax prepare, hybrax train or loo, and hybrax forward to produce predictions, rates and metrics, with measured data, process transformation and augmentation, the reaction module, loss module, scales, optimizer, learning rate and old or new controls feeding into each stage.">
 
-The single most useful thing to internalise: **bp-format owns the transport, you own the
+The single most useful thing to internalise: **hybrax.format owns the transport, you own the
 biology.** Dilution, feed inflow, sample outflow and volume dynamics are already written.
 What you supply is how fast the cells do things, and how you want to be scored.
 
@@ -61,21 +61,19 @@ an explicit error.
 
 | | Meaning | How the values are stored |
 |---|---|---|
-| **continuous** (`is_continuous=True`) | A smooth flow: a pump running. | A **cumulative volume** trace. bp-format differentiates it to get the flow rate. |
+| **continuous** (`is_continuous=True`) | A smooth flow: a pump running. | A **cumulative volume** trace. hybrax.format differentiates it to get the flow rate. |
 | **discrete** (`is_continuous=False`) | Individual events: boluses, sample draws. | One **signed volume delta per event**. |
 
 Volume changes are always stored in the *volume* unit (L, kg), never as a rate.
 
 ## Abbreviations
 
-These four appear constantly, especially in bp-train, and are rarely spelled out.
+These two appear constantly, especially in hybrax.train, and are rarely spelled out.
 
 | Short | Long | What it is |
 |---|---|---|
 | **RMC** | Reactor Medium Component | A concentration in the vessel: biomass, glucose, product. |
 | **PV** | Process Variable | Anything measured that is not a concentration in the medium: pH, temperature, DO, off-gas. |
-| **FVC** | Feed Volume Change | bp-train's abbreviation for an `Inflow`: something going *in*, a continuous feed or a bolus. Carries a feed medium. |
-| **SVC** | Sample Volume Change | bp-train's abbreviation for an `Outflow`: something coming *out*, a sample draw. No feed medium. |
 
 Sign convention is fixed by the type: **feeds are non-negative, samples are
 non-positive.** Getting this backwards is the classic import bug, and a validator checks
@@ -90,7 +88,7 @@ The biological part of the ODE is written in terms of named rates.
 | `q_<name>` | reactor medium components | A **specific** rate: per unit biomass. The derivative is `q_<c> * biomass`. |
 | `r_<name>` | modeled process variables | A **volumetric** rate. The derivative is `r_<pv>` directly. |
 
-If you do not write a `biological_ode` yourself, bp-format generates this one:
+If you do not write a `biological_ode` yourself, hybrax.format generates this one:
 
 ```
 rates:        q_biomass, q_glucose, q_product, …   (one per RMC, biomass first)
@@ -125,11 +123,11 @@ something, and the volume changed. The **pseudobatch transform** removes the sec
 batch and fed-batch runs directly comparable. A good sanity check: this trace should
 **not** jump at a pure sampling event. If it does, the volume accounting is wrong.
 
-## bp-train vocabulary
+## hybrax.train vocabulary
 
 | Term | Meaning |
 |---|---|
-| **prepared artifact** | The output of `bp-train prepare`: your dataset plus everything derived from it that training needs (control splines, layouts, target selection). Training reads this, never the raw file. |
+| **prepared artifact** | The output of `hybrax prepare`: your dataset plus everything derived from it that training needs (control splines, layouts, target selection). Training reads this, never the raw file. |
 | **target** | A measured quantity the loss is computed against. |
 | **`target_source`** | Which measurements become targets: `reactor_components`, `process_variables`, `combined`, or `auto`. |
 | **reaction module** | The object that predicts rates inside the ODE solve. Neural, mechanistic, or hybrid. Yours to write. |
@@ -137,7 +135,7 @@ batch and fed-batch runs directly comparable. A good sanity check: this trace sh
 | **run directory** | Everything one training run produced, and it is self-contained: it bundles the config, the `custom.py`, and the prepared data, so it can be re-run later. |
 | **checkpoint** | A snapshot inside the run directory. Also self-contained. |
 | **`custom.py`** | One optional file where you define hooks. A missing hook falls back to a default. |
-| **hook** | A named function bp-train looks for in your `custom.py`: see [the cheat sheet](../train/hooks_cheatsheet.md). |
+| **hook** | A named function hybrax looks for in your `custom.py`: see [the cheat sheet](../train/hooks_cheatsheet.md). |
 | **trainable / frozen** | Which parameters the optimizer touches, declared with field tags. **Untagged array leaves default to frozen.** |
 | **fold** | One split in cross-validation: some processes held out, the rest trained on. |
 | **holdout** | Processes excluded from training and scored separately. |
@@ -145,7 +143,7 @@ batch and fed-batch runs directly comparable. A good sanity check: this trace sh
 
 ### SCL and RAW
 
-The two spaces bp-train works in, and the source of most confusion when writing a first
+The two spaces hybrax.train works in, and the source of most confusion when writing a first
 reaction module.
 
 - **RAW**: physical units. g/L, litres, hours. What your data is in and what the

@@ -1,6 +1,6 @@
 // Collapsible sidebar captions. Furo only makes a page collapsible when the
 // toctree nests it under another page; this site's toctree is flat, so no
-// caption ("BP-FORMAT GUIDE", "GALLERY", ...) is ever collapsible on its own.
+// caption ("HYBRAX.FORMAT GUIDE", "GALLERY", ...) is ever collapsible on its own.
 // This makes each caption itself the toggle for the page list under it,
 // expanded by default for "Start here" and "Tutorials" plus whichever
 // section holds the current page; everything else starts collapsed.

@@ -8,7 +8,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from bp_train import (
+from hybrax.train import (
     EstimatedScales,
     ReactionInputs,
     ReactionOutputs,
@@ -51,7 +51,8 @@ class BatchReactionModule(UserReactionModule):
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.mlp(inputs.SCL_modeled_RMCs),
             # demo_batch has no modeled feeds, but the field is still required.
-            SCL_modeled_FVCs_rates=jnp.zeros(0),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
+            SCL_modeled_Inflows_rates=jnp.zeros(0),
         )
 
 
@@ -101,13 +102,17 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
             max(runtime_data.initial_volume(i) for i in range(n_processes))),
-        SCALE_modeled_FVCs_cumulative=empty,
-        SCALE_modeled_FVCs_rates=empty,
-        SCALE_controlled_FVCs_cumulative=empty,
-        SCALE_controlled_FVCs_rates=empty,
+        SCALE_modeled_Inflows_cumulative=empty,
+        SCALE_modeled_Inflows_rates=empty,
+        SCALE_modeled_Outflows_cumulative=empty,
+        SCALE_modeled_Outflows_rates=empty,
+        SCALE_controlled_Inflows_cumulative=empty,
+        SCALE_controlled_Inflows_rates=empty,
+        SCALE_controlled_Outflows_cumulative=empty,
+        SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=empty,
-        SCALE_controlled_FVCs_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_FVCs)), 1.0),
-        SCALE_modeled_FVCs_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_FVCs)), 1.0),
+        SCALE_controlled_Inflows_Cin=jnp.maximum(
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+        SCALE_modeled_Inflows_Cin=jnp.maximum(
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
     )

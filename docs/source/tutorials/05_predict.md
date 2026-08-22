@@ -33,11 +33,11 @@ WORK.mkdir(parents=True)
 shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
 shutil.copy(Path("_files/tutorial_04_custom.py").resolve(), WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -55,9 +55,9 @@ def bp_train_cli(*args):
     """))
 (WORK / "forward-config.json").write_text(
     '{ "models": ["run"], "output": { "predictions": "parents", "plots": true } }\n')
-bp_train_cli("prepare", "--config", "prepare-config.json",
+hxt_cli("prepare", "--config", "prepare-config.json",
              "--output-dir", "prepared", "--overwrite")
-bp_train_cli("train", "--config", "train-config.json", "--overwrite")
+hxt_cli("train", "--config", "train-config.json", "--overwrite")
 ```
 
 We start from a run directory trained exactly as in [Tutorial 4](04_your_first_custom_py.md).
@@ -73,7 +73,7 @@ Self-contained: `cp -r` it anywhere and keep working from the copy.
 ## The command-line way: `forward`
 
 ```bash
-bp-train forward --config forward-config.json
+hybrax forward --config forward-config.json
 ```
 
 where the config names the run directories to use, and requests predictions and plots
@@ -86,7 +86,7 @@ explicitly (both default to off):
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("forward", "--config", "forward-config.json",
+hxt_cli("forward", "--config", "forward-config.json",
              "--output-dir", "run/forward", "--overwrite")
 print((WORK / "run/forward/forward-results/losses.csv").read_text())
 ```
@@ -120,10 +120,10 @@ volume. One row per process per grid point.
 When you want arrays rather than CSVs:
 
 ```{code-cell} ipython3
-import bp_format as bp
-import bp_train
+import hybrax.format as hxf
+import hybrax.train as hxt
 
-wrapper, config = bp_train.model_load(str(WORK / "run"))
+wrapper, config = hxt.model_load(str(WORK / "run"))
 type(wrapper).__name__
 ```
 
@@ -133,9 +133,9 @@ the `prepared.json` and `custom.py` bundled inside the run directory. That is wh
 directory is self-contained and why you can move it between machines.
 
 ```{code-cell} ipython3
-collection = bp.serialization.load_process_collection(WORK / "data.json")
+collection = hxf.serialization.load_process_collection(WORK / "data.json")
 
-predictions = bp_train.model_predict(wrapper, config, collection, grid_n=200)
+predictions = hxt.model_predict(wrapper, config, collection, grid_n=200)
 list(predictions)
 ```
 

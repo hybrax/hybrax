@@ -4,7 +4,7 @@
 > reused by every model you fit against it.
 
 ```bash
-bp-train prepare --config prepare-config.json --output-dir prepared
+hybrax prepare --config prepare-config.json --output-dir prepared
 ```
 
 ## Why it is a separate command
@@ -13,11 +13,11 @@ Because it is expensive, deterministic, and shared. Prepare resolves everything 
 property of *the dataset* rather than *the model*:
 
 - which measured quantities are the fit **targets**;
-- the canonical **state and control layout** (from bp-format's `ProcessOrdering`);
+- the canonical **state and control layout** (from hybrax.format's `ProcessOrdering`);
 - **control splines**: the continuous inputs, fitted once so the solver can evaluate them
   at arbitrary `t`;
 - **discrete events**: bolus and sample times and their jumps;
-- **validation** of both bp-format structure and prepared-artifact semantics.
+- **validation** of both hybrax.format structure and prepared-artifact semantics.
 
 Once written, training reads only `prepared/prepared.json`. Twenty models fitted against
 the same prepared artifact start from a byte-identical problem, which is what makes
@@ -45,20 +45,21 @@ later.
 {
   "prepare": {
     "raw_input": "data.json",
-    "strict_bp_format_validation": false
+    "strict_format_validation": false
   },
   "custom_py": "custom.py"
 }
 ```
 
 `raw_input` accepts a `BioProcessCollection`, as a file or a directory.
-`strict_bp_format_validation` decides whether bp-format validation failures
+`strict_format_validation` decides whether hybrax.format validation failures
 stop the run or are reported and tolerated: set it `true` for a dataset you intend to
 publish.
 
-Control-grid refinement (`initial_grid_points`, `max_rel_error`,
-`max_refinement_rounds`) governs how finely controls are sampled before splining. The
-defaults are fine until a diagnostic plot tells you otherwise.
+Splines are whatever `hybrax.format` fits: an exact interpolating fit by default
+(`smoothing_s=0`). To smooth a noisy control before prepare uses it, fit your own
+spline in `transform_process_collection` and pass a nonzero `smoothing_s`: see
+[Time series and splines](../format/time_series_and_splines.md#fitting-one).
 
 ## Hook: `transform_process_collection`
 

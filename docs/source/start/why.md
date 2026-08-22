@@ -42,7 +42,7 @@ source of bugs.
 
 Pay the cost once, at the boundary.
 
-**Get the data into bp-format once.** That means answering the questions the
+**Get the data into hybrax.format once.** That means answering the questions the
 physics needs answered anyway: what was in the reactor at `t=0` (and what does
 `t=0` actually mean: batch start, batch end, induction?), what went in later
 (and at what concentration), what came out? It is a little tedius, but when it's
@@ -50,15 +50,15 @@ done, it's done. See [Tutorial 1](../tutorials/01_your_first_dataset.md) for
 details.
 
 **After that, this package provides everything else.** Because the description is complete,
-bp-format can assemble the mechanistic right-hand side for you (feed inflow, dilution,
-sample outflow, volume dynamics, discrete event jumps) and hand bp-train a
+hybrax.format can assemble the mechanistic right-hand side for you (feed inflow, dilution,
+sample outflow, volume dynamics, discrete event jumps) and hand hybrax.train a
 differentiable ODE where the only thing left undetermined are the biological dynamics.
 
 Next, you supply the part that is actually your research question: what do the
 cells do and how do you want to model it? As long as you can write down the
 right-hand side of your ODEs as JAX code you're good to go.
 
-This means that, once a dataset is `bp-format`, you can easily swap out one
+This means that, once a dataset is `hybrax.format`, you can easily swap out one
 model for another. It doesn't matter whether it's a [mechanistic Monod
 fit](../gallery/mechanistic_rates.md), a neural ODE, a [hybrid of the
 two](../gallery/fed_batch.md) (most popular), or a [hybrid models with
@@ -88,7 +88,7 @@ GPs](../gallery/gaussian_process.md).
 
 ## See also
 
-- [Install](install.md): get bp-format and bp-train set up.
+- [Install](install.md): get hybrax set up.
 - [Quickstart](quickstart.md): see the whole loop run in ten minutes.
 - [Concepts and vocabulary](concepts.md): the terms used throughout these docs.
 - [Design rationale](../under_the_hood/design_rationale.md): the architectural

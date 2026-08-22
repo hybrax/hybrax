@@ -15,7 +15,7 @@ kernelspec:
 > Everything that moves liquid, and why volume is its own category rather than a state
 > or a control. Read the last section even for a pure batch: sampling counts too.
 
-This is where most real datasets go wrong, and where bp-format saves you the most work.
+This is where most real datasets go wrong, and where hybrax.format saves you the most work.
 
 ## Why volume is its own thing
 
@@ -35,9 +35,9 @@ wrong and they are all wrong together, quietly.
 
 ```{code-cell} ipython3
 import numpy as np
-import bp_format as bp
+import hybrax.format as hxf
 
-cs = bp.serialization.load_process_collection("../_data/out/demo_fedbatch/data.json")
+cs = hxf.serialization.load_process_collection("../_data/out/demo_fedbatch/data.json")
 process = cs.processes["fedbatch_1"]
 
 for name, vc in process.volume.volume_changes.items():
@@ -53,7 +53,7 @@ for name, vc in process.volume.volume_changes.items():
 Two rules that catch most import bugs:
 
 **Volume changes are stored in the volume unit (litres, kilograms) never as a rate.**
-A continuous feed is the *cumulative* volume delivered; bp-format differentiates it to
+A continuous feed is the *cumulative* volume delivered; hybrax.format differentiates it to
 get the flow. If your control software exported a flow rate, integrate it first.
 
 **Sign is fixed by the type.** Feeds are non-negative, samples non-positive. The type
@@ -87,7 +87,7 @@ for name, comp in medium.components.items():
 :class: warning
 
 A species missing from a feed medium is **ambiguous**: it could mean genuinely absent,
-or simply not recorded. bp-format will not guess, and `validate_volume_change_states`
+or simply not recorded. hybrax.format will not guess, and `validate_volume_change_states`
 flags it.
 
 Write the zeros explicitly, as above. It matters: a feed that contains no biomass still
@@ -98,7 +98,7 @@ Write the zeros explicitly, as above. It matters: a feed that contains no biomas
 :class: important
 A `FeedMediumComponent` concentration is schema-wise allowed to be a `TimeSeries`, but
 `build_rhs_ode` raises `NotImplementedError` for it. In practice: use
-`bp.StaticVariable`. A feed whose composition genuinely changed over time needs to be
+`hxf.StaticVariable`. A feed whose composition genuinely changed over time needs to be
 split into separate feed streams. See [Limits and gotchas](limits_and_gotchas.md).
 :::
 
@@ -130,7 +130,7 @@ sample then feed) the order is fixed:
 1. **Sample first.** The offline row describes the pre-feed reactor state.
 2. **Bolus second.** It dilutes from the post-sample volume, then adds its mass.
 
-bp-format and bp-train both apply this order. It is why a measurement timestamped
+hybrax.format and hybrax.train both apply this order. It is why a measurement timestamped
 strictly *before* a bolus is unaffected by that bolus, and why the alignment validator
 cares about measurements landing just *after* a sample.
 
@@ -139,7 +139,7 @@ cares about measurements landing just *after* a sample.
 ```{code-cell} ipython3
 import json
 truth = json.loads(open("../_data/out/demo_fedbatch/ground_truth.json").read())
-ok, message, _ = bp.validate_volume_consistency(
+ok, message, _ = hxf.validate_volume_consistency(
     process, final_volume=truth["final_volume"])
 print(message)
 ```
@@ -162,7 +162,7 @@ it before fitting anything.
 - **An `Inflow` with no `feed_medium`** raises when the process ordering is
   built.
 - **A feed naming a species that is not in `reactor_medium.components`** also raises: 
-  bp-format will not invent a state for it.
+  hybrax.format will not invent a state for it.
 - **Modeled feeds exist.** `is_controlled=False` on a feed means the *model* predicts the
   flow rate. That is an advanced case; see [the reaction module](../train/reaction_module.md).
 

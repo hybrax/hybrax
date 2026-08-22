@@ -5,15 +5,15 @@
 ## The commands
 
 ```bash
-bp-train prepare --config prepare-config.json --output-dir prepared [--overwrite]
-bp-train train   --config train-config.json [--output-dir DIR] [--overwrite]
+hybrax prepare --config prepare-config.json --output-dir prepared [--overwrite]
+hybrax train   --config train-config.json [--output-dir DIR] [--overwrite]
                  [--epochs N] [--log-level LEVEL]
-bp-train forward --config forward-config.json [--output-dir DIR] [--overwrite]
-bp-train loo     --config loo-config.json [--output-dir DIR] [--overwrite]
-bp-train loo     --resume RUN_DIR        # mutually exclusive with --config
+hybrax forward --config forward-config.json [--output-dir DIR] [--overwrite]
+hybrax loo     --config loo-config.json [--output-dir DIR] [--overwrite]
+hybrax loo     --resume RUN_DIR        # mutually exclusive with --config
 ```
 
-`bp-train` is a console script; `python -m bp_train.cli` is equivalent.
+`hybrax` is a console script; `python -m hybrax.train.cli` is equivalent.
 
 Command-line flags override the config file. `--epochs` is there because it is the one
 you change constantly while iterating.
@@ -59,20 +59,20 @@ pipeline if you want to.
 
 | Section | Used by | Holds |
 |---|---|---|
-| `prepare` | prepare | `raw_input`, validation strictness, control-grid refinement, `augmentation` |
+| `prepare` | prepare | `raw_input`, validation strictness, required controls, `augmentation` |
 | `data` | train, loo | `prepared`, `processes`, `targets`, `target_source` |
 | `train` | train, loo | `epochs`, `seed`, `optimizer`, `learning_rate`, `grad_clip_norm`, `batch_size`, `shuffle`, `devices`, `allow_stateful_models` |
 | `solver` | train, forward, loo | `max_steps`, `rtol`, `atol` |
 | `checkpoint` | train, loo | `every` |
 | `output` | all | `dir`, plotting |
-| `logging` | all | log level and destinations |
+| `logging` | all | `decimals`: rounding precision for logged numbers |
 | `custom_py` | all | path to your hooks file |
 | `custom` | all | free-form, handed to your hooks |
 | `loo` | loo | `per_fold_holdout_sets`, `parallel_folds`, `devices_per_fold` |
 | `models` | forward | list of run or checkpoint directories |
 
 Exact fields, types and defaults are in the
-[API reference](../autoapi/bp_train/run_config/index): not repeated here, because they
+[API reference](../autoapi/hybrax/train/run_config/index): not repeated here, because they
 change and this page would be wrong first.
 
 ## A realistic config
@@ -162,7 +162,7 @@ for defaults you do not want to repeat in every config file.
   `--overwrite`.
 - **A missing `custom_py` path is a `FileNotFoundError`**, but a missing *hook inside* a
   present file is silent. Different failure modes, and only one of them is loud.
-- **`bp-train loo` has a hidden `--fold` flag.** It is internal worker dispatch. Do not
+- **`hybrax loo` has a hidden `--fold` flag.** It is internal worker dispatch. Do not
   use it.
 
 ## See also

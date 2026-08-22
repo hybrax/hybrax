@@ -27,9 +27,9 @@ network. This tutorial is four function calls that catch that early.
 ```
 
 ```{code-cell} ipython3
-import bp_format as bp
+import hybrax.format as hxf
 
-collection = bp.serialization.load_process_collection("../_data/out/demo_batch/data.json")
+collection = hxf.serialization.load_process_collection("../_data/out/demo_batch/data.json")
 process = collection.processes["run_1"]
 ```
 
@@ -40,7 +40,7 @@ in one pass** rather than raising on the first one. You get a full report, not a
 whack-a-mole session.
 
 ```{code-cell} ipython3
-ok, messages = bp.validate_process(process)
+ok, messages = hxf.validate_process(process)
 print("ok:", ok)
 for line in messages:
     print(" ", line)
@@ -50,7 +50,7 @@ Across a whole collection, `validate_for_publication` adds cross-process checks,
 every run has the same structure, so a model trained on one can be applied to another:
 
 ```{code-cell} ipython3
-ok, per_process = bp.validate_for_publication(collection)
+ok, per_process = hxf.validate_for_publication(collection)
 print("ok:", ok)
 print("checked:", list(per_process))
 ```
@@ -68,7 +68,7 @@ The checks that catch real bugs most often:
 ## 2.2 Print the structure
 
 ```{code-cell} ipython3
-bp.print_process_structure(process, verbosity=2)
+hxf.print_process_structure(process, verbosity=2)
 ```
 
 Raise `verbosity` to 3 for every value; drop to 1 for a one-line-per-object summary.
@@ -76,12 +76,11 @@ Raise `verbosity` to 3 for every value; drop to 1 for a one-line-per-object summ
 ## 2.3 Plot a process
 
 ```{code-cell} ipython3
-fig = bp.plot_process(process)
+fig = hxf.plot_process(process)
 ```
 
-This needs the plotting extra (`pip install -e "./bp-format[plotting]"`). Look for the
-things that are hard to see in a table: a species that never moves, a trace that jumps
-where nothing happened, a run that starts before inoculation.
+Look for the things that are hard to see in a table: a species that never moves, a trace
+that jumps where nothing happened, a run that starts before inoculation.
 
 ## 2.4 Print the ODE
 
@@ -89,11 +88,11 @@ This is the one most people do not know exists, and it is the fastest way to che
 your description means what you think.
 
 ```{code-cell} ipython3
-bp.print_rhs_ode(process)
+hxf.print_rhs_ode(process)
 ```
 
 Read it as two halves. The **biological** half is what a model will predict: here the
-three `q_*` rates. The **physical** half is what bp-format already wrote for you: feed
+three `q_*` rates. The **physical** half is what hybrax.format already wrote for you: feed
 inflow, dilution, sample outflow, volume dynamics. In a batch run the physical half is
 nearly empty, which is exactly why batch is the right place to start.
 

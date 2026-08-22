@@ -1,6 +1,6 @@
 # Limits and gotchas
 
-> What bp-format deliberately does not do, and the sharp edges in what it does. Worth
+> What hybrax.format deliberately does not do, and the sharp edges in what it does. Worth
 > reading the first section before you design a dataset around an assumption that does
 > not hold.
 
@@ -76,23 +76,23 @@ numbers.
 
 ## API surprises
 
-- **`bp.inspect` is not a module handle.** `bp.inspect.plot_process` raises
+- **`hxf.inspect` is not a module handle.** `hxf.inspect.plot_process` raises
   `AttributeError` on a fresh import and only starts working after something else has
-  pulled the submodule in. Use `bp.plot_process(...)`. Same for `bp.simulation`.
-- **Save/load are not on the root.** `bp.serialization.save_process_collection`, not
-  `bp.save_process_collection`.
-- **`PPoly` is not root-exported.** `from bp_format.time_series import PPoly`.
-- **`plot_timeseries` is not root-exported.** `from bp_format.inspect import plot_timeseries`.
-- **Importing `bp_format` sets `JAX_ENABLE_X64=true` globally**, before JAX loads. If you
+  pulled the submodule in. Use `hxf.plot_process(...)`. Same for `hxf.simulation`.
+- **Save/load are not on the root.** `hxf.serialization.save_process_collection`, not
+  `hxf.save_process_collection`.
+- **`PPoly` is not root-exported.** `from hybrax.format.time_series import PPoly`.
+- **`plot_timeseries` is not root-exported.** `from hybrax.format.inspect import plot_timeseries`.
+- **Importing `hybrax.format` sets `JAX_ENABLE_X64=true` globally**, before JAX loads. If you
   configured JAX yourself first, this changes it underneath you.
-- **`AugmentedBioProcess` is a shape with no producer** in bp-format. It exists so
-  bp-train's augmentation can rely on it.
+- **`AugmentedBioProcess` is a shape with no producer** in hybrax.format. It exists so
+  hybrax.train's augmentation can rely on it.
 - **`DiscreteEvents` is a mirror, not the source of truth.** Events live in
   `volume.volume_changes` with `is_continuous=False`.
 
 ## See also
 
 - [Errors](../troubleshooting/errors.md): message-to-fix index.
-- [Silent failures](../troubleshooting/silent_failures.md): the bp-train equivalent of
+- [Silent failures](../troubleshooting/silent_failures.md): the hybrax.train equivalent of
   this page's middle section.
 - [Further reading](further_reading.md), where the exhaustive reference lives.

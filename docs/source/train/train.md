@@ -4,7 +4,7 @@
 > core.
 
 ```bash
-bp-train train --config train-config.json [--overwrite] [--epochs N]
+hybrax train --config train-config.json [--overwrite] [--epochs N]
 ```
 
 ## What one step does
@@ -117,15 +117,15 @@ or `"devices": "max"`, which resolves to `min(n_processes, n_cpus)`.
 
 :::{admonition} The device count is fixed before JAX initializes
 :class: important
-JAX decides its CPU device count at import. bp-train therefore resolves the setting
+JAX decides its CPU device count at import. hybrax.train therefore resolves the setting
 *before* that, by scanning the command line and config at import time.
 
-Consequences: **`BP_TRAIN_DEVICES=N` in the environment always wins** over the config
+Consequences: **`HYBRAX_TRAIN_DEVICES=N` in the environment always wins** over the config
 file; and if `XLA_FLAGS` already sets `xla_force_host_platform_device_count`, the whole
 bootstrap is skipped and your value stands.
 :::
 
-The default is **1**: bp-train never quietly takes over your machine. `"max"`
+The default is **1**: hybrax.train never quietly takes over your machine. `"max"`
 deliberately does not mean "all cores": surplus idle devices can deadlock the `pmap`
 rendezvous on an AllReduce timeout, so it is capped at the process count. Requesting more
 devices than you have cores is capped, with a warning to stderr.
@@ -174,9 +174,9 @@ concentration plot and obvious in the rate one.
 - **`--epochs` overrides the config**, which is what you want while iterating.
 - **`batch_size` greater than the process count** raises rather than clamping.
 - **Stateful modules need `train.allow_stateful_models: true`.**
-- **`BP_GSPMD=1`** switches sharding to GSPMD auto-sharding. It is correct but roughly
+- **`HYBRAX_GSPMD=1`** switches sharding to GSPMD auto-sharding. It is correct but roughly
   sixty times slower: a debugging tool, not an option.
-- **x64 is on globally.** Importing the packages enables JAX double precision.
+- **x64 is on globally.** Importing hybrax enables JAX double precision.
 
 ## See also
 

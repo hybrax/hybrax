@@ -21,9 +21,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-import bp_format as bp
-from bp_format.time_series import TimeSeries
-from bp_train import (
+import hybrax.format as hxf
+from hybrax.format.time_series import TimeSeries
+from hybrax.train import (
     EstimatedScales,
     ReactionInputs,
     ReactionOutputs,
@@ -48,7 +48,7 @@ def transform_process_collection(collection, config):
     for name, process in collection.processes.items():
         blend = BLEND_BY_PROCESS[name]
         times = process.reactor_medium.components["biomass"].concentration.times
-        process.process_variables["media_blend_fraction"] = bp.ProcessVariable(
+        process.process_variables["media_blend_fraction"] = hxf.ProcessVariable(
             name="media_blend_fraction", unit="-", is_controlled=True,
             values=TimeSeries(times=times, values=np.full(times.shape, blend)),
             bounds=(0.0, 1.0),
@@ -137,7 +137,8 @@ class PLSdFBAReactionModule(UserReactionModule):
 
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.scale_modeled_BiologicalOde_rates(RAW_rates),
-            SCL_modeled_FVCs_rates=jnp.zeros(0),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
+            SCL_modeled_Inflows_rates=jnp.zeros(0),
             auxiliary={
                 "n_weights": jnp.array([n_X, n_M, n_A, n_S]),
                 "latent_scores": self.pls.scores(SCL_features),
@@ -184,13 +185,17 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
             max(runtime_data.initial_volume(i) for i in range(n_processes))),
-        SCALE_modeled_FVCs_cumulative=empty,
-        SCALE_modeled_FVCs_rates=empty,
-        SCALE_controlled_FVCs_cumulative=empty,
-        SCALE_controlled_FVCs_rates=empty,
+        SCALE_modeled_Inflows_cumulative=empty,
+        SCALE_modeled_Inflows_rates=empty,
+        SCALE_modeled_Outflows_cumulative=empty,
+        SCALE_modeled_Outflows_rates=empty,
+        SCALE_controlled_Inflows_cumulative=empty,
+        SCALE_controlled_Inflows_rates=empty,
+        SCALE_controlled_Outflows_cumulative=empty,
+        SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=jnp.ones(n_PV),
-        SCALE_controlled_FVCs_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_FVCs)), 1.0),
-        SCALE_modeled_FVCs_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_FVCs)), 1.0),
+        SCALE_controlled_Inflows_Cin=jnp.maximum(
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+        SCALE_modeled_Inflows_Cin=jnp.maximum(
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
     )

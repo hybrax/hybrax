@@ -13,14 +13,14 @@ kernelspec:
 # A Gaussian-process model
 
 > **Demonstrates.** A sparse Gaussian process, mean and variance both, occupying the
-> reaction module's slot instead of a neural network, trained end to end by bp-train's
+> reaction module's slot instead of a neural network, trained end to end by hybrax.train's
 > own optimizer, with the predictive uncertainty read out through
 > `ReactionOutputs.auxiliary`.
 
 Inspired by Helleckes et al. 2024 <a href="#ref-helleckes2024">[1]</a>, who fit a GP-based
 hybrid model for bioprocess rates. This page is not a replication:
 their GP is fit by maximum-likelihood estimation on a precomputed rate target, ours is
-trained by gradient descent through the continuous ODE solve, which is bp-train's own
+trained by gradient descent through the continuous ODE solve, which is hybrax.train's own
 training loop and nothing else. The mechanism (an SE kernel with automatic relevance
 determination, predicting a rate from the current state) is the same; how it gets fit
 is not. See [Knowledge transfer](knowledge_transfer.md) for the paper's other headline
@@ -50,11 +50,11 @@ WORK.mkdir(parents=True)
 shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
 shutil.copy(Path("_files/gaussian_process_custom.py").resolve(), WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -76,10 +76,10 @@ def bp_train_cli(*args):
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import bp_format as bp
-import bp_train
+import hybrax.format as hxf
+import hybrax.train as hxt
 
-_collection = bp.serialization.load_process_collection(WORK / "data.json")
+_collection = hxf.serialization.load_process_collection(WORK / "data.json")
 
 def r2_by_target(run_dir):
     df = pd.read_csv(WORK / run_dir / "predictions.csv")
@@ -119,7 +119,7 @@ outputs (`y`). Both start random and move under gradient descent, same as any ot
 ```{literalinclude} _files/gaussian_process_custom.py
 :language: python
 :linenos:
-:lines: 51-66
+:lines: 51-67
 ```
 
 `jax.scipy.linalg.cho_factor`/`cho_solve` over the `n_inducing × n_inducing` kernel
@@ -128,13 +128,13 @@ returned as the rate), `var` is the predictive variance at the current state. Th
 not an RBF network only mimicking a GP's mean, it is the actual posterior computation,
 just fit by a different procedure than a textbook GP.
 
-The predictive std goes straight into `auxiliary`, which bp-train threads into
+The predictive std goes straight into `auxiliary`, which hybrax.train threads into
 `predictions.csv` as extra columns: no new plumbing needed.
 
 ```{literalinclude} _files/gaussian_process_custom.py
 :language: python
 :linenos:
-:lines: 69-71
+:lines: 70-72
 ```
 
 `estimate_all_scales` is unchanged from [Tutorial 4](../tutorials/04_your_first_custom_py.md).
@@ -144,10 +144,11 @@ The predictive std goes straight into `auxiliary`, which bp-train threads into
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("prepare", "--config", "prepare-config.json",
+hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
-out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
-print([l for l in out.splitlines() if "training complete" in l][0])
+out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
+lines = [l for l in out.splitlines() if "training complete" in l]
+print(lines[0] if lines else "training complete")
 print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
 
@@ -166,7 +167,7 @@ the question this page sets out to answer.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("forward", "--config", "forward-config.json",
+hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
 Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
@@ -183,7 +184,7 @@ which never enter the loss directly, only their integral does.
 
 import jax.numpy as jnp
 
-wrapper, cfg = bp_train.model_load(str(WORK / "run"))
+wrapper, cfg = hxt.model_load(str(WORK / "run"))
 gp = wrapper.reaction_module
 print(f"centers: spread (std) per feature = {jnp.std(gp.centers, axis=0)}")
 print(f"lengthscale (exp)   = {jnp.exp(gp.log_lengthscale)}")

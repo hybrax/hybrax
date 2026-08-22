@@ -30,15 +30,15 @@ run/
 └── checkpoints/step_NNNNN/    ... the same again, per checkpoint
 ```
 
-You can copy a run directory to another machine and load it, provided the packages are
+You can copy a run directory to another machine and load it, provided hybrax is
 installed.
 
 ## Loading
 
 ```python
-import bp_train
+import hybrax.train as hxt
 
-wrapper, config = bp_train.model_load("run")
+wrapper, config = hxt.model_load("run")
 ```
 
 `model_load` rebuilds everything from the directory's own bundled data. It is the one you
@@ -59,17 +59,18 @@ they look plausible. Use `model_load` unless you specifically know why you need 
 ## Predicting
 
 ```python
-import bp_format as bp
+import hybrax.format as hxf
 
-collection = bp.serialization.load_process_collection("data.json")
+collection = hxf.serialization.load_process_collection("data.json")
 
-predictions = bp_train.model_predict(wrapper, config, collection, grid_n=200)
+predictions = hxt.model_predict(wrapper, config, collection, grid_n=200)
 export = predictions["run_1"]
 export.t, export.c_species, export.q_rates, export.v_real, export.auxiliary
 ```
 
-**`model_predict` does not re-estimate scales.** The CLI `forward` path does. That
-difference is deliberate but easy to trip over: see
+**Neither `model_predict` nor the CLI `forward` path re-estimates scales against your
+evaluation data.** Both use exactly the scales the model was trained under. What differs
+is whether `custom.py` is needed at all: see
 [Forward](forward.md) and [Silent failures](../troubleshooting/silent_failures.md).
 
 ## Resuming training
@@ -85,7 +86,7 @@ Because each checkpoint is self-contained, it re-exports predictions and re-writ
 bundled data. On a fast run that can dominate the wall clock: set `every` coarse enough
 that checkpointing is not the bottleneck.
 
-For LOO, resuming is a first-class command: `bp-train loo --resume RUN_DIR` re-runs only
+For LOO, resuming is a first-class command: `hybrax loo --resume RUN_DIR` re-runs only
 the folds that never finished. See [Cross-validation](loo.md).
 
 ## Provenance
@@ -97,8 +98,8 @@ that two runs disagree, because most of the time they were not run on the same t
 ## Inspection
 
 ```python
-bp_train.print_trainable_structure(wrapper)   # what is optimized, what is frozen
-bp_train.print_reaction_schema(wrapper)       # which array index is which species
+hxt.print_trainable_structure(wrapper)   # what is optimized, what is frozen
+hxt.print_reaction_schema(wrapper)       # which array index is which species
 ```
 
 Run the first before any long training: an untagged field is silently frozen and will

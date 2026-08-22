@@ -10,7 +10,7 @@ rm -rf "$OUT" "$SCRATCH/doctrees" "$JUPYTER_EXECUTE"
 # data files those cells load, so a data-generator change alone does not invalidate
 # it — clear it every time or "full clean build" silently serves stale plots/output.
 rm -rf "$SCRATCH/jupyter_cache"
-rm -rf "$SRC/narrative"             # legacy: bp-docs no longer copies the packages' agent docs
+rm -rf "$SRC/narrative"             # legacy: bp-docs no longer copies hybrax's agent docs
 
 # Regenerate the demo datasets the tutorials/gallery execute against.
 "$PYTHON" "$SRC/_data/generate.py"
@@ -20,7 +20,7 @@ echo "Build log: $LOG  (tail -f \"$LOG\" in another terminal to watch progress)"
 BUILD_START=$(date +%s)
 # -j 4: each page's setup cell isolates its own WORK dir and subprocess, so
 # parallel pages don't share state, only CPU/memory. 4 matches the cap that
-# kept bp-train's own pytest -n from OOM-killing this WSL box; raise with
+# kept hybrax's own pytest -n from OOM-killing this WSL box; raise with
 # caution, not by default.
 "$PYTHON" -m sphinx -b html -j 4 -d "$SCRATCH/doctrees" "$SRC" "$OUT" 2>&1 | tee "$LOG"
 
@@ -37,7 +37,7 @@ if compgen -G "$JUPYTER_EXECUTE"/*.png > /dev/null; then
     mv "$JUPYTER_EXECUTE"/*.png "$JUPYTER_EXECUTE/figures/"
 fi
 
-# Warning gate. We cannot use -W: autoapi renders the packages' docstrings into RST
+# Warning gate. We cannot use -W: autoapi renders hybrax's docstrings into RST
 # and emits warnings we cannot fix from here (and at least one of them is logged
 # without a `type`, so suppress_warnings cannot reach it). Instead, fail on any
 # warning that points at a page *we* wrote — dead cross-references included.

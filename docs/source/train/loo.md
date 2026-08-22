@@ -4,8 +4,8 @@
 > held-out run was predicted.
 
 ```bash
-bp-train loo --config loo-config.json [--output-dir DIR] [--overwrite]
-bp-train loo --resume RUN_DIR
+hybrax loo --config loo-config.json [--output-dir DIR] [--overwrite]
+hybrax loo --resume RUN_DIR
 ```
 
 ## Why it matters here more than usual
@@ -83,12 +83,12 @@ Folds are independent, and each runs in its own subprocess.
 ```
 
 That is 2 × 2 = 4 cores. Size it against your machine: the orchestrator deliberately
-holds itself to one device so an exported `BP_TRAIN_DEVICES` meant for workers does not
+holds itself to one device so an exported `HYBRAX_TRAIN_DEVICES` meant for workers does not
 reserve the pool.
 
 :::{admonition} Do not also fan out at the shell level
 :class: warning
-`parallel_folds` already runs multiple JAX processes. Launching several `bp-train loo`
+`parallel_folds` already runs multiple JAX processes. Launching several `hybrax loo`
 commands alongside each other oversubscribes the machine and, on constrained systems,
 gets processes OOM-killed.
 :::
@@ -96,7 +96,7 @@ gets processes OOM-killed.
 ## Resuming
 
 ```bash
-bp-train loo --resume loo_run
+hybrax loo --resume loo_run
 ```
 
 Reloads the bundled `loo-config.json` verbatim (**no overrides**) and re-runs only the
@@ -113,7 +113,7 @@ fold.
 
 This is not a nicety. Without it, a synthetic sibling of the held-out run sits in the
 training set, and your cross-validation score is measuring memorisation. If you use
-augmentation, use bp-train's LOO rather than rolling your own splits.
+augmentation, use hybrax.train's LOO rather than rolling your own splits.
 
 ## Holdout without cross-validation
 

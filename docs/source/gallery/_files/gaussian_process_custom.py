@@ -2,12 +2,12 @@
 
 A closed-form sparse-GP posterior (mean AND variance, via a Cholesky solve
 over a small set of trainable inducing points) occupies the same slot a
-neural network normally would. Trained end-to-end by bp-train's own gradient
+neural network normally would. Trained end-to-end by hybrax.train's own gradient
 descent through the whole trajectory, unlike a standard GP's marginal-
 likelihood fit: see the page for exactly how these differ, and why.
 
 The predictive variance goes into ``ReactionOutputs.auxiliary``, which
-bp-train threads straight into ``predictions.csv`` (see ``estimate_all_scales``
+hybrax.train threads straight into ``predictions.csv`` (see ``estimate_all_scales``
 below for the rest: verbatim from Tutorial 4).
 """
 
@@ -16,7 +16,7 @@ import jax.numpy as jnp
 import jax.scipy.linalg as jsl
 import numpy as np
 
-from bp_train import (
+from hybrax.train import (
     EstimatedScales,
     ReactionInputs,
     ReactionOutputs,
@@ -61,7 +61,8 @@ class GPReactionModule(UserReactionModule):
         rate_std = jnp.sqrt(jnp.clip(var, 1e-12)) * jnp.ones_like(mean)
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=mean,
-            SCL_modeled_FVCs_rates=jnp.zeros(0),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
+            SCL_modeled_Inflows_rates=jnp.zeros(0),
             auxiliary={"rate_std": rate_std},
         )
 
@@ -103,13 +104,17 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
             max(runtime_data.initial_volume(i) for i in range(n_processes))),
-        SCALE_modeled_FVCs_cumulative=empty,
-        SCALE_modeled_FVCs_rates=empty,
-        SCALE_controlled_FVCs_cumulative=empty,
-        SCALE_controlled_FVCs_rates=empty,
+        SCALE_modeled_Inflows_cumulative=empty,
+        SCALE_modeled_Inflows_rates=empty,
+        SCALE_modeled_Outflows_cumulative=empty,
+        SCALE_modeled_Outflows_rates=empty,
+        SCALE_controlled_Inflows_cumulative=empty,
+        SCALE_controlled_Inflows_rates=empty,
+        SCALE_controlled_Outflows_cumulative=empty,
+        SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=empty,
-        SCALE_controlled_FVCs_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_FVCs)), 1.0),
-        SCALE_modeled_FVCs_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_FVCs)), 1.0),
+        SCALE_controlled_Inflows_Cin=jnp.maximum(
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+        SCALE_modeled_Inflows_Cin=jnp.maximum(
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
     )

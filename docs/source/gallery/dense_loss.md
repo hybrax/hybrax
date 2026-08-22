@@ -14,7 +14,7 @@ kernelspec:
 
 > **Demonstrates.** A loss module that constrains the trajectory *between*
 > measurements (bounds on states and rates, and a smoothness penalty on rate
-> curvature) using bp-format's own `Bounds` metadata and bp-train's jump-aware
+> curvature) using hybrax.format's own `Bounds` metadata and hybrax.train's jump-aware
 > dense-grid helpers.
 
 By default, a loss only ever looks at measurement times. Between them, the model is free
@@ -51,11 +51,11 @@ WORK.mkdir(parents=True)
 shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
 shutil.copy(Path("_files/dense_loss_custom.py").resolve(), WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -76,9 +76,9 @@ def bp_train_cli(*args):
 
 import numpy as np
 import pandas as pd
-import bp_format as bp
+import hybrax.format as hxf
 
-_collection = bp.serialization.load_process_collection(WORK / "data.json")
+_collection = hxf.serialization.load_process_collection(WORK / "data.json")
 
 def r2_by_target(run_dir):
     df = pd.read_csv(WORK / run_dir / "predictions.csv")
@@ -112,7 +112,7 @@ def dense_diagnostics(run_dir):
 
 ## 1. Bounds, from the data itself
 
-`ReactorMediumComponent.bounds` is metadata bp-format already carries: `demo_batch`
+`ReactorMediumComponent.bounds` is metadata hybrax.format already carries: `demo_batch`
 declares `(0.0, None)` on every species, because a concentration cannot be negative. But
 `BiologicalOde.rates` bounds default to unbounded, since auto-generation has no way to
 know what a plausible rate range is. Attaching them is one `transform_process_collection`
@@ -121,18 +121,18 @@ hook:
 ```{literalinclude} _files/dense_loss_custom.py
 :language: python
 :linenos:
-:lines: 112-119
+:lines: 118-125
 ```
 
-This is exactly the use bp-format's docs describe for `Bounds`: *"pure metadata (not
+This is exactly the use hybrax.format's docs describe for `Bounds`: *"pure metadata (not
 enforced inside RhsOde or the integrator; downstream consumers read them off the process
-to build soft-constraint penalties."* Nothing threads these bounds into bp-train
+to build soft-constraint penalties."* Nothing threads these bounds into hybrax.train
 automatically) the loss module below reads them itself, once, at construction:
 
 ```{literalinclude} _files/dense_loss_custom.py
 :language: python
 :linenos:
-:lines: 192-214
+:lines: 198-219
 ```
 
 ## 2. The hinge penalty, on the dense grid
@@ -140,7 +140,7 @@ automatically) the loss module below reads them itself, once, at construction:
 ```{literalinclude} _files/dense_loss_custom.py
 :language: python
 :linenos:
-:lines: 157-171
+:lines: 163-177
 ```
 
 `-inf`/`+inf` for an unbounded side falls straight out of the `clip`, so there is no
@@ -154,7 +154,7 @@ grid's own post-solver-failure mask.
 ```{literalinclude} _files/dense_loss_custom.py
 :language: python
 :linenos:
-:lines: 173-183
+:lines: 179-189
 ```
 
 The curvature is a plain central second difference; `dense_t` is a uniform linspace, so a
@@ -167,7 +167,7 @@ triple_mask = all_triple(valid) & dense_triple_mask_away_from_jumps(
 
 A bolus creates a real, physical kink in concentration (and therefore in the inferred
 rate. Penalising curvature there would fight the data. `dense_triple_mask_away_from_jumps`
-is shipped by bp-train for exactly this: it excludes any three-point window whose span
+is shipped by hybrax.train for exactly this: it excludes any three-point window whose span
 straddles a jump time, so smoothness is only asked for where the process is actually
 smooth. `demo_batch` has no events, so this mask is a no-op here) see
 [Fed-batch](fed_batch.md) for where it matters.
@@ -177,10 +177,11 @@ smooth. `demo_batch` has no events, so this mask is a no-op here) see
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("prepare", "--config", "prepare-config.json",
+hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
-out = bp_train_cli("train", "--config", "train-full.json", "--overwrite")
-print([l for l in out.splitlines() if "training complete" in l][0])
+out = hxt_cli("train", "--config", "train-full.json", "--overwrite")
+lines = [l for l in out.splitlines() if "training complete" in l]
+print(lines[0] if lines else "training complete")
 print(f"run directory: ./{(WORK / 'run_full').relative_to(WORK.parents[4])}")
 ```
 
@@ -219,7 +220,7 @@ shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data_ba
       "output": { "dir": "run_base", "predictions": "parents" }
     }
     """))
-bp_train_cli("train", "--config", "train-base.json", "--overwrite")
+hxt_cli("train", "--config", "train-base.json", "--overwrite")
 print(f"comparison run directory: ./{(WORK / 'run_base').relative_to(WORK.parents[4])}")
 
 r2_base = r2_by_target("run_base")
@@ -244,7 +245,7 @@ measurement-only losses cannot see.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("forward", "--config", "forward-config.json",
+hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run_full/forward", "--overwrite")
 from IPython.display import Image
 Image(filename=str(WORK / "run_full/forward/forward-results/plots/run_1.png"))

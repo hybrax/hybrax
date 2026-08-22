@@ -17,7 +17,7 @@ kernelspec:
 > Replace the two defaults that matter most (the network that predicts rates, and the
 > scaling) and measure what it bought you.
 
-Everything you customise in bp-train lives in one optional file, `custom.py`. bp-train
+Everything you customise in hybrax.train lives in one optional file, `custom.py`. hybrax.train
 looks in it for functions with specific names; anything it does not find falls back to a
 default. There is no registration and no base class to inherit for the file itself: it
 is just a module.
@@ -36,11 +36,11 @@ WORK.mkdir(parents=True)
 shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
 shutil.copy(Path("_files/tutorial_04_custom.py").resolve(), WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -48,14 +48,14 @@ def bp_train_cli(*args):
 
 (WORK / "prepare-config.json").write_text(
     '{ "prepare": { "raw_input": "data.json" } }\n')
-bp_train_cli("prepare", "--config", "prepare-config.json",
+hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
 
 import numpy as np
 import pandas as pd
-import bp_format as bp
+import hybrax.format as hxf
 
-_collection = bp.serialization.load_process_collection(WORK / "data.json")
+_collection = hxf.serialization.load_process_collection(WORK / "data.json")
 
 def r2_by_target(run_dir):
     """Physical-space R^2 per target, averaged over processes. Scale-free, so
@@ -118,12 +118,12 @@ whole partitioning mechanism: tagged fields are trainable, and **untagged array 
 default to frozen**. There is no separate partition function to write.
 
 **`super().__init__(**scale_kwargs)`** must be called. The reaction module is the single
-source of truth for every scale in bp-train (the wrapper, the trainer and the loss
+source of truth for every scale in hybrax.train (the wrapper, the trainer and the loss
 module all read them off it) so the base class needs them.
 
-**`SCL_modeled_FVCs_rates=jnp.zeros(0)`** is required even though `demo_batch` has no
-modeled feeds. `ReactionOutputs` has no default for it; omitting it is a `TypeError` at
-the first solve, not at import.
+**`SCL_modeled_Inflows_rates=jnp.zeros(0)`** and **`SCL_modeled_Outflows_rates=jnp.zeros(0)`**
+are required even though `demo_batch` has no modeled feeds or outflows. `ReactionOutputs`
+has no default for either; omitting one is a `TypeError` at the first solve, not at import.
 
 ### What `estimate_all_scales` is actually doing
 
@@ -193,8 +193,8 @@ run's predictions back onto the actual measurement times:
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("train", "--config", "train-default.json", "--overwrite")
-bp_train_cli("train", "--config", "train-custom.json", "--overwrite")
+hxt_cli("train", "--config", "train-default.json", "--overwrite")
+hxt_cli("train", "--config", "train-custom.json", "--overwrite")
 
 root = WORK.parents[4]
 print(f"run directories: ./{(WORK / 'run_default').relative_to(root)}"
@@ -224,7 +224,7 @@ your dataset happens to be smallest.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("forward", "--config", "forward-config.json",
+hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run_custom/forward", "--overwrite")
 from IPython.display import Image
 Image(filename=str(WORK / "run_custom/forward/forward-results/plots/run_1.png"))
@@ -238,9 +238,9 @@ to tag is silently frozen and will simply never move.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-import bp_train
-wrapper, cfg = bp_train.model_load(str(WORK / "run_custom"))
-bp_train.print_trainable_structure(wrapper)
+import hybrax.train as hxt
+wrapper, cfg = hxt.model_load(str(WORK / "run_custom"))
+hxt.print_trainable_structure(wrapper)
 ```
 
 The other half of that question (*which array index is which species*) has its own
@@ -249,7 +249,7 @@ printer, and it is the fastest way to stop guessing at slicing:
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train.print_reaction_schema(wrapper)
+hxt.print_reaction_schema(wrapper)
 ```
 
 That is where `in_size=self.n_modeled_RMCs` and `out_size=self.n_modeled_BiologicalOde_rates`
@@ -257,7 +257,7 @@ came from, and it confirms the output order is `q_biomass, q_glucose, q_product`
 
 :::{admonition} A misspelled hook name is silent
 :class: warning
-bp-train looks up hooks by name with a plain attribute lookup. `build_reaction_modul`
+hybrax looks up hooks by name with a plain attribute lookup. `build_reaction_modul`
 (one letter short) is not an error: it is a silent fall back to the default MLP, and
 your carefully written module never runs. If a change to `custom.py` seems to have had no
 effect, check the spelling first. See

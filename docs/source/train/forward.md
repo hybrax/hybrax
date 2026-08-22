@@ -4,7 +4,7 @@
 > losses: optionally averaging several models.
 
 ```bash
-bp-train forward --config forward-config.json [--output-dir DIR] [--overwrite]
+hybrax forward --config forward-config.json [--output-dir DIR] [--overwrite]
 ```
 
 The whole config can be one line, but produces only a loss table: predictions and
@@ -64,7 +64,7 @@ Useful when the final model overfitted and an earlier one is the one you want.
 
 :::{admonition} TODO: not yet a worked example
 :class: warning
-The `len(models) > 1` path below has no test coverage anywhere in bp-train today.
+The `len(models) > 1` path below has no test coverage anywhere in hybrax.train today.
 This section stays reference-only (no executed `{code-cell}`) until that is hardened
 and a real worked example can be verified rather than just described.
 :::
@@ -102,27 +102,30 @@ Give `data` a different prepared artifact, or restrict to particular processes:
 }
 ```
 
-:::{admonition} `forward` re-runs scale estimation
+:::{admonition} `forward` rebuilds the model from `custom.py`, not from this data
 :class: warning
-`forward_from_collection` calls your `estimate_all_scales` hook on whatever collection it
-is given. On a *different* dataset that produces *different* scales, and the trained
-weights then sit in a different scaled space than they were fitted in.
+`forward_from_collection` reconstructs the reaction module by re-running your
+`custom_py` hooks, but always against the run's own recorded, content-hash-verified
+training input, never against the `collection` you hand it for evaluation. So the
+scales stay exactly what the model was trained under, whatever dataset you point
+`data.prepared` at.
 
-Sometimes that is what you want: scales are a property of the data. Often it is not. The
-Python-level `model_predict` does **not** re-estimate. Know which one you are using; see
-[Silent failures](../troubleshooting/silent_failures.md).
+What this path does depend on is `custom_py` still resolving to a file that builds the
+same module the checkpoint was trained with. The Python-level `model_predict` skips
+reconstruction entirely: given an already-loaded `trained_wrapper`, it just solves, so it
+needs no `custom.py` at all. See [Silent failures](../troubleshooting/silent_failures.md).
 :::
 
 ## From Python
 
 ```python
-import bp_format as bp
-import bp_train
+import hybrax.format as hxf
+import hybrax.train as hxt
 
-wrapper, config = bp_train.model_load("run")
-collection = bp.serialization.load_process_collection("data.json")
+wrapper, config = hxt.model_load("run")
+collection = hxf.serialization.load_process_collection("data.json")
 
-predictions = bp_train.model_predict(wrapper, config, collection, grid_n=200)
+predictions = hxt.model_predict(wrapper, config, collection, grid_n=200)
 export = predictions["run_1"]      # DenseProcessExport
 export.t, export.c_species, export.q_rates, export.v_real
 ```

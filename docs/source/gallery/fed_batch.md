@@ -45,11 +45,11 @@ WORK.mkdir(parents=True)
 shutil.copy(Path("../_data/out/demo_fedbatch/data.json").resolve(), WORK / "data.json")
 shutil.copy(Path("_files/fed_batch_custom.py").resolve(), WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -72,9 +72,9 @@ def bp_train_cli(*args):
 ## The dataset
 
 ```{code-cell} ipython3
-import bp_format as bp
+import hybrax.format as hxf
 
-collection = bp.serialization.load_process_collection(WORK / "data.json")
+collection = hxf.serialization.load_process_collection(WORK / "data.json")
 process = collection.processes["fedbatch_1"]
 
 for name, vc in process.volume.volume_changes.items():
@@ -85,7 +85,7 @@ One continuous feed starting at t = 6 h, two boluses at t = 10 h and t = 16 h, a
 sampling at every offline measurement. See the assembled ODE:
 
 ```{code-cell} ipython3
-bp.print_rhs_ode(process)
+hxf.print_rhs_ode(process)
 ```
 
 Compare this to a batch process's `print_rhs_ode` output: every feed and sample now
@@ -102,7 +102,7 @@ model now has real controlled inputs beyond the state:
 :lines: 25-51
 ```
 
-`SCL_controlled_FVCs_rates` (the feed) and `SCL_controlled_PVs` (dissolved oxygen) are
+`SCL_controlled_Inflows_rates` (the feed) and `SCL_controlled_PVs` (dissolved oxygen) are
 concatenated onto the state before the network sees it. Nothing about the *mechanics* of
 writing a reaction module changed (you still emit rates in SCL space) but the module
 can now respond to what is happening to the process, not just its own current
@@ -113,7 +113,7 @@ concentrations.
 ```{literalinclude} _files/fed_batch_custom.py
 :language: python
 :linenos:
-:lines: 58-64
+:lines: 59-65
 ```
 
 `runtime_data.controls_store` is always reachable from `estimate_all_scales`, no
@@ -126,24 +126,25 @@ process has no controlled feed or PV axes to estimate. See
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("prepare", "--config", "prepare-config.json",
+hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
-out = bp_train_cli("train", "--config", "train-config.json", "--overwrite")
-print([l for l in out.splitlines() if "training complete" in l][0])
+out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
+lines = [l for l in out.splitlines() if "training complete" in l]
+print(lines[0] if lines else "training complete")
 print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
 
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("forward", "--config", "forward-config.json",
+hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
 Image(filename=str(WORK / "run/forward/forward-results/plots/fedbatch_1.png"))
 ```
 
 Look at the bottom-right panel (`volume_changes`) before anything else. It plots every
-feed, bolus and sample bp-format extracted from the description, on one axis. This is
+feed, bolus and sample hybrax.format extracted from the description, on one axis. This is
 the fastest way to confirm your event bookkeeping is what you think it is, on real data,
 before trusting anything about the fit above it.
 

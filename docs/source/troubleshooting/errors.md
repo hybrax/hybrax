@@ -3,7 +3,7 @@
 > Error message → what it means → what to do. If nothing raised but the answer is wrong,
 > see [Silent failures](silent_failures.md) instead.
 
-Both packages prefer failing loudly to falling back quietly, so most of what you meet
+hybrax prefers failing loudly to falling back quietly, so most of what you meet
 here is the design working. Search this page for a fragment of your message.
 
 ## Getting data in
@@ -24,7 +24,7 @@ no biomass at all (a chemical process, an abiotic control) needs the explicit fo
 **Why.** A `TimeSeries` with neither samples nor a fitted spline holds nothing.
 
 **Fix.** Pass `times` **and** `values` together. Passing only one is also an error. If the
-quantity does not vary, use `bp.StaticVariable(value)` instead.
+quantity does not vary, use `hxf.StaticVariable(value)` instead.
 
 Related shape errors from the same constructor: `times` must be strictly increasing;
 `coeffs` must be `(n_pieces, 4)` with `len(breaks) == n_pieces + 1`; a spline needs all
@@ -32,7 +32,7 @@ three of `breaks`, `coeffs` and `segment_start_piece_idx`.
 
 ### A float32 array raises instead of being accepted
 
-**Why.** Importing `bp_format` turns on JAX's x64 mode, and the package refuses to silently
+**Why.** Importing `hybrax.format` turns on JAX's x64 mode, and the package refuses to silently
 upcast. Bioprocess mass balances span orders of magnitude, and single precision loses them.
 
 **Fix.** `np.asarray(x, dtype=float)`.
@@ -47,7 +47,7 @@ claims to be a dynamic state with nothing to be dynamic over.
 
 ### An `Inflow` has no `feed_medium` / names an unknown species
 
-**Why.** A feed is litres *of something*; and bp-format will not invent a reactor state
+**Why.** A feed is litres *of something*; and hybrax.format will not invent a reactor state
 for a species that only appears in a feed.
 
 **Fix.** Attach a `FeedMedium`, and make sure every species it names exists in
@@ -57,7 +57,7 @@ for a species that only appears in a feed.
 
 **Why.** Time-varying feed composition is allowed by the schema but not implemented.
 
-**Fix.** Use `bp.StaticVariable`. A feed whose composition genuinely changed must be split
+**Fix.** Use `hxf.StaticVariable`. A feed whose composition genuinely changed must be split
 into separate streams. See [Limits and gotchas](../format/limits_and_gotchas.md).
 
 ### Name collisions, or a cyclic `algebraic` graph
@@ -129,12 +129,13 @@ type-checked.
 **Fix.** Return `EstimatedScales`, a `UserReactionModule` and a `UserLossModule`
 respectively. The other four hooks are not checked.
 
-### `ReactionOutputs.__init__() missing 1 required positional argument: 'SCL_modeled_FVCs_rates'`
+### `ReactionOutputs.__init__() missing 1 required positional argument: 'SCL_modeled_Inflows_rates'`
 
-**Why.** Both output fields are required, even when the process has no modeled feeds.
-There is no default.
+**Why.** `SCL_modeled_Inflows_rates` and `SCL_modeled_Outflows_rates` are both required,
+even when the process has no modeled feeds or outflows. There is no default for either.
 
-**Fix.** `SCL_modeled_FVCs_rates=jnp.zeros(self.n_modeled_FVCs)`.
+**Fix.** `SCL_modeled_Inflows_rates=jnp.zeros(self.n_modeled_Inflows)`,
+`SCL_modeled_Outflows_rates=jnp.zeros(self.n_modeled_Outflows)`.
 
 ### `loss_names` does not match the returned keys
 
@@ -174,7 +175,7 @@ Not one error, but the common cluster.
 multiple processes.
 
 **Fix.** Run one training at a time; shard within a run using `train.devices`. Do not
-launch parallel `bp-train` commands from a shell loop.
+launch parallel `hybrax` commands from a shell loop.
 
 ## Runtime aborts
 
@@ -191,13 +192,13 @@ Same reasoning, inside the pseudobatch machinery.
 
 ## Import-time surprises
 
-### `AttributeError: module 'bp_format' has no attribute 'inspect'`
+### `AttributeError: module 'hybrax.format' has no attribute 'inspect'`
 
-**Why.** `bp.inspect` is not a module handle. It appears to work only after something else
+**Why.** `hxf.inspect` is not a module handle. It appears to work only after something else
 has pulled the submodule in, which makes it worse than a consistent failure.
 
-**Fix.** Use `bp.plot_process(...)` on the root. Same for `bp.simulation`. And save/load
-are on `bp.serialization`, not the root.
+**Fix.** Use `hxf.plot_process(...)` on the root. Same for `hxf.simulation`. And save/load
+are on `hxf.serialization`, not the root.
 
 ## See also
 

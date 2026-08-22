@@ -5,8 +5,8 @@ the CURRENT state. A stateful module (``n_latent > 0``) adds its own hidden
 state, integrated as extra ODE dimensions alongside the physical ones, so the
 rates can depend on the process's recent history too.
 
-bp-train's own default stateful module uses a GRU cell (see
-``DefaultStatefulReactionModule`` in ``bp_train/defaults.py``); this one uses
+hybrax.train's own default stateful module uses a GRU cell (see
+``DefaultStatefulReactionModule`` in ``hybrax/train/defaults.py``); this one uses
 an LSTM cell instead, to show the same trick applies to any recurrent cell
 with a fixed-size hidden state.
 """
@@ -16,7 +16,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from bp_train import (
+from hybrax.train import (
     EstimatedScales,
     ReactionInputs,
     ReactionOutputs,
@@ -60,7 +60,8 @@ class LSTMReactionModule(UserReactionModule):
         readout = jnp.concatenate([h, inputs.SCL_modeled_RMCs])
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.rate_head(readout),
-            SCL_modeled_FVCs_rates=jnp.zeros(0),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
+            SCL_modeled_Inflows_rates=jnp.zeros(0),
             SCL_latent_derivative=latent_derivative,
         )
 
@@ -105,13 +106,17 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
             max(runtime_data.initial_volume(i) for i in range(n_processes))),
-        SCALE_modeled_FVCs_cumulative=empty,
-        SCALE_modeled_FVCs_rates=empty,
-        SCALE_controlled_FVCs_cumulative=empty,
-        SCALE_controlled_FVCs_rates=empty,
+        SCALE_modeled_Inflows_cumulative=empty,
+        SCALE_modeled_Inflows_rates=empty,
+        SCALE_modeled_Outflows_cumulative=empty,
+        SCALE_modeled_Outflows_rates=empty,
+        SCALE_controlled_Inflows_cumulative=empty,
+        SCALE_controlled_Inflows_rates=empty,
+        SCALE_controlled_Outflows_cumulative=empty,
+        SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=empty,
-        SCALE_controlled_FVCs_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_FVCs)), 1.0),
-        SCALE_modeled_FVCs_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_FVCs)), 1.0),
+        SCALE_controlled_Inflows_Cin=jnp.maximum(
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+        SCALE_modeled_Inflows_Cin=jnp.maximum(
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
     )

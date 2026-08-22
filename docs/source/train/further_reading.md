@@ -10,15 +10,15 @@ field-by-field tables, because those change, and two places to look is one too m
 | Layer | Where | Use it for |
 |---|---|---|
 | **This guide** | you are here | Learning, and remembering how something fits together. |
-| **API reference** | [`bp_train`](../autoapi/bp_train/index) | Every signature, field and default. Generated from source, so it cannot drift. |
-| **Package documentation** | `bp-train/documentation/*.md` in the repo | The dense reference: full config schema tables, every `LossInputs` field, the complete hook write-ups. Written for agents; correct but heavy going. |
+| **API reference** | [`hybrax.train`](../autoapi/hybrax/train/index) | Every signature, field and default. Generated from source, so it cannot drift. |
+| **Package documentation** | `hybrax/specs/train/*.md` in the repo | The dense reference: full config schema tables, every `LossInputs` field, the complete hook write-ups. Written for agents; correct but heavy going. |
 
 The third layer is deliberately not rendered here. It lives in the package repository,
 where its relative links to source files resolve.
 
 ## Package documentation index
 
-In `bp-train/documentation/`:
+In `hybrax.train/documentation/`:
 
 | File | Covers |
 |---|---|
@@ -39,10 +39,10 @@ the dense-grid benchmark. Read those for *rationale*, never for behaviour.
 
 ## Example projects
 
-`bp-train/examples/` and `bp-format/examples/` hold real project configs and `custom.py`
-files from actual research work. They are not documentation: several are pinned to
-older hook signatures, none are guaranteed to run against the current API, and they are
-being superseded by this site's [Tutorials](../tutorials/01_your_first_dataset.md) and
+Research examples inside `hybrax` hold real project configs and `custom.py` files from
+actual research work. They are not documentation: several are pinned to older hook
+signatures, none are guaranteed to run against the current API, and they are being
+superseded by this site's [Tutorials](../tutorials/01_your_first_dataset.md) and
 [Gallery](../gallery/index.md), which cover the same patterns as runnable, verified
 examples kept in sync with every release. Prefer those.
 
@@ -50,11 +50,11 @@ examples kept in sync with every release. Prefer those.
 
 - **JAX**: autodiff and JIT. **Equinox**: the module system; `eqx.Module`, `filter_jit`,
   `tree_at`. **Diffrax**: the ODE solver and adjoint. **optax**: optimizers, schedules.
-- `diffrax_callbacks/` (a sibling package, not nested under bp-train) has three
-  standalone runnable scripts for the discrete-event layer, if you want to understand
-  how bolus and sample jumps are applied.
+- `hybrax.train.diffrax_callbacks` has three standalone runnable scripts for the
+  discrete-event layer, if you want to understand how bolus and sample jumps are
+  applied.
 
 ## See also
 
-- [bp-format guide](../format/index.md): the other half of the stack.
+- [hybrax.format guide](../format/index.md): the other half of the stack.
 - [Design rationale](../under_the_hood/design_rationale.md).

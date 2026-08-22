@@ -1,6 +1,6 @@
 # Which page do I need?
 
-> Every feature in both packages, indexed by the thing you are trying to do.
+> Every feature in hybrax, indexed by the thing you are trying to do.
 
 This page is deliberately a lookup table, not a reading order. Nothing here needs to be
 learned; scan for your row.
@@ -9,7 +9,7 @@ learned; scan for your row.
 
 | I want to… | Go to |
 |---|---|
-| turn my CSVs into a bp-format dataset | [Tutorial 1](../tutorials/01_your_first_dataset.md) |
+| turn my CSVs into a hybrax.format dataset | [Tutorial 1](../tutorials/01_your_first_dataset.md) |
 | know which object to use for which measurement | [The data model](../format/data_model.md) |
 | record a feed, a bolus, or a sample draw | [Volume, feeds and events](../format/volume_feeds_events.md) |
 | say what a feed contains | [Volume, feeds and events](../format/volume_feeds_events.md) |
@@ -75,7 +75,7 @@ learned; scan for your row.
 | understand an error message | [Errors](../troubleshooting/errors.md) |
 | find out why a run that "worked" gives nonsense | [Silent failures](../troubleshooting/silent_failures.md) |
 | know what is simply not implemented | [Limits and gotchas](../format/limits_and_gotchas.md) |
-| find the exhaustive reference for an API | [API reference](../autoapi/bp_format/index) · [bp-train](../autoapi/bp_train/index) |
+| find the exhaustive reference for an API | [API reference](../autoapi/hybrax/format/index) · [hybrax.train](../autoapi/hybrax/train/index) |
 
 ## Things the tutorials leave out on purpose
 

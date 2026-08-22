@@ -1,6 +1,6 @@
 # Contributors
 
-bp-format and bp-train are built and maintained by:
+hybrax is built and maintained by:
 
 ## Main contributors
 

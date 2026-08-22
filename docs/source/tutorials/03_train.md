@@ -32,11 +32,11 @@ if WORK.exists():
 WORK.mkdir(parents=True)
 shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -51,11 +51,11 @@ def show(text, n=4, match=None):
 
 ## What a hybrid model is here
 
-The ODE bp-train solves has two halves:
+The ODE hybrax.train solves has two halves:
 
 ```
 d(state)/dt  =  biology(rates)          ← your model predicts this
-              + transport(feeds, dilution, samples, volume)   ← bp-format wrote this
+              + transport(feeds, dilution, samples, volume)   ← hybrax.format wrote this
 ```
 
 Training adjusts the first half so the integrated trajectory matches your measurements.
@@ -78,7 +78,7 @@ everything the model does is visible in three specific rates.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-show(bp_train_cli("prepare", "--config", "prepare-config.json",
+show(hxt_cli("prepare", "--config", "prepare-config.json",
               "--output-dir", "prepared", "--overwrite"), n=2)
 ```
 
@@ -125,7 +125,7 @@ print("top-level keys:", sorted(prep)[:8])
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-show(bp_train_cli("train", "--config", "train-config.json", "--overwrite"),
+show(hxt_cli("train", "--config", "train-config.json", "--overwrite"),
      n=1, match="training complete")
 ```
 
@@ -178,7 +178,7 @@ the inferred rates on the right:
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("forward", "--config", "forward-config.json",
+hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
 ```
@@ -208,8 +208,8 @@ size is not what you think it is, and that is usually a scaling problem, which i
 your second run; it is deliberate, so a long training run cannot be silently destroyed.
 
 ```bash
-bp-train train --config train-config.json --overwrite
-bp-train train --config train-config.json --epochs 50    # flags beat the config file
+hybrax train --config train-config.json --overwrite
+hybrax train --config train-config.json --epochs 50    # flags beat the config file
 ```
 
 ## What you learned

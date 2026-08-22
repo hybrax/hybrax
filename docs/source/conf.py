@@ -16,11 +16,11 @@ def _v(name: str) -> str:
         return "unknown"
 
 
-# Read from the installed packages (importlib.metadata — never imports them).
-release = version = f"bp-format {_v('bp-format')} / bp-train {_v('bp-train')}"
+# Read from the installed package (importlib.metadata — never imports it).
+release = version = f"hybrax {_v('hybrax')}"
 
 extensions = [
-    "autoapi.extension",       # static API gen over BOTH packages — no import
+    "autoapi.extension",       # static API gen over hybrax — no import
     "myst_nb",                 # executable MyST markdown (supersedes myst_parser)
     "sphinx.ext.napoleon",     # Google-style docstrings
     "sphinx.ext.viewcode",     # [source] links
@@ -72,7 +72,7 @@ html_theme_options = {
 
 # --- MyST-NB execution -------------------------------------------------------
 # Pages with {code-cell} blocks run for real at build time against the installed
-# packages. That is deliberate: an API break must break the docs build instead of
+# package. That is deliberate: an API break must break the docs build instead of
 # silently rotting a page. "cache" means only pages whose source changed re-run.
 nb_execution_mode = "cache"
 nb_execution_cache_path = str(_HERE.parent / "_scratch" / "jupyter_cache")
@@ -83,13 +83,17 @@ nb_merge_streams = True
 # The kernel inherits this environment. Keep the docs build single-device and
 # headless so it never competes for cores or tries to open a window.
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
-os.environ.setdefault("BP_TRAIN_DEVICES", "1")
+os.environ.setdefault("HYBRAX_TRAIN_DEVICES", "1")
 os.environ.setdefault("MPLBACKEND", "Agg")
 os.environ.setdefault("MPLCONFIGDIR", str(_HERE.parent / "_scratch" / "mpl"))
 
-# --- AutoAPI over BOTH package source trees (paths relative to this conf.py) ---
+# --- AutoAPI over the hybrax source tree (paths relative to this conf.py) ---
+# Each dir points directly at a subpackage, so autoapi generates
+# autoapi/hybrax/format/... and autoapi/hybrax/train/.... diffrax_callbacks nests
+# under train/, so it is picked up automatically as
+# autoapi/hybrax/train/diffrax_callbacks/...
 autoapi_type = "python"
-autoapi_dirs = ["../../bp-train/bp_train", "../../bp-format/bp_format"]
+autoapi_dirs = ["../../hybrax/src/hybrax/format", "../../hybrax/src/hybrax/train"]
 autoapi_root = "autoapi"
 autoapi_keep_files = False
 autoapi_add_toctree_entry = False     # we place autoapi/index in index.md ourselves
@@ -123,8 +127,8 @@ intersphinx_disabled_reftypes = ["*"]
 # What remains is third-party noise we cannot fix from here.
 #
 # `docutils` and `duplicate_object` are suppressed because every instance comes from
-# autoapi's *generated* RST, i.e. from docstring formatting inside bp-format/bp-train.
-# Those packages are read-only inputs to this build. Our own pages are MyST markdown
+# autoapi's *generated* RST, i.e. from docstring formatting inside hybrax. That
+# package is a read-only input to this build. Our own pages are MyST markdown
 # and report under `myst.*`, which is not suppressed.
 nitpicky = False
 suppress_warnings = ["myst.header",

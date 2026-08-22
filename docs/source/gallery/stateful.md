@@ -23,15 +23,15 @@ the solve, so the rates can depend on where the process has been, not just where
 
 ## Why this is a bigger change than it looks
 
-bp-train does not run a discrete recurrent network beside the ODE solver. It **turns the
+hybrax.train does not run a discrete recurrent network beside the ODE solver. It **turns the
 recurrent cell into a continuous-time ODE**: the latent state `h` is an extra integrated
 dimension, and its derivative is the discrepancy between `h` and whatever the cell would
 have jumped to next: `d(h)/dt = cell(input, h) - h`. As training pulls the residual to
 zero, `h` tracks the same trajectory the discrete cell would have taken, but now it is a
 proper flow that Diffrax can integrate and differentiate through like any other state.
 
-This is exactly how bp-train's own built-in stateful model works: 
-`DefaultStatefulReactionModule` in `bp_train/defaults.py` uses this trick with a GRU
+This is exactly how hybrax.train's own built-in stateful model works: 
+`DefaultStatefulReactionModule` in `hybrax/train/defaults.py` uses this trick with a GRU
 cell. What follows applies the identical trick to an LSTM, to show it is a general
 pattern, not something specific to GRUs.
 
@@ -59,11 +59,11 @@ WORK.mkdir(parents=True)
 shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
 shutil.copy(Path("_files/stateful_custom.py").resolve(), WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args, check=True):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args, check=True):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if check and proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -71,7 +71,7 @@ def bp_train_cli(*args, check=True):
 
 (WORK / "prepare-config.json").write_text(
     '{ "prepare": { "raw_input": "data.json" } }\n')
-bp_train_cli("prepare", "--config", "prepare-config.json",
+hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
 ```
 
@@ -114,14 +114,14 @@ allowed to train silently:
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-out = bp_train_cli("train", "--config", "train-no-optin.json", "--overwrite",
+out = hxt_cli("train", "--config", "train-no-optin.json", "--overwrite",
                check=False)
 print([l for l in out.splitlines() if "ValueError" in l][-1])
 ```
 
 That is deliberate: a latent state changes what the model *is* (it is no longer a pure
 function of the physical state) and that is a large enough change in what "the model"
-means that bp-train wants it to be a decision, not a side effect of adding a field.
+means that hybrax.train wants it to be a decision, not a side effect of adding a field.
 
 ```json
 { "train": { "allow_stateful_models": true } }
@@ -148,15 +148,16 @@ means that bp-train wants it to be a decision, not a side effect of adding a fie
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-out = bp_train_cli("train", "--config", "train.json", "--overwrite")
-print([l for l in out.splitlines() if "training complete" in l][0])
+out = hxt_cli("train", "--config", "train.json", "--overwrite")
+lines = [l for l in out.splitlines() if "training complete" in l]
+print(lines[0] if lines else "training complete")
 print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 ```
 
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-bp_train_cli("forward", "--config", "forward-config.json",
+hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
 Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
@@ -167,11 +168,11 @@ Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-from bp_train import model_load, print_trainable_structure
+import hybrax.train as hxt
 
-wrapper, cfg = model_load(str(WORK / "run"))
+wrapper, cfg = hxt.model_load(str(WORK / "run"))
 print("n_latent =", wrapper.reaction_module.n_latent)
-print_trainable_structure(wrapper)
+hxt.print_trainable_structure(wrapper)
 ```
 
 `n_latent` is `2 * n_hidden` (hidden and cell state together) and both the LSTM's gates
@@ -208,5 +209,5 @@ Run the example yourself at `./source/_data/out/runs/gallery_stateful/`.
   follows.
 - [Mechanistic models](mechanistic_rates.md): a reaction module built from explicit
   kinetics, no latent state at all.
-- `DefaultStatefulReactionModule` in `bp_train/defaults.py`: the built-in GRU version of
+- `DefaultStatefulReactionModule` in `hybrax/train/defaults.py`: the built-in GRU version of
   this same pattern.

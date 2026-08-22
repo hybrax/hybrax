@@ -32,11 +32,11 @@ if WORK.exists():
 WORK.mkdir(parents=True)
 shutil.copy(Path("../_data/out/demo_batch/data.json").resolve(), WORK / "data.json")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "BP_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 
-def bp_train_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "bp_train.cli", *args],
+def hxt_cli(*args):
+    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
@@ -44,7 +44,7 @@ def bp_train_cli(*args):
 
 (WORK / "prepare-config.json").write_text(
     '{ "prepare": { "raw_input": "data.json" } }\n')
-bp_train_cli("prepare", "--config", "prepare-config.json",
+hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
 ```
 
@@ -61,10 +61,10 @@ is Python-API-only (see [Cross-validation](../train/loo.md#holdout-without-cross
 
 import contextlib, io, warnings
 
-import bp_format as bp
-from bp_train import TrainHarnessConfig, train_from_collection
+import hybrax.format as hxf
+from hybrax.train import TrainHarnessConfig, train_from_collection
 
-collection = bp.serialization.load_process_collection(str(WORK / "data.json"))
+collection = hxf.serialization.load_process_collection(str(WORK / "data.json"))
 
 cfg = TrainHarnessConfig(
     epochs=300, seed=0, learning_rate=0.02,
@@ -139,14 +139,15 @@ One fold per process, via the CLI. The config is a train config plus a `loo` sec
 Each entry is a `HoldoutSet`: `test` (required) is the held-out set for that fold;
 `name` (optional) labels the fold's directory and summary row; `train` (optional) pins
 the exact training set, otherwise every other process is used. With no
-`per_fold_holdout_sets` at all, bp-train does the same thing automatically: one fold
+`per_fold_holdout_sets` at all, hybrax.train does the same thing automatically: one fold
 per process.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-out = bp_train_cli("loo", "--config", "loo-config.json", "--overwrite")
-print([l for l in out.splitlines() if "LOO complete" in l][0])
+out = hxt_cli("loo", "--config", "loo-config.json", "--overwrite")
+lines = [l for l in out.splitlines() if "LOO complete" in l]
+print(lines[0] if lines else "LOO complete")
 ```
 
 ## What it produced

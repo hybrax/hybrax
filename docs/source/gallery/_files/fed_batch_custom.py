@@ -12,7 +12,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from bp_train import (
+from hybrax.train import (
     EstimatedScales,
     ReactionInputs,
     ReactionOutputs,
@@ -28,7 +28,7 @@ class FedBatchModule(UserReactionModule):
 
     def __init__(self, *, key, **scale_kwargs):
         super().__init__(**scale_kwargs)
-        n_in = self.n_modeled_RMCs + self.n_controlled_FVCs + self.n_controlled_PVs
+        n_in = self.n_modeled_RMCs + self.n_controlled_Inflows + self.n_controlled_PVs
         self.mlp = eqx.nn.MLP(
             in_size=n_in,
             out_size=self.n_modeled_BiologicalOde_rates,
@@ -41,12 +41,13 @@ class FedBatchModule(UserReactionModule):
         # transport bookkeeping: the model is allowed to respond to them.
         features = jnp.concatenate([
             inputs.SCL_modeled_RMCs,
-            inputs.SCL_controlled_FVCs_rates,
+            inputs.SCL_controlled_Inflows_rates,
             inputs.SCL_controlled_PVs,
         ])
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.mlp(features),
-            SCL_modeled_FVCs_rates=jnp.zeros(0),   # no MODELED feeds here
+            SCL_modeled_Inflows_rates=jnp.zeros(0),   # no MODELED feeds here
+            SCL_modeled_Outflows_rates=jnp.zeros(0),  # no MODELED outflows here
         )
 
 
@@ -88,15 +89,18 @@ def estimate_all_scales(runtime_data, target_names, config):
     # Controlled axes: sample the fitted control splines over each run and
     # take the per-axis max-abs. This is the same recipe as the state scales,
     # just evaluated through the controls store instead of read off the data.
-    n_FVC = len(controls_store.name_controlled_FVCs)
+    n_inflows = len(controls_store.name_controlled_Inflows)
+    n_outflows = len(controls_store.name_controlled_Outflows)
     n_PV = len(controls_store.name_controlled_PVs)
-    fvc_rate_samples, pv_samples = [], []
+    inflow_rate_samples, outflow_rate_samples, pv_samples = [], [], []
     for i, process_name in enumerate(runtime_data.process_order):
         per_process = controls_store.get_controls(process_name)
         t_start, t_end = runtime_data.time_bounds(i)
         for t in np.linspace(t_start + 1e-3, t_end - 1e-3, 50):
-            fvc_rate_samples.append(
-                np.asarray(per_process.eval_controlled_FVCs_rates(float(t), None)))
+            inflow_rate_samples.append(
+                np.asarray(per_process.eval_controlled_Inflows_rates(float(t), None)))
+            outflow_rate_samples.append(
+                np.asarray(per_process.eval_controlled_Outflows_rates(float(t), None)))
             pv_samples.append(
                 np.asarray(per_process.eval_controlled_PVs(float(t), None)))
 
@@ -110,13 +114,17 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
             max(runtime_data.initial_volume(i) for i in range(n_processes))),
-        SCALE_modeled_FVCs_cumulative=empty,
-        SCALE_modeled_FVCs_rates=empty,
-        SCALE_controlled_FVCs_cumulative=jnp.ones(n_FVC),
-        SCALE_controlled_FVCs_rates=jnp.asarray(axis_scale(fvc_rate_samples, n_FVC)),
+        SCALE_modeled_Inflows_cumulative=empty,
+        SCALE_modeled_Inflows_rates=empty,
+        SCALE_modeled_Outflows_cumulative=empty,
+        SCALE_modeled_Outflows_rates=empty,
+        SCALE_controlled_Inflows_cumulative=jnp.ones(n_inflows),
+        SCALE_controlled_Inflows_rates=jnp.asarray(axis_scale(inflow_rate_samples, n_inflows)),
+        SCALE_controlled_Outflows_cumulative=jnp.ones(n_outflows),
+        SCALE_controlled_Outflows_rates=jnp.asarray(axis_scale(outflow_rate_samples, n_outflows)),
         SCALE_controlled_PVs=jnp.asarray(axis_scale(pv_samples, n_PV)),
-        SCALE_controlled_FVCs_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_FVCs)), 1.0),
-        SCALE_modeled_FVCs_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_FVCs)), 1.0),
+        SCALE_controlled_Inflows_Cin=jnp.maximum(
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+        SCALE_modeled_Inflows_Cin=jnp.maximum(
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
     )

@@ -14,7 +14,7 @@ kernelspec:
 # 1. Import your Data
 
 
-> Turn a CSV of experimental measurements into a bp-format
+> Turn a CSV of experimental measurements into a hybrax.format
 > `BioProcessCollection` you can save, share and train on.
 
 
@@ -57,13 +57,13 @@ print(len(run_1), "samples from", run_1["time"].iloc[0], "to", run_1["time"].ilo
 
 ## 1.2 Measurements become `TimeSeries`
 
-Every time-varying quantity in bp-format is a `TimeSeries` which pairs `times` and `values`.
+Every time-varying quantity in hybrax.format is a `TimeSeries` which pairs `times` and `values`.
 
 ```{code-cell} ipython3
 import numpy as np
-import bp_format as bp
+import hybrax.format as hxf
 
-biomass = bp.TimeSeries(
+biomass = hxf.TimeSeries(
     times=run_1["time"].to_numpy(),
     values=run_1["biomass"].to_numpy(),
 )
@@ -75,7 +75,7 @@ biomass
 :class: note
 - Each measured species is its own `TimeSeries` naturally enabling irregular sampling.
 - The `times` vector must be **strictly increasing**.
-- For a quantity that genuinely does not change, use `bp.StaticVariable(value)` instead.
+- For a quantity that genuinely does not change, use `hxf.StaticVariable(value)` instead.
 :::
 
 
@@ -83,15 +83,15 @@ biomass
 <!-- UNLOCK -->
 
 The **reactor medium** is what is in the vessel. Each component carries its own unit,
-because bp-format never converts units for you: it only checks that you were
+because hybrax.format never converts units for you: it only checks that you were
 consistent.
 
 ```{code-cell} ipython3
 components = {
-    name: bp.ReactorMediumComponent(
+    name: hxf.ReactorMediumComponent(
         name=name,
         unit="g/L",
-        concentration=bp.TimeSeries(
+        concentration=hxf.TimeSeries(
             times=run_1["time"].to_numpy(),
             values=run_1[name].to_numpy(),
         ),
@@ -100,7 +100,7 @@ components = {
     for name in ("biomass", "glucose", "product")
 }
 
-reactor_medium = bp.ReactorMedium(
+reactor_medium = hxf.ReactorMedium(
     name="defined_medium",
     density=1.0,
     density_unit="kg/L",
@@ -111,21 +111,21 @@ list(reactor_medium.components)
 
 :::{admonition} Notes
 :class: note
-- The `bounds` are metadata, not constraints. Nothing in `Hybrax` enforces bounds per default. They are recorded so downstream consumers (bp-train's loss module, for instance) can build soft penalties from them.
+- The `bounds` are metadata, not constraints. Nothing in `Hybrax` enforces bounds per default. They are recorded so downstream consumers (hybrax.train's loss module, for instance) can build soft penalties from them.
 - The units are explicitly required. This avoids ambiguity and enables validation downstream.
 :::
 
 ## 1.4 The clock and the vessel
 
 ```{code-cell} ipython3
-time_axis = bp.TimeAxis(
+time_axis = hxf.TimeAxis(
     unit="h",
     start=0.0,
     end=14.0,
     time_reference="inoculation",   # what t = 0 means
 )
 
-volume = bp.Volume(initial_volume=1.0, unit="L")   # batch: nothing moves volume
+volume = hxf.Volume(initial_volume=1.0, unit="L")   # batch: nothing moves volume
 ```
 
 `time_reference` is what makes runs from different sources alignable: "t = 0 is
@@ -142,8 +142,8 @@ your real world data contains volume changes, see
 ## 1.5 Assemble the ``BioProcess``
 
 ```{code-cell} ipython3
-process = bp.BioProcess(
-    metadata=bp.BioProcessMetadata(
+process = hxf.BioProcess(
+    metadata=hxf.BioProcessMetadata(
         name="run_1",
         process_type="batch",
         notes="Simulated E. coli batch culture on glucose.",
@@ -154,7 +154,7 @@ process = bp.BioProcess(
 )
 ```
 
-That is the whole process. Notice what you did **not** write: any dynamics. bp-format
+That is the whole process. Notice what you did **not** write: any dynamics. hybrax.format
 generated a default biological ODE for you:
 
 ```{code-cell} ipython3
@@ -184,7 +184,7 @@ intermediate data with no case-study identity yet, the same container either way
 import contextlib
 import io
 
-collection = bp.BioProcessCollection(
+collection = hxf.BioProcessCollection(
     case_id="my_first_dataset",
     organism="Escherichia coli",
     citation="Simulated data: tutorial only.",
@@ -194,17 +194,17 @@ collection = bp.BioProcessCollection(
 out = Path("../_data/out/runs/tutorial_01").resolve()
 out.mkdir(parents=True, exist_ok=True)
 with contextlib.redirect_stdout(io.StringIO()):
-    bp.serialization.save_process_collection(collection, out / "data.json")
+    hxf.serialization.save_process_collection(collection, out / "data.json")
 print(f"./{(out / 'data.json').relative_to(out.parents[4])}")
 ```
 
-Note the import path: the save/load functions live on `bp.serialization`, not on the
+Note the import path: the save/load functions live on `hxf.serialization`, not on the
 package root.
 
 ## 1.7 Check the round trip
 
 ```{code-cell} ipython3
-reloaded = bp.serialization.load_process_collection(out / "data.json")
+reloaded = hxf.serialization.load_process_collection(out / "data.json")
 run = reloaded.processes["run_1"]
 
 print("runs        :", list(reloaded.processes))
@@ -218,7 +218,7 @@ print("first 3 X   :", np.asarray(run.reactor_medium.components["biomass"].conce
 - Every time-varying quantity is a `TimeSeries`; every constant is a `StaticVariable`.
 - Components are grouped by **physical role**: reactor medium, volume, process variables.
 - `bounds` and `time_reference` are metadata, and both matter later.
-- bp-format writes the default biology for you, in terms of specific rates.
+- hybrax.format writes the default biology for you, in terms of specific rates.
 
 ## What's next
 

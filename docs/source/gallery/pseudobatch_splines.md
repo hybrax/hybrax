@@ -14,7 +14,7 @@ kernelspec:
 
 > **Demonstrates.** Recovering a smooth concentration curve from just 5 noisy
 > measurements straddling a discrete feed jump, checked against a known ground truth.
-> bp-format only: no reaction module, no training.
+> hybrax.format only: no reaction module, no training.
 
 The other gallery entries fit a model. This one fits a curve: it exercises
 [the pseudobatch transform](../format/pseudobatch_transform.md) and
@@ -50,7 +50,7 @@ approximation of it:
 
 ```{code-cell} ipython3
 import numpy as np
-import bp_format as bp
+import hybrax.format as hxf
 import sys
 sys.path.insert(0, "../_data")
 from generate import spline_jump_truth, SJ_T_JUMP, SJ_T_END
@@ -58,7 +58,7 @@ from generate import spline_jump_truth, SJ_T_JUMP, SJ_T_END
 dense_t = np.linspace(0.0, SJ_T_END, 400)
 truth = spline_jump_truth(dense_t)
 
-collection = bp.serialization.load_process_collection(WORK / "data.json")
+collection = hxf.serialization.load_process_collection(WORK / "data.json")
 process = collection.processes["run_1"]
 
 solute = process.reactor_medium.components["solute"]
@@ -73,7 +73,7 @@ solute suddenly reappearing.
 ## Fit and backtransform
 
 ```{code-cell} ipython3
-from bp_format.splines import build_pseudobatch_transform, build_backtransform_spline
+from hybrax.format.splines import build_pseudobatch_transform, build_backtransform_spline
 
 bundle = build_pseudobatch_transform(process)
 process.pseudobatch_transform = bundle
@@ -146,8 +146,8 @@ that the weaker half is the 2-point one.
 ## What made this example different
 
 - **No reaction module, no `custom.py`, no training.** The pseudobatch transform and
-  spline fitting are bp-format's own, and stop being useful to demonstrate the moment
-  bp-train enters the picture.
+  spline fitting are hybrax.format's own, and stop being useful to demonstrate the moment
+  hybrax.train enters the picture.
 - **A closed-form ground truth.** Every other demo dataset in this site is simulated
   with RK4 and compared to noisy measurements of itself. This one has an exact answer to
   check the fit against, because that is the whole point of the page.

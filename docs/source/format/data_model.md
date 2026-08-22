@@ -15,7 +15,7 @@ kernelspec:
 
 > Which object holds which measurement, and why the split is where it is.
 
-This page gives an overview of the `hybrax-format` data structure and the *decision* you have to make to import your bioprocess data into it. Exhaustive field lists for all data objects live in the [API reference](../autoapi/bp_format/dataclasses/index).
+This page gives an overview of the `hybrax-format` data structure and the *decision* you have to make to import your bioprocess data into it. Exhaustive field lists for all data objects live in the [API reference](../autoapi/hybrax/format/dataclasses/index).
 
 ## The Data Structure
 
@@ -71,7 +71,6 @@ too, even though product quality is not a real concentration in the medium.
 Register it as a process variable instead.
 :::
 
-<!-- UNLOCK -->
 
 ### Static or Time-Dependent
 
@@ -79,11 +78,11 @@ Anywhere a value could be constant, both are accepted.
 
 ```{code-cell} ipython3
 import numpy as np
-import bp_format as bp
+import hybrax.format as hxf
 
-c_reactor = bp.TimeSeries(times=np.array([0.0, 1.0, 2.0]),
+c_reactor = hxf.TimeSeries(times=np.array([0.0, 1.0, 2.0]),
                           values=np.array([0.1, 0.4, 1.1]))
-c_feed    = bp.StaticVariable(400.0)
+c_feed    = hxf.StaticVariable(400.0)
 ```
 
 `StaticVariable` means constant *within one process*, not across the whole collection.
@@ -114,9 +113,9 @@ produce a derivative for it.
 
 
 ```{code-cell} ipython3
-temperature = bp.ProcessVariable(
+temperature = hxf.ProcessVariable(
     name="temperature", unit="degC", is_controlled=True,      # a known input
-    values=bp.TimeSeries(times=np.array([0.0, 10.0]),
+    values=hxf.TimeSeries(times=np.array([0.0, 10.0]),
                          values=np.array([37.0, 37.0])),
 )
 ```
@@ -146,14 +145,14 @@ Every component, process variable and volume can carry `bounds=(lo, hi)`, with `
 meaning unbounded.
 
 ```{code-cell} ipython3
-component = bp.ReactorMediumComponent(
+component = hxf.ReactorMediumComponent(
     name="glucose", unit="g/L",
     concentration=c_reactor,
     bounds=(0.0, None),
 )
 ```
 
-**Bounds are metadata.** Nothing in bp-format enforces them, and no solver clips to them.
+**Bounds are metadata.** Nothing in hybrax.format enforces them, and no solver clips to them.
 They exist so downstream consumers (`hybrax-train`'s loss module in particular) can build
 soft penalties from a declaration you made once, in the data, instead of duplicating it
 in every training config.
@@ -188,13 +187,13 @@ See [The Bioprocess ODE](bioprocess_ode.md) page for more details.
 
 `BioProcessMetadata` holds a static description of the run itself: `name`, `process_type`,
 and an optional `notes` string. Every field is listed in the
-[API reference](../autoapi/bp_format/dataclasses/index).
+[API reference](../autoapi/hybrax/format/dataclasses/index).
 
 ### `time_axis`
 
 `TimeAxis` fixes what `t=0` means for this process, via `unit`, `start`, `end`, and
 `time_reference` (e.g. `"inoculation"`, `"first_feed"`, `"operator_defined"`). Every field
-is listed in the [API reference](../autoapi/bp_format/dataclasses/index).
+is listed in the [API reference](../autoapi/hybrax/format/dataclasses/index).
 
 ### `discrete_events`
 
@@ -214,10 +213,12 @@ A separate type, not a `BioProcess` field: a fixed shape that `hybrax-train`'s
 augmentation and LOO grouping rely on, though nothing in `hybrax-format` produces one
 directly. See [Augmentation](../gallery/augmentation.md) if you are using it.
 
+<!-- UNLOCK -->
+
 ## See also
 
 - [Volume, feeds and events](volume_feeds_events.md): the part with the most sharp edges.
 - [The pseudobatch transform](pseudobatch_transform.md): what pseudobatch_transform is built from, and why.
 - [The Bioprocess ODE](bioprocess_ode.md): what gets derived from all of this.
 - [Tutorial 1](../tutorials/01_your_first_dataset.md): building one step by step.
-- [API reference](../autoapi/bp_format/dataclasses/index): every field.
+- [API reference](../autoapi/hybrax/format/dataclasses/index): every field.

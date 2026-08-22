@@ -1,8 +1,8 @@
-# bp-train guide
+# hybrax.train guide
 
-> bp-train takes a bp-format dataset, lets you plug in a model for the biology, and fits
+> hybrax.train takes a hybrax.format dataset, lets you plug in a model for the biology, and fits
 > it by differentiating through an ODE solve. For the data side, see
-> [bp-format](../format/index.md).
+> [hybrax.format](../format/index.md).
 
 ## The pipeline
 
@@ -30,7 +30,7 @@ Full listings are on each stage's own page: [Prepare](prepare.md#what-it-writes)
 
 ```
 d(state)/dt  =  biology(rates)                              ← the reaction module
-              + transport(feeds, dilution, samples, volume)  ← bp-format, already written
+              + transport(feeds, dilution, samples, volume)  ← hybrax.format, already written
 ```
 
 Training differentiates the *whole solve* (solver steps, event jumps, spline

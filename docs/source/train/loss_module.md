@@ -9,7 +9,7 @@
 An `eqx.Module` with two things:
 
 ```python
-from bp_train import UserLossModule, LossInputs, LossOutputs
+from hybrax.train import UserLossModule, LossInputs, LossOutputs
 
 class MyLossModule(UserLossModule):
     target_names: tuple[str, ...] = eqx.field(static=True)
@@ -30,7 +30,7 @@ metrics columns, so they cannot vary between steps.
 ## The hook
 
 **Fires:** at training setup, last.
-**Signature:** `(*, target_names, process_names, config, seed, runtime_context) -> UserLossModule`
+**Signature:** `(*, target_names, process_names, config, seed, training_parent_collection) -> UserLossModule`
 **Default:** `DefaultLossModule`: one MSE term per measured target.
 **Type-checked:** yes.
 
@@ -38,7 +38,7 @@ metrics columns, so they cannot vary between steps.
 
 The total loss for backprop is `mean(named_losses.values())`.
 
-This is deliberate and it matters. bp-train clips the **raw** gradient before Adam, so
+This is deliberate and it matters. hybrax.train clips the **raw** gradient before Adam, so
 with a sum, adding a loss term scales the gradient by the term count, pushes it past the
 clip threshold, and (because the clip sits before Adam) holds the step size large near
 the optimum. On a stiff neural ODE that overshoots and diverges.
@@ -54,7 +54,7 @@ into an overridable method, so MAE or Huber is a subclass:
 
 ```python
 import jax.numpy as jnp
-from bp_train.defaults import DefaultLossModule
+from hybrax.train.defaults import DefaultLossModule
 
 class MAELossModule(DefaultLossModule):
     def residual_reduction(self, residual, mask):
@@ -191,4 +191,4 @@ See [Gallery: dense losses](../gallery/dense_loss.md).
 - [The reaction module](reaction_module.md): the other half.
 - [Gallery: dense losses](../gallery/dense_loss.md): a full custom loss.
 - [Design rationale](../under_the_hood/design_rationale.md): the mean-versus-sum argument.
-- [API reference](../autoapi/bp_train/model_api/index).
+- [API reference](../autoapi/hybrax/train/model_api/index).

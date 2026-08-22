@@ -3,7 +3,7 @@
 > The handful of ways to get a confident, plausible, wrong answer with no exception
 > anywhere. Got an error instead? That's the better outcome: see [Errors](errors.md).
 
-Both packages are built on "fail fast over silent fallbacks", and mostly they do. What
+hybrax is built on "fail fast over silent fallbacks", and mostly it does. What
 follows is the residue: the cases that cannot or do not raise. They are worth knowing
 before you need them, because none of them announce themselves.
 
@@ -11,7 +11,7 @@ before you need them, because none of them announce themselves.
 
 ## 1. A misspelled hook name
 
-**The failure.** `custom.py` defines `build_reaction_modul`. bp-train looks hooks up by
+**The failure.** `custom.py` defines `build_reaction_modul`. hybrax looks hooks up by
 plain attribute lookup, finds nothing, and uses the default MLP. No warning, no log line.
 Your module never runs.
 
@@ -20,9 +20,9 @@ Your module never runs.
 **How to catch it.**
 
 ```python
-import bp_train
-wrapper, config = bp_train.model_load("run")
-bp_train.print_trainable_structure(wrapper)
+import hybrax.train as hxt
+wrapper, config = hxt.model_load("run")
+hxt.print_trainable_structure(wrapper)
 ```
 
 If you wrote a module with a field called `mu_max` and the structure shows
@@ -68,25 +68,34 @@ bundled data. Reach for `model_reload` only when you specifically know why.
 
 ---
 
-## 4. `forward` re-estimates scales; `model_predict` does not
+## 4. `forward` needs a working `custom.py`; `model_predict` does not
 
-**The failure.** Two prediction paths with different behaviour:
+**The failure.** Two prediction paths, different dependencies:
 
-| Path | Scales |
-|---|---|
-| `bp-train forward` / `forward_from_collection` | **Re-runs** `estimate_all_scales` on the collection it is given |
-| `model_predict(...)` | Uses the scales the model was loaded with |
+| Path | Rebuilds the reaction module? | Needs `custom.py`? |
+|---|---|---|
+| `hybrax forward` / `forward_from_collection` | Yes, by re-running your hooks against the run's own recorded training input | Yes |
+| `model_predict(trained_wrapper, ...)` | No, uses the wrapper you already loaded | No |
 
-On the training data they agree. On a *different* dataset they do not, and neither
-complains.
+Both paths end up with the same `SCALE_*` values either way: `forward_from_collection`
+never re-estimates scales against the collection you hand it for evaluation, only
+against the model's own hash-verified training input. So pointing `forward`'s
+`data.prepared` at a different campaign changes what gets predicted, not what scale it
+is predicted in.
 
-**Why it is hard to spot.** Both produce sensible-looking trajectories. You only notice
-when the two paths disagree, and then it is not obvious which one is right.
+**Why it is hard to spot.** The dependency on `custom.py` only bites when the file has
+moved, been deleted, or edited since training. A structurally different reconstruction
+against the same trained weights usually raises at deserialisation rather than
+predicting silently, so this is closer to a loud failure than the rest of this page.
+The genuinely silent part is subtler: a `custom_py` that still resolves and still
+produces a *structurally compatible* module, but a behaviourally different one (a hook
+edited to compute something differently, without changing its return shapes), loads
+without complaint and forward-predicts with the new code, not the code the model was
+actually trained with.
 
-**Which is correct?** It depends what you mean. Scales are a property of the dataset, so
-re-estimating is defensible for a genuinely new campaign; but the weights were fitted
-under the old scales, so preserving them is defensible too. Decide deliberately, and
-write down which one your numbers came from.
+**Fix.** For a checkpoint you intend to keep evaluating, do not edit `custom.py` after
+training. If you must, keep a copy alongside the run directory rather than editing the
+shared file other runs also point at.
 
 ---
 
@@ -136,7 +145,7 @@ process.pseudobatch_transform = build_pseudobatch_transform(process)
 
 ## 7. Feed composition with a species left out
 
-**The failure.** A feed medium that omits a reactor species. bp-format will not guess
+**The failure.** A feed medium that omits a reactor species. hybrax.format will not guess
 whether that means "absent" or "not recorded", so the dilution term for that species is
 simply not generated.
 
@@ -166,9 +175,9 @@ such rather than encoding a zero. If they are known, record them.
 ## 9. Bounds that do not bound
 
 **The failure.** `bounds=(0.0, None)` on a concentration looks like a constraint. Nothing
-in bp-format or the solver enforces it.
+in hybrax.format or the solver enforces it.
 
-**Why it exists.** Bounds are *metadata*, so downstream consumers (bp-train's loss module) can build soft penalties from a declaration you made once in the data.
+**Why it exists.** Bounds are *metadata*, so downstream consumers (hybrax.train's loss module) can build soft penalties from a declaration you made once in the data.
 
 **Fix.** If you want the constraint enforced, write the penalty. See
 [The loss module](../train/loss_module.md#adding-a-physical-penalty).
@@ -182,7 +191,7 @@ When a model fits the concentrations but something feels wrong, **plot the rates
 A model can match every measurement with rates that are physically impossible: growth and
 death both far too high, uptake compensating for a missing transport term, formation and
 degradation cancelling. Compensating errors are invisible in a concentration plot and
-obvious in a rate plot. That is why every bp-train process figure puts the rates in the
+obvious in a rate plot. That is why every hybrax.train process figure puts the rates in the
 right-hand column, and it is the check most people skip.
 
 The other strong one is a **transport-only run**: set the biological rates to zero and
@@ -192,5 +201,5 @@ sampling. Anything else that moves is a bookkeeping bug, found before you fit an
 ## See also
 
 - [Errors](errors.md): the loud failures.
-- [Limits and gotchas](../format/limits_and_gotchas.md): the bp-format equivalent.
+- [Limits and gotchas](../format/limits_and_gotchas.md): the hybrax.format equivalent.
 - [Scaling](../train/scaling.md): the source of items 2, 3, 4 and 5.
