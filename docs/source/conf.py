@@ -95,6 +95,10 @@ os.environ.setdefault("MPLCONFIGDIR", str(_HERE.parent / "_scratch" / "mpl"))
 # autoapi/hybrax/train/diffrax_callbacks/...
 autoapi_type = "python"
 autoapi_dirs = ["../../src/hybrax/format", "../../src/hybrax/train"]
+# Runnable demo scripts, not an importable API: their top-level `for` loops
+# rebind module-level names (e.g. `params`), which autoapi documents as
+# duplicate attribute definitions, and they're never linked into a toctree.
+autoapi_ignore = ["*/diffrax_callbacks/examples/*"]
 autoapi_root = "autoapi"
 autoapi_keep_files = False
 autoapi_add_toctree_entry = False     # we place autoapi/index in index.md ourselves
