@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PYTHON="/home/mgotsmy/anaconda3/envs/bench13/bin/python"
+PYTHON="uv run --extra docs python"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # hybrax/docs/
 SRC="$ROOT/source"; OUT="$ROOT/html"; SCRATCH="$ROOT/_scratch"
 JUPYTER_EXECUTE="$ROOT/jupyter_execute"
@@ -13,7 +13,7 @@ rm -rf "$SCRATCH/jupyter_cache"
 rm -rf "$SRC/narrative"             # legacy: bp-docs no longer copies hybrax's agent docs
 
 # Regenerate the demo datasets the tutorials/gallery execute against.
-"$PYTHON" "$SRC/_data/generate.py"
+$PYTHON "$SRC/_data/generate.py"
 
 # Keep hybrax/examples/*'s frozen demo-data snapshots in sync with the live
 # generator above. These files stay checked into git (examples/ works
@@ -58,7 +58,7 @@ BUILD_START=$(date +%s)
 # parallel pages don't share state, only CPU/memory. 4 matches the cap that
 # kept hybrax's own pytest -n from OOM-killing this WSL box; raise with
 # caution, not by default.
-"$PYTHON" -m sphinx -b html -j 4 -d "$SCRATCH/doctrees" "$SRC" "$OUT" 2>&1 | tee "$LOG"
+$PYTHON -m sphinx -b html -j 4 -d "$SCRATCH/doctrees" "$SRC" "$OUT" 2>&1 | tee "$LOG"
 
 # myst-nb writes every executed cell's image output flat into jupyter_execute/,
 # hash-named for content-addressed dedup (see myst_nb.core.render.render_image) —

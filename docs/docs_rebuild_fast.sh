@@ -22,7 +22,7 @@
 #
 # Always finish with a clean docs_rebuild.sh run before calling anything done.
 set -euo pipefail
-PYTHON="/home/mgotsmy/anaconda3/envs/bench13/bin/python"
+PYTHON="uv run --extra docs python"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # hybrax/docs/
 SRC="$ROOT/source"; OUT="$ROOT/html"; SCRATCH="$ROOT/_scratch"
 JUPYTER_EXECUTE="$ROOT/jupyter_execute"
@@ -30,12 +30,12 @@ mkdir -p "$SCRATCH"
 
 # Cheap and deterministic: always safe to rerun, keeps datasets fresh without
 # needing a cache wipe to do it.
-"$PYTHON" "$SRC/_data/generate.py"
+$PYTHON "$SRC/_data/generate.py"
 
 LOG="$SCRATCH/build.log"
 echo "Build log: $LOG  (tail -f \"$LOG\" in another terminal to watch progress)"
 BUILD_START=$(date +%s)
-"$PYTHON" -m sphinx -b html -j 4 -d "$SCRATCH/doctrees" "$SRC" "$OUT" 2>&1 | tee "$LOG"
+$PYTHON -m sphinx -b html -j 4 -d "$SCRATCH/doctrees" "$SRC" "$OUT" 2>&1 | tee "$LOG"
 
 if compgen -G "$JUPYTER_EXECUTE"/*.png > /dev/null; then
     mkdir -p "$JUPYTER_EXECUTE/figures"
