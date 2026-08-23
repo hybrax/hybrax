@@ -126,7 +126,7 @@ def __call__(self, inputs):
     fit = self.residual_reduction(residual, inputs.mask_measured)
 
     # Concentrations must not go negative: in RAW space, where it means something.
-    below = jnp.clip(-inputs.RAW_states, a_min=0.0)
+    below = jnp.clip(-inputs.RAW_states, min=0.0)
     hinge = jnp.mean(jnp.square(below) * inputs.mask_measured_any[:, None])
 
     return LossOutputs(named_losses={

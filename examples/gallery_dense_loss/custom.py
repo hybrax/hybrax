@@ -162,8 +162,8 @@ class PhysicalConstraintsLoss(DefaultLossModule):
 
         def hinge(value, lo, hi):
             # -inf / +inf bounds fall out of the clip naturally: no branching.
-            return (jnp.clip(lo - value, a_min=0.0) ** 2
-                    + jnp.clip(value - hi, a_min=0.0) ** 2)
+            return (jnp.clip(lo - value, min=0.0) ** 2
+                    + jnp.clip(value - hi, min=0.0) ** 2)
 
         # State bounds: dense_RAW_states is [modeled RMCs | modeled PVs | V];
         # slice to just the RMC axes our bounds were built for.
