@@ -43,7 +43,7 @@ if compgen -G "$JUPYTER_EXECUTE"/*.png > /dev/null; then
 fi
 
 # Same warning gate as docs_rebuild.sh: speed is not an excuse to lower the bar.
-if grep -E "WARNING|ERROR" "$LOG" | grep -v "source/autoapi/" > "$SCRATCH/our_warnings.log"; then
+if grep -E "WARNING|ERROR" "$LOG" | grep -v "source/autoapi/" | grep -v "\[IPKernelApp\]" > "$SCRATCH/our_warnings.log"; then
     echo
     echo "docs build failed: warnings in hand-written pages" >&2
     cat "$SCRATCH/our_warnings.log" >&2

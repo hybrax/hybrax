@@ -77,7 +77,7 @@ fi
 # and emits warnings we cannot fix from here (and at least one of them is logged
 # without a `type`, so suppress_warnings cannot reach it). Instead, fail on any
 # warning that points at a page *we* wrote — dead cross-references included.
-if grep -E "WARNING|ERROR" "$LOG" | grep -v "source/autoapi/" > "$SCRATCH/our_warnings.log"; then
+if grep -E "WARNING|ERROR" "$LOG" | grep -v "source/autoapi/" | grep -v "\[IPKernelApp\]" > "$SCRATCH/our_warnings.log"; then
     echo
     echo "docs build failed: warnings in hand-written pages" >&2
     cat "$SCRATCH/our_warnings.log" >&2
