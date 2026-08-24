@@ -103,7 +103,7 @@ autoapi_root = "autoapi"
 autoapi_keep_files = False
 autoapi_add_toctree_entry = False     # we place autoapi/index in index.md ourselves
 autoapi_member_order = "groupwise"
-autoapi_python_class_content = "both"
+autoapi_python_class_content = "class"
 autoapi_options = ["members", "undoc-members", "show-inheritance",
                    "show-module-summary"]
 autodoc_typehints = "description"

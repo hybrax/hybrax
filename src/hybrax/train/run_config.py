@@ -49,10 +49,39 @@ PredictionScope = Literal["none", "parents", "all"]
 
 
 class ConfigBase(BaseModel):
+    """Shared pydantic base for every config section.
+
+    ``model_config`` forbids unknown keys (``extra="forbid"``), so a typo like
+    ``"epocs": 300`` is a hard validation error rather than being silently
+    dropped — the single most useful piece of the config system's strictness.
+    It also freezes every instance (``frozen=True``): a config object handed
+    to a hook is never mutated out from under the caller, and changing a
+    field means ``model_copy(update=...)``. Carries no fields of its own.
+    """
+
     model_config = _FROZEN
 
 
 class DataConfig(ConfigBase):
+    """Where a training/loo run reads its prepared dataset from.
+
+    ``prepared`` (required) points at the prepared-data artifact — either the
+    directory ``hybrax prepare`` wrote, or a ``prepared.json``/
+    ``prepared.json.gz`` file directly (see :func:`resolve_prepared_path`);
+    resolved relative to the config file's directory like every other path
+    here. ``processes`` (optional) restricts training/evaluation to this
+    subset of process names; omitted means every process in the prepared
+    dataset. ``targets`` (optional) restricts the training targets to this
+    explicit list of measured-quantity names, overriding automatic derivation
+    from ``target_source``. ``target_source`` decides *which* measurements
+    the loss is computed against: ``"reactor_components"`` (medium components
+    only), ``"process_variables"`` (process variables only), ``"combined"``
+    (both), or ``"auto"`` (default; decide from what the dataset actually
+    has). Set it explicitly once you have modeled process variables —
+    ``"auto"`` is a convenience, not a decision you want made implicitly on a
+    dataset you care about.
+    """
+
     prepared: Path
     processes: tuple[str, ...] | None = None
     targets: tuple[str, ...] | None = None
@@ -65,6 +94,33 @@ class DataConfig(ConfigBase):
 
 
 class TrainConfig(ConfigBase):
+    """Optimizer, batching, and device settings for one training run.
+
+    ``epochs`` (default 5) is how many passes over the selected process set
+    to run; ``--epochs`` on the CLI overrides this, since it is the one knob
+    meant to change constantly while iterating. ``seed`` is the base random
+    seed, handed to the ``build_reaction_module``/``build_loss_module`` hooks
+    for parameter initialization and, unless ``batch_seed`` is set, to the
+    batch-shuffling RNG too. ``optimizer`` selects the optax base transform
+    (``"adam"`` or ``"sgd"``); ``learning_rate`` is its base rate (a custom
+    ``build_learning_rate`` hook can turn it into a schedule instead of a
+    constant). ``grad_clip_norm`` (default 1000, effectively off) clips the
+    raw, pre-optimizer gradient by global norm before every update — check
+    ``grad_norm_curve.png``, which plots the pre-clip norm, to pick a real
+    value once scales are right. ``batch_size`` (default ``None``) is how
+    many processes make up one batch; ``None`` means full-batch. ``shuffle``
+    (default ``True``) reshuffles the process order every epoch;
+    ``batch_seed`` (optional) seeds that shuffling independently of ``seed``.
+    ``devices`` (default ``1``) is how many CPU devices to shard the batch
+    across; ``"max"`` resolves to ``min(n_processes, n_cpus)`` — never every
+    core, since idle surplus devices can deadlock the ``pmap`` all-reduce —
+    and the ``HYBRAX_TRAIN_DEVICES`` environment variable always overrides
+    it. ``allow_stateful_models`` (default ``False``) is the required opt-in
+    for reaction modules with a nonzero latent state: training raises before
+    it starts without it, because a latent state changes what the model
+    *is*, not just its size.
+    """
+
     epochs: int = Field(5, gt=0)
     seed: int = 0
     optimizer: Literal["adam", "sgd"] = "adam"
@@ -78,6 +134,23 @@ class TrainConfig(ConfigBase):
 
 
 class SolverConfig(ConfigBase):
+    """diffrax ODE solver settings for every forward and backward solve.
+
+    ``max_steps`` (default 2048) is the step budget for the whole solve — the
+    first knob to raise when solves start bailing out (a bail is not fatal;
+    points after it are just masked out of the loss, but a run where most
+    samples bail is fitting almost nothing). ``rtol``/``atol`` (defaults
+    ``1e-5``/``1e-7``) are diffrax's adaptive-step relative/absolute
+    tolerances. ``jump_ts`` (default ``True``) tells the step-size
+    controller about the process's own known vector-field discontinuity
+    times (from ``BioProcess.discrete_events``, e.g. discrete control
+    steps), so it anticipates them instead of discovering them by trial and
+    error; turning it off makes the controller behave like a plain
+    ``PIDController(rtol, atol)``. This is independent of bolus/sample state
+    jumps, which are always applied through a separate event mechanism
+    regardless of this flag.
+    """
+
     max_steps: int = Field(2048, gt=0)
     rtol: float = Field(1e-5, gt=0)
     atol: float = Field(1e-7, gt=0)
@@ -85,6 +158,20 @@ class SolverConfig(ConfigBase):
 
 
 class CheckpointConfig(ConfigBase):
+    """Checkpoint cadence for ``train`` and ``loo``.
+
+    ``every`` (optional, in epochs) is how often a full, self-contained
+    checkpoint is written (parameters, optimizer state, config,
+    ``custom.py``, and the prepared data, plus re-exported predictions per
+    ``output.predictions``). ``None`` (default) selects an automatic
+    cadence: at least every 5 epochs, at most 20 checkpoints over the whole
+    run. ``0`` disables periodic checkpointing, but the final checkpoint at
+    the end of training is always written regardless. Must be finite.
+    Checkpointing re-exports predictions and re-writes the bundled data, so
+    on a fast run it can dominate the wall clock — set it coarse enough
+    that it is not the bottleneck.
+    """
+
     every: float | None = Field(None, ge=0)
 
     @field_validator("every")
@@ -96,15 +183,58 @@ class CheckpointConfig(ConfigBase):
 
 
 class OutputConfig(ConfigBase):
+    """Where a ``train``/``loo`` run writes its output, and what it exports.
+
+    ``dir`` (default ``"output"``) is the run directory everything lands in
+    — config, logs, checkpoints, ``losses.csv``, and (if requested)
+    predictions — resolved relative to the config file's directory unless
+    overridden by ``--output-dir``. ``predictions`` (default ``"none"``)
+    controls whether a dense ``predictions.csv`` is exported: ``"none"``
+    writes nothing, ``"parents"`` writes every evaluated non-augmented
+    process, and ``"all"`` also includes synthetic augmentation children.
+    """
+
     dir: Path = Path("output")
     predictions: PredictionScope = "none"
 
 
 class LoggingConfig(ConfigBase):
+    """Console output formatting for ``train`` and ``loo``.
+
+    ``decimals`` (default 4) is the number of decimal places used when
+    formatting loss and gradient-norm values in the interactive console log.
+    It does not affect ``metrics.csv``/``metrics.jsonl``, which always
+    record full precision regardless of this setting.
+    """
+
     decimals: int = Field(4, ge=0)
 
 
 class AugmentationConfig(ConfigBase):
+    """Synthetic sibling-process generation for ``prepare.augmentation``.
+
+    Generates ``n_children_per_process`` synthetic children per real
+    (parent) process. ``seed`` seeds the augmentation RNG independently of
+    ``train.seed``. ``n_time_points`` (>= 2) is how many points each child
+    is resampled onto, from the parent's fitted spline.
+    ``min_spacing_fraction`` (default 0.1, in ``(0, 1]``) sets a floor on
+    the spacing between consecutive points in that resampled grid, as a
+    fraction of the uniform spacing; the remaining duration is distributed
+    as random jitter between the interior points, and ``1.0`` forces
+    exactly uniform spacing. ``noise_std`` (required, non-empty) maps a
+    modeled state name to the standard deviation of the Gaussian noise
+    added to its resampled trajectory; only states named here are
+    perturbed, every other state is copied through unchanged, and every
+    name must be a modeled (not controlled) state with a fitted spline.
+    ``initial_value_source`` (default ``"measured"``) decides how each
+    noised state's t=0 value is set: ``"measured"`` pins it to the parent's
+    actual t=0 measurement (raising if there is none), ``"spline"`` pins it
+    to the parent's fitted spline value at t=0, and ``"augmented"`` leaves
+    it noised like every other point; it can be one value applied to every
+    state in ``noise_std``, or a per-state dict whose keys must exactly
+    match ``noise_std``'s.
+    """
+
     seed: int = 0
     n_children_per_process: int = Field(gt=0)
     n_time_points: int = Field(ge=2)
@@ -144,14 +274,34 @@ class AugmentationConfig(ConfigBase):
 
 
 class PrepareConfig(ConfigBase):
+    """Dataset-preparation settings: the ``prepare`` command's own config section.
+
+    ``raw_input`` (required) is a ``BioProcessCollection``, as a file or
+    directory. ``augmentation`` (optional) generates synthetic sibling
+    processes; see :class:`AugmentationConfig`. ``strict_format_validation``
+    (default ``False``) decides whether ``hybrax.format`` validation
+    failures stop the run or are reported and tolerated — set it ``True``
+    for a dataset you intend to publish. ``required_control_names``
+    (default empty) fails prepare early if a named control is missing: a
+    flat tuple applies the same requirement to every process, a dict maps
+    process name to its own required list. ``require_consistent_controls``
+    (default ``True``) additionally requires every process to classify its
+    controls into the same inflow/outflow/process-variable layout; disable
+    it to allow processes with heterogeneous control layouts in the same
+    prepare run. ``process_rename_map`` (default empty) renames processes
+    by key, applied by the default ``transform_process_collection`` hook —
+    a custom hook of that name in ``custom.py`` overrides this default
+    entirely. ``diagnostics`` (default ``True``) emits per-process control
+    diagnostic plots (raw data vs. the stored control spline) into
+    ``<output-dir>/prepare_diagnostics/`` at the end of prepare.
+    """
+
     raw_input: Path
     augmentation: AugmentationConfig | None = None
     strict_format_validation: bool = False
     required_control_names: tuple[str, ...] | dict[str, tuple[str, ...]] = ()
     require_consistent_controls: bool = True
     process_rename_map: dict[str, str] = Field(default_factory=dict)
-    # Emit per-process control diagnostic plots (raw data vs stored control spline) into
-    # ``<output-dir>/prepare_diagnostics/`` at the end of prepare.
     diagnostics: bool = True
 
 
@@ -198,6 +348,13 @@ class LooConfig(ConfigBase):
 
 
 class RunConfig(ConfigBase):
+    """Top-level config object: assembles every ``prepare``/``train``/``loo``
+    section (``data``, ``custom_py``, ``train``, ``solver``, ``checkpoint``,
+    ``output``, ``logging``, ``prepare``, ``custom``, ``loo``) — see each
+    section's own docstring for its fields. A given command only reads and
+    validates the sections it actually uses.
+    """
+
     data: DataConfig | None = None
     custom_py: Path | None = None
     train: TrainConfig = Field(default_factory=TrainConfig)
@@ -211,11 +368,35 @@ class RunConfig(ConfigBase):
 
 
 class DefaultCustomConfig(BaseModel):
+    """Permissive fallback wrapper for the top-level ``custom`` config block.
+
+    Used automatically when ``custom.py`` does not define
+    ``get_custom_config``: every key under ``custom`` in the config JSON is
+    accepted as-is (``extra="allow"``) rather than validated against a
+    schema, so hook code reads it via attribute access
+    (``config.custom.hidden_width``) with no fields declared here. Instances
+    are frozen. ``ser_json_inf_nan="constants"`` lets a custom field holding
+    ``inf``/``-inf``/``nan`` round-trip through ``config.json`` instead of
+    silently becoming ``null``.
+    """
+
     model_config = ConfigDict(extra="allow", frozen=True, ser_json_inf_nan="constants")
 
 
 # --- forward config: a list of self-contained model dirs + optional data override ---
 class ForwardDataConfig(ConfigBase):
+    """Where a ``forward`` run reads its dataset from, and how it differs
+    from training's ``DataConfig``.
+
+    ``prepared`` (optional, unlike training's required
+    ``DataConfig.prepared``) overrides which prepared dataset to evaluate
+    against; with a single model, the prepared data bundled inside that
+    model's own run/checkpoint directory is used automatically, so this is
+    required only when averaging more than one model or predicting on data
+    different from what the model was trained on. ``processes`` (optional)
+    restricts evaluation to this subset of process names.
+    """
+
     prepared: Path | None = None
     processes: tuple[str, ...] | None = None
 
@@ -229,9 +410,21 @@ class ModelRef(ConfigBase):
 
 
 class ForwardOutputConfig(ConfigBase):
-    dir: Path | None = (
-        None  # Parent of forward-results/; default: <first model>/forward
-    )
+    """Output settings for ``forward``.
+
+    ``dir`` (optional) is the parent directory forward writes into —
+    everything lands under one ``forward-results/`` subdirectory inside it;
+    defaults to ``<first model>/forward``. ``predictions`` (default
+    ``"none"``) mirrors ``OutputConfig.predictions`` and controls whether
+    ``forward-results/predictions.csv`` is written. ``plots`` (default
+    ``False``) additionally renders one figure per process into
+    ``forward-results/plots/<process>.png``, best-effort (a rendering
+    failure is logged, not raised); it requires ``predictions`` to be
+    ``"parents"`` or ``"all"`` — a validator rejects ``plots=True`` with
+    ``predictions="none"``.
+    """
+
+    dir: Path | None = None
     predictions: PredictionScope = "none"
     plots: bool = False
 
@@ -245,6 +438,19 @@ class ForwardOutputConfig(ConfigBase):
 
 
 class ForwardRunConfig(ConfigBase):
+    """Top-level config for ``forward``: the models to evaluate, an optional
+    data override, and output settings.
+
+    ``models`` (required, non-empty) is the list of self-contained run or
+    checkpoint directories to evaluate — more than one turns the run into
+    an ensemble (mean predictions plus a standard-deviation export); see
+    :class:`ModelRef`. A bare path string in the list is coerced into
+    ``{"path": ...}`` before validation, so the minimal
+    ``{"models": ["run"]}`` works directly. ``data`` (optional); see
+    :class:`ForwardDataConfig`. ``output`` defaults to every field at its
+    own default; see :class:`ForwardOutputConfig`.
+    """
+
     models: tuple[ModelRef, ...] = Field(min_length=1)
     data: ForwardDataConfig | None = None
     output: ForwardOutputConfig = Field(default_factory=ForwardOutputConfig)
