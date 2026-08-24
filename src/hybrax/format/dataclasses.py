@@ -287,10 +287,12 @@ def _check_outflow_retention(
         return []
     if not vc.is_continuous:
         return [
-            f"Outflow {vc_name!r} sets retention {vc.retention!r} but is "
-            "discrete (is_continuous=False). Retention is only implemented "
-            "for continuous Outflows; setting it on a discrete Outflow would "
-            "be silently ignored by the RHS ODE."
+            (
+                f"Outflow {vc_name!r} sets retention {vc.retention!r} but is "
+                "discrete (is_continuous=False). Retention is only implemented "
+                "for continuous Outflows; setting it on a discrete Outflow would "
+                "be silently ignored by the RHS ODE."
+            )
         ]
     errors: List[str] = []
     unknown = [name for name in vc.retention if name not in rmc_names]

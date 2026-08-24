@@ -199,7 +199,7 @@ space*, then predict confidently and wrongly. No exception, no NaN. See
 
 ## What's next
 
-Run the tutorial yourself at `./source/_data/out/runs/tutorial_05/`.
+You can run the full tutorial at `examples/tutorial_05_predict/run.py`.
 
 You have now seen the whole loop. Everything the tutorials deliberately left out is in
 the gallery, each as a self-contained example:

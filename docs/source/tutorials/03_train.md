@@ -214,7 +214,7 @@ hybrax train --config train-config.json --epochs 50    # flags beat the config f
 
 ## What's next
 
-Run the tutorial yourself at `./source/_data/out/runs/tutorial_03/`.
+You can run the full tutorial at `examples/tutorial_03_train/run.py`.
 
 - **[Tutorial 4](04_your_first_custom_py.md)**: replace the two most important defaults
   and measure the difference.

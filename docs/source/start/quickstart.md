@@ -234,9 +234,9 @@ for path in sorted((WORK / "run").rglob("*")):
 
 ## What to do next
 
-Run the tutorial yourself at `./source/_data/out/runs/quickstart/`.
+You can inspect this page's files in `./source/_data/out/runs/quickstart/`.
 
-:::{admonition} You have not seen any of the interesting parts yet
+:::{admonition} This was a quick taste but there is a lot more
 :class: tip
 
 This run used every default: a generic MLP for the rates, mean-squared error for the
