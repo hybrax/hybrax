@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,25 +23,46 @@ import hybrax.format as hxf
 import hybrax.train as hxt
 
 HERE = Path(__file__).parent
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
-       "MPLBACKEND": "Agg"}
+ENV = {
+    **os.environ,
+    "JAX_PLATFORMS": "cpu",
+    "HYBRAX_TRAIN_DEVICES": "1",
+    "MPLBACKEND": "Agg",
+}
 
 
 def hxt_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
-                          cwd=HERE, env=ENV, capture_output=True, text=True)
+    proc = subprocess.run(
+        [sys.executable, "-m", "hybrax.train.cli", *args],
+        cwd=HERE,
+        env=ENV,
+        capture_output=True,
+        text=True,
+    )
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
 
 
-hxt_cli("prepare", "--config", "prepare-config.json",
-        "--output-dir", "prepared", "--overwrite")
+hxt_cli(
+    "prepare",
+    "--config",
+    "prepare-config.json",
+    "--output-dir",
+    "prepared",
+    "--overwrite",
+)
 hxt_cli("train", "--config", "train-config.json", "--overwrite")
 
 # --- The command-line way: forward -------------------------------------------
-hxt_cli("forward", "--config", "forward-config.json",
-        "--output-dir", "run/forward", "--overwrite")
+hxt_cli(
+    "forward",
+    "--config",
+    "forward-config.json",
+    "--output-dir",
+    "run/forward",
+    "--overwrite",
+)
 print((HERE / "run/forward/forward-results/losses.csv").read_text())
 
 df = pd.read_csv(HERE / "run/forward/forward-results/predictions.csv")
@@ -70,9 +92,12 @@ measured = collection.processes["run_1"].reactor_medium.components
 fig, axes = plt.subplots(1, 3, figsize=(12, 3.2), constrained_layout=True)
 for ax, (i, name) in zip(axes, enumerate(["biomass", "glucose", "product"])):
     ax.plot(export.t, export.c_species[:, i], label="predicted")
-    ax.plot(np.asarray(measured[name].concentration.times),
-            np.asarray(measured[name].concentration.values),
-            "k.", label="measured")
+    ax.plot(
+        np.asarray(measured[name].concentration.times),
+        np.asarray(measured[name].concentration.values),
+        "k.",
+        label="measured",
+    )
     ax.set_title(name)
     ax.set_xlabel("time [h]")
 axes[0].set_ylabel("g/L")

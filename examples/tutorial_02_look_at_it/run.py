@@ -5,6 +5,7 @@ See docs/source/tutorials/02_look_at_it.md for the narrated version.
 """
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 from pathlib import Path

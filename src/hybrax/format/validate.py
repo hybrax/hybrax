@@ -80,7 +80,8 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
     bo = process.biological_ode
     if bo is None:
         return _check_result(
-            "SKIP", "biological_ode",
+            "SKIP",
+            "biological_ode",
             "process.biological_ode is None: structural checks skipped",
         )
 
@@ -237,9 +238,12 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
             errors.append(detail)
 
     if errors:
-        return _check_result("FAIL", "biological_ode", _join_details(errors, bulleted=True))
+        return _check_result(
+            "FAIL", "biological_ode", _join_details(errors, bulleted=True)
+        )
     return _check_result(
-        "PASS", "biological_ode",
+        "PASS",
+        "biological_ode",
         "derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units",
     )
 
@@ -264,7 +268,8 @@ def validate_biological_ode_equivalence(
     procs = list(container.processes.items())
     if len(procs) <= 1:
         return _check_result(
-            "PASS", "biological_ode_equivalence",
+            "PASS",
+            "biological_ode_equivalence",
             f"{len(procs)} process(es): trivially equivalent",
         )
 
@@ -309,7 +314,9 @@ def validate_bounds(process: BioProcess) -> Tuple[bool, str]:
     errors: List[str] = []
     if process.reactor_medium:
         for cname, comp in process.reactor_medium.components.items():
-            ok, detail = _check_bounds_tuple(comp.bounds, f"reactor component {cname!r}")
+            ok, detail = _check_bounds_tuple(
+                comp.bounds, f"reactor component {cname!r}"
+            )
             if not ok:
                 errors.append(detail)
     for pname, pv in process.process_variables.items():
@@ -322,7 +329,9 @@ def validate_bounds(process: BioProcess) -> Tuple[bool, str]:
     if errors:
         return _check_result("FAIL", "bounds", _join_details(errors))
     return _check_result(
-        "PASS", "bounds", "lo <= hi holds for reactor components, process variables, volume"
+        "PASS",
+        "bounds",
+        "lo <= hi holds for reactor components, process variables, volume",
     )
 
 
@@ -411,7 +420,9 @@ def validate_bounds_against_data(process: BioProcess) -> Tuple[bool, str]:
     if errors:
         return _check_result("FAIL", "bounds_against_data", _join_details(errors))
     return _check_result(
-        "PASS", "bounds_against_data", "all measured datapoints with declared bounds fall within them"
+        "PASS",
+        "bounds_against_data",
+        "all measured datapoints with declared bounds fall within them",
     )
 
 
@@ -447,7 +458,8 @@ def validate_timeseries_shape(
 
     if not _is_dynamic_series(ts):
         return _check_result(
-            "FAIL", "timeseries_shape",
+            "FAIL",
+            "timeseries_shape",
             f"TimeSeries {label}: missing discrete times/values arrays",
         )
 
@@ -477,7 +489,8 @@ def validate_timeseries_shape(
             "FAIL", "timeseries_shape", f"TimeSeries {label}: " + _join_details(errors)
         )
     return _check_result(
-        "PASS", "timeseries_shape",
+        "PASS",
+        "timeseries_shape",
         f"TimeSeries {label}: 1-D, equal-length, strictly increasing times",
     )
 
@@ -487,7 +500,8 @@ def validate_discrete_events(process: BioProcess) -> Tuple[bool, str]:
     events = process.discrete_events
     if events is None:
         return _check_result(
-            "SKIP", "discrete_events",
+            "SKIP",
+            "discrete_events",
             "process.discrete_events is None: timing/label checks skipped",
         )
 
@@ -516,7 +530,8 @@ def validate_discrete_events(process: BioProcess) -> Tuple[bool, str]:
     if errors:
         return _check_result("FAIL", "discrete_events", _join_details(errors))
     return _check_result(
-        "PASS", "discrete_events",
+        "PASS",
+        "discrete_events",
         f"{times.shape[0]} event(s), strictly increasing, within time axis bounds",
     )
 
@@ -526,7 +541,9 @@ def validate_time_axis(process: BioProcess) -> Tuple[bool, str]:
     axis = process.time_axis
     if axis.start > axis.end:
         return _check_result(
-            "FAIL", "time_axis", f"start {axis.start} is after end {axis.end} {axis.unit}"
+            "FAIL",
+            "time_axis",
+            f"start {axis.start} is after end {axis.end} {axis.unit}",
         )
     return _check_result("PASS", "time_axis", f"[{axis.start}, {axis.end}] {axis.unit}")
 
@@ -573,7 +590,8 @@ def validate_timestamp_bounds(process: BioProcess) -> Tuple[bool, str]:
     if errors:
         return _check_result("FAIL", "timestamp_bounds", _join_details(errors))
     return _check_result(
-        "PASS", "timestamp_bounds",
+        "PASS",
+        "timestamp_bounds",
         f"all timestamps within [{start}, {end}] {process.time_axis.unit}",
     )
 
@@ -600,22 +618,26 @@ def validate_volume_change_sign(
     if isinstance(volume_change, Inflow):
         if bool(jnp.all(vals >= -_VOLUME_SIGN_EPS)):
             return _check_result(
-                "PASS", "volume_change_sign",
+                "PASS",
+                "volume_change_sign",
                 f"'{volume_change.name}' (Inflow) has all non-negative values",
             )
         return _check_result(
-            "FAIL", "volume_change_sign",
+            "FAIL",
+            "volume_change_sign",
             f"'{volume_change.name}' (Inflow) contains negative values; "
             "Inflows must have all values >= 0",
         )
     elif isinstance(volume_change, Outflow):
         if bool(jnp.all(vals <= _VOLUME_SIGN_EPS)):
             return _check_result(
-                "PASS", "volume_change_sign",
+                "PASS",
+                "volume_change_sign",
                 f"'{volume_change.name}' (Outflow) has all non-positive values",
             )
         return _check_result(
-            "FAIL", "volume_change_sign",
+            "FAIL",
+            "volume_change_sign",
             f"'{volume_change.name}' (Outflow) contains positive values; "
             "Outflows must have all values <= 0",
         )
@@ -630,7 +652,8 @@ def validate_volume_change_sign(
                 "PASS", "volume_change_sign", f"'{volume_change.name}' is purely {sign}"
             )
         return _check_result(
-            "FAIL", "volume_change_sign",
+            "FAIL",
+            "volume_change_sign",
             f"'{volume_change.name}' contains mixed positive and negative values; "
             "each volume change must be purely positive or purely negative",
         )
@@ -664,7 +687,8 @@ def validate_volume_change_states(
 
     if not state_names:
         return _check_result(
-            "SKIP", "volume_change_states",
+            "SKIP",
+            "volume_change_states",
             "no dynamic state variables found in reactor medium",
         )
 
@@ -701,7 +725,8 @@ def validate_volume_change_states(
     if errors:
         return _check_result("FAIL", "volume_change_states", _join_details(errors))
     return _check_result(
-        "PASS", "volume_change_states",
+        "PASS",
+        "volume_change_states",
         "all declared dynamic feed components use matching reactor units",
     )
 
@@ -736,7 +761,9 @@ def validate_outflow_retention(process: BioProcess) -> Tuple[bool, str]:
 
     if errors:
         return _check_result("FAIL", "outflow_retention", _join_details(errors))
-    return _check_result("PASS", "outflow_retention", "all Outflow retention values are valid")
+    return _check_result(
+        "PASS", "outflow_retention", "all Outflow retention values are valid"
+    )
 
 
 def validate_biomass_in_reactor_medium(process: BioProcess) -> Tuple[bool, str]:
@@ -752,7 +779,8 @@ def validate_biomass_in_reactor_medium(process: BioProcess) -> Tuple[bool, str]:
     """
     if not process.reactor_medium or not process.reactor_medium.components:
         return _check_result(
-            "FAIL", "biomass_in_reactor_medium",
+            "FAIL",
+            "biomass_in_reactor_medium",
             "reactor medium has no components: cannot verify biomass presence",
         )
 
@@ -762,11 +790,13 @@ def validate_biomass_in_reactor_medium(process: BioProcess) -> Tuple[bool, str]:
 
     if biomass_keys:
         return _check_result(
-            "PASS", "biomass_in_reactor_medium",
+            "PASS",
+            "biomass_in_reactor_medium",
             f"biomass found in reactor medium as {biomass_keys[0]!r}",
         )
     return _check_result(
-        "FAIL", "biomass_in_reactor_medium",
+        "FAIL",
+        "biomass_in_reactor_medium",
         "reactor medium does not contain a 'biomass' component; found components: "
         f"{list(process.reactor_medium.components.keys())}",
     )
@@ -779,7 +809,9 @@ def validate_initial_state_alignment(process: BioProcess) -> Tuple[bool, str]:
     and initial volume come from different points in time.
     """
     t0 = process.time_axis.start
-    tolerance = _timestamp_bounds_tolerance(process.time_axis.start, process.time_axis.end)
+    tolerance = _timestamp_bounds_tolerance(
+        process.time_axis.start, process.time_axis.end
+    )
     missing: List[str] = []
 
     if process.reactor_medium and process.reactor_medium.components:
@@ -797,14 +829,16 @@ def validate_initial_state_alignment(process: BioProcess) -> Tuple[bool, str]:
 
     if missing:
         return _check_result(
-            "FAIL", "initial_state_alignment",
+            "FAIL",
+            "initial_state_alignment",
             f"no measurement at time_axis.start={t0:g} for: {_join_details(missing)} "
             "(volume.initial_volume is anchored at time_axis.start; every dynamic "
             "state needs a value there too, or the ODE's initial condition is "
             "undefined)",
         )
     return _check_result(
-        "PASS", "initial_state_alignment",
+        "PASS",
+        "initial_state_alignment",
         "all dynamic reactor-medium components and process variables have a "
         f"measurement at time_axis.start={t0:g}, consistent with volume.initial_volume",
     )
@@ -819,12 +853,15 @@ def validate_volume_units(process: BioProcess) -> Tuple[bool, str]:
     ]
     if mismatches:
         return _check_result(
-            "FAIL", "volume_units",
+            "FAIL",
+            "volume_units",
             f"volume changes must use volume unit {process.volume.unit!r}: "
             + ", ".join(mismatches),
         )
     return _check_result(
-        "PASS", "volume_units", f"volume changes use volume unit {process.volume.unit!r}"
+        "PASS",
+        "volume_units",
+        f"volume changes use volume unit {process.volume.unit!r}",
     )
 
 
@@ -901,7 +938,9 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[Tuple[bool, str]]]
     # Measured total volume
     if _is_dynamic_series(process.volume.total_volume):
         _record(
-            validate_timeseries_shape(process.volume.total_volume, name="measured total volume")
+            validate_timeseries_shape(
+                process.volume.total_volume, name="measured total volume"
+            )
         )
 
     # --- Time-axis checks ---
@@ -1016,13 +1055,15 @@ def validate_measurement_sampling_alignment(
 
     if warnings:
         return _check_result(
-            "FAIL", "measurement_sampling_alignment",
+            "FAIL",
+            "measurement_sampling_alignment",
             "measurement times slightly offset from sampling times, which can cause "
             "incorrect ADF values in the pseudobatch normalisation and errors in "
             "the spline calculation: " + _join_details(warnings),
         )
     return _check_result(
-        "PASS", "measurement_sampling_alignment",
+        "PASS",
+        "measurement_sampling_alignment",
         "no reactor-medium measurement times are suspiciously close to sampling events",
     )
 
@@ -1070,9 +1111,7 @@ def validate_volume_consistency(
             # Cumulative volume: final - initial
             change_vol = float(values[-1] - values[0])
             total_change += change_vol
-            table.append(
-                f"  {name:15}: {change_vol:+8.2f} {volume.unit} (continuous)"
-            )
+            table.append(f"  {name:15}: {change_vol:+8.2f} {volume.unit} (continuous)")
         elif not change.is_continuous:
             # For discrete changes, sum all values from the timeseries
             values = change.values.values
@@ -1127,7 +1166,8 @@ def validate_cross_process_consistency(
     if len(processes) <= 1:
         return True, [
             _check_result(
-                "PASS", "cross_process_consistency",
+                "PASS",
+                "cross_process_consistency",
                 f"{len(processes)} process(es): trivially consistent",
             )
         ]
@@ -1195,12 +1235,14 @@ def validate_cross_process_consistency(
     if not consistency_errors:
         return True, [
             _check_result(
-                "PASS", "cross_process_consistency",
+                "PASS",
+                "cross_process_consistency",
                 f"structure matches '{first_name}' across {len(processes)} processes",
             )
         ]
     return False, [
-        _check_result("FAIL", "cross_process_consistency", e) for e in consistency_errors
+        _check_result("FAIL", "cross_process_consistency", e)
+        for e in consistency_errors
     ]
 
 
@@ -1299,7 +1341,8 @@ def validate_augmented_parent_refs(
             all_valid = False
             results.append(
                 _check_result(
-                    "FAIL", "augmented_parent_refs",
+                    "FAIL",
+                    "augmented_parent_refs",
                     f"AugmentedBioProcess {child_name!r} references unknown "
                     f"parent_process {parent_name!r}",
                 )
@@ -1310,7 +1353,8 @@ def validate_augmented_parent_refs(
             all_valid = False
             results.append(
                 _check_result(
-                    "FAIL", "augmented_parent_refs",
+                    "FAIL",
+                    "augmented_parent_refs",
                     f"AugmentedBioProcess {child_name!r} references parent "
                     f"{parent_name!r}, which is itself augmented; chained "
                     "augmentation is not supported",
@@ -1318,10 +1362,13 @@ def validate_augmented_parent_refs(
             )
 
     if not results:
-        n_augmented = sum(isinstance(p, AugmentedBioProcess) for p in processes.values())
+        n_augmented = sum(
+            isinstance(p, AugmentedBioProcess) for p in processes.values()
+        )
         results.append(
             _check_result(
-                "PASS", "augmented_parent_refs",
+                "PASS",
+                "augmented_parent_refs",
                 f"{n_augmented} augmented process(es) have valid parent references",
             )
         )

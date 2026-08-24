@@ -44,9 +44,123 @@ def surrogate_fba(x):
     n = x[1:5] / AVG_N
     n_X, n_M, n_A, n_S = n[0], n[1], n[2], n[3]
     q_glc = -AVG_QG * qG
-    qX = qG * (-40.05086*n_X -0.011743758*n_M +0.014346741*n_A -0.0052064408*n_S +0.0082783369) * (-49.319124*n_X -0.41473128*n_M +2.1157595*n_A -1.6528906*n_S -3.5412292) / ((_pos(24.688972*n_X +0.20074873*n_M -1.0261536*n_A +0.79800013*n_S +1.7869275) + 0.05) * (_pos(85.331771*n_X +0.48121828*n_M +1.7234505*n_A +4.5642331*n_S -0.46385535) + 0.05))
-    qM = qG * (-30.549273*n_X -0.26807454*n_M +0.60650343*n_A -1.143952*n_S -0.92775662) * (-0.037824693*n_X -24.825578*n_M +0.027984563*n_A +0.0020666315*n_S -0.007740588) / ((_pos(17.512874*n_X +0.16739751*n_M -0.27899872*n_A +0.67477612*n_S +0.76306517) + 0.05) * (_pos(46.415016*n_X +0.22525384*n_M +0.68795142*n_A +2.3243431*n_S -0.91656303) + 0.05))
-    qA = qG * (0.11560359*n_X +0.025412058*n_M +24.333516*n_A +0.037186754*n_S -0.094942148) * (20.777323*n_X -0.40676165*n_M +3.1964066*n_A +0.9569548*n_S -0.19868886) / ((_pos(41.246274*n_X -0.34994074*n_M +4.3166512*n_A +2.1503221*n_S -1.9194144) + 0.05) * (_pos(13.35614*n_X -0.041404912*n_M +0.72777261*n_A +0.64795735*n_S +0.29150121) + 0.05))
+    qX = (
+        qG
+        * (
+            -40.05086 * n_X
+            - 0.011743758 * n_M
+            + 0.014346741 * n_A
+            - 0.0052064408 * n_S
+            + 0.0082783369
+        )
+        * (
+            -49.319124 * n_X
+            - 0.41473128 * n_M
+            + 2.1157595 * n_A
+            - 1.6528906 * n_S
+            - 3.5412292
+        )
+        / (
+            (
+                _pos(
+                    24.688972 * n_X
+                    + 0.20074873 * n_M
+                    - 1.0261536 * n_A
+                    + 0.79800013 * n_S
+                    + 1.7869275
+                )
+                + 0.05
+            )
+            * (
+                _pos(
+                    85.331771 * n_X
+                    + 0.48121828 * n_M
+                    + 1.7234505 * n_A
+                    + 4.5642331 * n_S
+                    - 0.46385535
+                )
+                + 0.05
+            )
+        )
+    )
+    qM = (
+        qG
+        * (
+            -30.549273 * n_X
+            - 0.26807454 * n_M
+            + 0.60650343 * n_A
+            - 1.143952 * n_S
+            - 0.92775662
+        )
+        * (
+            -0.037824693 * n_X
+            - 24.825578 * n_M
+            + 0.027984563 * n_A
+            + 0.0020666315 * n_S
+            - 0.007740588
+        )
+        / (
+            (
+                _pos(
+                    17.512874 * n_X
+                    + 0.16739751 * n_M
+                    - 0.27899872 * n_A
+                    + 0.67477612 * n_S
+                    + 0.76306517
+                )
+                + 0.05
+            )
+            * (
+                _pos(
+                    46.415016 * n_X
+                    + 0.22525384 * n_M
+                    + 0.68795142 * n_A
+                    + 2.3243431 * n_S
+                    - 0.91656303
+                )
+                + 0.05
+            )
+        )
+    )
+    qA = (
+        qG
+        * (
+            0.11560359 * n_X
+            + 0.025412058 * n_M
+            + 24.333516 * n_A
+            + 0.037186754 * n_S
+            - 0.094942148
+        )
+        * (
+            20.777323 * n_X
+            - 0.40676165 * n_M
+            + 3.1964066 * n_A
+            + 0.9569548 * n_S
+            - 0.19868886
+        )
+        / (
+            (
+                _pos(
+                    41.246274 * n_X
+                    - 0.34994074 * n_M
+                    + 4.3166512 * n_A
+                    + 2.1503221 * n_S
+                    - 1.9194144
+                )
+                + 0.05
+            )
+            * (
+                _pos(
+                    13.35614 * n_X
+                    - 0.041404912 * n_M
+                    + 0.72777261 * n_A
+                    + 0.64795735 * n_S
+                    + 0.29150121
+                )
+                + 0.05
+            )
+        )
+    )
     return jnp.array([q_glc, qX, qM, qA])
 
 
@@ -63,7 +177,10 @@ def _init_xavier_zero_bias(model, key):
             if layer.bias is not None:
                 layer = eqx.tree_at(lambda l: l.bias, layer, jnp.zeros_like(layer.bias))
         return layer
-    return jax.tree_util.tree_map(init_layer, model, is_leaf=lambda x: isinstance(x, eqx.nn.Linear))
+
+    return jax.tree_util.tree_map(
+        init_layer, model, is_leaf=lambda x: isinstance(x, eqx.nn.Linear)
+    )
 
 
 class FBAHybReactionModule(UserReactionModule):
@@ -75,11 +192,27 @@ class FBAHybReactionModule(UserReactionModule):
         n_in = self.n_modeled_RMCs
         k_qG, k_obj = jax.random.split(key, 2)
         self.ann_qG = _init_xavier_zero_bias(
-            eqx.nn.MLP(in_size=n_in, out_size=1, width_size=8, depth=2,
-                       activation=jax.nn.softplus, key=k_qG), k_qG)
+            eqx.nn.MLP(
+                in_size=n_in,
+                out_size=1,
+                width_size=8,
+                depth=2,
+                activation=jax.nn.softplus,
+                key=k_qG,
+            ),
+            k_qG,
+        )
         self.ann_obj = _init_xavier_zero_bias(
-            eqx.nn.MLP(in_size=n_in, out_size=3, width_size=16, depth=2,
-                       activation=jax.nn.softplus, key=k_obj), k_obj)
+            eqx.nn.MLP(
+                in_size=n_in,
+                out_size=3,
+                width_size=16,
+                depth=2,
+                activation=jax.nn.softplus,
+                key=k_obj,
+            ),
+            k_obj,
+        )
 
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t
@@ -99,7 +232,9 @@ class FBAHybReactionModule(UserReactionModule):
         RAW_rates = jnp.array([qX, RAW_glc, RAW_ace])
 
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.scale_modeled_BiologicalOde_rates(RAW_rates),
+            SCL_modeled_BiologicalOde_rates=self.scale_modeled_BiologicalOde_rates(
+                RAW_rates
+            ),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
             auxiliary={"n_weights": jnp.array([n_X, n_M, n_A])},
@@ -142,7 +277,8 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
-            max(runtime_data.initial_volume(i) for i in range(n_processes))),
+            max(runtime_data.initial_volume(i) for i in range(n_processes))
+        ),
         SCALE_modeled_Inflows_cumulative=empty,
         SCALE_modeled_Inflows_rates=empty,
         SCALE_modeled_Outflows_cumulative=empty,
@@ -153,7 +289,9 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=empty,
         SCALE_controlled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0
+        ),
         SCALE_modeled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0
+        ),
     )

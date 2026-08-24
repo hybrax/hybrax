@@ -854,7 +854,9 @@ def extract_discrete_events(
                         "reasonable way to fabricate an entire medium's "
                         "identity from nothing. Define feed_medium explicitly."
                     )
-                Cin_event = _build_cin(process, (vc_name,), ordering.name_modeled_RMCs)[0]
+                Cin_event = _build_cin(process, (vc_name,), ordering.name_modeled_RMCs)[
+                    0
+                ]
                 events.append(
                     dict(
                         t=float(t_event),

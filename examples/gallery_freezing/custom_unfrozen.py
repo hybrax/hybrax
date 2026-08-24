@@ -32,11 +32,17 @@ class FrozenEncoderReactionModule(UserReactionModule):
         super().__init__(**scale_kwargs)
         key_enc, key_head = jax.random.split(key)
         self.encoder = eqx.nn.MLP(
-            in_size=self.n_modeled_RMCs, out_size=n_hidden, width_size=n_hidden,
-            depth=2, key=key_enc)
+            in_size=self.n_modeled_RMCs,
+            out_size=n_hidden,
+            width_size=n_hidden,
+            depth=2,
+            key=key_enc,
+        )
         self.head = eqx.nn.Linear(
-            in_features=n_hidden, out_features=self.n_modeled_BiologicalOde_rates,
-            key=key_head)
+            in_features=n_hidden,
+            out_features=self.n_modeled_BiologicalOde_rates,
+            key=key_head,
+        )
 
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t
@@ -84,7 +90,8 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
-            max(runtime_data.initial_volume(i) for i in range(n_processes))),
+            max(runtime_data.initial_volume(i) for i in range(n_processes))
+        ),
         SCALE_modeled_Inflows_cumulative=empty,
         SCALE_modeled_Inflows_rates=empty,
         SCALE_modeled_Outflows_cumulative=empty,
@@ -95,7 +102,9 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=empty,
         SCALE_controlled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0
+        ),
         SCALE_modeled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0
+        ),
     )

@@ -4,8 +4,8 @@ from pathlib import Path
 
 _HERE = Path(__file__).parent
 
-project   = "Bioprocess Modeling docs"
-author    = "Bioprocess Modeling Collective"
+project = "Bioprocess Modeling docs"
+author = "Bioprocess Modeling Collective"
 copyright = "2026, Bioprocess Modeling Collective"
 
 
@@ -20,14 +20,14 @@ def _v(name: str) -> str:
 release = version = f"hybrax {_v('hybrax')}"
 
 extensions = [
-    "autoapi.extension",       # static API gen over hybrax — no import
-    "myst_nb",                 # executable MyST markdown (supersedes myst_parser)
-    "sphinx.ext.napoleon",     # Google-style docstrings
-    "sphinx.ext.viewcode",     # [source] links
+    "autoapi.extension",  # static API gen over hybrax — no import
+    "myst_nb",  # executable MyST markdown (supersedes myst_parser)
+    "sphinx.ext.napoleon",  # Google-style docstrings
+    "sphinx.ext.viewcode",  # [source] links
     "sphinx.ext.intersphinx",  # external refs only (python/numpy/jax)
-    "sphinx.ext.mathjax",      # renders the dollarmath below
+    "sphinx.ext.mathjax",  # renders the dollarmath below
     "sphinx_copybutton",
-    "sphinx_design",           # dropdown directive (full-file listings in the gallery)
+    "sphinx_design",  # dropdown directive (full-file listings in the gallery)
 ]
 
 # myst-nb owns .md and .ipynb. Files without {code-cell} blocks are parsed as
@@ -39,8 +39,10 @@ source_suffix = {
 }
 master_doc = "index"
 exclude_patterns = [
-    "_build", "Thumbs.db", ".DS_Store",
-    "_data/**",          # dataset generator + generated data — not documents
+    "_build",
+    "Thumbs.db",
+    ".DS_Store",
+    "_data/**",  # dataset generator + generated data — not documents
     "**/.ipynb_checkpoints",
 ]
 # Project-local template overrides (e.g. sidebar/brand.html). Sphinx checks this
@@ -67,8 +69,14 @@ html_js_files = ["custom.js"]
 html_logo = "_static/hybrax_logo.png"
 html_favicon = "_static/favicon.png"
 html_theme_options = {
-    "light_css_variables": {"color-brand-primary": "#2563eb", "color-brand-content": "#2563eb"},
-    "dark_css_variables":  {"color-brand-primary": "#60a5fa", "color-brand-content": "#60a5fa"},
+    "light_css_variables": {
+        "color-brand-primary": "#2563eb",
+        "color-brand-content": "#2563eb",
+    },
+    "dark_css_variables": {
+        "color-brand-primary": "#60a5fa",
+        "color-brand-content": "#60a5fa",
+    },
 }
 
 # --- MyST-NB execution -------------------------------------------------------
@@ -77,7 +85,7 @@ html_theme_options = {
 # silently rotting a page. "cache" means only pages whose source changed re-run.
 nb_execution_mode = "cache"
 nb_execution_cache_path = str(_HERE.parent / "_scratch" / "jupyter_cache")
-nb_execution_timeout = 900          # a tutorial that trains a model needs headroom
+nb_execution_timeout = 900  # a tutorial that trains a model needs headroom
 nb_execution_raise_on_error = True  # a failing cell fails the build
 nb_merge_streams = True
 
@@ -101,11 +109,15 @@ autoapi_dirs = ["../../src/hybrax/format", "../../src/hybrax/train"]
 autoapi_ignore = ["*/diffrax_callbacks/examples/*"]
 autoapi_root = "autoapi"
 autoapi_keep_files = False
-autoapi_add_toctree_entry = False     # we place autoapi/index in index.md ourselves
+autoapi_add_toctree_entry = False  # we place autoapi/index in index.md ourselves
 autoapi_member_order = "groupwise"
 autoapi_python_class_content = "class"
-autoapi_options = ["members", "undoc-members", "show-inheritance",
-                   "show-module-summary"]
+autoapi_options = [
+    "members",
+    "undoc-members",
+    "show-inheritance",
+    "show-module-summary",
+]
 autodoc_typehints = "description"
 
 # --- Napoleon (Google-style + type hints) ---
@@ -115,14 +127,21 @@ napoleon_use_param = napoleon_use_rtype = napoleon_use_ivar = True
 napoleon_preprocess_types = True
 
 # --- MyST ---
-myst_enable_extensions = ["colon_fence", "deflist", "dollarmath", "fieldlist",
-                          "linkify", "substitution", "tasklist"]
+myst_enable_extensions = [
+    "colon_fence",
+    "deflist",
+    "dollarmath",
+    "fieldlist",
+    "linkify",
+    "substitution",
+    "tasklist",
+]
 myst_heading_anchors = 3
 
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),
-    "numpy":  ("https://numpy.org/doc/stable/", None),
-    "jax":    ("https://docs.jax.dev/en/latest/", None),
+    "numpy": ("https://numpy.org/doc/stable/", None),
+    "jax": ("https://docs.jax.dev/en/latest/", None),
 }
 intersphinx_disabled_reftypes = ["*"]
 
@@ -136,7 +155,11 @@ intersphinx_disabled_reftypes = ["*"]
 # package is a read-only input to this build. Our own pages are MyST markdown
 # and report under `myst.*`, which is not suppressed.
 nitpicky = False
-suppress_warnings = ["myst.header",
-                     "autoapi.python_import_resolution", "ref.python",
-                     "misc.highlighting_failure",
-                     "docutils", "duplicate_object"]
+suppress_warnings = [
+    "myst.header",
+    "autoapi.python_import_resolution",
+    "ref.python",
+    "misc.highlighting_failure",
+    "docutils",
+    "duplicate_object",
+]

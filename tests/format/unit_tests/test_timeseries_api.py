@@ -129,7 +129,9 @@ def test_exact_add_matches_pointwise_eval() -> None:
     assert added.values is not None
 
 
-def test_public_hybrax_format_timeseries_rejects_legacy_timepoints_constructor() -> None:
+def test_public_hybrax_format_timeseries_rejects_legacy_timepoints_constructor() -> (
+    None
+):
     assert hybrax.format.TimeSeries is TimeSeries
     with pytest.raises(TypeError):
         hybrax.format.TimeSeries(
@@ -151,6 +153,8 @@ def test_canonical_times_mode_keeps_strict_invariants() -> None:
 
 
 def test_timepoints_property_is_removed() -> None:
-    ts = hybrax.format.TimeSeries(times=np.array([0.0, 1.0]), values=np.array([1.0, 2.0]))
+    ts = hybrax.format.TimeSeries(
+        times=np.array([0.0, 1.0]), values=np.array([1.0, 2.0])
+    )
     with pytest.raises(AttributeError):
         _ = ts.timepoints

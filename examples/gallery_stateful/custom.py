@@ -40,7 +40,8 @@ class LSTMReactionModule(UserReactionModule):
         self.n_hidden = n_hidden
         key_cell, key_head = jax.random.split(key)
         self.lstm_cell = eqx.nn.LSTMCell(
-            input_size=self.n_modeled_RMCs, hidden_size=n_hidden, key=key_cell)
+            input_size=self.n_modeled_RMCs, hidden_size=n_hidden, key=key_cell
+        )
         self.rate_head = eqx.nn.Linear(
             in_features=n_hidden + self.n_modeled_RMCs,
             out_features=self.n_modeled_BiologicalOde_rates,
@@ -105,7 +106,8 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
-            max(runtime_data.initial_volume(i) for i in range(n_processes))),
+            max(runtime_data.initial_volume(i) for i in range(n_processes))
+        ),
         SCALE_modeled_Inflows_cumulative=empty,
         SCALE_modeled_Inflows_rates=empty,
         SCALE_modeled_Outflows_cumulative=empty,
@@ -116,7 +118,9 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=empty,
         SCALE_controlled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0
+        ),
         SCALE_modeled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0
+        ),
     )

@@ -82,9 +82,9 @@ def _assert_json_close(new_path, canonical_path):
         elif isinstance(new, bool) or isinstance(old, bool):
             assert new == old, f"{where}: {new!r} != {old!r}"
         elif isinstance(new, (int, float)) and isinstance(old, (int, float)):
-            assert np.isclose(
-                new, old, rtol=_ARTIFACT_RTOL, atol=_ARTIFACT_ATOL
-            ), f"{where}: {new!r} !~ {old!r}"
+            assert np.isclose(new, old, rtol=_ARTIFACT_RTOL, atol=_ARTIFACT_ATOL), (
+                f"{where}: {new!r} !~ {old!r}"
+            )
         else:
             assert new == old, f"{where}: {new!r} != {old!r}"
 

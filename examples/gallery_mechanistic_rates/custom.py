@@ -50,9 +50,9 @@ class MonodModule(UserReactionModule):
         # Kinetics are written in PHYSICAL units, so unscale on the way in and
         # scale on the way out. Ks in g/L only means something in RAW space.
         RAW = self.unscale_modeled_RMCs(inputs.SCL_modeled_RMCs)
-        S = jnp.clip(RAW[self.i_glucose], 0.0, None)   # guard tiny negative excursions
+        S = jnp.clip(RAW[self.i_glucose], 0.0, None)  # guard tiny negative excursions
 
-        sigma = S / (jnp.exp(self.log_Ks) + S)          # Monod saturation term
+        sigma = S / (jnp.exp(self.log_Ks) + S)  # Monod saturation term
         mu = jnp.exp(self.log_mu_max) * sigma
         # Uptake is gated by the SAME saturation term, so it tapers at depletion
         # instead of being clipped afterwards.
@@ -62,7 +62,8 @@ class MonodModule(UserReactionModule):
         RAW_rates = jnp.array([mu, q_glucose, q_product])
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.scale_modeled_BiologicalOde_rates(
-                RAW_rates),
+                RAW_rates
+            ),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
         )
@@ -84,8 +85,10 @@ def estimate_all_scales(runtime_data, target_names, config):
     del target_names, config
     rhs = runtime_data.rhs_ode
     n_processes = len(runtime_data.process_order)
-    span = max(end - start for start, end in
-              (runtime_data.time_bounds(i) for i in range(n_processes)))
+    span = max(
+        end - start
+        for start, end in (runtime_data.time_bounds(i) for i in range(n_processes))
+    )
 
     def max_abs_state(name):
         best = 0.0
@@ -101,9 +104,11 @@ def estimate_all_scales(runtime_data, target_names, config):
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(
-            [rmc_scale[n[2:]] / (biomass * span) for n in rhs.name_modeled_rates]),
+            [rmc_scale[n[2:]] / (biomass * span) for n in rhs.name_modeled_rates]
+        ),
         SCALE_V_in_cumulative=jnp.asarray(
-            max(runtime_data.initial_volume(i) for i in range(n_processes))),
+            max(runtime_data.initial_volume(i) for i in range(n_processes))
+        ),
         SCALE_modeled_Inflows_cumulative=empty,
         SCALE_modeled_Inflows_rates=empty,
         SCALE_modeled_Outflows_cumulative=empty,
@@ -114,7 +119,9 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=empty,
         SCALE_controlled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0
+        ),
         SCALE_modeled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0
+        ),
     )

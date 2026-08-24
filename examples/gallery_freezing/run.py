@@ -16,24 +16,45 @@ import pandas as pd
 import hybrax.train as hxt
 
 HERE = Path(__file__).parent
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
-       "MPLBACKEND": "Agg"}
+ENV = {
+    **os.environ,
+    "JAX_PLATFORMS": "cpu",
+    "HYBRAX_TRAIN_DEVICES": "1",
+    "MPLBACKEND": "Agg",
+}
 
 
 def hxt_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
-                          cwd=HERE, env=ENV, capture_output=True, text=True)
+    proc = subprocess.run(
+        [sys.executable, "-m", "hybrax.train.cli", *args],
+        cwd=HERE,
+        env=ENV,
+        capture_output=True,
+        text=True,
+    )
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
 
 
-hxt_cli("prepare", "--config", "prepare-config.json",
-        "--output-dir", "prepared", "--overwrite")
+hxt_cli(
+    "prepare",
+    "--config",
+    "prepare-config.json",
+    "--output-dir",
+    "prepared",
+    "--overwrite",
+)
 hxt_cli("train", "--config", "train-config.json", "--overwrite")
 
-hxt_cli("forward", "--config", "forward-config.json",
-        "--output-dir", "run/forward", "--overwrite")
+hxt_cli(
+    "forward",
+    "--config",
+    "forward-config.json",
+    "--output-dir",
+    "run/forward",
+    "--overwrite",
+)
 print(f"forward plot: {HERE / 'run/forward/forward-results/plots/run_1.png'}")
 
 wrapper, _cfg = hxt.model_load(str(HERE / "run"))

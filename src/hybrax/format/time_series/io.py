@@ -162,5 +162,7 @@ def timeseries_from_input_dict(
     variable: str,
 ) -> Any:
     """Build one TimeSeries from full input.json-like data."""
-    process_state = input_data["metadata"]["hybrax-format"]["process_state"][process_key]
+    process_state = input_data["metadata"]["hybrax-format"]["process_state"][
+        process_key
+    ]
     return timeseries_from_process_state(cls, process_state, variable)

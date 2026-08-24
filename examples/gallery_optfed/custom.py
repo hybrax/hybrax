@@ -27,7 +27,12 @@ def _eyring(T_K, log_A, log_Ea_R, raw_Teq, log_dHeq_R):
     Ea_R = jnp.exp(log_Ea_R)
     Teq = 290.0 + 40.0 * jax.nn.sigmoid(raw_Teq)
     dHeq_R = jnp.exp(log_dHeq_R)
-    return A * T_K * jnp.exp(-Ea_R / T_K) / (1.0 + jnp.exp(dHeq_R * (1.0 / Teq - 1.0 / T_K)))
+    return (
+        A
+        * T_K
+        * jnp.exp(-Ea_R / T_K)
+        / (1.0 + jnp.exp(dHeq_R * (1.0 / Teq - 1.0 / T_K)))
+    )
 
 
 def _inhibition_product(values, log_K):
@@ -48,9 +53,11 @@ class OptFedModule(UserReactionModule):
     eyring_log_Ea_R: jax.Array = trainable_field()
     eyring_raw_Teq: jax.Array = trainable_field()
     eyring_log_dHeq_R: jax.Array = trainable_field()
-    log_Km: jax.Array = trainable_field()          # (2,) [Km_deg, Km_pi]
-    log_K_inhib: jax.Array = trainable_field()      # (2, 2) [[deg_px, deg_x], [pi_px, pi_x]]
-    log_K_activ: jax.Array = trainable_field()      # (2,) [a_deg, a_x]
+    log_Km: jax.Array = trainable_field()  # (2,) [Km_deg, Km_pi]
+    log_K_inhib: jax.Array = (
+        trainable_field()
+    )  # (2, 2) [[deg_px, deg_x], [pi_px, pi_x]]
+    log_K_activ: jax.Array = trainable_field()  # (2,) [a_deg, a_x]
     Y_XrG: jax.Array = frozen_field()
     Y_PG: jax.Array = frozen_field()
 
@@ -64,7 +71,7 @@ class OptFedModule(UserReactionModule):
         # Deliberately mediocre starting guesses: the point is that they move.
         self.eyring_log_A = jnp.log(jnp.array([0.5, 0.5, 0.5]))
         self.eyring_log_Ea_R = jnp.log(jnp.array([1000.0, 1000.0, 1000.0]))
-        self.eyring_raw_Teq = jnp.zeros(3)              # sigmoid(0)=0.5 -> Teq=310 K
+        self.eyring_raw_Teq = jnp.zeros(3)  # sigmoid(0)=0.5 -> Teq=310 K
         self.eyring_log_dHeq_R = jnp.log(jnp.array([10000.0, 10000.0, 10000.0]))
         self.log_Km = jnp.log(jnp.array([1.0, 1.0]))
         self.log_K_inhib = jnp.log(jnp.array([[1.0, 100.0], [1.0, 100.0]]))
@@ -82,18 +89,30 @@ class OptFedModule(UserReactionModule):
         px = P / X
 
         gdeg_max, gpi_max, galpha_min = _eyring(
-            T_K, self.eyring_log_A, self.eyring_log_Ea_R,
-            self.eyring_raw_Teq, self.eyring_log_dHeq_R)
+            T_K,
+            self.eyring_log_A,
+            self.eyring_log_Ea_R,
+            self.eyring_raw_Teq,
+            self.eyring_log_dHeq_R,
+        )
 
         Km_deg, Km_pi = jnp.exp(self.log_Km)
-        gdeg = (gdeg_max * (G / (Km_deg + G))
-                * _inhibition_product(jnp.array([px, X]), self.log_K_inhib[0]))
+        gdeg = (
+            gdeg_max
+            * (G / (Km_deg + G))
+            * _inhibition_product(jnp.array([px, X]), self.log_K_inhib[0])
+        )
 
-        galpha = galpha_min * _activation_product(jnp.array([gdeg, X]), self.log_K_activ)
+        galpha = galpha_min * _activation_product(
+            jnp.array([gdeg, X]), self.log_K_activ
+        )
 
         driver = jnp.clip(gdeg - galpha, 0.0, None)
-        gpi = (gpi_max * (driver / (Km_pi + driver))
-               * _inhibition_product(jnp.array([px, X]), self.log_K_inhib[1]))
+        gpi = (
+            gpi_max
+            * (driver / (Km_pi + driver))
+            * _inhibition_product(jnp.array([px, X]), self.log_K_inhib[1])
+        )
 
         gmu = gdeg - gpi - galpha
 
@@ -103,7 +122,9 @@ class OptFedModule(UserReactionModule):
 
         RAW_rates = jnp.array([q_biomass, q_glucose, q_product])
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.scale_modeled_BiologicalOde_rates(RAW_rates),
+            SCL_modeled_BiologicalOde_rates=self.scale_modeled_BiologicalOde_rates(
+                RAW_rates
+            ),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
         )
@@ -126,8 +147,10 @@ def estimate_all_scales(runtime_data, target_names, config):
     rhs = runtime_data.rhs_ode
     store = runtime_data.controls_store
     n_processes = len(runtime_data.process_order)
-    span = max(end - start for start, end in
-              (runtime_data.time_bounds(i) for i in range(n_processes)))
+    span = max(
+        end - start
+        for start, end in (runtime_data.time_bounds(i) for i in range(n_processes))
+    )
 
     def max_abs_state(name):
         best = 0.0
@@ -157,23 +180,36 @@ def estimate_all_scales(runtime_data, target_names, config):
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(
-            [rmc_scale[n[2:]] / (biomass * span) for n in rhs.name_modeled_rates]),
+            [rmc_scale[n[2:]] / (biomass * span) for n in rhs.name_modeled_rates]
+        ),
         SCALE_V_in_cumulative=jnp.asarray(
-            max(runtime_data.initial_volume(i) for i in range(n_processes))),
+            max(runtime_data.initial_volume(i) for i in range(n_processes))
+        ),
         SCALE_modeled_Inflows_cumulative=empty,
         SCALE_modeled_Inflows_rates=empty,
         SCALE_modeled_Outflows_cumulative=empty,
         SCALE_modeled_Outflows_rates=empty,
         SCALE_controlled_Inflows_cumulative=jnp.asarray(
-            controlled_axis_scale("eval_controlled_Inflows_cumulative", n_fvc)) if n_fvc else empty,
+            controlled_axis_scale("eval_controlled_Inflows_cumulative", n_fvc)
+        )
+        if n_fvc
+        else empty,
         SCALE_controlled_Inflows_rates=jnp.asarray(
-            controlled_axis_scale("eval_controlled_Inflows_rates", n_fvc)) if n_fvc else empty,
+            controlled_axis_scale("eval_controlled_Inflows_rates", n_fvc)
+        )
+        if n_fvc
+        else empty,
         SCALE_controlled_Outflows_cumulative=empty,
         SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=jnp.asarray(
-            controlled_axis_scale("eval_controlled_PVs", n_pv)) if n_pv else empty,
+            controlled_axis_scale("eval_controlled_PVs", n_pv)
+        )
+        if n_pv
+        else empty,
         SCALE_controlled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0
+        ),
         SCALE_modeled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0
+        ),
     )

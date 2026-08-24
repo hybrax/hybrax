@@ -34,7 +34,10 @@ from hybrax.format import (
 )
 from hybrax.format.inspect import _collect_process_panels
 from hybrax.format.serialization import load_process_collection, save_process_collection
-from hybrax.format.splines import build_backtransform_spline, build_pseudobatch_transform
+from hybrax.format.splines import (
+    build_backtransform_spline,
+    build_pseudobatch_transform,
+)
 
 
 def _ts(times, values):

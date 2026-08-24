@@ -27,19 +27,23 @@ from hybrax.format import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _ts(timepoints, values):
     return TimeSeries(times=jnp.array(timepoints), values=jnp.array(values))
 
 
 def _make_process():
-    ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
+    ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
     rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts)
     return BioProcess(
         metadata=BioProcessMetadata(name="test", process_type="batch"),
-        time_axis=TimeAxis(unit="hours", start=0.0, end=2.0, time_reference="inoculation"),
+        time_axis=TimeAxis(
+            unit="hours", start=0.0, end=2.0, time_reference="inoculation"
+        ),
         volume=Volume(initial_volume=1.0, unit="L"),
-        reactor_medium=ReactorMedium(name="medium", density=1.0, density_unit="kg/L",
-                                     components={"biomass": rc}),
+        reactor_medium=ReactorMedium(
+            name="medium", density=1.0, density_unit="kg/L", components={"biomass": rc}
+        ),
     )
 
 
@@ -47,8 +51,9 @@ def _make_process():
 # JAX array storage in dataclasses
 # ---------------------------------------------------------------------------
 
+
 def test_timeseries_stores_jax_arrays():
-    ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
+    ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
     assert isinstance(ts.times, jnp.ndarray)
     assert isinstance(ts.values, jnp.ndarray)
     assert ts.times.shape == (3,)
@@ -56,19 +61,19 @@ def test_timeseries_stores_jax_arrays():
 
 
 def test_reactor_component_stores_timeseries():
-    ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
+    ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
     rc = ReactorMediumComponent(name="biomass", unit="g/L", concentration=ts)
     assert isinstance(rc.concentration.values, jnp.ndarray)
 
 
 def test_jax_operations_on_timeseries_values():
-    ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
+    ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
     mean_val = jnp.mean(ts.values)
     assert float(mean_val) == pytest.approx((0.1 + 0.5 + 1.0) / 3, rel=1e-5)
 
 
 def test_jax_operations_on_timepoints():
-    ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
+    ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
     diffs = jnp.diff(ts.times)
     assert jnp.all(diffs > 0)
 
@@ -77,8 +82,9 @@ def test_jax_operations_on_timepoints():
 # JAX transformations on arrays extracted from dataclasses
 # ---------------------------------------------------------------------------
 
+
 def test_jit_on_timeseries_values():
-    ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
+    ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
 
     @jax.jit
     def compute_mean(values):
@@ -89,7 +95,7 @@ def test_jit_on_timeseries_values():
 
 
 def test_jit_on_multiple_arrays():
-    ts = _ts([0., 1., 2., 3.], [0.0, 0.5, 1.0, 1.5])
+    ts = _ts([0.0, 1.0, 2.0, 3.0], [0.0, 0.5, 1.0, 1.5])
 
     @jax.jit
     def trapezoid_integral(timepoints, values):
@@ -100,10 +106,10 @@ def test_jit_on_multiple_arrays():
 
 
 def test_grad_on_timeseries_values():
-    ts = _ts([0., 1., 2.], [0.1, 0.5, 1.0])
+    ts = _ts([0.0, 1.0, 2.0], [0.1, 0.5, 1.0])
 
     def sum_fn(values):
-        return jnp.sum(values ** 2)
+        return jnp.sum(values**2)
 
     grad_fn = jax.grad(sum_fn)
     grad = grad_fn(ts.values)
@@ -113,10 +119,12 @@ def test_grad_on_timeseries_values():
 
 def test_vmap_on_timeseries():
     # Create a batch of values and use vmap
-    batch_values = jnp.stack([
-        jnp.array([0.1, 0.5, 1.0]),
-        jnp.array([0.2, 0.6, 1.2]),
-    ])
+    batch_values = jnp.stack(
+        [
+            jnp.array([0.1, 0.5, 1.0]),
+            jnp.array([0.2, 0.6, 1.2]),
+        ]
+    )
 
     @jax.vmap
     def compute_max(values):
@@ -131,6 +139,7 @@ def test_vmap_on_timeseries():
 # ---------------------------------------------------------------------------
 # JAX with BioProcess data extraction
 # ---------------------------------------------------------------------------
+
 
 def test_extract_and_operate_on_bioprocess_data():
     process = _make_process()

@@ -278,7 +278,7 @@ class TimeSeries(eqx.Module):
         if self.breaks is None or self.coeffs is None:
             return None
         return PPoly(self.breaks, self.coeffs, continuity_side=self.continuity_side)
-    
+
     def lin_interp(self, t):
         """Linearly interpolate the discrete samples at time ``t``."""
         if self.times is None or self.values is None:

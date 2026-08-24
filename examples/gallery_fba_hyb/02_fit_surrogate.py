@@ -21,12 +21,14 @@ n = (n_X, n_M, n_A, n_S). q_glc is analytic (= -qG exactly, by construction of
 EX_ac_e, EX_succ_e. Its output, 02_surrogate_body.txt, is the literal
 `surrogate_fba` body pasted into fba_hyb_custom.py and pls_dfba_custom.py.
 """
+
 import sys
 import numpy as np
 import pandas as pd
 import scipy.optimize
 import jax
 import jax.numpy as jnp
+
 jax.config.update("jax_enable_x64", True)
 
 C_RAMP = 1.5
@@ -57,7 +59,9 @@ def load():
 
 def canonical_split(n_rows):
     key = jax.random.PRNGKey(13)
-    ID = jax.random.choice(key, n_rows, shape=(int(n_rows * VALIDATION_SPLIT),), replace=False)
+    ID = jax.random.choice(
+        key, n_rows, shape=(int(n_rows * VALIDATION_SPLIT),), replace=False
+    )
     ID = np.asarray(ID)
     valid = np.zeros(n_rows, bool)
     valid[ID] = True
@@ -89,7 +93,9 @@ def nmae(y, p):
 
 
 def fit_flux(g, N, y, tr, d, n_restarts, seed):
-    ytr = jnp.asarray(y[tr]); gtr = jnp.asarray(g[tr]); Ntr = jnp.asarray(N[tr])
+    ytr = jnp.asarray(y[tr])
+    gtr = jnp.asarray(g[tr])
+    Ntr = jnp.asarray(N[tr])
     ay = jnp.abs(ytr)
     sc = float(np.mean(np.abs(y[tr]))) + 1e-12
     floor = max(float(np.percentile(np.abs(y[tr]), 5)), 0.02 * sc)
@@ -114,7 +120,10 @@ def fit_flux(g, N, y, tr, d, n_restarts, seed):
         nonlocal best, best_loss
         try:
             r = scipy.optimize.minimize(
-                vg, Z0, jac=True, method="L-BFGS-B",
+                vg,
+                Z0,
+                jac=True,
+                method="L-BFGS-B",
                 options={"maxiter": 3000, "maxfun": 6000, "ftol": 1e-15, "gtol": 1e-12},
             )
         except Exception:
@@ -124,7 +133,20 @@ def fit_flux(g, N, y, tr, d, n_restarts, seed):
 
     num = lambda: np.concatenate([rng.normal(0, 1, 4), [rng.normal(0, 0.3)]])
     den = lambda: np.concatenate([rng.normal(0.3, 0.6, 4), [rng.normal(0.5, 0.5)]])
-    run(np.concatenate([np.zeros(4), [0.1], np.zeros(4), [0.1], np.zeros(4), [1.0], np.zeros(4), [1.0]]))
+    run(
+        np.concatenate(
+            [
+                np.zeros(4),
+                [0.1],
+                np.zeros(4),
+                [0.1],
+                np.zeros(4),
+                [1.0],
+                np.zeros(4),
+                [1.0],
+            ]
+        )
+    )
     for _ in range(n_restarts):
         run(np.concatenate([num(), num(), den(), den()]))
     return best
@@ -138,7 +160,9 @@ def main():
 
     params = {}
     for nm in FIT_FLUXES:
-        Z = fit_flux(g, N, Y[nm], tr, DELTA[nm], N_RESTARTS, seed=abs(hash(nm)) % 997 + 1)
+        Z = fit_flux(
+            g, N, Y[nm], tr, DELTA[nm], N_RESTARTS, seed=abs(hash(nm)) % 997 + 1
+        )
         params[nm] = Z
         print(f"  fit {nm}")
 
@@ -151,21 +175,31 @@ def main():
 
     pv = predict_all(va)
     print("\n" + "=" * 70)
-    print(f"{'flux':5} | {'R2_all':>8} {'NMAE_all':>9} {'R2_low10':>9} {'NMAE_low10':>11}")
+    print(
+        f"{'flux':5} | {'R2_all':>8} {'NMAE_all':>9} {'R2_low10':>9} {'NMAE_low10':>11}"
+    )
     print("-" * 70)
     for nm in FIT_FLUXES:
-        y = Y[nm][va]; p = pv[nm]
-        thr = np.percentile(np.abs(y), 10); m = np.abs(y) <= thr
-        print(f"{nm:5} | {r2(y, p):8.4f} {nmae(y, p):9.4f} {r2(y[m], p[m]):9.4f} {nmae(y[m], p[m]):11.4f}")
+        y = Y[nm][va]
+        p = pv[nm]
+        thr = np.percentile(np.abs(y), 10)
+        m = np.abs(y) <= thr
+        print(
+            f"{nm:5} | {r2(y, p):8.4f} {nmae(y, p):9.4f} {r2(y[m], p[m]):9.4f} {nmae(y[m], p[m]):11.4f}"
+        )
 
     # Boundedness certificate over the physical sampling box.
-    rng2 = np.random.default_rng(0); NB = 200000
+    rng2 = np.random.default_rng(0)
+    NB = 200000
     BOX_LO = np.array([0.5, 0.0, 0.0, 0.0, 0.0])
     BOX_HI = np.array([20.0, 2.0, 2.0, 2.0, 2.0])
     U = rng2.uniform(size=(NB, 5)) * (BOX_HI - BOX_LO) + BOX_LO
-    gb = jnp.asarray(U[:, 0] / AVG_QG); Nb = jnp.asarray(U[:, 1:5] / AVG_N)
+    gb = jnp.asarray(U[:, 0] / AVG_QG)
+    Nb = jnp.asarray(U[:, 1:5] / AVG_N)
     print("-" * 70)
-    print(f"{'flux':5} | {'max|flux| box':>14} {'max|flux| data':>15} {'overshoot':>11}")
+    print(
+        f"{'flux':5} | {'max|flux| box':>14} {'max|flux| data':>15} {'overshoot':>11}"
+    )
     min_den = np.inf
     all_ok = True
     for nm in FIT_FLUXES:
@@ -177,14 +211,21 @@ def main():
         ratio = m_box / m_dat if m_dat > 0 else np.inf
         ok = ratio <= 3.0
         all_ok &= ok
-        print(f"{nm:5} | {m_box:14.1f} {m_dat:15.1f} {ratio:10.1f}x | {'OK' if ok else 'MISS'}")
+        print(
+            f"{nm:5} | {m_box:14.1f} {m_dat:15.1f} {ratio:10.1f}x | {'OK' if ok else 'MISS'}"
+        )
     print("-" * 70)
     print(f"pole-free: min denominator over box = {min_den:.5f}")
     print(f"ALL PASS: {all_ok}")
 
-    np.savez("02_surrogate_params.npz", AVG_QG=AVG_QG, AVG_N=AVG_N,
-             DELTA=np.array([DELTA[k] for k in FIT_FLUXES]),
-             fit_fluxes=np.array(FIT_FLUXES), **{f"Z_{k}": params[k] for k in FIT_FLUXES})
+    np.savez(
+        "02_surrogate_params.npz",
+        AVG_QG=AVG_QG,
+        AVG_N=AVG_N,
+        DELTA=np.array([DELTA[k] for k in FIT_FLUXES]),
+        fit_fluxes=np.array(FIT_FLUXES),
+        **{f"Z_{k}": params[k] for k in FIT_FLUXES},
+    )
 
     def _fac(w):
         names = ["n_X", "n_M", "n_A", "n_S"]
@@ -192,8 +233,11 @@ def main():
         return " ".join(terms).lstrip("+").strip()
 
     lines = [
-        "qG  = x_data[0]", "n_X = x_data[1]", "n_M = x_data[2]",
-        "n_A = x_data[3]", "n_S = x_data[4]",
+        "qG  = x_data[0]",
+        "n_X = x_data[1]",
+        "n_M = x_data[2]",
+        "n_A = x_data[3]",
+        "n_S = x_data[4]",
         "pos = lambda B: 0.5 * (B + jnp.sqrt(B * B + 1.5))",
         f"q_glc = {-AVG_QG:.8f} * qG",
     ]

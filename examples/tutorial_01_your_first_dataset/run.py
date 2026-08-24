@@ -18,10 +18,18 @@ df = pd.read_csv(HERE / "offline.csv")
 run_1 = (
     df[df["run"] == "run_1"]
     .sort_values("time_h")
-    .rename(columns={"time_h": "time", "biomass_gL": "biomass",
-                      "glucose_gL": "glucose", "product_gL": "product"})
+    .rename(
+        columns={
+            "time_h": "time",
+            "biomass_gL": "biomass",
+            "glucose_gL": "glucose",
+            "product_gL": "product",
+        }
+    )
 )
-print(len(run_1), "samples from", run_1["time"].iloc[0], "to", run_1["time"].iloc[-1], "h")
+print(
+    len(run_1), "samples from", run_1["time"].iloc[0], "to", run_1["time"].iloc[-1], "h"
+)
 
 # --- 1.3 Concentrations become ReactorMediumComponents ----------------------
 components = {
@@ -85,5 +93,11 @@ reloaded = hxf.serialization.load_process_collection(out / "data.json")
 run = reloaded.processes["run_1"]
 print("runs        :", list(reloaded.processes))
 print("components  :", list(run.reactor_medium.components))
-print("first 3 t   :", np.asarray(run.reactor_medium.components["biomass"].concentration.times)[:3])
-print("first 3 X   :", np.asarray(run.reactor_medium.components["biomass"].concentration.values)[:3])
+print(
+    "first 3 t   :",
+    np.asarray(run.reactor_medium.components["biomass"].concentration.times)[:3],
+)
+print(
+    "first 3 X   :",
+    np.asarray(run.reactor_medium.components["biomass"].concentration.values)[:3],
+)
