@@ -2035,33 +2035,14 @@ def train_collection(
                     mean_loss=float(loss),
                     holdout_loss=holdout_loss,
                 )
+                _write_training_plots(
+                    history=run_log.snapshot(),
+                    holdout_per_target_by_step=holdout_per_target_so_far,
+                    output_dir=Path(cfg.checkpoint_dir).parent,
+                    step=step,
+                )
 
         history = run_log.finalize()
-
-        if cfg.checkpoint_dir is not None and history["mean_loss_by_step"]:
-            try:
-                plot_loss_curve(
-                    history["mean_loss_by_step"],
-                    Path(cfg.checkpoint_dir).parent / "loss_curve.png",
-                    title=f"Training loss (through step {total_updates})",
-                    per_target_loss_by_step=history["per_target_loss_by_step"],
-                    target_names=history["target_names"],
-                    monitor_loss_by_step=history["holdout_loss_by_step"] or None,
-                    monitor_per_target_by_step=holdout_per_target_so_far or None,
-                    monitor_label=history["holdout_label"],
-                )
-            except Exception:
-                # Training is complete; an optional PNG must not fail the run.
-                logger.exception("failed to write final loss curve")
-
-            try:
-                plot_grad_norm_curve(
-                    history["grad_norm_by_step"],
-                    Path(cfg.checkpoint_dir).parent / "grad_norm_curve.png",
-                    title=f"Gradient norm (through step {total_updates})",
-                )
-            except Exception:
-                logger.exception("failed to write final gradient norm curve")
 
     return TrainHarnessResult(
         trained_wrapper=wrapper,
@@ -2071,6 +2052,39 @@ def train_collection(
         holdout_per_target_by_step=holdout_per_target_so_far,
         **history,
     )
+
+
+def _write_training_plots(
+    *,
+    history: dict[str, Any],
+    holdout_per_target_by_step: dict[int, tuple[float, ...]],
+    output_dir: Path,
+    step: int,
+) -> None:
+    """Refresh the run-level training plots after a checkpoint write."""
+    try:
+        plot_loss_curve(
+            history["mean_loss_by_step"],
+            output_dir / "loss_curve.png",
+            title=f"Training loss (through step {step})",
+            per_target_loss_by_step=history["per_target_loss_by_step"],
+            target_names=history["target_names"],
+            monitor_loss_by_step=history["holdout_loss_by_step"] or None,
+            monitor_per_target_by_step=holdout_per_target_by_step or None,
+            monitor_label=history["holdout_label"],
+        )
+    except Exception:
+        # A diagnostic PNG must not fail an otherwise valid training run.
+        logger.exception("failed to write loss curve at checkpoint")
+
+    try:
+        plot_grad_norm_curve(
+            history["grad_norm_by_step"],
+            output_dir / "grad_norm_curve.png",
+            title=f"Gradient norm (through step {step})",
+        )
+    except Exception:
+        logger.exception("failed to write gradient norm curve at checkpoint")
 
 
 @dataclass(frozen=True)

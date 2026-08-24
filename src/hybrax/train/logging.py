@@ -317,13 +317,17 @@ class RunLogger:
     def finalize(self) -> dict[str, Any]:
         if self._jsonl_file is not None:
             self._jsonl_file.flush()
-        return {
-            **{
-                key: tuple(value) if isinstance(value, list) else value
-                for key, value in self._history.items()
-            },
-            "target_names": self._target_names,
+        return self.snapshot()
+
+    def snapshot(self) -> dict[str, Any]:
+        """Return a snapshot of the history recorded so far."""
+        history = {
+            key: tuple(value) if isinstance(value, list) else value
+            for key, value in self._history.items()
         }
+        history["holdout_loss_by_step"] = dict(history["holdout_loss_by_step"])
+        history["target_names"] = self._target_names
+        return history
 
     def close(self) -> None:
         if self._jsonl_file is not None:
