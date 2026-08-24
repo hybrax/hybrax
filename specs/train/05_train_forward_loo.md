@@ -69,7 +69,7 @@ in.
 - **Logging** ([`logging.py`](../../src/hybrax/train/logging.py), `RunLogger`): every update
   writes a console row and `metrics.csv` row with epoch, batch, and sample
   counters. Epoch mean loss and training-only duration appear on epoch-end rows.
-  The completed run also writes final loss and global gradient-norm curves.
+  Every checkpoint refreshes the run-level loss and global gradient-norm curves.
 - **Holdout set (LOO only):** evaluated whenever a checkpoint is written. It is
   diagnostic and never drives optimizer updates.
 
@@ -219,7 +219,8 @@ optional [`loo`](../../src/hybrax/train/run_config.py) section. The CLI is
   `grad_norm_curve.png`). The
   default `none` scope skips prediction exports; `parents` includes every evaluated
   original process, including the holdout. Aggregate metrics remain holdout-only.
-  Checkpoints do not contain prediction exports or plots.
+  Each fold refreshes its run-level loss and gradient-norm plots at every
+  checkpoint. Checkpoint directories do not contain prediction exports or plots.
 - **Aggregation** ([`LOOResult`](../../src/hybrax/train/loo.py)): the orchestrator reads each
   fold's `losses.csv` back from disk and writes `loo_summary.csv`,
   `loo_aggregate.json`, and `loo_loss_curves.png` (holdout metrics averaged over

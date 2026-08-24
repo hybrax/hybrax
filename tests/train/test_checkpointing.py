@@ -317,7 +317,7 @@ def test_train_collection_keeps_periodic_and_final_checkpoints(tmp_path: Path):
     assert not (checkpoints / "best").exists()
 
 
-def test_training_writes_only_final_training_plots(tmp_path: Path):
+def test_training_writes_run_level_training_plots(tmp_path: Path):
     checkpoints = tmp_path / "checkpoints"
     _run_train(checkpoint_dir=checkpoints, checkpoint_every=1, epochs=1)
 
@@ -327,14 +327,38 @@ def test_training_writes_only_final_training_plots(tmp_path: Path):
     assert not (tmp_path / "predictions.csv").exists()
 
 
+def test_training_refreshes_plots_at_every_checkpoint(monkeypatch, tmp_path: Path):
+    plotted_loss_steps = []
+    plotted_grad_norm_steps = []
+
+    def record_loss_plot(losses, *_args, **_kwargs):
+        plotted_loss_steps.append(len(losses))
+
+    def record_grad_norm_plot(grad_norms, *_args, **_kwargs):
+        plotted_grad_norm_steps.append(len(grad_norms))
+
+    monkeypatch.setattr("hybrax.train.harness.plot_loss_curve", record_loss_plot)
+    monkeypatch.setattr(
+        "hybrax.train.harness.plot_grad_norm_curve", record_grad_norm_plot
+    )
+
+    _run_train(checkpoint_dir=tmp_path / "checkpoints", checkpoint_every=1, epochs=3)
+
+    assert plotted_loss_steps == [1, 2, 3]
+    assert plotted_grad_norm_steps == [1, 2, 3]
+
+
 @pytest.mark.parametrize(
     ("plotter", "message"),
     [
-        ("plot_loss_curve", "failed to write final loss curve"),
-        ("plot_grad_norm_curve", "failed to write final gradient norm curve"),
+        ("plot_loss_curve", "failed to write loss curve at checkpoint"),
+        (
+            "plot_grad_norm_curve",
+            "failed to write gradient norm curve at checkpoint",
+        ),
     ],
 )
-def test_training_survives_final_plot_failure(
+def test_training_survives_checkpoint_plot_failure(
     monkeypatch, tmp_path, caplog, plotter, message
 ):
     def fail_plot(*_args, **_kwargs):

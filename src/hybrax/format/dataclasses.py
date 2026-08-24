@@ -309,10 +309,6 @@ def _check_outflow_retention(
     return errors
 
 
-# Union type alias for convenience
-VolumeChange = Union[Inflow, Outflow]
-
-
 @dataclass
 class Volume:
     """Container for all volume-related information in a process.
