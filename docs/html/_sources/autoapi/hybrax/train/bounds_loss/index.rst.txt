@@ -1,0 +1,93 @@
+hybrax.train.bounds_loss
+========================
+
+.. py:module:: hybrax.train.bounds_loss
+
+.. autoapi-nested-parse::
+
+   Optional state/rate bound-violation penalty on top of the default measurement loss.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.bounds_loss.BoundDeclaration
+   hybrax.train.bounds_loss.BoundRecord
+   hybrax.train.bounds_loss.BoundSnapshot
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.bounds_loss.BoundsViolationLossModule
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.bounds_loss.bound_records_from_collection
+   hybrax.train.bounds_loss.collect_bound_records
+
+
+Module Contents
+---------------
+
+.. py:class:: BoundsViolationLossModule(*, target_names, bound_records, weight, dense_grid_n=None)
+
+   Bases: :py:obj:`hybrax.train.defaults.DefaultLossModule`
+
+
+   Default measurement MSE plus hybrax.format state and rate bound penalties.
+
+   Violations are measured in RAW physical space and normalized by the matching
+   offset-free derivative scale. By default they are evaluated on real
+   measurement-grid rows; ``dense_grid_n`` opts into the deduplicated union of
+   measurement and dense-grid rows. Each finite bound side becomes one named
+   loss term.
+
+
+   .. py:attribute:: bound_records
+      :type:  tuple[tuple[str, str, int, float, float], ...]
+
+
+   .. py:property:: dense_grid_n
+      :type: int | None
+
+
+      Dense-grid opt-in set at construction; see :attr:`UserLossModule.dense_grid_n`.
+
+
+   .. py:property:: loss_names
+      :type: tuple[str, ...]
+
+
+      Measurement target names followed by every bound record's label.
+
+
+   .. py:attribute:: weight
+      :type:  float
+
+
+.. py:function:: bound_records_from_collection(collection)
+
+   Resolve consistent bound-loss records from represented parents.
+
+
+.. py:function:: collect_bound_records(snapshots)
+
+   Validate per-process bound declarations when bounds loss is requested.
+
+
+.. py:data:: BoundDeclaration
+
+.. py:data:: BoundRecord
+
+.. py:data:: BoundSnapshot
+

@@ -1,0 +1,725 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Contributors" href="../contributors.html"><link rel="prev" title="Silent failures" href="../troubleshooting/silent_failures.html">
+        <link rel="prefetch" href="../_static/hybrax_logo.png" as="image">
+
+    <link rel="shortcut icon" href="../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>Design Rationale - Bioprocess Modeling with Hybrax</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=98a1085a" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #eeffcc;
+  --color-code-foreground: black;
+  --color-brand-primary: #2563eb;
+  --color-brand-content: #2563eb;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../index.html"><div class="brand">Bioprocess Modeling with Hybrax</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../_static/hybrax_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">Hybrax Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../start/why.html">Why this exists</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../start/install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../start/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../start/concepts.html">Concepts and Vocabulary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../start/find.html">Which page do I need?</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/01_your_first_dataset.html">1. Import your Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/02_look_at_it.html">2. View your Dataset</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/03_train.html">3. Train a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/04_your_first_custom_py.html">4. Custom Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../tutorials/05_predict.html">5. Predict Processes</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.format guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../format/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../format/data_model.html">The Data Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../format/load_and_save.html">Loading and saving</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../format/validate_and_inspect.html">Validating and inspecting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../format/volume_feeds_events.html">Volume, feeds and events</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../format/time_series_and_splines.html">Time series and splines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../format/limits_and_gotchas.html">Limits and gotchas</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../format/further_reading.html">Further reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../train/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../train/config.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../train/hooks_cheatsheet.html">Customization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../train/prepare.html">Prepare</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../train/train.html">Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../train/reaction_module.html">The Reaction Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../train/loss_module.html">The Loss Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../train/scaling.html">Scaling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../train/forward.html">Forward</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../train/loo.html">Cross-Validation (LOO)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../train/save_load_predict.html">The Python API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../train/further_reading.html">Further Reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/mechanistic_rates.html">Mechanistic models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/dense_loss.html">Custom losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/stateful.html">Stateful models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/freezing.html">Freezing parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/augmentation.html">Augmentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/gaussian_process.html">A Gaussian-process model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/fba_hyb.html">FBA-Hyb</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/pls_dfba.html">PLS-dFBA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/kan.html">A KAN model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/optfed.html">OptFed</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/modeled_pv.html">A modeled process variable</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../troubleshooting/errors.html">Errors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../troubleshooting/silent_failures.html">Silent failures</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Under the hood</span></p>
+<ul class="current">
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Design Rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributors.html">Contributors</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../autoapi/hybrax/format/index.html">hybrax.format</a><input aria-label="Toggle navigation of hybrax.format" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/dataclasses/index.html">hybrax.format.dataclasses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../autoapi/hybrax/format/time_series/index.html">hybrax.format.time_series</a><input aria-label="Toggle navigation of hybrax.format.time_series" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/hybrax/format/time_series/constants/index.html">hybrax.format.time_series.constants</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/hybrax/format/time_series/grid_utils/index.html">hybrax.format.time_series.grid_utils</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/hybrax/format/time_series/io/index.html">hybrax.format.time_series.io</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/hybrax/format/time_series/ppoly/index.html">hybrax.format.time_series.ppoly</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/hybrax/format/time_series/spline_ops/index.html">hybrax.format.time_series.spline_ops</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../autoapi/hybrax/format/time_series/timeseries/index.html">hybrax.format.time_series.timeseries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/validate/index.html">hybrax.format.validate</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../autoapi/hybrax/train/index.html">hybrax.train</a><input aria-label="Toggle navigation of hybrax.train" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/augmentation/index.html">hybrax.train.augmentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/augmentation_plot/index.html">hybrax.train.augmentation_plot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/bounds_loss/index.html">hybrax.train.bounds_loss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/checkpointing/index.html">hybrax.train.checkpointing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/cli/index.html">hybrax.train.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/forward_plotting/index.html">hybrax.train.forward_plotting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/harness/index.html">hybrax.train.harness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/inspect/index.html">hybrax.train.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/logging/index.html">hybrax.train.logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/loo/index.html">hybrax.train.loo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/loo_metrics/index.html">hybrax.train.loo_metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/runtime_context/index.html">hybrax.train.runtime_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/serialization/index.html">hybrax.train.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/trainer/index.html">hybrax.train.trainer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../_sources/under_the_hood/design_rationale.md.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section class="tex2jax_ignore mathjax_ignore" id="design-rationale">
+<h1>Design Rationale<a class="headerlink" href="#design-rationale" title="Link to this heading">¶</a></h1>
+<p>This document explains the cross-cutting design decisions behind <strong>hybrax.format</strong> and
+<strong>hybrax.train</strong>. Individual module/topic docs reference these sections for context.</p>
+<p>Two halves form one stack:</p>
+<ul class="simple">
+<li><p><strong>hybrax.format</strong> owns the data model and the mechanistic right-hand side. It turns a
+bioprocess definition into JAX-compatible data structures and a differentiable ODE
+RHS (<code class="docutils literal notranslate"><span class="pre">build_rhs_ode(process)</span></code> → <code class="docutils literal notranslate"><span class="pre">RhsOde</span></code>), formalizing which species / feeds / process
+variables are <em>modeled</em> (dynamic states) vs <em>controlled</em> (driven by recorded signals).</p></li>
+<li><p><strong>hybrax.train</strong> consumes those structures and adds the training machinery: it lets you
+plug a neural / mechanistic <strong>reaction module</strong> and a <strong>loss module</strong> in via <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>
+hooks and runs the prepare → train → forward / loo pipeline on JAX + Diffrax + optax.
+hybrax.train never re-derives layout: <code class="docutils literal notranslate"><span class="pre">RhsOde</span></code> is the single source of truth for axis
+names and ordering.</p></li>
+</ul>
+<hr class="docutils" />
+<section id="shared-foundation-jax-first-architecture">
+<h2>Shared foundation: JAX-first architecture<a class="headerlink" href="#shared-foundation-jax-first-architecture" title="Link to this heading">¶</a></h2>
+<p>Both halves are built on <a class="reference external" href="https://github.com/google/jax">JAX</a> and
+<a class="reference external" href="https://github.com/patrick-kidger/equinox">Equinox</a> to support:</p>
+<ul class="simple">
+<li><p><strong>Automatic differentiation (AD):</strong> Gradient-based optimization of hybrid bioprocess
+models requires differentiating through ODE integration, spline evaluation, and loss
+computation. JAX’s <code class="docutils literal notranslate"><span class="pre">jax.grad</span></code> / <code class="docutils literal notranslate"><span class="pre">jax.value_and_grad</span></code> enable this end-to-end.</p></li>
+<li><p><strong>JIT compilation:</strong> <code class="docutils literal notranslate"><span class="pre">jax.jit</span></code> (or <code class="docutils literal notranslate"><span class="pre">eqx.filter_jit</span></code>) compiles Python functions to
+optimized XLA code, critical for the repeated forward solves in training loops.</p></li>
+<li><p><strong>Vectorization:</strong> <code class="docutils literal notranslate"><span class="pre">jax.vmap</span></code> allows batching over processes or parameter sets without
+manual loop code.</p></li>
+</ul>
+<p><strong>Why Equinox?</strong> Equinox provides <code class="docutils literal notranslate"><span class="pre">eqx.Module</span></code>, a frozen dataclass that registers as a
+JAX pytree. Objects like <code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code>, <code class="docutils literal notranslate"><span class="pre">ControlSplines</span></code>, <code class="docutils literal notranslate"><span class="pre">RhsOde</span></code>, and (in hybrax.train) the
+reaction module, loss module, controls store, and wrapper can be passed into and out of
+JIT-compiled functions without manual pytree registration. <code class="docutils literal notranslate"><span class="pre">eqx.filter_jit</span></code> automatically
+separates static (non-differentiable) fields from dynamic (array) leaves.</p>
+<p><strong>Constraints this introduces:</strong></p>
+<ul class="simple">
+<li><p>Array fields must be JAX arrays (<code class="docutils literal notranslate"><span class="pre">jnp.ndarray</span></code>), not plain NumPy.</p></li>
+<li><p>Python dicts with string keys are not natural JAX pytree leaves. The outer container
+classes (<code class="docutils literal notranslate"><span class="pre">BioProcess</span></code>, <code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code>, etc.) use standard Python <code class="docutils literal notranslate"><span class="pre">&#64;dataclass</span></code>
+rather than
+<code class="docutils literal notranslate"><span class="pre">eqx.Module</span></code> because they hold <code class="docutils literal notranslate"><span class="pre">Dict[str,</span> <span class="pre">...]</span></code> fields manipulated outside the JIT
+boundary. Only the inner numerical objects (e.g., <code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code>) need to be <code class="docutils literal notranslate"><span class="pre">eqx.Module</span></code>.</p></li>
+<li><p>Mutation is not allowed on <code class="docutils literal notranslate"><span class="pre">eqx.Module</span></code> instances (they are frozen). Use <code class="docutils literal notranslate"><span class="pre">eqx.tree_at</span></code>
+for functional updates.</p></li>
+</ul>
+</section>
+<hr class="docutils" />
+<section id="hybrax-format">
+<h2>hybrax.format<a class="headerlink" href="#hybrax-format" title="Link to this heading">¶</a></h2>
+<section id="hierarchical-data-model">
+<h3>1. Hierarchical data model<a class="headerlink" href="#hierarchical-data-model" title="Link to this heading">¶</a></h3>
+<p>Bioprocess experiments are organized in a three-level hierarchy. The top-level
+artifact (one file on disk) is always a <code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code>; <code class="docutils literal notranslate"><span class="pre">case_id</span></code>, <code class="docutils literal notranslate"><span class="pre">organism</span></code>
+and <code class="docutils literal notranslate"><span class="pre">citation</span></code> are optional fields on it, not a separate stricter type:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">BioProcessCollection</span>
+  <span class="o">-&gt;</span> <span class="n">BioProcess</span>       <span class="p">(</span><span class="n">one</span> <span class="n">experimental</span> <span class="n">run</span><span class="p">)</span>
+    <span class="o">-&gt;</span> <span class="n">Components</span>      <span class="p">(</span><span class="n">reactor</span> <span class="n">medium</span><span class="p">,</span> <span class="n">volume</span><span class="p">,</span> <span class="n">process</span> <span class="n">variables</span><span class="p">)</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p><strong>BioProcessCollection</strong> carries <code class="docutils literal notranslate"><span class="pre">case_id</span></code>/<code class="docutils literal notranslate"><span class="pre">organism</span></code>/<code class="docutils literal notranslate"><span class="pre">citation</span></code> when it represents
+one publication or experimental campaign (<code class="docutils literal notranslate"><span class="pre">case_id</span></code> is then the natural grouping for
+leave-one-process-out cross-validation), or leaves them <code class="docutils literal notranslate"><span class="pre">None</span></code> for raw or
+intermediate data that is not yet a full-fledged case study. Either way it’s the
+same type, the same file shape, the same save/load functions: <code class="docutils literal notranslate"><span class="pre">CaseStudy</span></code> and
+<code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code> used to be two separate classes with this exact split; they
+were merged once the split turned out to buy nothing but an extra conversion step at
+API boundaries that wanted the collection shape specifically.</p></li>
+<li><p><strong>BioProcess</strong> is a single fermentation run: time axis, volume operations, reactor
+medium concentrations, and process variables.</p></li>
+<li><p><strong>Components</strong> within a process are organized by physical role: <code class="docutils literal notranslate"><span class="pre">ReactorMedium</span></code>
+(concentration time series: biomass, substrates, products), <code class="docutils literal notranslate"><span class="pre">Volume</span></code> (all
+volume-change operations), and <code class="docutils literal notranslate"><span class="pre">ProcessVariable</span></code> (non-concentration signals: pH,
+temperature, dissolved oxygen, off-gas).</p></li>
+</ul>
+<p><strong>Why <code class="docutils literal notranslate"><span class="pre">Dict[str,</span> <span class="pre">...]</span></code> keyed by name?</strong> String-keyed dicts provide O(1) lookup by name,
+produce readable JSON, and make it easy to iterate over components. Lists would require
+linear search and lose the semantic naming.</p>
+</section>
+<section id="volume-as-a-first-class-concept">
+<h3>2. Volume as a first-class concept<a class="headerlink" href="#volume-as-a-first-class-concept" title="Link to this heading">¶</a></h3>
+<p>Volume is not a state variable, not a control input, and not a process variable. It is
+its own category because:</p>
+<ul class="simple">
+<li><p><strong>Multiple operations affect it:</strong> continuous feeds, bolus feeds, and sampling events,
+each with different media compositions and schedules.</p></li>
+<li><p><strong>It interacts with the ODE differently:</strong> each feed stream <code class="docutils literal notranslate"><span class="pre">k</span></code> contributes a dilution
+term <code class="docutils literal notranslate"><span class="pre">(f_k</span> <span class="pre">/</span> <span class="pre">V)</span> <span class="pre">*</span> <span class="pre">(C_in[k,i]</span> <span class="pre">-</span> <span class="pre">c_i)</span></code> for every species <code class="docutils literal notranslate"><span class="pre">i</span></code>, and volume itself evolves
+as <code class="docutils literal notranslate"><span class="pre">dV/dt</span> <span class="pre">=</span> <span class="pre">sum(f_k)</span></code>.</p></li>
+<li><p><strong>It carries composition metadata:</strong> each <code class="docutils literal notranslate"><span class="pre">Inflow</span></code> references a <code class="docutils literal notranslate"><span class="pre">FeedMedium</span></code>
+defining what enters the reactor; <code class="docutils literal notranslate"><span class="pre">Outflow</span></code> removes reactor contents at current
+concentrations.</p></li>
+</ul>
+<p>The <code class="docutils literal notranslate"><span class="pre">Volume</span></code> dataclass aggregates <code class="docutils literal notranslate"><span class="pre">initial_volume</span></code> and a dict of <code class="docutils literal notranslate"><span class="pre">VolumeChange</span></code> entries.
+Sign conventions are enforced: feeds are non-negative, samples are non-positive.</p>
+</section>
+<section id="timeseries-structure">
+<h3>3. TimeSeries structure<a class="headerlink" href="#timeseries-structure" title="Link to this heading">¶</a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> class (an <code class="docutils literal notranslate"><span class="pre">eqx.Module</span></code>) stores measured data as <code class="docutils literal notranslate"><span class="pre">times</span></code> and <code class="docutils literal notranslate"><span class="pre">values</span></code>
+arrays, and optionally carries fitted spline coefficients (<code class="docutils literal notranslate"><span class="pre">breaks</span></code>, <code class="docutils literal notranslate"><span class="pre">coeffs</span></code>,
+<code class="docutils literal notranslate"><span class="pre">segment_start_piece_idx</span></code>) for continuous-time interpolation.</p>
+<p><code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> itself is agnostic about whether its data represents continuous or discrete
+quantities, that semantic is set by the parent object (e.g., a <code class="docutils literal notranslate"><span class="pre">VolumeChange</span></code> with
+<code class="docutils literal notranslate"><span class="pre">is_continuous=True</span></code> uses it for a continuous flow profile; <code class="docutils literal notranslate"><span class="pre">is_continuous=False</span></code> means
+discrete event data such as bolus feeds or sampling, where fitting splines is not
+meaningful).</p>
+<p><strong>Why optional spline coefficients?</strong> The raw <code class="docutils literal notranslate"><span class="pre">times</span></code>/<code class="docutils literal notranslate"><span class="pre">values</span></code> are the experimental
+ground truth (needed for loss and validation); spline coefficients enable continuous-time
+evaluation during ODE integration without re-interpolating at each solver step. A
+<code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> can be spline-only in pseudobatch workflows where the original samples are no
+longer meaningful.</p>
+<p><strong>Why power-basis storage (not B-spline basis)?</strong> Power-basis polynomials
+<code class="docutils literal notranslate"><span class="pre">c[0]*h^3</span> <span class="pre">+</span> <span class="pre">c[1]*h^2</span> <span class="pre">+</span> <span class="pre">c[2]*h</span> <span class="pre">+</span> <span class="pre">c[3]</span></code> (with <code class="docutils literal notranslate"><span class="pre">h</span> <span class="pre">=</span> <span class="pre">t</span> <span class="pre">-</span> <span class="pre">t_break</span></code>) evaluate with Horner’s
+method in a few multiply-adds: simple, fast, and clean to vectorize in JAX. B-spline
+basis evaluation requires recursive knot-vector lookups that are harder to vectorize.</p>
+</section>
+<section id="pseudobatch-normalization">
+<h3>4. Pseudobatch normalization<a class="headerlink" href="#pseudobatch-normalization" title="Link to this heading">¶</a></h3>
+<p>Fed-batch processes change volume over time, so observed concentrations are affected by
+dilution in addition to biological activity. The <strong>pseudobatch transform</strong>
+(Hesselberg-Thomsen et al., 2024) converts measured concentrations <code class="docutils literal notranslate"><span class="pre">c(t)</span></code> to
+<code class="docutils literal notranslate"><span class="pre">pseudobatch_concentration(t)</span></code>: what concentrations <em>would have been</em> in a batch process
+with the same biological activity:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pseudobatch_concentration</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">=</span> <span class="n">c</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">*</span> <span class="n">ADF</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">-</span> <span class="n">feed_correction</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>where <code class="docutils literal notranslate"><span class="pre">ADF(t)</span></code> is the accumulative dilution factor (current / initial volume) and
+<code class="docutils literal notranslate"><span class="pre">feed_correction(t)</span></code> accounts for mass added by feed streams. This yields smoother curves
+(better cubic-spline fits), enables fair comparison across batch and fed-batch processes,
+and supports spline segmentation at bolus-event discontinuities. ADF and feed correction
+are piecewise-constant and must be evaluated with <strong>step</strong> (nearest-neighbor)
+interpolation, not linear, to preserve correct discontinuity behavior in the backtransform.</p>
+</section>
+<section id="validation-first-approach">
+<h3>5. Validation-first approach<a class="headerlink" href="#validation-first-approach" title="Link to this heading">¶</a></h3>
+<p>Bioprocess data comes from diverse sources, with common errors like negative feed volumes,
+missing biomass component, mismatched times/values lengths, feed media that omit reactor
+species, or measurement times coinciding with sampling events. hybrax.format validates early
+and explicitly. All validation functions return <code class="docutils literal notranslate"><span class="pre">(bool,</span> <span class="pre">str)</span></code> tuples, so callers can
+collect <strong>all</strong> issues in one pass and present a comprehensive report rather than failing
+on the first error. <code class="docutils literal notranslate"><span class="pre">validate_process()</span></code> runs single-process checks;
+<code class="docutils literal notranslate"><span class="pre">validate_for_publication()</span></code> adds cross-process consistency checks.</p>
+</section>
+</section>
+<hr class="docutils" />
+<section id="hybrax-train">
+<h2>hybrax.train<a class="headerlink" href="#hybrax-train" title="Link to this heading">¶</a></h2>
+<section id="built-on-hybrax-format-jax-diffrax-equinox-optax">
+<h3>1. Built on hybrax.format, JAX, Diffrax, Equinox, optax<a class="headerlink" href="#built-on-hybrax-format-jax-diffrax-equinox-optax" title="Link to this heading">¶</a></h3>
+<p>hybrax.train consumes the data structures and mechanistic RHS from hybrax.format and adds training:</p>
+<ul class="simple">
+<li><p><strong>hybrax.format</strong> owns the data model and <code class="docutils literal notranslate"><span class="pre">build_rhs_ode(process)</span></code> → <code class="docutils literal notranslate"><span class="pre">RhsOde</span></code> (the single
+source of truth for axis names and ordering; hybrax.train never re-derives layout).</p></li>
+<li><p><strong>JAX</strong> provides autodiff + JIT for the repeated forward solves.</p></li>
+<li><p><strong>Diffrax</strong> integrates the ODE with an adaptive solver and adjoint backprop.</p></li>
+<li><p><strong>Equinox</strong> makes the reaction module, loss module, controls store, and wrapper JAX
+pytrees that pass through <code class="docutils literal notranslate"><span class="pre">eqx.filter_jit</span></code> cleanly.</p></li>
+<li><p><strong>optax</strong> supplies the optimizer (<code class="docutils literal notranslate"><span class="pre">adam</span></code>/<code class="docutils literal notranslate"><span class="pre">sgd</span></code>) and gradient clipping.</p></li>
+</ul>
+</section>
+<section id="scaled-scl-vs-physical-raw-space">
+<h3>2. Scaled (SCL) vs physical (RAW) space<a class="headerlink" href="#scaled-scl-vs-physical-raw-space" title="Link to this heading">¶</a></h3>
+<p>Neural-ODE training is numerically fragile when state magnitudes span orders of magnitude
+(biomass ~g/L, volume ~L, cumulative feed ~L). hybrax.train integrates the ODE in <strong>scaled
+space (SCL)</strong> so every axis is O(1) (keeping gradients well-conditioned) then converts
+to <strong>physical space (RAW)</strong> only where the chemistry needs real units.</p>
+<p>Scaling is a single linear factor per semantic axis (15 <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code> axes on
+<code class="docutils literal notranslate"><span class="pre">EstimatedScales</span></code>, covering states, rates, cumulative volumes, feed compositions, and
+process variables). The integrated SCL state vector is</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">SCL_state</span> <span class="o">=</span> <span class="p">[</span> <span class="n">modeled_RMCs</span> <span class="o">|</span> <span class="n">modeled_PVs</span> <span class="o">|</span> <span class="n">V</span> <span class="o">|</span> <span class="n">modeled_Inflows_cumulative</span> <span class="o">|</span> <span class="n">modeled_Outflows_cumulative</span> <span class="p">]</span>
+</pre></div>
+</div>
+<p>Because scaling is linear, the same factor converts a value and its time-derivative
+(<code class="docutils literal notranslate"><span class="pre">d(x/k)/dt</span> <span class="pre">=</span> <span class="pre">(dx/dt)/k</span></code>), so <code class="docutils literal notranslate"><span class="pre">scale_*</span></code> / <code class="docutils literal notranslate"><span class="pre">unscale_*</span></code> work for states and rates alike.
+<strong>Single source of truth:</strong> every <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code> vector lives on the <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code>
+(frozen fields); the wrapper, trainer, and loss module all read them there: scales are
+never duplicated onto inputs.</p>
+</section>
+<section id="bounded-physical-state-solve">
+<h3>3. Bounded physical-state solve<a class="headerlink" href="#bounded-physical-state-solve" title="Link to this heading">¶</a></h3>
+<p>The ODE is solved with a <strong>bounded physical-state</strong> integrator (<code class="docutils literal notranslate"><span class="pre">physical_solve.py</span></code>) that
+applies discrete jumps at control-event times. This replaced an earlier single pseudobatch
+solve: the pseudobatch accumulator is unbounded over a long fed-batch, which corrupted the
+reverse-mode adjoint and produced unstable gradients. Solving the bounded physical state
+with explicit event jumps keeps the adjoint well-behaved.</p>
+</section>
+<section id="one-shared-ode-solve-feeds-both-reaction-and-loss">
+<h3>4. One shared ODE solve feeds both reaction and loss<a class="headerlink" href="#one-shared-ode-solve-feeds-both-reaction-and-loss" title="Link to this heading">¶</a></h3>
+<p>Each sample is solved <strong>once</strong>. The solver saves states/rates at the measurement times
+(and, when a loss module opts in, at a dense grid: see
+<a class="reference internal" href="../train/loss_module.html"><span class="std std-doc">the Loss Module</span></a>). The reaction module
+produces rates <em>inside</em> that solve; the loss module reads the saved outputs <em>after</em> it.
+Adding dense save points costs extra <code class="docutils literal notranslate"><span class="pre">SaveAt</span></code> evaluations, not extra solver steps.</p>
+</section>
+<section id="trainable-partition-via-field-tags">
+<h3>5. Trainable partition via field tags<a class="headerlink" href="#trainable-partition-via-field-tags" title="Link to this heading">¶</a></h3>
+<p>What gets optimized is declared with field metadata, not a partition function:
+<code class="docutils literal notranslate"><span class="pre">trainable_field()</span></code> marks an <code class="docutils literal notranslate"><span class="pre">eqx.Module</span></code> field’s array leaves as trainable;
+<code class="docutils literal notranslate"><span class="pre">frozen_field()</span></code> marks them frozen; <strong>untagged array leaves default to frozen</strong>.
+<code class="docutils literal notranslate"><span class="pre">partition_trainable(module)</span></code> splits any module (including the whole wrapper) into
+<code class="docutils literal notranslate"><span class="pre">(trainable,</span> <span class="pre">static)</span></code> pytrees, with the rule <em>first explicit tag on the path wins</em>. This
+is the single mechanism: no per-module override. The loss module is partitioned by the
+same rule, so trainable loss parameters (e.g. Kendall uncertainty weights) are optimized
+alongside the reaction module. For sub-field control (e.g. freezing some MLP layers), use
+the <code class="docutils literal notranslate"><span class="pre">build_optimizer</span></code> hook with <code class="docutils literal notranslate"><span class="pre">optax.masked</span></code> / <code class="docutils literal notranslate"><span class="pre">optax.multi_transform</span></code>.</p>
+</section>
+<section id="mean-loss-aggregation">
+<h3>6. Mean loss aggregation<a class="headerlink" href="#mean-loss-aggregation" title="Link to this heading">¶</a></h3>
+<p>A loss module returns a dict of <strong>named scalar losses</strong>; the total for backprop is
+<code class="docutils literal notranslate"><span class="pre">mean(named_losses.values())</span></code>, not the sum. hybrax.train clips the <strong>raw</strong> gradient
+(<code class="docutils literal notranslate"><span class="pre">clip_by_global_norm</span></code>) <em>before</em> Adam. Mean keeps gradient magnitude independent of the
+term count, so a tuned <code class="docutils literal notranslate"><span class="pre">grad_clip_norm</span></code> behaves the same as you add named terms. Sum would
+scale the gradient by the term count, push it past the clip threshold, and (because the
+clip sits before Adam) hold the step size large near the optimum → overshoot / divergence
+on stiff neural-ODE problems. For weighted-sum behavior, scale individual terms inside
+<code class="docutils literal notranslate"><span class="pre">__call__</span></code> and retune <code class="docutils literal notranslate"><span class="pre">grad_clip_norm</span></code>.</p>
+</section>
+<section id="discrete-events-as-differentiable-state-jumps">
+<h3>7. Discrete events as differentiable state jumps<a class="headerlink" href="#discrete-events-as-differentiable-state-jumps" title="Link to this heading">¶</a></h3>
+<p>Boluses and samples are applied at their known event times as <strong>discrete, differentiable
+state jumps</strong> (not continuous ramps in the RHS). The bounded solve (§3) runs as a sequence
+of segment solves with jumps applied <em>between</em> segments via <code class="docutils literal notranslate"><span class="pre">diffrax_callbacks</span></code>
+(<code class="docutils literal notranslate"><span class="pre">PresetTimeCallback</span></code>), so the adjoint stays standard and correct (gradient through a
+preset jump matches the analytic value to ~9 digits). At a coincident timestamp the jump
+is ordered <strong>sample first</strong> (well-mixed removal: concentrations unchanged, volume drops)
+<strong>then bolus</strong> (dilute from the post-sample volume and add the fed mass). Loss is sampled
+only at measurement timestamps, so a measurement strictly before a bolus is unaffected by
+it. Continuous controlled feeds are not events: they are piecewise-linear signals
+evaluated inside the RHS at each <code class="docutils literal notranslate"><span class="pre">t</span></code>.</p>
+</section>
+<section id="trainable-partition-only-serialization">
+<h3>8. Trainable-partition-only serialization<a class="headerlink" href="#trainable-partition-only-serialization" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">save_model</span></code> writes <strong>only the trainable partition</strong> (<code class="docutils literal notranslate"><span class="pre">params.eqx</span></code>). The static half
+(controls store, <code class="docutils literal notranslate"><span class="pre">RhsOde</span></code>, indices, <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code>) is <strong>always rebuilt</strong> from <code class="docutils literal notranslate"><span class="pre">prepared.json</span></code></p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">custom.py</span></code> at load time. This avoids shape mismatches on the controls store, keeps
+checkpoints small, and is forward-compatible with future trainable controls. Every
+checkpoint directory is self-contained (it bundles <code class="docutils literal notranslate"><span class="pre">prepared.json.gz</span></code> and <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>).
+See <a class="reference internal" href="../train/save_load_predict.html"><span class="std std-doc">The Python API</span></a>.</p></li>
+</ul>
+</section>
+<section id="opt-in-multi-core-device-pooling">
+<h3>9. Opt-in multi-core device pooling<a class="headerlink" href="#opt-in-multi-core-device-pooling" title="Link to this heading">¶</a></h3>
+<p>Training can shard the process batch across CPU cores via <code class="docutils literal notranslate"><span class="pre">pmap</span></code> (~N speedup). This is
+<strong>opt-in</strong> and resolved <em>before</em> JAX initializes (the device count is fixed at import
+time): set <code class="docutils literal notranslate"><span class="pre">train.devices:</span> <span class="pre">N</span></code> (or <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code>) in the config, or <code class="docutils literal notranslate"><span class="pre">HYBRAX_TRAIN_DEVICES=N</span></code> (the env
+var always wins). <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code> resolves to <code class="docutils literal notranslate"><span class="pre">min(n_processes,</span> <span class="pre">n_cpus)</span></code>. Default is 1 device, so
+hybrax.train never competes for cores with other work. No effect on GPU.</p>
+</section>
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="../contributors.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">Contributors</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="../troubleshooting/silent_failures.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">Silent failures</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Bioprocess Modeling Collective
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">Design Rationale</a><ul>
+<li><a class="reference internal" href="#shared-foundation-jax-first-architecture">Shared foundation: JAX-first architecture</a></li>
+<li><a class="reference internal" href="#hybrax-format">hybrax.format</a><ul>
+<li><a class="reference internal" href="#hierarchical-data-model">1. Hierarchical data model</a></li>
+<li><a class="reference internal" href="#volume-as-a-first-class-concept">2. Volume as a first-class concept</a></li>
+<li><a class="reference internal" href="#timeseries-structure">3. TimeSeries structure</a></li>
+<li><a class="reference internal" href="#pseudobatch-normalization">4. Pseudobatch normalization</a></li>
+<li><a class="reference internal" href="#validation-first-approach">5. Validation-first approach</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax-train">hybrax.train</a><ul>
+<li><a class="reference internal" href="#built-on-hybrax-format-jax-diffrax-equinox-optax">1. Built on hybrax.format, JAX, Diffrax, Equinox, optax</a></li>
+<li><a class="reference internal" href="#scaled-scl-vs-physical-raw-space">2. Scaled (SCL) vs physical (RAW) space</a></li>
+<li><a class="reference internal" href="#bounded-physical-state-solve">3. Bounded physical-state solve</a></li>
+<li><a class="reference internal" href="#one-shared-ode-solve-feeds-both-reaction-and-loss">4. One shared ODE solve feeds both reaction and loss</a></li>
+<li><a class="reference internal" href="#trainable-partition-via-field-tags">5. Trainable partition via field tags</a></li>
+<li><a class="reference internal" href="#mean-loss-aggregation">6. Mean loss aggregation</a></li>
+<li><a class="reference internal" href="#discrete-events-as-differentiable-state-jumps">7. Discrete events as differentiable state jumps</a></li>
+<li><a class="reference internal" href="#trainable-partition-only-serialization">8. Trainable-partition-only serialization</a></li>
+<li><a class="reference internal" href="#opt-in-multi-core-device-pooling">9. Opt-in multi-core device pooling</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script src="../_static/design-tabs.js?v=f930bc37"></script>
+    <script src="../_static/custom.js?v=fec45a96"></script>
+    </body>
+</html>

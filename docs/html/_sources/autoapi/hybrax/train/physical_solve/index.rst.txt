@@ -1,0 +1,87 @@
+hybrax.train.physical_solve
+===========================
+
+.. py:module:: hybrax.train.physical_solve
+
+.. autoapi-nested-parse::
+
+   Bounded physical-state ODE solve with discrete bolus/sample jumps.
+
+   Integrates ``[RAW_RMCs | RAW_PVs | RAW_V | RAW_modeled_cum | RAW_latent]`` in
+   **scaled** space (each value transformed by its composed
+   ``SCALE_integrated_state`` scaler: ``(RAW - offset) / scale``), so one
+   rtol/atol controls every species uniformly and the adjoint stays O(1) — better
+   float32 conditioning across a wide dynamic range) and applies boluses/samples as
+   discrete state jumps at their (known) event times, using
+   ``diffrax_callbacks`` (a differentiable discrete-event layer for diffrax). The jumps
+   are applied between separate segment solves, so the adjoint is standard and correct
+   (verified: gradient through a preset jump matches the analytic value to 9 digits) —
+   unlike a custom solver that modifies state inside ``step`` (which silently breaks the
+   diffrax adjoint).
+
+   RAM: the segments run in a sequential ``lax.scan`` (one segment's solve live at a time)
+   and ``RecursiveCheckpointAdjoint`` keeps only ~``O(log max_steps)`` checkpoints, so RAM
+   is **flat in the number of events** — *not* ``max_steps × #segments`` (measured ~2.34 GB
+   for a full 37-way step).
+
+   Output times (measurements, and any dense/prediction grid spliced in by
+   ``dense.build_union_time_grid``) are NOT segment boundaries. Segments are decided purely
+   by the physics — bolus and sample events, the only things that jump the state — and the
+   trajectory is read out with ``SaveAt(ts=...)`` inside each segment, which is pure
+   interpolation and costs no solver steps. Making every output time a boundary used to
+   subdivide the integration: a 2023_bayer-shaped process went from 10 segments / 38 ODE
+   steps on the measurement grid to 208 / 426 once a 200-point export grid was requested.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.physical_solve.solve_physical_states
+   hybrax.train.physical_solve.within_fail_time
+
+
+Module Contents
+---------------
+
+.. py:function:: solve_physical_states(wrapper, *, t_eval, n_measured, RAW_y0, max_steps, rtol, atol, jump_ts = None, n_linspace = None, return_fail_time = False)
+
+   RAW physical states at each (padded) measurement time, ``[max_n_meas, n_state]``.
+
+   ``n_linspace`` is how many of ``t_eval``'s points come from evenly-spaced blocks
+   spliced in by :func:`dense.build_union_time_grid` (``dense_grid_n`` +
+   ``prediction_grid_n``), as opposed to the measurement block. It only sizes the
+   per-segment output window (:func:`_output_window`), and passing it exactly is what
+   makes the window tight. ``None`` falls back to the whole grid length: still a valid
+   bound, just looser, which is the right default for a caller that simply has a grid
+   and no way to say how it was composed.
+
+   ``fail_time`` is the scalar time of the first segment failure on this solve (``inf``
+   if none), i.e. the start of the failing segment == the last node it reached. Rows at
+   ``t > fail_time`` are overwritten either way:
+   - ``return_fail_time=True`` (loss path) returns ``(states, fail_time)`` with those
+     rows set to a finite ``y0`` placeholder, so the ``penalty(state) * mask`` idiom
+     stays safe; the caller must still mask them out via ``fail_time``.
+   - ``return_fail_time=False`` (forward/export) returns ``states`` with those rows set
+     to ``inf``, so a failed forward is detectable and never reads back a stale value.
+
+   ``max_steps`` (from ``--solver-max-steps``) is the **budget for the whole
+   solve**: it
+   bounds each segment's inner solve and the running sum across segments, so exceeding
+   it is the same failure as any segment bail (state poisoned to ``inf``, ``fail_time``
+   recorded, later segments collapsed). It is grid-independent — chopping the same
+   horizon into more segments does not multiply the ceiling, so ``fail_time`` no longer
+   moves just because a denser output grid was requested.
+
+
+.. py:function:: within_fail_time(t, fail_time)
+
+   True where time ``t`` is at/before a solve's failure cutoff (all-True when
+   ``fail_time`` is ``inf``, i.e. no failure). Post-failure points are the complement,
+   ``~within_fail_time``. Centralizes the ``fail_time + _FAIL_TIME_EPS`` boundary
+   tolerance so the measurement mask, the dense mask, the loss-facing finiteness
+   fallback and the export sentinel all use one identical cutoff.
+
+

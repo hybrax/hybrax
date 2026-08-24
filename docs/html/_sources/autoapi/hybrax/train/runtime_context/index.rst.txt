@@ -1,0 +1,279 @@
+hybrax.train.runtime_context
+============================
+
+.. py:module:: hybrax.train.runtime_context
+
+.. autoapi-nested-parse::
+
+   Producer-side collection views handed to scale-estimation and training-parent hooks.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.runtime_context.RawTrace
+   hybrax.train.runtime_context.SPLINE_SCALE_SAMPLE_COUNT
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.runtime_context.ControlScaleEvidence
+   hybrax.train.runtime_context.ProducerCollectionData
+   hybrax.train.runtime_context.RuntimeDataContext
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.runtime_context.canonical_training_parents
+   hybrax.train.runtime_context.original_parent_processes
+   hybrax.train.runtime_context.rhs_ode_from_training_parents
+   hybrax.train.runtime_context.select_parent_collection
+
+
+Module Contents
+---------------
+
+.. py:class:: ControlScaleEvidence
+
+   Raw-first control observations used by producer-side scale hooks.
+
+
+   .. py:attribute:: Inflow_rates
+      :type:  tuple[numpy.ndarray, ...]
+
+
+   .. py:attribute:: Outflow_rates
+      :type:  tuple[numpy.ndarray, ...]
+
+
+   .. py:attribute:: PVs
+      :type:  tuple[numpy.ndarray, ...]
+
+
+   .. py:attribute:: controlled_Inflow_Cin
+      :type:  numpy.ndarray
+
+
+   .. py:attribute:: cumulative_Inflows
+      :type:  tuple[numpy.ndarray, ...]
+
+
+   .. py:attribute:: cumulative_Outflows
+      :type:  tuple[numpy.ndarray, ...]
+
+
+   .. py:attribute:: modeled_Inflow_Cin
+      :type:  numpy.ndarray
+
+
+.. py:class:: ProducerCollectionData
+
+   Unfiltered producer-side view of one whole prepared collection.
+
+   This is the broad intermediate the producer builds once. It is never handed
+   to a hook: :meth:`select_training_parents` narrows it to the fold's
+   represented parents first, and only that narrowed :class:`RuntimeDataContext`
+   is hook-visible.
+
+
+   .. py:method:: from_collection(training_data, collection)
+      :classmethod:
+
+
+      Build from a prepared collection, caching every parent's raw traces.
+
+      :param training_data: Prepared training data; its ``process_order`` must
+                            match ``collection``'s.
+      :param collection: The full prepared collection ``training_data`` was
+                         built from.
+
+      :returns: The producer-side view, with time bounds and raw traces cached
+                for every non-augmented parent.
+
+      :raises ValueError: If ``collection`` is empty, or its process order
+          differs from ``training_data``'s.
+
+
+
+   .. py:method:: select_training_parents(collection, selected_processes)
+
+      Return the canonical unique parents represented by a train selection.
+
+
+
+   .. py:attribute:: augmentation_parents
+      :type:  tuple[str | None, ...]
+
+
+   .. py:attribute:: modeled_volume_change_traces
+      :type:  tuple[tuple[RawTrace, ...], ...]
+
+
+   .. py:property:: parent_process_order
+      :type: tuple[str, ...]
+
+
+      Canonical originals aligned with the cached rich trace tuples.
+
+
+   .. py:property:: process_order
+      :type: tuple[str, ...]
+
+
+      Every process (parents and augmented children), in canonical order.
+
+
+   .. py:attribute:: process_time_bounds
+      :type:  tuple[tuple[float, float], ...]
+
+
+   .. py:attribute:: raw_state_traces
+      :type:  tuple[tuple[RawTrace, ...], ...]
+
+
+   .. py:attribute:: sample_volume_event_traces
+      :type:  tuple[RawTrace, ...]
+
+
+   .. py:attribute:: training_data
+      :type:  hybrax.train.training_data.TrainingDataStore
+
+
+.. py:class:: RuntimeDataContext
+
+   One fold's training parents, as seen by the producer-side scale hook.
+
+   Every row is a unique non-augmented parent represented by ``fold.train``, in
+   canonical parent order, so there is no augmentation mapping to carry.
+
+
+   .. py:method:: control_scale_evidence()
+
+      Collect raw-first control evidence from selected training parents.
+
+
+
+   .. py:method:: initial_volume(process_index)
+
+      Return the RAW measured initial reactor volume at ``process_index``.
+
+
+
+   .. py:method:: measured_values(process_index, name)
+
+      Return one unpadded measured target trace.
+
+
+
+   .. py:method:: modeled_volume_change_trace(process_index, name)
+
+      Return one exact modeled cumulative volume-change trace.
+
+
+
+   .. py:method:: raw_state_trace(process_index, name)
+
+      Return one exact raw modeled state trace.
+
+
+
+   .. py:method:: sample_volume_events(process_index)
+
+      Return exact sample-volume event times and values.
+
+
+
+   .. py:method:: time_bounds(process_index)
+
+      Return ``(start, end)`` for the training parent at ``process_index``.
+
+
+
+   .. py:property:: controls_store
+
+      The fold's ``ControlsStore``; see ``training_data.controls_store``.
+
+
+   .. py:attribute:: modeled_volume_change_traces
+      :type:  tuple[tuple[RawTrace, ...], ...]
+
+
+   .. py:property:: process_order
+      :type: tuple[str, ...]
+
+
+      Every training parent, in canonical order.
+
+
+   .. py:attribute:: process_time_bounds
+      :type:  tuple[tuple[float, float], ...]
+
+
+   .. py:attribute:: raw_state_traces
+      :type:  tuple[tuple[RawTrace, ...], ...]
+
+
+   .. py:property:: rhs_ode
+
+      The shared ``RhsOde`` of every training parent; see ``training_data.rhs_ode``.
+
+
+   .. py:attribute:: sample_volume_event_traces
+      :type:  tuple[RawTrace, ...]
+
+
+   .. py:attribute:: training_data
+      :type:  hybrax.train.training_data.TrainingDataStore
+
+
+   .. py:attribute:: training_parent_collection
+      :type:  hybrax.format.dataclasses.BioProcessCollection
+
+
+.. py:function:: canonical_training_parents(process_order, augmentation_parents, selected_processes)
+
+   Map a training selection to unique parents in canonical process order.
+
+
+.. py:function:: original_parent_processes(process_order, augmentation_parents)
+
+   Return every non-augmented process in canonical order.
+
+
+.. py:function:: rhs_ode_from_training_parents(collection, *, empty_message = 'requires a non-empty collection')
+
+   Build the shared RhsOde of a parent collection, rejecting disagreement.
+
+   Every parent must declare an equivalent ``BiologicalOde``, so the first
+   one's ``RhsOde`` speaks for all of them.
+
+   :param collection: Parent process collection.
+   :param empty_message: Raised verbatim when ``collection`` has no processes,
+                         so the diagnostic reads in the caller's terms.
+
+   :returns: The shared :class:`~hybrax.format.mechanistic.RhsOde`.
+
+   :raises ValueError: If ``collection`` is empty, or its parents declare
+       non-equivalent ``biological_ode`` blocks.
+
+
+.. py:function:: select_parent_collection(collection, parent_names)
+
+   Copy a collection and retain the requested parents in canonical order.
+
+
+.. py:data:: RawTrace
+
+.. py:data:: SPLINE_SCALE_SAMPLE_COUNT
+   :value: 200
+
+

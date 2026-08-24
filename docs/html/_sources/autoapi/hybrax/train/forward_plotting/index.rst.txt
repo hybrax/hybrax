@@ -1,0 +1,37 @@
+hybrax.train.forward_plotting
+=============================
+
+.. py:module:: hybrax.train.forward_plotting
+
+.. autoapi-nested-parse::
+
+   Best-effort prediction plots for ``hybrax forward``.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.forward_plotting.log
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.forward_plotting.plot_forward_predictions
+
+
+Module Contents
+---------------
+
+.. py:function:: plot_forward_predictions(collection, wrapper, mean_exports, std_exports, losses, output_dir)
+
+   Write one prediction figure per dense export, continuing after failures.
+
+
+.. py:data:: log
+

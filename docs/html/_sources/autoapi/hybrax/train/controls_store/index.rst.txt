@@ -1,0 +1,600 @@
+hybrax.train.controls_store
+===========================
+
+.. py:module:: hybrax.train.controls_store
+
+.. autoapi-nested-parse::
+
+   Prepared, padded JAX control tensors, and the per-process/batch evaluators over them.
+
+   This module provides:
+
+   - ``ControlPartition`` / ``derive_control_partition`` — split a process's controls
+     into the direct-spline and linear-interpolant groups the solver consumes.
+   - ``PerProcessControls`` — a single process's controls as JAX arrays, with
+     semantic per-axis ``eval_controlled_*`` accessors (RAW, unscaled) consumed by
+     ``HybridOdeWrapper``.
+   - ``BatchControls`` — the same evaluator, indexed by batch row, for a padded
+     batch of processes trained together.
+   - ``ControlsStore`` — the collection-level loader: reads every process's raw
+     control data, pads it to a common shape, and hands out ``PerProcessControls``
+     (:meth:`ControlsStore.get_controls`) or a whole ``BatchControls``
+     (:meth:`ControlsStore.gather_batch`).
+
+   Sample/bolus events are not controls in this module's sense — they are state
+   jumps applied by the callbacks solve (``physical_solve.py``) from the
+   ``*_event_*`` arrays this module also loads, via ``controls.py``'s
+   ``collect_discrete_event_metadata``.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.controls_store.BatchControls
+   hybrax.train.controls_store.ControlPartition
+   hybrax.train.controls_store.ControlsStore
+   hybrax.train.controls_store.PerProcessControls
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.controls_store.derive_control_partition
+
+
+Module Contents
+---------------
+
+.. py:class:: BatchControls
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Batch-row controls evaluator with index-based runtime lookup.
+
+   Column axis follows the same canonical
+   ``[name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]``
+   order as :class:`PerProcessControls`.
+
+
+   .. py:method:: eval_controlled_Inflows_cumulative(row_idx, t_arr, states)
+
+      RAW cumulative controlled Inflow volume for batch row ``row_idx`` at ``t_arr``.
+
+      :param row_idx: Batch row index.
+      :param t_arr: Query time(s), scalar or array.
+      :param states: Unused; a placeholder for future state-dependent controls
+                     (e.g. pH feedback).
+
+      :returns: RAW values for the controlled-Inflow columns only.
+
+
+
+   .. py:method:: eval_controlled_Inflows_rates(row_idx, t_arr, states)
+
+      RAW controlled Inflow rate for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+
+
+
+   .. py:method:: eval_controlled_Outflows_cumulative(row_idx, t_arr, states)
+
+      RAW cumulative controlled Outflow volume for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+
+
+
+   .. py:method:: eval_controlled_Outflows_rates(row_idx, t_arr, states)
+
+      RAW controlled Outflow rate for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+
+
+
+   .. py:method:: eval_controlled_PVs(row_idx, t_arr, states)
+
+      RAW controlled process-variable value for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+
+
+
+   .. py:attribute:: bolus_event_Cin
+      :type:  jax.Array
+
+
+   .. py:attribute:: bolus_event_mask
+      :type:  jax.Array
+
+
+   .. py:attribute:: bolus_event_times
+      :type:  jax.Array
+
+
+   .. py:attribute:: bolus_event_volumes
+      :type:  jax.Array
+
+
+   .. py:attribute:: continuity_side
+      :type:  str
+
+
+   .. py:attribute:: control_derivatives
+      :type:  jax.Array
+
+
+   .. py:attribute:: control_values
+      :type:  jax.Array
+
+
+   .. py:attribute:: linear_grid
+      :type:  jax.Array
+
+
+   .. py:attribute:: linear_indices
+      :type:  tuple[int, ...]
+
+
+   .. py:attribute:: max_event_gap_fraction
+      :type:  float
+
+
+   .. py:attribute:: max_measurements_per_event_gap
+      :type:  int
+
+
+   .. py:attribute:: min_V
+      :type:  jax.Array
+
+
+   .. py:attribute:: name_controlled_Inflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_controlled_Outflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_controlled_PVs
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: sample_event_mask
+      :type:  jax.Array
+
+
+   .. py:attribute:: sample_event_times
+      :type:  jax.Array
+
+
+   .. py:attribute:: sample_event_volumes
+      :type:  jax.Array
+
+
+   .. py:attribute:: spline_breaks
+      :type:  jax.Array
+
+
+   .. py:attribute:: spline_coeffs
+      :type:  jax.Array
+
+
+   .. py:attribute:: spline_indices
+      :type:  tuple[int, ...]
+
+
+.. py:class:: ControlPartition
+
+   Canonical control layout implied by a collection's own control sources.
+
+   ``continuity_side`` is ``None`` when no time-varying control constrains it, so
+   a caller comparing against a stored side can tell "undetermined" apart from a
+   genuine disagreement.
+
+
+   .. py:attribute:: continuity_side
+      :type:  str | None
+
+
+   .. py:attribute:: linear_indices
+      :type:  tuple[int, ...]
+
+
+   .. py:attribute:: name_controlled_Inflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_controlled_Outflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_controlled_PVs
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: spline_indices
+      :type:  tuple[int, ...]
+
+
+.. py:class:: ControlsStore
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Collection-level loader and index for prepared, padded JAX control tensors.
+
+   Column axis follows
+   ``[name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]``
+   consistently across every process; the wrapper consumes the full
+   u-block via :meth:`PerProcessControls.eval_u`.
+
+
+   .. py:method:: from_collection(collection)
+      :classmethod:
+
+
+      Build a JAX-backed runtime store from a prepared :class:`~hybrax.format.dataclasses.BioProcessCollection`.
+
+
+
+   .. py:method:: from_json(prepared_json)
+      :classmethod:
+
+
+      Load a prepared JSON artifact and construct a :class:`ControlsStore`.
+
+
+
+   .. py:method:: gather_batch(process_indices)
+
+      Gather control and event rows in the requested order.
+
+
+
+   .. py:method:: get_controls(process)
+
+      Return per-process controls by canonical prepared key or index.
+
+
+
+   .. py:method:: select_processes(process_names, collection, *, modeled_rmc_names = None)
+
+      Return a closed row-selected store without rebuilding controls.
+
+      ``modeled_rmc_names`` reuses a caller's already-validated canonical RHS
+      layout. Direct callers may omit it and retain the standalone fallback.
+
+
+
+   .. py:method:: validate_supports(spans)
+
+      Validate selected process solve spans and report all violations.
+
+
+
+   .. py:attribute:: bolus_event_Cin
+      :type:  jax.Array
+
+
+   .. py:attribute:: bolus_event_mask
+      :type:  jax.Array
+
+
+   .. py:attribute:: bolus_event_times
+      :type:  jax.Array
+
+
+   .. py:attribute:: bolus_event_volumes
+      :type:  jax.Array
+
+
+   .. py:attribute:: continuity_side
+      :type:  str
+
+
+   .. py:attribute:: control_derivatives
+      :type:  jax.Array
+
+
+   .. py:attribute:: control_values
+      :type:  jax.Array
+
+
+   .. py:attribute:: grid_lengths
+      :type:  jax.Array
+
+
+   .. py:attribute:: jump_ts
+      :type:  jax.Array
+
+
+   .. py:attribute:: jump_ts_lengths
+      :type:  jax.Array
+
+
+   .. py:attribute:: linear_grid
+      :type:  jax.Array
+
+
+   .. py:attribute:: linear_indices
+      :type:  tuple[int, ...]
+
+
+   .. py:attribute:: max_event_gap_fraction
+      :type:  float
+
+
+   .. py:attribute:: max_measurements_per_event_gap
+      :type:  int
+
+
+   .. py:attribute:: min_V
+      :type:  jax.Array
+
+
+   .. py:attribute:: name_controlled_Inflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_controlled_Outflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_controlled_PVs
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: process_order
+      :type:  list[str]
+
+
+   .. py:attribute:: sample_event_mask
+      :type:  jax.Array
+
+
+   .. py:attribute:: sample_event_times
+      :type:  jax.Array
+
+
+   .. py:attribute:: sample_event_volumes
+      :type:  jax.Array
+
+
+   .. py:attribute:: shape_metadata
+      :type:  dict[str, Any]
+
+
+   .. py:attribute:: spline_breaks
+      :type:  jax.Array
+
+
+   .. py:attribute:: spline_coeffs
+      :type:  jax.Array
+
+
+   .. py:attribute:: spline_indices
+      :type:  tuple[int, ...]
+
+
+.. py:class:: PerProcessControls
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Per-process hybrid runtime view over direct and linear controls.
+
+   Column axis follows
+   ``[name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]``
+   matching hybrax.format ``ControlSplines``. All columns are consumed by
+   ``eval_u(t)`` to build RhsOde's ``u`` argument. Discrete bolus/sample events
+   are NOT controls here — they are applied as state jumps by the callbacks
+   solve from the ``*_event_*`` arrays. ``jump_ts`` carries genuine vector-field
+   discontinuity times (``BioProcess.discrete_events``) for the adaptive solver.
+
+   All non-array fields are ``eqx.field(static=True)`` so they live in
+   the pytree treedef rather than as dynamic leaves.
+
+
+   .. py:method:: eval_controlled_Inflows_cumulative(t_arr, states)
+
+      RAW cumulative controlled Inflow volume at ``t_arr``.
+
+      :param t_arr: Query time(s), scalar or array.
+      :param states: Unused; a placeholder for future state-dependent controls
+                     (e.g. pH feedback).
+
+      :returns: RAW values for the controlled-Inflow columns only.
+
+
+
+   .. py:method:: eval_controlled_Inflows_rates(t_arr, states)
+
+      RAW controlled Inflow rate at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+
+
+
+   .. py:method:: eval_controlled_Outflows_cumulative(t_arr, states)
+
+      RAW cumulative controlled Outflow volume at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+
+
+
+   .. py:method:: eval_controlled_Outflows_rates(t_arr, states)
+
+      RAW controlled Outflow rate at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+
+
+
+   .. py:method:: eval_controlled_PVs(t_arr, states)
+
+      RAW controlled process-variable value at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+
+
+
+   .. py:method:: validate_support(t0, t1)
+
+      Reject a solve interval outside any control's closed support.
+
+      Comparisons allow one part per million of the solve duration, with
+      eight float32 steps as a floor because source endpoints may have passed
+      through float32 even when validation receives float64 arrays.
+
+
+
+   .. py:property:: active_control_derivatives
+      :type: jax.Array
+
+
+      ``control_derivatives`` sliced to its unpadded length (``grid_length``).
+
+
+   .. py:property:: active_control_values
+      :type: jax.Array
+
+
+      ``control_values`` sliced to its unpadded length (``grid_length``).
+
+
+   .. py:property:: active_jump_ts
+      :type: jax.Array
+
+
+      ``jump_ts`` sliced to its unpadded length (``jump_ts_length``).
+
+
+   .. py:property:: active_linear_grid
+      :type: jax.Array
+
+
+      ``linear_grid`` sliced to its unpadded length (``grid_length``).
+
+
+   .. py:attribute:: bolus_event_Cin
+      :type:  jax.Array
+
+
+   .. py:attribute:: bolus_event_mask
+      :type:  jax.Array
+
+
+   .. py:attribute:: bolus_event_times
+      :type:  jax.Array
+
+
+   .. py:attribute:: bolus_event_volumes
+      :type:  jax.Array
+
+
+   .. py:attribute:: continuity_side
+      :type:  str
+
+
+   .. py:attribute:: control_derivatives
+      :type:  jax.Array
+
+
+   .. py:attribute:: control_metadata
+      :type:  collections.abc.Mapping[str, collections.abc.Mapping[str, Any]]
+
+
+   .. py:attribute:: control_supports
+      :type:  collections.abc.Mapping[str, tuple[float, float]]
+
+
+   .. py:attribute:: control_values
+      :type:  jax.Array
+
+
+   .. py:attribute:: grid_length
+      :type:  int
+
+
+   .. py:attribute:: jump_ts
+      :type:  jax.Array
+
+
+   .. py:attribute:: jump_ts_length
+      :type:  int
+
+
+   .. py:attribute:: linear_grid
+      :type:  jax.Array
+
+
+   .. py:attribute:: linear_indices
+      :type:  tuple[int, ...]
+
+
+   .. py:attribute:: max_event_gap_fraction
+      :type:  float
+
+
+   .. py:attribute:: max_measurements_per_event_gap
+      :type:  int
+
+
+   .. py:attribute:: min_V
+      :type:  jax.Array
+
+
+   .. py:property:: n_u
+      :type: int
+
+
+      Inflows + Outflows + PVs.
+
+      :type: Total control axis count
+
+
+   .. py:attribute:: name_controlled_Inflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_controlled_Outflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_controlled_PVs
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: process_index
+      :type:  int
+
+
+   .. py:attribute:: process_name
+      :type:  str
+
+
+   .. py:attribute:: sample_event_mask
+      :type:  jax.Array
+
+
+   .. py:attribute:: sample_event_times
+      :type:  jax.Array
+
+
+   .. py:attribute:: sample_event_volumes
+      :type:  jax.Array
+
+
+   .. py:attribute:: spline_breaks
+      :type:  jax.Array
+
+
+   .. py:attribute:: spline_coeffs
+      :type:  jax.Array
+
+
+   .. py:attribute:: spline_indices
+      :type:  tuple[int, ...]
+
+
+.. py:function:: derive_control_partition(collection)
+
+   Derive the canonical control layout from a collection's processes alone.
+
+   Used at the runtime-artifact trust boundary, where control arrays are loaded
+   straight from disk and therefore bypass ``ControlsStore.__post_init__``.
+
+

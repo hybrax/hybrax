@@ -1,0 +1,67 @@
+hybrax.train.inspect
+====================
+
+.. py:module:: hybrax.train.inspect
+
+.. autoapi-nested-parse::
+
+   Read-only introspection helpers for trained modules and wrappers.
+
+   Two responsibilities:
+
+   - ``format_trainable_structure`` / ``print_trainable_structure``: render a
+     table of every array leaf on a :class:`UserReactionModule` subclass,
+     tagged ``trainable`` or ``frozen``. Used by the training harness at
+     startup so the trainable surface is visible at a glance.
+
+   - ``format_reaction_schema`` / ``print_reaction_schema``: render labeled
+     tables for the :class:`ReactionInputs` / :class:`ReactionOutputs` axes
+     of a wrapper, with names sourced from ``rhs_ode`` and ``controls``.
+     Lets a user cross-reference each SCL vector slot with the underlying
+     hybrax.format entity it represents.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.inspect.format_reaction_schema
+   hybrax.train.inspect.format_trainable_structure
+   hybrax.train.inspect.print_reaction_schema
+   hybrax.train.inspect.print_trainable_structure
+
+
+Module Contents
+---------------
+
+.. py:function:: format_reaction_schema(rhs_ode, controls)
+
+   Return labeled tables for ReactionInputs + ReactionOutputs axes.
+
+   Each table row names the SCL_* axis, its shape, and the hybrax.format
+   entity names that map to each slot. 2-D Cin matrices render as one
+   row with shape ``(n_rows, n_cols)`` followed by indented
+   ``rows:``/``cols:`` lines naming the matrix axes.
+
+
+.. py:function:: format_trainable_structure(module, *, name_width = None, shape_width = None, status_width = None, title = 'UserReactionModule')
+
+   Return a tabular string of (name, shape, status) for the full module.
+
+   Status is ``trainable`` or ``frozen``.
+
+
+.. py:function:: print_reaction_schema(wrapper)
+
+   Print the labeled ReactionInputs / ReactionOutputs tables.
+
+   Sources names from ``wrapper.rhs_ode`` and ``wrapper.controls``.
+
+
+.. py:function:: print_trainable_structure(module, *, title = 'UserReactionModule')
+
+   Print the trainable-structure table.
+
+

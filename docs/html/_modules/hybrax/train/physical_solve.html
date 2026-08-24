@@ -1,0 +1,788 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html">
+        <link rel="prefetch" href="../../../_static/hybrax_logo.png" as="image">
+
+    <link rel="shortcut icon" href="../../../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>hybrax.train.physical_solve - Bioprocess Modeling with Hybrax</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=98a1085a" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #eeffcc;
+  --color-code-foreground: black;
+  --color-brand-primary: #2563eb;
+  --color-brand-content: #2563eb;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">Bioprocess Modeling with Hybrax</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../../_static/hybrax_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">Hybrax Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/why.html">Why this exists</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/concepts.html">Concepts and Vocabulary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/find.html">Which page do I need?</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/01_your_first_dataset.html">1. Import your Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/02_look_at_it.html">2. View your Dataset</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/03_train.html">3. Train a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/04_your_first_custom_py.html">4. Custom Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/05_predict.html">5. Predict Processes</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.format guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/data_model.html">The Data Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/load_and_save.html">Loading and saving</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/validate_and_inspect.html">Validating and inspecting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/volume_feeds_events.html">Volume, feeds and events</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/time_series_and_splines.html">Time series and splines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/limits_and_gotchas.html">Limits and gotchas</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/further_reading.html">Further reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/config.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/hooks_cheatsheet.html">Customization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/prepare.html">Prepare</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/train.html">Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/reaction_module.html">The Reaction Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/loss_module.html">The Loss Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/scaling.html">Scaling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/forward.html">Forward</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/loo.html">Cross-Validation (LOO)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/save_load_predict.html">The Python API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/further_reading.html">Further Reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/freezing.html">Freezing parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/augmentation.html">Augmentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">A Gaussian-process model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">A KAN model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed.html">OptFed</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/modeled_pv.html">A modeled process variable</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../troubleshooting/errors.html">Errors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../troubleshooting/silent_failures.html">Silent failures</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Under the hood</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../under_the_hood/design_rationale.html">Design Rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributors.html">Contributors</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/hybrax/format/index.html">hybrax.format</a><input aria-label="Toggle navigation of hybrax.format" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/dataclasses/index.html">hybrax.format.dataclasses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/index.html">hybrax.format.time_series</a><input aria-label="Toggle navigation of hybrax.format.time_series" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/constants/index.html">hybrax.format.time_series.constants</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/grid_utils/index.html">hybrax.format.time_series.grid_utils</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/io/index.html">hybrax.format.time_series.io</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/ppoly/index.html">hybrax.format.time_series.ppoly</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/spline_ops/index.html">hybrax.format.time_series.spline_ops</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/timeseries/index.html">hybrax.format.time_series.timeseries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/validate/index.html">hybrax.format.validate</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/hybrax/train/index.html">hybrax.train</a><input aria-label="Toggle navigation of hybrax.train" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/augmentation/index.html">hybrax.train.augmentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/augmentation_plot/index.html">hybrax.train.augmentation_plot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/bounds_loss/index.html">hybrax.train.bounds_loss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/checkpointing/index.html">hybrax.train.checkpointing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/cli/index.html">hybrax.train.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/forward_plotting/index.html">hybrax.train.forward_plotting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/harness/index.html">hybrax.train.harness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/inspect/index.html">hybrax.train.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/logging/index.html">hybrax.train.logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/loo/index.html">hybrax.train.loo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/loo_metrics/index.html">hybrax.train.loo_metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_context/index.html">hybrax.train.runtime_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/serialization/index.html">hybrax.train.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/trainer/index.html">hybrax.train.trainer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for hybrax.train.physical_solve</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Bounded physical-state ODE solve with discrete bolus/sample jumps.</span>
+
+<span class="sd">Integrates ``[RAW_RMCs | RAW_PVs | RAW_V | RAW_modeled_cum | RAW_latent]`` in</span>
+<span class="sd">**scaled** space (each value transformed by its composed</span>
+<span class="sd">``SCALE_integrated_state`` scaler: ``(RAW - offset) / scale``), so one</span>
+<span class="sd">rtol/atol controls every species uniformly and the adjoint stays O(1) — better</span>
+<span class="sd">float32 conditioning across a wide dynamic range) and applies boluses/samples as</span>
+<span class="sd">discrete state jumps at their (known) event times, using</span>
+<span class="sd">``diffrax_callbacks`` (a differentiable discrete-event layer for diffrax). The jumps</span>
+<span class="sd">are applied between separate segment solves, so the adjoint is standard and correct</span>
+<span class="sd">(verified: gradient through a preset jump matches the analytic value to 9 digits) —</span>
+<span class="sd">unlike a custom solver that modifies state inside ``step`` (which silently breaks the</span>
+<span class="sd">diffrax adjoint).</span>
+
+<span class="sd">RAM: the segments run in a sequential ``lax.scan`` (one segment's solve live at a time)</span>
+<span class="sd">and ``RecursiveCheckpointAdjoint`` keeps only ~``O(log max_steps)`` checkpoints, so RAM</span>
+<span class="sd">is **flat in the number of events** — *not* ``max_steps × #segments`` (measured ~2.34 GB</span>
+<span class="sd">for a full 37-way step).</span>
+
+<span class="sd">Output times (measurements, and any dense/prediction grid spliced in by</span>
+<span class="sd">``dense.build_union_time_grid``) are NOT segment boundaries. Segments are decided purely</span>
+<span class="sd">by the physics — bolus and sample events, the only things that jump the state — and the</span>
+<span class="sd">trajectory is read out with ``SaveAt(ts=...)`` inside each segment, which is pure</span>
+<span class="sd">interpolation and costs no solver steps. Making every output time a boundary used to</span>
+<span class="sd">subdivide the integration: a 2023_bayer-shaped process went from 10 segments / 38 ODE</span>
+<span class="sd">steps on the measurement grid to 208 / 426 once a 200-point export grid was requested.</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">diffrax</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.train.diffrax_callbacks</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PresetTimeCallback</span><span class="p">,</span>
+    <span class="n">diffeqsolve_with_callbacks</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.wrapper</span><span class="w"> </span><span class="kn">import</span> <span class="n">HybridOdeWrapper</span>
+
+<span class="c1"># Boundary headroom for the failure cutoff. ``fail_time`` is the START of the first</span>
+<span class="c1"># segment that bailed, i.e. the last node the solver actually reached — so a point</span>
+<span class="c1"># sitting exactly there WAS reached and must not be dropped by float noise in the</span>
+<span class="c1"># ``&lt;=``. Only ever relevant at that single boundary point of a failed solve (on a</span>
+<span class="c1"># healthy solve ``fail_time`` is ``inf`` and the comparison is all-True). Wants to be</span>
+<span class="c1"># as small as possible while still capturing the boundary node; the next node is</span>
+<span class="c1"># typically orders of magnitude further away than this.</span>
+<span class="n">_FAIL_TIME_EPS</span> <span class="o">=</span> <span class="mf">1e-4</span>
+
+<span class="c1"># Initial step for a DEGENERATE solve window (``t1 == t0``: one active measurement, or</span>
+<span class="c1"># every measurement at the same timestamp), where ``span * 1e-3`` is exactly zero.</span>
+<span class="c1"># diffrax requires a strictly positive ``dt0``; a zero one makes it bail on the</span>
+<span class="c1"># tol-floored micro-segment inside the callback loop, and that bail is then flagged as</span>
+<span class="c1"># a solve failure and poisoned to ``inf`` — so a healthy single-point process would</span>
+<span class="c1"># look like a crashed solve. Any positive value works; the adaptive controller corrects</span>
+<span class="c1"># on the first step.</span>
+<span class="n">_DEGENERATE_DT0</span> <span class="o">=</span> <span class="mf">1e-4</span>
+
+<span class="c1"># NB there is deliberately NO event-matching tolerance. ``affect_fn`` identifies the</span>
+<span class="c1"># firing bolus/sample by the preset INDEX the solver hands it, then compares times</span>
+<span class="c1"># exactly against its own ``preset_times`` array. A tolerance here would make any</span>
+<span class="c1"># output node within it re-trigger the event — see ``affect_fn``.</span>
+
+
+<div class="viewcode-block" id="within_fail_time">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/physical_solve/index.html#hybrax.train.physical_solve.within_fail_time">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">within_fail_time</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">fail_time</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""True where time ``t`` is at/before a solve's failure cutoff (all-True when</span>
+<span class="sd">    ``fail_time`` is ``inf``, i.e. no failure). Post-failure points are the complement,</span>
+<span class="sd">    ``~within_fail_time``. Centralizes the ``fail_time + _FAIL_TIME_EPS`` boundary</span>
+<span class="sd">    tolerance so the measurement mask, the dense mask, the loss-facing finiteness</span>
+<span class="sd">    fallback and the export sentinel all use one identical cutoff."""</span>
+    <span class="k">return</span> <span class="n">t</span> <span class="o">&lt;=</span> <span class="n">fail_time</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">_FAIL_TIME_EPS</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">t</span><span class="p">)</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_output_window</span><span class="p">(</span><span class="n">controls</span><span class="p">,</span> <span class="n">n_linspace</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Static per-segment output-window size, given how many linspace points are spliced</span>
+<span class="sd">    into the output grid.</span>
+
+<span class="sd">    Without a window each segment is handed the whole grid and diffrax writes every slot</span>
+<span class="sd">    in every segment, so the save work is ``O(n_segments * n_output)`` — measured 10x</span>
+<span class="sd">    SLOWER than a boundary save on a 160-event process under vmap. With it the work is</span>
+<span class="sd">    ``O(n_segments * window)``, and the per-segment cost scales with the window</span>
+<span class="sd">    (10.6 us/segment for a plain ``SaveAt(t1=True)``, 14 at window 1, 68 at 25, 209</span>
+<span class="sd">    at 200), so the window wants to be as tight as it can provably be.</span>
+
+<span class="sd">    The bound is exact, not an estimate. An output grid is the measurement block plus up</span>
+<span class="sd">    to two ``linspace(t0, t1, N)`` blocks:</span>
+
+<span class="sd">    - measurement block: at most ``max_measurements_per_event_gap`` per gap, counted</span>
+<span class="sd">      exactly (on the PADDED grid) at prepare time.</span>
+<span class="sd">    - a linspace block of ``N`` points has spacing ``h = (t1 - t0) / (N - 1)``, so</span>
+<span class="sd">      a gap of length ``f * (t1 - t0)`` holds at most</span>
+<span class="sd">      ``floor(f * (N - 1)) + 1`` of them. Two blocks therefore contribute at most</span>
+<span class="sd">      ``f * n_linspace + 2 &lt;= ceil(f * n_linspace) + 2``.</span>
+
+<span class="sd">    ``n_linspace`` is a static Python int: the caller building the union grid knows</span>
+<span class="sd">    ``dense_grid_n`` and ``prediction_grid_n`` exactly. A caller that just has a</span>
+<span class="sd">    grid and</span>
+<span class="sd">    cannot say passes the whole grid length instead, which is a valid (looser) bound</span>
+<span class="sd">    because the measurement block it double-counts is itself bounded by ``f``.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">controls</span><span class="o">.</span><span class="n">max_event_gap_fraction</span> <span class="o">*</span> <span class="n">n_linspace</span><span class="p">)</span>
+        <span class="o">+</span> <span class="n">controls</span><span class="o">.</span><span class="n">max_measurements_per_event_gap</span>
+        <span class="o">+</span> <span class="mi">2</span>
+    <span class="p">)</span>
+
+
+<div class="viewcode-block" id="solve_physical_states">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/physical_solve/index.html#hybrax.train.physical_solve.solve_physical_states">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">solve_physical_states</span><span class="p">(</span>
+    <span class="n">wrapper</span><span class="p">:</span> <span class="n">HybridOdeWrapper</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">t_eval</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+    <span class="n">n_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+    <span class="n">RAW_y0</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+    <span class="n">max_steps</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">rtol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">atol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">jump_ts</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">n_linspace</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">return_fail_time</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">"""RAW physical states at each (padded) measurement time, ``[max_n_meas, n_state]``.</span>
+
+<span class="sd">    ``n_linspace`` is how many of ``t_eval``'s points come from evenly-spaced blocks</span>
+<span class="sd">    spliced in by :func:`dense.build_union_time_grid` (``dense_grid_n`` +</span>
+<span class="sd">    ``prediction_grid_n``), as opposed to the measurement block. It only sizes the</span>
+<span class="sd">    per-segment output window (:func:`_output_window`), and passing it exactly is what</span>
+<span class="sd">    makes the window tight. ``None`` falls back to the whole grid length: still a valid</span>
+<span class="sd">    bound, just looser, which is the right default for a caller that simply has a grid</span>
+<span class="sd">    and no way to say how it was composed.</span>
+
+<span class="sd">    ``fail_time`` is the scalar time of the first segment failure on this solve (``inf``</span>
+<span class="sd">    if none), i.e. the start of the failing segment == the last node it reached. Rows at</span>
+<span class="sd">    ``t &gt; fail_time`` are overwritten either way:</span>
+<span class="sd">    - ``return_fail_time=True`` (loss path) returns ``(states, fail_time)`` with those</span>
+<span class="sd">      rows set to a finite ``y0`` placeholder, so the ``penalty(state) * mask`` idiom</span>
+<span class="sd">      stays safe; the caller must still mask them out via ``fail_time``.</span>
+<span class="sd">    - ``return_fail_time=False`` (forward/export) returns ``states`` with those rows set</span>
+<span class="sd">      to ``inf``, so a failed forward is detectable and never reads back a stale value.</span>
+
+<span class="sd">    ``max_steps`` (from ``--solver-max-steps``) is the **budget for the whole</span>
+<span class="sd">    solve**: it</span>
+<span class="sd">    bounds each segment's inner solve and the running sum across segments, so exceeding</span>
+<span class="sd">    it is the same failure as any segment bail (state poisoned to ``inf``, ``fail_time``</span>
+<span class="sd">    recorded, later segments collapsed). It is grid-independent — chopping the same</span>
+<span class="sd">    horizon into more segments does not multiply the ceiling, so ``fail_time`` no longer</span>
+<span class="sd">    moves just because a denser output grid was requested.</span>
+<span class="sd">    """</span>
+    <span class="n">n_RMCs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">wrapper</span><span class="o">.</span><span class="n">modeled_RMC_names</span><span class="p">)</span>
+    <span class="n">n_PVs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">wrapper</span><span class="o">.</span><span class="n">modeled_PV_names</span><span class="p">)</span>
+    <span class="n">n_Inflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">wrapper</span><span class="o">.</span><span class="n">modeled_Inflow_names</span><span class="p">)</span>
+    <span class="n">n_Outflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">wrapper</span><span class="o">.</span><span class="n">modeled_Outflow_names</span><span class="p">)</span>
+    <span class="n">n_latent</span> <span class="o">=</span> <span class="n">wrapper</span><span class="o">.</span><span class="n">reaction_module</span><span class="o">.</span><span class="n">n_latent</span>
+    <span class="n">n_state</span> <span class="o">=</span> <span class="n">n_RMCs</span> <span class="o">+</span> <span class="n">n_PVs</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">n_Inflows</span> <span class="o">+</span> <span class="n">n_Outflows</span> <span class="o">+</span> <span class="n">n_latent</span>
+    <span class="n">dtype</span> <span class="o">=</span> <span class="n">RAW_y0</span><span class="o">.</span><span class="n">dtype</span>
+    <span class="n">controls</span> <span class="o">=</span> <span class="n">wrapper</span><span class="o">.</span><span class="n">controls</span>
+    <span class="n">min_V</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">controls</span><span class="o">.</span><span class="n">min_V</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="c1"># Per-state characteristic scale (the user-definable ``SCALE_*`` hook). Integrate</span>
+    <span class="c1"># ``SCL = (RAW - b) / s`` so a single rtol/atol is uniformly meaningful and the</span>
+    <span class="c1"># adjoint stays O(1). Pure reparametrisation applied only at the solve</span>
+    <span class="c1"># boundary: the RHS, jumps and gather stay physical; states are unscaled back</span>
+    <span class="c1"># before returning. NB the ODE RHS derivative is scaled via</span>
+    <span class="c1"># ``scale_derivative`` (offset-free) — NOT the value ``/`` path — so an affine</span>
+    <span class="c1"># state offset is not spuriously subtracted from the derivative.</span>
+    <span class="n">SCALE</span> <span class="o">=</span> <span class="n">wrapper</span><span class="o">.</span><span class="n">reaction_module</span><span class="o">.</span><span class="n">SCALE_integrated_state</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="n">SCALE</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="p">(</span><span class="n">n_state</span><span class="p">,),</span> <span class="p">(</span><span class="n">SCALE</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">n_state</span><span class="p">)</span>
+
+    <span class="n">n_meas_arr</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">n_measured</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+    <span class="n">t_eval</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">t_eval</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">t0</span> <span class="o">=</span> <span class="n">t_eval</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">t1</span> <span class="o">=</span> <span class="n">t_eval</span><span class="p">[</span><span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">n_meas_arr</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">t_eval</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]</span>
+    <span class="n">M</span> <span class="o">=</span> <span class="n">t_eval</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">meas_active</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">M</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">n_meas_arr</span>
+
+    <span class="n">bt</span> <span class="o">=</span> <span class="n">controls</span><span class="o">.</span><span class="n">bolus_event_times</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">bv</span> <span class="o">=</span> <span class="n">controls</span><span class="o">.</span><span class="n">bolus_event_volumes</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">bC</span> <span class="o">=</span> <span class="n">controls</span><span class="o">.</span><span class="n">bolus_event_Cin</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">bmask</span> <span class="o">=</span> <span class="n">controls</span><span class="o">.</span><span class="n">bolus_event_mask</span>
+    <span class="n">st</span> <span class="o">=</span> <span class="n">controls</span><span class="o">.</span><span class="n">sample_event_times</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">sv</span> <span class="o">=</span> <span class="n">controls</span><span class="o">.</span><span class="n">sample_event_volumes</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">smask</span> <span class="o">=</span> <span class="n">controls</span><span class="o">.</span><span class="n">sample_event_mask</span>
+
+    <span class="c1"># TIER A — segment boundaries. Only bolus and sample events, because only they jump</span>
+    <span class="c1"># the state (see ``affect_fn``). Output times are NOT here: they are read out with</span>
+    <span class="c1"># ``SaveAt(ts=...)`` inside a segment, which is interpolation and costs no solver</span>
+    <span class="c1"># steps. Vector-field kinks (control-spline knots, ``discrete_events``) are handled</span>
+    <span class="c1"># by ``PIDController(jump_ts=...)`` below and were never boundaries either.</span>
+    <span class="c1"># Inactive/padded slots are parked past t1 so they never trigger.</span>
+    <span class="n">BIG</span> <span class="o">=</span> <span class="n">t1</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">1.0e6</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">bolus_times</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">bmask</span><span class="p">,</span> <span class="n">bt</span><span class="p">,</span> <span class="n">BIG</span><span class="p">)</span>
+    <span class="n">sample_times</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">smask</span><span class="p">,</span> <span class="n">st</span><span class="p">,</span> <span class="n">BIG</span><span class="p">)</span>
+    <span class="n">preset_times</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">bolus_times</span><span class="p">,</span> <span class="n">sample_times</span><span class="p">])</span>
+
+    <span class="c1"># Tier-B output grid. Inactive/padded slots are parked at ``t1`` (NOT at ``BIG``:</span>
+    <span class="c1"># ``SaveAt(ts=...)`` requires every entry inside ``[t0, t1]`` and ascending). The</span>
+    <span class="c1"># active prefix is already ascending and ``t1`` is its maximum, so the parked tail</span>
+    <span class="c1"># keeps the array sorted. This is the same value ``clamp_padded_time_rows`` writes,</span>
+    <span class="c1"># so the production path (which clamps before calling) is unaffected and a direct</span>
+    <span class="c1"># caller passing a raw zero-padded row is handled identically.</span>
+    <span class="n">output_times</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">meas_active</span><span class="p">,</span> <span class="n">t_eval</span><span class="p">,</span> <span class="n">t1</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">apply_events</span><span class="p">(</span><span class="n">y_scl</span><span class="p">,</span> <span class="n">t_node</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Apply every sample and bolus stored at one exact event time."""</span>
+        <span class="n">y</span> <span class="o">=</span> <span class="n">y_scl</span> <span class="o">*</span> <span class="n">SCALE</span>  <span class="c1"># scaled -&gt; physical (the jump is a physical mass balance)</span>
+        <span class="n">C</span> <span class="o">=</span> <span class="n">y</span><span class="p">[:</span><span class="n">n_RMCs</span><span class="p">]</span>
+        <span class="c1"># Modeled PVs are intensive (ratios/observables), so volume jumps</span>
+        <span class="c1"># don't touch them.</span>
+        <span class="n">PVs</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="n">n_RMCs</span> <span class="p">:</span> <span class="n">n_RMCs</span> <span class="o">+</span> <span class="n">n_PVs</span><span class="p">]</span>
+        <span class="n">V</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="n">n_RMCs</span> <span class="o">+</span> <span class="n">n_PVs</span><span class="p">]</span>
+        <span class="n">n_cumulative</span> <span class="o">=</span> <span class="n">n_Inflows</span> <span class="o">+</span> <span class="n">n_Outflows</span>
+        <span class="n">cum</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="n">n_RMCs</span> <span class="o">+</span> <span class="n">n_PVs</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">n_RMCs</span> <span class="o">+</span> <span class="n">n_PVs</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">n_cumulative</span><span class="p">]</span>
+        <span class="n">h</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="n">n_RMCs</span> <span class="o">+</span> <span class="n">n_PVs</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">n_cumulative</span> <span class="p">:]</span>
+        <span class="n">s_on</span> <span class="o">=</span> <span class="p">(</span><span class="n">st</span> <span class="o">==</span> <span class="n">t_node</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">smask</span>
+        <span class="n">sample_dv</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">s_on</span><span class="p">,</span> <span class="n">sv</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+        <span class="n">b_on</span> <span class="o">=</span> <span class="p">(</span><span class="n">bt</span> <span class="o">==</span> <span class="n">t_node</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">bmask</span>
+        <span class="n">bolus_dv</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">b_on</span><span class="p">,</span> <span class="n">bv</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+        <span class="n">bolus_mass</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">b_on</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">bC</span> <span class="o">*</span> <span class="n">bv</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="c1"># Physical order at a coincident timestamp: sample FIRST (well-mixed removal —</span>
+        <span class="c1"># concentrations unchanged, volume drops), THEN feed/bolus (dilute from the</span>
+        <span class="c1"># post-sample volume and add fed mass). Bolus-before-sample dilutes fed species</span>
+        <span class="c1"># from the larger pre-sample volume and systematically under-dilutes them.</span>
+        <span class="n">V_after_sample</span> <span class="o">=</span> <span class="n">V</span> <span class="o">-</span> <span class="n">sample_dv</span>
+        <span class="n">V_after_sample</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">error_if</span><span class="p">(</span>
+            <span class="n">V_after_sample</span><span class="p">,</span>
+            <span class="n">jnp</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">s_on</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">V_after_sample</span> <span class="o">&lt;=</span> <span class="n">min_V</span><span class="p">),</span>
+            <span class="s2">"sample reached minimum reactor volume."</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">V_after</span> <span class="o">=</span> <span class="n">V_after_sample</span> <span class="o">+</span> <span class="n">bolus_dv</span>
+        <span class="n">C2</span> <span class="o">=</span> <span class="p">(</span><span class="n">C</span> <span class="o">*</span> <span class="n">V_after_sample</span> <span class="o">+</span> <span class="n">bolus_mass</span><span class="p">)</span> <span class="o">/</span> <span class="n">V_after</span>
+        <span class="c1"># physical -&gt; scaled; PVs and latent pass through unchanged.</span>
+        <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">C2</span><span class="p">,</span> <span class="n">PVs</span><span class="p">,</span> <span class="n">V_after</span><span class="p">[</span><span class="kc">None</span><span class="p">],</span> <span class="n">cum</span><span class="p">,</span> <span class="n">h</span><span class="p">])</span> <span class="o">/</span> <span class="n">SCALE</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">affect_fn</span><span class="p">(</span><span class="n">y_scl</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">preset_index</span><span class="p">):</span>
+        <span class="c1"># ``preset_index == -1`` means the dispatcher is being evaluated speculatively</span>
+        <span class="c1"># for a lane where no preset fired. This occurs when ``vmap`` batches lanes with</span>
+        <span class="c1"># different event progress; mask the event time rather than relying on</span>
+        <span class="c1"># ``lax.cond``, whose batched form evaluates both branches.</span>
+        <span class="n">t_node</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">preset_index</span> <span class="o">&gt;=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">preset_times</span><span class="p">[</span><span class="n">preset_index</span><span class="p">],</span> <span class="n">jnp</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+        <span class="c1"># Otherwise, ``preset_index`` is the slot in ``preset_times`` where the</span>
+        <span class="c1"># solver stopped, so the firing node's time is looked up EXACTLY -- no</span>
+        <span class="c1"># tolerance, and no dependence on</span>
+        <span class="c1"># ``t`` (the solver's realised stop time) or on any dtype round-trip inside</span>
+        <span class="c1"># diffrax_callbacks. Matching ``|t - bt| &lt; eps`` instead used to let an output</span>
+        <span class="c1"># node merely NEAR a feed re-apply it, double-counting the bolus and drifting</span>
+        <span class="c1"># volume/concentrations for the rest of the trajectory; that needed a separate</span>
+        <span class="c1"># guard parking such nodes. Exact lookup removes the failure mode outright.</span>
+        <span class="c1">#</span>
+        <span class="c1"># Co-timed events still group into ONE node: every bolus/sample whose stored</span>
+        <span class="c1"># time equals ``t_node`` fires together (e.g. a sample and a feed both at 24 h),</span>
+        <span class="c1"># which is required because the solver only accepts strictly-future nodes and</span>
+        <span class="c1"># would otherwise skip the duplicate slots.</span>
+        <span class="k">return</span> <span class="n">apply_events</span><span class="p">(</span><span class="n">y_scl</span><span class="p">,</span> <span class="n">t_node</span><span class="p">)</span>
+
+    <span class="c1"># ``jump_ts`` = genuine vector-field discontinuity times (from</span>
+    <span class="c1"># ``BioProcess.discrete_events``); ``None``/empty ⇒ the controller behaves</span>
+    <span class="c1"># exactly as a plain ``PIDController(rtol, atol)``. Bolus/sample STATE jumps</span>
+    <span class="c1"># are handled by ``affect_fn`` below, NOT here.</span>
+    <span class="n">jump_ts_arg</span> <span class="o">=</span> <span class="n">jump_ts</span> <span class="k">if</span> <span class="n">jump_ts</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">jump_ts</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="n">cb</span> <span class="o">=</span> <span class="n">PresetTimeCallback</span><span class="p">(</span><span class="n">times</span><span class="o">=</span><span class="n">preset_times</span><span class="p">,</span> <span class="n">affect_fn</span><span class="o">=</span><span class="n">affect_fn</span><span class="p">)</span>
+    <span class="n">y0</span> <span class="o">=</span> <span class="n">wrapper</span><span class="o">.</span><span class="n">initial_physical_state_from_raw</span><span class="p">(</span><span class="n">RAW_y0</span><span class="p">)</span>
+    <span class="n">V_index</span> <span class="o">=</span> <span class="n">n_RMCs</span> <span class="o">+</span> <span class="n">n_PVs</span>
+    <span class="n">y0</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">error_if</span><span class="p">(</span>
+        <span class="n">y0</span><span class="p">,</span>
+        <span class="n">y0</span><span class="p">[</span><span class="n">V_index</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">min_V</span><span class="p">,</span>
+        <span class="s2">"initial state reached minimum reactor volume."</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">sample_at_t0</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">((</span><span class="n">st</span> <span class="o">==</span> <span class="n">t0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">smask</span><span class="p">,</span> <span class="n">sv</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+    <span class="n">y0_report</span> <span class="o">=</span> <span class="n">y0</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">V_index</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="o">-</span><span class="n">sample_at_t0</span><span class="p">)</span>
+    <span class="n">y0</span> <span class="o">=</span> <span class="n">apply_events</span><span class="p">(</span><span class="n">y0</span> <span class="o">/</span> <span class="n">SCALE</span><span class="p">,</span> <span class="n">t0</span><span class="p">)</span> <span class="o">*</span> <span class="n">SCALE</span>
+    <span class="c1"># RHS evaluated on the unscaled state (value unscale, ``yy * SCALE``); the</span>
+    <span class="c1"># RAW derivative is rescaled via ``scale_derivative`` (offset-free: under an</span>
+    <span class="c1"># affine scaler ``d((RAW-b)/s)/dt = (dRAW/dt)/s``, so the offset must NOT be</span>
+    <span class="c1"># subtracted here — the value ``/`` path would subtract it).</span>
+    <span class="n">term</span> <span class="o">=</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">ODETerm</span><span class="p">(</span>
+        <span class="k">lambda</span> <span class="n">t</span><span class="p">,</span> <span class="n">yy</span><span class="p">,</span> <span class="n">a</span><span class="p">:</span> <span class="n">SCALE</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span><span class="n">wrapper</span><span class="o">.</span><span class="n">physical_rhs</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">yy</span> <span class="o">*</span> <span class="n">SCALE</span><span class="p">))</span>
+    <span class="p">)</span>
+
+    <span class="c1"># ``dt0`` must be strictly positive. For a degenerate window (``t1 == t0``: a single</span>
+    <span class="c1"># active measurement, or all measurements at t0) ``(t1 - t0) * 1e-3`` is exactly 0,</span>
+    <span class="c1"># and a zero initial step makes diffrax bail on the tol-floored micro-segment inside</span>
+    <span class="c1"># the callback loop; that bail is then flagged as a failure and poisoned to inf.</span>
+    <span class="c1"># Only the exact zero-span case needs a fallback (any positive value works there, as</span>
+    <span class="c1"># the adaptive controller adjusts immediately), so a genuinely short run keeps its</span>
+    <span class="c1"># usual ``span * 1e-3`` untouched.</span>
+    <span class="n">span</span> <span class="o">=</span> <span class="n">t1</span> <span class="o">-</span> <span class="n">t0</span>
+    <span class="n">dt0</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">span</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="n">span</span> <span class="o">*</span> <span class="mf">1e-3</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">_DEGENERATE_DT0</span><span class="p">,</span> <span class="n">dtype</span><span class="p">))</span>
+
+    <span class="n">sol</span> <span class="o">=</span> <span class="n">diffeqsolve_with_callbacks</span><span class="p">(</span>
+        <span class="n">term</span><span class="p">,</span>
+        <span class="n">diffrax</span><span class="o">.</span><span class="n">Tsit5</span><span class="p">(),</span>
+        <span class="n">t0</span><span class="o">=</span><span class="n">t0</span><span class="p">,</span>
+        <span class="n">t1</span><span class="o">=</span><span class="n">t1</span><span class="p">,</span>
+        <span class="n">dt0</span><span class="o">=</span><span class="n">dt0</span><span class="p">,</span>
+        <span class="n">y0</span><span class="o">=</span><span class="n">y0</span> <span class="o">/</span> <span class="n">SCALE</span><span class="p">,</span>
+        <span class="n">callbacks</span><span class="o">=</span><span class="n">cb</span><span class="p">,</span>
+        <span class="c1"># N jump nodes need N+1 segments: one stop per node plus the final leg to t1.</span>
+        <span class="c1"># (With measurement times in the preset set t1 was itself a preset, so the old</span>
+        <span class="c1"># ``shape[0]`` already covered the last leg.)</span>
+        <span class="n">max_events</span><span class="o">=</span><span class="n">preset_times</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">output_times</span><span class="o">=</span><span class="n">output_times</span><span class="p">,</span>
+        <span class="n">output_window</span><span class="o">=</span><span class="n">_output_window</span><span class="p">(</span>
+            <span class="n">wrapper</span><span class="o">.</span><span class="n">controls</span><span class="p">,</span>
+            <span class="n">output_times</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="n">n_linspace</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">n_linspace</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="n">stepsize_controller</span><span class="o">=</span><span class="n">diffrax</span><span class="o">.</span><span class="n">PIDController</span><span class="p">(</span>
+            <span class="n">rtol</span><span class="o">=</span><span class="n">rtol</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="n">atol</span><span class="p">,</span> <span class="n">jump_ts</span><span class="o">=</span><span class="n">jump_ts_arg</span>
+        <span class="p">),</span>
+        <span class="n">max_steps</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">max_steps</span><span class="p">),</span>
+        <span class="n">adjoint</span><span class="o">=</span><span class="n">diffrax</span><span class="o">.</span><span class="n">RecursiveCheckpointAdjoint</span><span class="p">(),</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Assertion, not a safety net: the window bound is exact (see</span>
+    <span class="c1"># ``_output_window``), so</span>
+    <span class="c1"># this can only fire if that derivation is wrong. Left in because the alternative</span>
+    <span class="c1"># failure mode is silent -- the excess rows would simply stay ``inf``.</span>
+    <span class="n">states</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">error_if</span><span class="p">(</span>
+        <span class="n">sol</span><span class="o">.</span><span class="n">output_states</span><span class="p">,</span>
+        <span class="n">sol</span><span class="o">.</span><span class="n">output_overflow</span><span class="p">,</span>
+        <span class="s2">"output window too small: a segment owned more output times than it can hold"</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">states</span> <span class="o">=</span> <span class="n">states</span> <span class="o">*</span> <span class="n">SCALE</span>  <span class="c1"># scaled -&gt; physical (states are returned unscaled)</span>
+    <span class="c1"># Report the POST-sample state at a sample-coincident time: a well-mixed sample</span>
+    <span class="c1"># leaves concentrations unchanged and only removes volume, so subtract any sample</span>
+    <span class="c1"># volume scheduled at that time from V. Boluses stay pre-bolus (the offline</span>
+    <span class="c1"># measurement is taken before feeding). This makes the reported V honour</span>
+    <span class="c1"># ``v0 + Σfeeds − Σsamples`` at the final sample, matching pmap. Exact, for the same</span>
+    <span class="c1"># reason ``affect_fn`` matches exactly: with a tolerance an output point merely NEAR</span>
+    <span class="c1"># a sample would also get the correction, even though the solve has already applied</span>
+    <span class="c1"># that sample to the state it is reading. Keyed on the caller's ``t_eval`` (not the</span>
+    <span class="c1"># parked ``output_times``) so padded rows behave exactly as before.</span>
+    <span class="n">s_here</span> <span class="o">=</span> <span class="p">(</span><span class="n">t_eval</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">==</span> <span class="n">st</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:])</span> <span class="o">&amp;</span> <span class="n">smask</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:]</span>
+    <span class="n">sample_dv_here</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">s_here</span><span class="p">,</span> <span class="n">sv</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:],</span> <span class="mf">0.0</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">states</span> <span class="o">=</span> <span class="n">states</span><span class="o">.</span><span class="n">at</span><span class="p">[:,</span> <span class="n">n_RMCs</span> <span class="o">+</span> <span class="n">n_PVs</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="o">-</span><span class="n">sample_dv_here</span><span class="p">)</span>
+    <span class="c1"># Every grid point at t0 reports the post-sample, pre-bolus state. The dense /</span>
+    <span class="c1"># prediction export solves on a union grid that can carry t0 at *several* indices</span>
+    <span class="c1"># (measurement-t0, dense-t0, prediction-t0), not only index 0 — so patch all of</span>
+    <span class="c1"># them. The solve already seeds its t0 slots with ``y0``, but only in SCALED space,</span>
+    <span class="c1"># so the ``/ SCALE`` → ``* SCALE`` round trip can differ from ``y0`` by an ULP;</span>
+    <span class="c1"># this writes the exact physical value.</span>
+    <span class="c1"># Exact: ``t0`` IS ``t_eval[0]``, and every extra t0 row comes from a</span>
+    <span class="c1"># ``linspace(t0, ...)`` whose first element is bitwise ``t0``.</span>
+    <span class="n">at_t0</span> <span class="o">=</span> <span class="p">(</span><span class="n">t_eval</span> <span class="o">==</span> <span class="n">t0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">meas_active</span>
+    <span class="n">states</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">at_t0</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">y0_report</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:],</span> <span class="n">states</span><span class="p">)</span>
+
+    <span class="c1"># Overwrite every post-failure row (``t &gt; fail_time``) from ``fail_time``. Healthy</span>
+    <span class="c1"># solve: ``fail_time == inf`` -&gt; no-op.</span>
+    <span class="n">fail_time</span> <span class="o">=</span> <span class="n">sol</span><span class="o">.</span><span class="n">fail_time</span>
+    <span class="n">post_fail</span> <span class="o">=</span> <span class="o">~</span><span class="n">within_fail_time</span><span class="p">(</span><span class="n">t_eval</span><span class="p">,</span> <span class="n">fail_time</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">return_fail_time</span><span class="p">:</span>
+        <span class="c1"># LOSS-FACING path: replace post-failure rows with a finite ``y0`` placeholder</span>
+        <span class="c1"># so the ``penalty(state) * mask`` idiom stays safe (an inf left in makes</span>
+        <span class="c1"># ``0 * inf = nan`` poison the loss/gradient even for a masked row). The caller</span>
+        <span class="c1"># still EXCLUDES these rows via ``fail_time`` (measurement mask +</span>
+        <span class="c1"># ``dense_valid_time``); the placeholder only guarantees finiteness.</span>
+        <span class="c1">#</span>
+        <span class="c1"># The ``~isfinite`` arm is load-bearing, not defensive. ``within_fail_time``</span>
+        <span class="c1"># classifies rows up to ``fail_time + _FAIL_TIME_EPS`` as valid, while the solve</span>
+        <span class="c1"># writes ``inf`` for every slot it did not reach — so an output time inside that</span>
+        <span class="c1"># 1e-4 window is called valid AND is ``inf``. Time alone is therefore not a</span>
+        <span class="c1"># sufficient test for finiteness here.</span>
+        <span class="n">states</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
+            <span class="n">post_fail</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">|</span> <span class="o">~</span><span class="n">jnp</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">states</span><span class="p">),</span> <span class="n">y0</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:],</span> <span class="n">states</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">states</span><span class="p">,</span> <span class="n">fail_time</span>
+    <span class="c1"># FORWARD/EXPORT path (``simulate_measurement_states``, plotting): write an explicit</span>
+    <span class="c1"># non-finite sentinel so a failed forward is detectable and never reads back as a</span>
+    <span class="c1"># stale finite value silently presented as a real prediction.</span>
+    <span class="n">states</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">post_fail</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">states</span><span class="o">.</span><span class="n">dtype</span><span class="p">),</span> <span class="n">states</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">states</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Bioprocess Modeling Collective
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=04266cf0"></script>
+    <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script src="../../../_static/custom.js?v=fec45a96"></script>
+    </body>
+</html>

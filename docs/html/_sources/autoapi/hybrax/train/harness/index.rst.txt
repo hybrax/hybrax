@@ -1,0 +1,615 @@
+hybrax.train.harness
+====================
+
+.. py:module:: hybrax.train.harness
+
+.. autoapi-nested-parse::
+
+   The training and forward-evaluation harness: the layer above ``trainer.py``'s single batch step.
+
+   This module provides:
+
+   - ``train_collection`` / ``train_from_collection`` / ``train_from_prepared_json`` —
+     train one reaction/loss module pair over a batch stream, at increasing
+     levels of convenience (a prepared store, a raw collection, a prepared JSON
+     file on disk).
+   - ``model_predict`` / ``forward_from_collection`` / ``evaluate_trained_wrapper`` —
+     run a trained model forward over new or held-out data, without touching the
+     optimizer.
+   - ``prepare_training`` / ``prepare_training_from_runtime_artifact`` /
+     ``train_harness_config_from_run_config`` — build every hook-visible object
+     (reaction module, loss module, optimizer, harness config) from a
+     :class:`~hybrax.train.run_config.RunConfig` and a runtime artifact, the
+     path the CLI and LOO folds both go through.
+
+   Batching, the JIT-compiled train step, and per-sample loss evaluation live in
+   ``trainer.py``; this module owns everything around that step — process
+   selection, checkpointing, logging, and the public entry points.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.harness.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.harness.ForwardConfig
+   hybrax.train.harness.ForwardResult
+   hybrax.train.harness.PreparedTraining
+   hybrax.train.harness.TrainHarnessConfig
+   hybrax.train.harness.TrainHarnessResult
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.harness.build_optimizer_for_run
+   hybrax.train.harness.compute_dense_exports
+   hybrax.train.harness.derive_update_budget
+   hybrax.train.harness.evaluate_trained_wrapper
+   hybrax.train.harness.forward_from_collection
+   hybrax.train.harness.model_predict
+   hybrax.train.harness.prepare_training
+   hybrax.train.harness.prepare_training_from_runtime_artifact
+   hybrax.train.harness.summarize_train_step_input_signature
+   hybrax.train.harness.train_collection
+   hybrax.train.harness.train_from_collection
+   hybrax.train.harness.train_from_prepared_json
+   hybrax.train.harness.train_harness_config_from_run_config
+
+
+Module Contents
+---------------
+
+.. py:class:: ForwardConfig
+
+   Configuration for a forward evaluation run (no optimizer).
+
+
+   .. py:attribute:: process_names
+      :type:  tuple[str, ...] | None
+      :value: None
+
+
+
+   .. py:attribute:: solver_atol
+      :type:  float
+      :value: 1e-07
+
+
+
+   .. py:attribute:: solver_max_steps
+      :type:  int
+      :value: 4096
+
+
+
+   .. py:attribute:: solver_rtol
+      :type:  float
+      :value: 1e-05
+
+
+
+   .. py:attribute:: solver_use_jump_ts
+      :type:  bool
+      :value: True
+
+
+
+   .. py:attribute:: target_source
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: target_variable_order
+      :type:  tuple[str, ...] | None
+      :value: None
+
+
+
+.. py:class:: ForwardResult
+
+   Outputs of a trained-wrapper forward evaluation.
+
+
+   .. py:attribute:: dense_exports
+      :type:  dict[str, hybrax.train.postprocessing.DenseProcessExport]
+
+
+   .. py:attribute:: name_modeled_Inflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_modeled_Outflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: per_process_per_target_loss
+      :type:  dict[str, tuple[float, ...]]
+
+
+   .. py:attribute:: per_process_total_loss
+      :type:  dict[str, float]
+
+
+   .. py:attribute:: process_names
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: store
+      :type:  hybrax.train.training_data.TrainingDataStore
+
+
+   .. py:attribute:: target_names
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: trained_wrapper
+      :type:  hybrax.train.wrapper.HybridOdeWrapper
+
+
+   .. py:attribute:: training_process_names
+      :type:  tuple[str, ...]
+
+
+.. py:class:: PreparedTraining
+
+   Collection-free inputs for :func:`train_collection`.
+
+
+   .. py:attribute:: config
+      :type:  TrainHarnessConfig
+
+
+   .. py:attribute:: loss_module
+      :type:  hybrax.train.model_api.UserLossModule
+
+
+   .. py:attribute:: optimizer
+      :type:  optax.GradientTransformation
+
+
+   .. py:attribute:: prediction_parent_process_names
+      :type:  tuple[str, ...]
+      :value: ()
+
+
+
+   .. py:attribute:: reaction_module
+      :type:  hybrax.train.model_api.UserReactionModule
+
+
+   .. py:attribute:: store
+      :type:  hybrax.train.training_data.TrainingDataStore
+
+
+.. py:class:: TrainHarnessConfig
+
+   Configuration for collection-level training harness runs.
+
+
+   .. py:attribute:: allow_stateful_models
+      :type:  bool
+      :value: False
+
+
+
+   .. py:attribute:: batch_seed
+      :type:  int | None
+      :value: None
+
+
+
+   .. py:attribute:: batch_size
+      :type:  int | None
+      :value: None
+
+
+
+   .. py:attribute:: checkpoint_dir
+      :type:  pathlib.Path | None
+      :value: None
+
+
+
+   .. py:attribute:: checkpoint_every
+      :type:  float | None
+      :value: None
+
+
+
+   .. py:attribute:: epochs
+      :type:  int
+      :value: 5
+
+
+
+   .. py:attribute:: grad_clip_norm
+      :type:  float
+      :value: 1000.0
+
+
+
+   .. py:attribute:: holdout_label
+      :type:  str
+      :value: 'holdout'
+
+
+
+   .. py:attribute:: holdout_processes
+      :type:  tuple[str, ...] | None
+      :value: None
+
+
+
+   .. py:attribute:: learning_rate
+      :type:  float | optax.Schedule
+      :value: 0.001
+
+
+
+   .. py:attribute:: log_decimals
+      :type:  int
+      :value: 4
+
+
+
+   .. py:attribute:: log_process_losses
+      :type:  bool
+      :value: False
+
+
+
+   .. py:attribute:: metrics_csv
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: metrics_jsonl
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: optimizer_name
+      :type:  str
+      :value: 'adam'
+
+
+
+   .. py:attribute:: prepared_path
+      :type:  pathlib.Path | None
+      :value: None
+
+
+
+   .. py:attribute:: process_names
+      :type:  tuple[str, ...] | None
+      :value: None
+
+
+
+   .. py:attribute:: seed
+      :type:  int
+      :value: 0
+
+
+
+   .. py:attribute:: shuffle_batches
+      :type:  bool
+      :value: True
+
+
+
+   .. py:attribute:: solver_atol
+      :type:  float
+      :value: 1e-07
+
+
+
+   .. py:attribute:: solver_max_steps
+      :type:  int
+      :value: 2048
+
+
+
+   .. py:attribute:: solver_rtol
+      :type:  float
+      :value: 1e-05
+
+
+
+   .. py:attribute:: solver_use_jump_ts
+      :type:  bool
+      :value: True
+
+
+
+   .. py:attribute:: target_source
+      :type:  str
+      :value: 'auto'
+
+
+
+   .. py:attribute:: target_variable_order
+      :type:  tuple[str, ...] | None
+      :value: None
+
+
+
+.. py:class:: TrainHarnessResult
+
+   Summary object returned by the training harness.
+
+
+   .. py:attribute:: batch_process_names_by_step
+      :type:  tuple[tuple[str, ...], ...]
+
+
+   .. py:attribute:: compile_warmup_seconds
+      :type:  float
+
+
+   .. py:attribute:: grad_norm_by_step
+      :type:  tuple[float, ...]
+      :value: ()
+
+
+
+   .. py:attribute:: holdout_label
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: holdout_loss_by_step
+      :type:  dict[int, float]
+
+
+   .. py:attribute:: holdout_per_target_by_step
+      :type:  dict[int, tuple[float, ...]]
+
+
+   .. py:attribute:: mean_loss_by_step
+      :type:  tuple[float, ...]
+
+
+   .. py:attribute:: per_process_loss_by_step
+      :type:  tuple[tuple[float, ...], ...]
+
+
+   .. py:attribute:: per_target_loss_by_step
+      :type:  tuple[tuple[float, ...], ...]
+      :value: ()
+
+
+
+   .. py:attribute:: step_time_seconds
+      :type:  tuple[float, ...]
+
+
+   .. py:attribute:: target_names
+      :type:  tuple[str, ...]
+      :value: ()
+
+
+
+   .. py:attribute:: train_step_input_signature
+      :type:  tuple[object, ...]
+
+
+   .. py:attribute:: train_step_rebuild_count
+      :type:  int
+
+
+   .. py:attribute:: trained_wrapper
+      :type:  hybrax.train.wrapper.HybridOdeWrapper
+
+
+   .. py:attribute:: updates_completed
+      :type:  int
+      :value: 0
+
+
+
+.. py:function:: build_optimizer_for_run(*, custom_module, custom_cfg, train_cfg, total_updates)
+
+   Resolve the optimizer exactly as :func:`train_from_collection` does.
+
+   Applies the optional ``build_learning_rate`` + ``build_optimizer`` hooks,
+   falling back to the default chain. Returns ``(optimizer, train_cfg)`` where
+   ``train_cfg`` carries any hook-overridden learning rate.
+
+
+.. py:function:: compute_dense_exports(trained_wrapper, store, process_names, *, solver_max_steps, solver_rtol, solver_atol, solver_use_jump_ts, prediction_grid_n = 200)
+
+   Evaluate ``process_names`` in padded JIT batches and build dense exports.
+
+   The single source of dense prediction trajectories for forward and final
+   training exports. The prediction grid is harvested from the same loss solve
+   (``BatchControls`` + ``discrete_events`` ``jump_ts``), so predictions match
+   training and there is no second simulation. Returns ``(per_sample_total,
+   per_sample_per_target, dense_exports)`` (loss arrays are ``np``, aligned with
+   ``process_names``).
+
+
+.. py:function:: derive_update_budget(config, *, selected_process_count)
+
+   Validate batching config and derive the run's total optimizer-step count.
+
+   :param config: Harness config; ``batch_size=None`` means full-batch.
+   :param selected_process_count: Number of processes selected for training.
+
+   :returns: ``(batch_size, batches_per_epoch, total_updates)``, where
+             ``total_updates = config.epochs * batches_per_epoch``.
+
+   :raises ValueError: If ``config``'s batching settings are invalid; see
+       ``_validate_batching_config``.
+
+
+.. py:function:: evaluate_trained_wrapper(trained_wrapper, store, *, config, target_names, training_process_names = (), prediction_process_names = None, prediction_grid_n = 200)
+
+   Evaluate an existing store and trained wrapper without reconstruction.
+
+
+.. py:function:: forward_from_collection(collection, *, model_path, config = None, custom_py = None, training_process_names = None, run_config = None, custom_module = None, prediction_process_names = None, prediction_grid_n = 200)
+
+   Run one forward pass per selected process of ``collection``.
+
+   ``collection`` is **evaluation data only**. The model itself is rebuilt from
+   the prepared collection *it* trained on: that input is resolved from
+   ``model_path``'s run directory and its recorded
+   ``inputs.prepared_input.content_hash`` is verified before any hook runs (see
+   :func:`~hybrax.train.serialization.reconstruct_training`). So the reaction module,
+   the loss module, every ``SCALE_*`` and the deserialisation template are exactly
+   training's, and evaluation data never reaches a constructor hook.
+
+   A separate store is built from ``collection`` for the solves. It must be
+   compatible with the training data — same measured/modeled variables in the
+   same order — or the call fails with an explicit error.
+
+   :param collection: Evaluation-only process collection to forward-solve.
+   :param model_path: Path to the trained model's run/checkpoint directory.
+   :param config: Forward-run settings (prediction scope, plotting), or
+                  ``None`` for defaults.
+   :param custom_py: Override for the recorded ``custom.py`` path, or ``None``
+                     to use the one the run recorded.
+   :param training_process_names: Restrict reconstruction to this subset of the
+                                  model's original training processes, or ``None`` for all of them.
+   :param run_config: Pre-loaded run config, or ``None`` to read it from
+                      ``model_path``'s ``config.json``.
+   :param custom_module: Pre-loaded custom module, or ``None`` to load it from
+                         ``custom_py``/the recorded path.
+   :param prediction_process_names: Restrict prediction to this subset of
+                                    ``collection``'s processes, or ``None`` for all of them.
+   :param prediction_grid_n: Size of the evenly-spaced prediction grid; see
+                             :func:`model_predict`'s ``grid_n``.
+
+   :returns: per-process dense exports plus the rebuilt
+             wrapper and config.
+   :rtype: The forward result
+
+   :raises ValueError: If ``collection``'s measured/modeled variables are
+       incompatible with the training data.
+
+
+.. py:function:: model_predict(trained_wrapper, config, collection, *, process_names = None, grid_n = 200)
+
+   Forward-solve a trained model over ``collection`` in one batched solve.
+
+   The companion to :func:`~hybrax.train.model_load`: pass the pair it returned plus
+   the collection you want predictions for. Solver settings come from
+   ``config.solver`` — the values the model was actually fitted under — so there
+   is nothing to re-decide here.
+
+   ``collection`` may hold processes the model never trained on. Every process in
+   a collection shares one ``RhsOde`` layout; only controls and events differ, and
+   a mismatch fails fast via :func:`~hybrax.train.validate_rhs_ode_compatibility`.
+
+   To predict a subset, pass ``process_names`` — do **not** slice
+   ``collection.processes``. The hybrax.train metadata block carries its own
+   ``process_order``, so a hand-sliced collection fails when the controls store
+   is rebuilt.
+
+   ``process_names`` defaults to every process in ``collection``. ``grid_n`` is
+   the size of the evenly-spaced output grid; each process's own measurement
+   times are spliced into it, so the returned ``t`` is that union (sorted, and
+   therefore usually a little longer than ``grid_n``) — a node lands exactly on
+   every measurement instead of interpolating across bolus/feed discontinuities.
+
+   Two requirements on ``collection``, both structural rather than incidental:
+
+   - Every process needs a measurement at its first time for **every** target —
+     that is where the ODE initial condition comes from.
+   - The target set must match what the model was trained on
+     (``config.data.targets``).
+
+   Returns ``{process_name: DenseProcessExport}``. Losses are deliberately not
+   returned: they are meaningless for a process whose measurements are only a
+   ``t0`` seed. Use :func:`evaluate_trained_wrapper` when you want them.
+
+   .. note::
+      This reuses ``trained_wrapper``'s ``SCALE_*`` as-is and never rebuilds the
+      reaction module. :func:`forward_from_collection` rebuilds them, but always
+      from the model's *own* recorded training input, so it does not re-scale the
+      model against the collection it is asked to evaluate either.
+
+
+.. py:function:: prepare_training(collection, *, config = None, custom_py = None, runtime_config = None, run_config = None, custom_module = None)
+
+   Build runtime inputs while borrowing, but never retaining, collection.
+
+
+.. py:function:: prepare_training_from_runtime_artifact(artifact, *, config, custom_module, custom_cfg)
+
+   Prepare training solely from an already-loaded runtime artifact.
+
+
+.. py:function:: summarize_train_step_input_signature(*values)
+
+   Return a stable pytree leaf-shape/type summary for train-step inputs.
+
+
+.. py:function:: train_collection(store, *, reaction_module, loss_module = None, config = None, optimizer = None)
+
+   Train one reaction module over one or many processes from one store.
+
+   Scales live on ``reaction_module``; loss terms are produced by
+   ``loss_module`` (both attached to the wrapper, partitioned together). When
+   ``loss_module`` is None, the default per-target MSE module is used.
+   ``optimizer``, when provided (via the ``build_optimizer`` hook), fully owns
+   optimizer construction; otherwise the default ``_build_optimizer`` chain is
+   used.
+
+   :param store: Prepared training data for every candidate process.
+   :param reaction_module: Reaction module to train.
+   :param loss_module: Loss module to train alongside it, or ``None`` for the
+                       default per-target MSE module.
+   :param config: Harness settings (batching, optimizer, solver, checkpointing,
+                  logging), or ``None`` for defaults.
+   :param optimizer: Pre-built optimizer, or ``None`` to use the default chain.
+
+   :returns: The trained wrapper plus the full per-step training history.
+
+   :raises ValueError: If ``reaction_module`` has a nonzero latent state without
+       ``config.allow_stateful_models``, or ``config``'s solver settings
+       are non-positive.
+
+
+.. py:function:: train_from_collection(collection, *, config = None, custom_py = None, runtime_config = None, run_config = None, custom_module = None)
+
+   Prepare and train; external collection references remain caller-owned.
+
+
+.. py:function:: train_from_prepared_json(prepared_json, *, config = None, custom_py = None, runtime_config = None)
+
+   Load a prepared JSON and train from it.
+
+   Thin wrapper around :func:`train_from_collection` for callers that
+   only have a path. Callers that already hold a deserialized collection
+   should invoke ``train_from_collection`` directly to avoid loading the
+   prepared JSON twice.
+
+
+.. py:function:: train_harness_config_from_run_config(cfg, *, run_dir)
+
+   Map a typed :class:`RunConfig` + run-directory layout to the harness
+   config, wiring the run-dir artifact paths (``metrics.csv``, ``checkpoints/``)
+   and the checkpoint/output/logging sections. Shared by the CLI train and LOO
+   paths.
+
+
+.. py:data:: logger
+

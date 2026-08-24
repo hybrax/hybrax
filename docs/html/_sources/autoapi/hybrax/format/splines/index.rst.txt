@@ -1,0 +1,291 @@
+hybrax.format.splines
+=====================
+
+.. py:module:: hybrax.format.splines
+
+.. autoapi-nested-parse::
+
+   Pseudobatch normalization utilities and spline storage for bioprocess data.
+
+   This module provides:
+   - Pseudobatch transform computation (pseudobatch concentration, ADF, feed
+     correction)
+   - Conversion of pseudobatch results to TimeSeries carriers for minimal storage
+   - Reconstruction of backtransformed concentrations from stored TimeSeries
+   - Core spline infrastructure (fitting, evaluation, segmentation)
+
+   Design goals:
+   - Always compute pseudobatch transform (pseudobatch concentration) and
+     correction terms from physical event semantics.
+   - Avoid dense-grid pseudo-events from interpolation artifacts.
+   - Fit:
+       - pseudobatch concentration: smoothing TimeSeries spline where possible
+       - ADF: exact TimeSeries pieces with left-continuous jumps
+       - feed_correction: exact TimeSeries pieces with left-continuous jumps
+
+   Scope: pseudobatch normalization only supports Inflow and discrete Outflow
+   (sampling) volume changes. Its exact closed-form ADF construction assumes
+   reactor volume only grows from Inflows; a continuous Outflow (perfusion,
+   continuous harvest/bleed, retention or not) makes the required ADF
+   growth-rate ODE non-polynomial (it needs 1/V(t) where V(t) is a genuine
+   cubic once volume can also shrink continuously), so it cannot be represented
+   exactly. ``build_pseudobatch_transform``/``build_pseudobatch_inputs`` raise
+   ``NotImplementedError`` for any process containing a continuous Outflow
+   rather than silently producing wrong numbers.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.format.splines.BacktransformSpline
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.format.splines.build_backtransform_spline
+   hybrax.format.splines.build_pseudobatch_inputs
+   hybrax.format.splines.build_pseudobatch_transform
+   hybrax.format.splines.build_splines
+   hybrax.format.splines.detect_discrete_state_events
+   hybrax.format.splines.evaluate_pseudobatch_transform
+   hybrax.format.splines.evaluate_real_concentration
+   hybrax.format.splines.fit_timeseries_spline
+   hybrax.format.splines.make_constant_spline
+   hybrax.format.splines.make_cubic_ppoly
+   hybrax.format.splines.make_segment_boundaries
+   hybrax.format.splines.split_timeseries
+   hybrax.format.splines.to_timeseries
+
+
+Module Contents
+---------------
+
+.. py:class:: BacktransformSpline
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   JIT-compatible evaluation of backtransformed pseudobatch splines.
+
+   Reconstructs the real concentration via the inverse pseudobatch transform:
+       ``c(t) = (c*(t) + feed_corr(t)) / ADF(t)``
+
+   For species with constant (or near-constant) measured concentrations,
+   the backtransform is bypassed and the stored constant value is returned
+   directly (avoiding cubic spline oscillation artifacts).
+
+   All fields are JAX arrays or ``eqx.Module`` instances, so this object
+   can be passed through ``eqx.filter_jit`` and used inside JIT-compiled
+   functions (e.g. ODE right-hand sides).
+
+   Build with :func:`build_backtransform_spline` from a stored transformed
+   :class:`TimeSeries`.
+
+
+   .. py:method:: derivative()
+
+      Return a callable evaluating dc/dt at time *t*.
+
+      With ``c(t) = (c*(t) + fc(t)) / ADF(t)``, the quotient rule gives
+
+      .. math::
+          \frac{dc}{dt} =
+              \frac{dc^*/dt + dfc/dt}{\text{ADF}}
+              \;-\; \frac{(c^* + fc)}{\text{ADF}^2}\,\frac{d\text{ADF}}{dt}
+            = \frac{dc^*/dt + dfc/dt - c\cdot d\text{ADF}/dt}{\text{ADF}}
+
+      The ``-c · dADF/dt / ADF`` term is non-zero whenever continuous feed
+      (or the sample-compensation factor) makes ADF vary smoothly between
+      events, so it MUST be included to avoid a systematic dc/dt bias in
+      the mechanistic q-inversion.
+
+      ``dc^*/dt`` uses the analytical c* spline derivative.
+      ``dfc/dt`` and ``d(ADF)/dt`` use the derivative TimeSeries, ignoring
+      instantaneous jump impulses.
+
+
+
+   .. py:attribute:: adf_jump_times
+      :type:  jax.numpy.ndarray
+
+
+   .. py:attribute:: adf_jump_values
+      :type:  jax.numpy.ndarray
+
+
+   .. py:attribute:: adf_times
+      :type:  jax.numpy.ndarray
+
+
+   .. py:attribute:: adf_ts
+      :type:  hybrax.format.dataclasses.TimeSeries
+
+
+   .. py:attribute:: adf_values
+      :type:  jax.numpy.ndarray
+
+
+   .. py:attribute:: c_star_spline
+      :type:  hybrax.format.time_series.PPoly
+
+
+   .. py:attribute:: constant_value
+      :type:  jax.numpy.ndarray
+
+
+   .. py:attribute:: dadf_ts
+      :type:  hybrax.format.dataclasses.TimeSeries
+
+
+   .. py:attribute:: dfc_ts
+      :type:  hybrax.format.dataclasses.TimeSeries
+
+
+   .. py:attribute:: fc_jump_times
+      :type:  jax.numpy.ndarray
+
+
+   .. py:attribute:: fc_jump_values
+      :type:  jax.numpy.ndarray
+
+
+   .. py:attribute:: fc_times
+      :type:  jax.numpy.ndarray
+
+
+   .. py:attribute:: fc_values
+      :type:  jax.numpy.ndarray
+
+
+   .. py:attribute:: feed_corr_ts
+      :type:  hybrax.format.dataclasses.TimeSeries
+
+
+   .. py:attribute:: is_constant
+      :type:  bool
+
+
+.. py:function:: build_backtransform_spline(process, species_name)
+
+   Build a JIT-compatible c* -> real concentration backtransform.
+
+   The process supplies the shared pseudobatch transform bundle; the component
+   supplies the stored ``pseudobatch_concentration`` carrier.
+
+
+.. py:function:: build_pseudobatch_inputs(process, species_name)
+
+   Build canonical inputs for pseudobatch normalization.
+
+   Returned dict contains:
+     - meas_times, meas_conc, c_star (arrays at measurement times)
+     - dense_times, meas_indices
+     - reactor_volume_dense, sample_volume_dense, accumulated_feed_dense,
+       concentration_in_feed
+     - adf_at_meas, feed_corr_at_meas
+     - has_discrete_feed (bool)
+
+   Notes
+   -----
+   ADF and feed_correction are computed only at measurement times
+   (this avoids treating continuous feeds as discrete dilutions).
+   Discrete bolus events are treated as left-continuous in this transform:
+   at exactly ``t_b`` values are pre-event, and the jump appears for ``t > t_b``.
+
+
+.. py:function:: build_pseudobatch_transform(process, species_names = None, *, cstar_smoothing_s = 0.0)
+
+   Build a shared process-level pseudobatch transform bundle.
+
+
+.. py:function:: build_splines(inputs, process = None, species_name = None, *, cstar_smoothing_s = 0.0)
+
+   Build the runtime pseudobatch spline payload from
+   ``build_pseudobatch_inputs``.
+
+   The feed-correction and ADF trajectories are represented by canonical
+   ``TimeSeries`` payloads built directly from physical volume/feed events.
+   No epsilon-offset dense event grid is used.
+
+   Returns a runtime payload dict consumed by
+   ``evaluate_real_concentration``, ``to_timeseries``,
+   ``BacktransformSpline``, and the mechanistic pseudobatch path.
+
+
+.. py:function:: detect_discrete_state_events(process)
+
+   Detect discrete event times from non-continuous VolumeChanges.
+
+   :param process: A BioProcess whose ``volume.volume_changes`` may contain
+                   discrete (``is_continuous=False``) entries.
+
+   :returns: Sorted, unique event times and optional labels.
+
+
+.. py:function:: evaluate_pseudobatch_transform(process, component, times)
+
+   Evaluate stored pseudobatch c* as real concentration.
+
+   Implements only the c* -> real concentration direction:
+   ``c(t) = (c*(t) + feed_correction(t)) / ADF(t)``.
+
+
+.. py:function:: evaluate_real_concentration(t_eval, splines)
+
+   Backtransform c*(t) -> c(t) at arbitrary evaluation times t_eval.
+
+   Uses:
+     - c*(t) via the fitted owned PPoly spline
+     - ADF via canonical ``TimeSeries.evaluate``
+     - feed_correction via canonical ``TimeSeries.evaluate``
+
+   :returns: array of backtransformed concentrations evaluated at t_eval
+
+
+.. py:function:: fit_timeseries_spline(ts, *, boundaries = None, smoothing_s = 0.0)
+
+   Fit segmented spline state onto a TimeSeries.
+
+   Segments with at least four points use SciPy's cubic smoothing B-spline
+   path. ``smoothing_s=0`` makes that path exact/interpolating. Shorter
+   segments fall back to an interpolating natural CubicSpline because cubic
+   smoothing B-splines require at least four samples.
+
+
+.. py:function:: make_constant_spline(value, t_min, t_max)
+
+   Create a constant spline-backed TimeSeries over [t_min, t_max].
+
+
+.. py:function:: make_cubic_ppoly(t, y, bc_type = 'natural')
+
+   Build a robust cubic PPoly from arrays. Ensures unique, sorted knots.
+
+
+.. py:function:: make_segment_boundaries(t_min, t_max, event_times)
+
+   Return segment boundaries ``[t_min, ...events..., t_max]``.
+
+   Only events strictly inside ``(t_min, t_max)`` are included.
+   The result is a strictly-increasing array.
+
+
+.. py:function:: split_timeseries(ts, boundaries)
+
+   Split *ts* into segments defined by *boundaries*.
+
+   Points that fall exactly on a boundary belong to both adjacent segments
+   (duplicated at split point) to ensure each segment covers its endpoints.
+
+
+.. py:function:: to_timeseries(inputs, splines, species_name, *, cstar_smoothing_s = 0.0)
+
+   Convert pseudobatch pipeline outputs to a TimeSeries-first carrier.
+
+

@@ -1,0 +1,1274 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="hybrax.format.inspect" href="../inspect/index.html"><link rel="prev" title="hybrax.format" href="../index.html">
+        <link rel="prefetch" href="../../../../_static/hybrax_logo.png" as="image">
+
+    <link rel="shortcut icon" href="../../../../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>hybrax.format.dataclasses - Bioprocess Modeling with Hybrax</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=98a1085a" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #eeffcc;
+  --color-code-foreground: black;
+  --color-brand-primary: #2563eb;
+  --color-brand-content: #2563eb;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../../index.html"><div class="brand">Bioprocess Modeling with Hybrax</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../../../_static/hybrax_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">Hybrax Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/why.html">Why this exists</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/concepts.html">Concepts and Vocabulary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/find.html">Which page do I need?</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/01_your_first_dataset.html">1. Import your Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/02_look_at_it.html">2. View your Dataset</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/03_train.html">3. Train a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/04_your_first_custom_py.html">4. Custom Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/05_predict.html">5. Predict Processes</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.format guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/data_model.html">The Data Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/load_and_save.html">Loading and saving</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/validate_and_inspect.html">Validating and inspecting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/volume_feeds_events.html">Volume, feeds and events</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/time_series_and_splines.html">Time series and splines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/limits_and_gotchas.html">Limits and gotchas</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/further_reading.html">Further reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/config.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/hooks_cheatsheet.html">Customization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/prepare.html">Prepare</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/train.html">Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/reaction_module.html">The Reaction Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/loss_module.html">The Loss Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/scaling.html">Scaling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/forward.html">Forward</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/loo.html">Cross-Validation (LOO)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/save_load_predict.html">The Python API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/further_reading.html">Further Reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/mechanistic_rates.html">Mechanistic models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/dense_loss.html">Custom losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/stateful.html">Stateful models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/freezing.html">Freezing parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/augmentation.html">Augmentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/gaussian_process.html">A Gaussian-process model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/kan.html">A KAN model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/optfed.html">OptFed</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/glutamine_decay.html">Glutamine decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/modeled_pv.html">A modeled process variable</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../troubleshooting/errors.html">Errors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../troubleshooting/silent_failures.html">Silent failures</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Under the hood</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../under_the_hood/design_rationale.html">Design Rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../contributors.html">Contributors</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul class="current">
+<li class="toctree-l1 current has-children"><a class="reference internal" href="../index.html">hybrax.format</a><input aria-label="Toggle navigation of hybrax.format" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">hybrax.format.dataclasses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../inspect/index.html">hybrax.format.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../json_io/index.html">hybrax.format.json_io</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../serialization/index.html">hybrax.format.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../simulation/index.html">hybrax.format.simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../splines/index.html">hybrax.format.splines</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../time_series/index.html">hybrax.format.time_series</a><input aria-label="Toggle navigation of hybrax.format.time_series" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../time_series/constants/index.html">hybrax.format.time_series.constants</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../time_series/grid_utils/index.html">hybrax.format.time_series.grid_utils</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../time_series/io/index.html">hybrax.format.time_series.io</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../time_series/ppoly/index.html">hybrax.format.time_series.ppoly</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../time_series/spline_ops/index.html">hybrax.format.time_series.spline_ops</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../time_series/timeseries/index.html">hybrax.format.time_series.timeseries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../validate/index.html">hybrax.format.validate</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../train/index.html">hybrax.train</a><input aria-label="Toggle navigation of hybrax.train" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../train/augmentation/index.html">hybrax.train.augmentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/augmentation_plot/index.html">hybrax.train.augmentation_plot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/bounds_loss/index.html">hybrax.train.bounds_loss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/checkpointing/index.html">hybrax.train.checkpointing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/cli/index.html">hybrax.train.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/constants/index.html">hybrax.train.constants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/controls/index.html">hybrax.train.controls</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/defaults/index.html">hybrax.train.defaults</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/dense/index.html">hybrax.train.dense</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/forward_plotting/index.html">hybrax.train.forward_plotting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/harness/index.html">hybrax.train.harness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/inspect/index.html">hybrax.train.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/logging/index.html">hybrax.train.logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/loo/index.html">hybrax.train.loo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/loo_metrics/index.html">hybrax.train.loo_metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/model_api/index.html">hybrax.train.model_api</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/prepare/index.html">hybrax.train.prepare</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/run_config/index.html">hybrax.train.run_config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/runtime_context/index.html">hybrax.train.runtime_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/serialization/index.html">hybrax.train.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/trainer/index.html">hybrax.train.trainer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/training_data/index.html">hybrax.train.training_data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/utils/index.html">hybrax.train.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/wrapper/index.html">hybrax.train.wrapper</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../../../../_sources/autoapi/hybrax/format/dataclasses/index.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="module-hybrax.format.dataclasses">
+<span id="hybrax-format-dataclasses"></span><h1>hybrax.format.dataclasses<a class="headerlink" href="#module-hybrax.format.dataclasses" title="Link to this heading">¶</a></h1>
+<p>Bioprocess Benchmarking Dataset Structure
+JAX-compatible dataclasses for standardized bioprocess data</p>
+<section id="attributes">
+<h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.Bounds" title="hybrax.format.dataclasses.Bounds"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Bounds</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="classes">
+<h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.AugmentedBioProcess" title="hybrax.format.dataclasses.AugmentedBioProcess"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AugmentedBioProcess</span></code></a></p></td>
+<td><p>A synthetic variant of an existing <a class="reference internal" href="#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcess</span></code></a>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BioProcess</span></code></a></p></td>
+<td><p>Single experimental bioprocess run: time axis, volume, media, and variables.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BioProcessCollection</span></code></a></p></td>
+<td><p>Collection of processes, optionally identified as a published case study.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata" title="hybrax.format.dataclasses.BioProcessMetadata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BioProcessMetadata</span></code></a></p></td>
+<td><p>Static reactor characteristics.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.BiologicalOde" title="hybrax.format.dataclasses.BiologicalOde"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BiologicalOde</span></code></a></p></td>
+<td><p>User-defined per-state biological RHS expressions.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.DiscreteEvents" title="hybrax.format.dataclasses.DiscreteEvents"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DiscreteEvents</span></code></a></p></td>
+<td><p>Discrete event times: bolus feeds, sampling, volume jumps, and similar.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.FeedMedium" title="hybrax.format.dataclasses.FeedMedium"><code class="xref py py-obj docutils literal notranslate"><span class="pre">FeedMedium</span></code></a></p></td>
+<td><p>Feed medium definition for ODE RHS calculations.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.FeedMediumComponent" title="hybrax.format.dataclasses.FeedMediumComponent"><code class="xref py py-obj docutils literal notranslate"><span class="pre">FeedMediumComponent</span></code></a></p></td>
+<td><p>One named component of a feed medium's composition.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.Inflow" title="hybrax.format.dataclasses.Inflow"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Inflow</span></code></a></p></td>
+<td><p>Volume change from a feed (inflow). Includes the feed medium composition.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.Outflow" title="hybrax.format.dataclasses.Outflow"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Outflow</span></code></a></p></td>
+<td><p>Volume change from sampling/removal (outflow). No feed medium.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.ProcessOrdering" title="hybrax.format.dataclasses.ProcessOrdering"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ProcessOrdering</span></code></a></p></td>
+<td><p>Canonical name ordering across all derived mechanistic modules.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.ProcessVariable" title="hybrax.format.dataclasses.ProcessVariable"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ProcessVariable</span></code></a></p></td>
+<td><p>One process variable: a controlled input, or a modeled state.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.PseudobatchTransform" title="hybrax.format.dataclasses.PseudobatchTransform"><code class="xref py py-obj docutils literal notranslate"><span class="pre">PseudobatchTransform</span></code></a></p></td>
+<td><p>Process-level pseudobatch transform bundle.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMedium" title="hybrax.format.dataclasses.ReactorMedium"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ReactorMedium</span></code></a></p></td>
+<td><p>Reactor medium definition for ODE RHS calculations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMediumComponent" title="hybrax.format.dataclasses.ReactorMediumComponent"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ReactorMediumComponent</span></code></a></p></td>
+<td><p>One reactor-medium component: its concentration, optional pseudobatch series, and bounds.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.StaticVariable" title="hybrax.format.dataclasses.StaticVariable"><code class="xref py py-obj docutils literal notranslate"><span class="pre">StaticVariable</span></code></a></p></td>
+<td><p>Raw experimental value for a time-independent parameter.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.TimeAxis" title="hybrax.format.dataclasses.TimeAxis"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TimeAxis</span></code></a></p></td>
+<td><p>Time axis for a process: its unit, start/end bounds, and time_reference anchor.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.Volume" title="hybrax.format.dataclasses.Volume"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Volume</span></code></a></p></td>
+<td><p>Container for all volume-related information in a process.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.VolumeChange" title="hybrax.format.dataclasses.VolumeChange"><code class="xref py py-obj docutils literal notranslate"><span class="pre">VolumeChange</span></code></a></p></td>
+<td><p>Base class for volume change events, discrete or continuous.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="functions">
+<h2>Functions<a class="headerlink" href="#functions" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.silence_assumptions" title="hybrax.format.dataclasses.silence_assumptions"><code class="xref py py-obj docutils literal notranslate"><span class="pre">silence_assumptions</span></code></a>()</p></td>
+<td><p>Temporarily suppress hybrax.format's auto-assumption notices.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.AugmentedBioProcess">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">AugmentedBioProcess</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#AugmentedBioProcess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.AugmentedBioProcess" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BioProcess</span></code></a></p>
+<p>A synthetic variant of an existing <a class="reference internal" href="#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcess</span></code></a>.</p>
+<p>Same fields as <a class="reference internal" href="#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcess</span></code></a> plus a mandatory <code class="docutils literal notranslate"><span class="pre">parent_process</span></code>
+string referencing the parent’s key in the enclosing
+<a class="reference internal" href="#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcessCollection</span></code></a>. Augmented children
+inherit the parent’s structural identity (control/state schema,
+medium semantics) and must be grouped with the parent for any
+train/eval split so synthetic siblings cannot leak into a fold whose
+parent is held out.</p>
+<p>This is a placeholder in v1: no augmentation logic produces these
+objects yet, but the data shape is fixed so downstream packages
+(e.g. <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s LOO orchestrator) can rely on it.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.AugmentedBioProcess.parent_process">
+<span class="sig-name descname"><span class="pre">parent_process</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.AugmentedBioProcess.parent_process" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcess">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">BioProcess</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#BioProcess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.BioProcess" title="Link to this definition">¶</a></dt>
+<dd><p>Single experimental bioprocess run: time axis, volume, media, and variables.</p>
+<p><code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> auto-generates from <code class="docutils literal notranslate"><span class="pre">reactor_medium</span></code>/
+<code class="docutils literal notranslate"><span class="pre">process_variables</span></code> if not supplied; see
+<code class="docutils literal notranslate"><span class="pre">_auto_generate_biological_ode</span></code>.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcess.biological_ode">
+<span class="sig-name descname"><span class="pre">biological_ode</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.BiologicalOde" title="hybrax.format.dataclasses.BiologicalOde"><span class="pre">BiologicalOde</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcess.biological_ode" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcess.discrete_events">
+<span class="sig-name descname"><span class="pre">discrete_events</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.DiscreteEvents" title="hybrax.format.dataclasses.DiscreteEvents"><span class="pre">DiscreteEvents</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcess.discrete_events" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcess.metadata">
+<span class="sig-name descname"><span class="pre">metadata</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata" title="hybrax.format.dataclasses.BioProcessMetadata"><span class="pre">BioProcessMetadata</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcess.metadata" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcess.process_variables">
+<span class="sig-name descname"><span class="pre">process_variables</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.ProcessVariable" title="hybrax.format.dataclasses.ProcessVariable"><span class="pre">ProcessVariable</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcess.process_variables" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcess.pseudobatch_transform">
+<span class="sig-name descname"><span class="pre">pseudobatch_transform</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.PseudobatchTransform" title="hybrax.format.dataclasses.PseudobatchTransform"><span class="pre">PseudobatchTransform</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcess.pseudobatch_transform" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcess.reactor_medium">
+<span class="sig-name descname"><span class="pre">reactor_medium</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMedium" title="hybrax.format.dataclasses.ReactorMedium"><span class="pre">ReactorMedium</span></a></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcess.reactor_medium" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcess.time_axis">
+<span class="sig-name descname"><span class="pre">time_axis</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.TimeAxis" title="hybrax.format.dataclasses.TimeAxis"><span class="pre">TimeAxis</span></a></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcess.time_axis" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcess.volume">
+<span class="sig-name descname"><span class="pre">volume</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.Volume" title="hybrax.format.dataclasses.Volume"><span class="pre">Volume</span></a></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcess.volume" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcessCollection">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">BioProcessCollection</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#BioProcessCollection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.BioProcessCollection" title="Link to this definition">¶</a></dt>
+<dd><p>Collection of processes, optionally identified as a published case study.</p>
+<p><code class="docutils literal notranslate"><span class="pre">case_id</span></code>/<code class="docutils literal notranslate"><span class="pre">organism</span></code>/<code class="docutils literal notranslate"><span class="pre">citation</span></code> set (all non-empty) mark this as a
+full case study from one publication/dataset. Left <code class="docutils literal notranslate"><span class="pre">None</span></code> (the default),
+this is raw/intermediate data with no case-study identity. <code class="docutils literal notranslate"><span class="pre">metadata</span></code>
+remains a free-form dict for arbitrary provenance (e.g. hybrax.train’s
+namespaced metadata block).</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcessCollection.case_id">
+<span class="sig-name descname"><span class="pre">case_id</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcessCollection.case_id" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcessCollection.citation">
+<span class="sig-name descname"><span class="pre">citation</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcessCollection.citation" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcessCollection.metadata">
+<span class="sig-name descname"><span class="pre">metadata</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcessCollection.metadata" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcessCollection.organism">
+<span class="sig-name descname"><span class="pre">organism</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcessCollection.organism" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcessCollection.processes">
+<span class="sig-name descname"><span class="pre">processes</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><span class="pre">BioProcess</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcessCollection.processes" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcessMetadata">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">BioProcessMetadata</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#BioProcessMetadata"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.BioProcessMetadata" title="Link to this definition">¶</a></dt>
+<dd><p>Static reactor characteristics.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcessMetadata.name">
+<span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcessMetadata.name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcessMetadata.notes">
+<span class="sig-name descname"><span class="pre">notes</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcessMetadata.notes" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcessMetadata.process_type">
+<span class="sig-name descname"><span class="pre">process_type</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcessMetadata.process_type" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BiologicalOde">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">BiologicalOde</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#BiologicalOde"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.BiologicalOde" title="Link to this definition">¶</a></dt>
+<dd><p>User-defined per-state biological RHS expressions.</p>
+<p>Describes only the <em>biological</em> part of <code class="docutils literal notranslate"><span class="pre">dc/dt</span></code>. Physical contributions
+(feed inflow, dilution, sample outflow, volume dynamics) continue to be
+added by hybrax.format from the existing <a class="reference internal" href="#hybrax.format.dataclasses.VolumeChange" title="hybrax.format.dataclasses.VolumeChange"><code class="xref py py-class docutils literal notranslate"><span class="pre">VolumeChange</span></code></a> machinery and
+are not part of this block.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>algebraic</strong> – Mapping <code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">-&gt;</span> <span class="pre">expression</span> <span class="pre">string</span></code>. Algebraic (no time
+derivative), recomputed every RHS call. Must be acyclic.</p></li>
+<li><p><strong>rates</strong> – Mapping <code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">-&gt;</span> <span class="pre">Bounds</span></code>. Names of abstract specific rates
+that the runtime supplies; <code class="docutils literal notranslate"><span class="pre">len(rates)</span></code> is the rate-vector
+dimension. Each value is a <code class="docutils literal notranslate"><span class="pre">(lower,</span> <span class="pre">upper)</span></code> tuple with <code class="docutils literal notranslate"><span class="pre">None</span></code>
+on either side meaning unbounded; use <code class="docutils literal notranslate"><span class="pre">(None,</span> <span class="pre">None)</span></code> (i.e.
+<code class="docutils literal notranslate"><span class="pre">_NO_BOUNDS</span></code>) for rates without bounds.</p></li>
+<li><p><strong>derivatives</strong> – Mapping <code class="docutils literal notranslate"><span class="pre">state_name</span> <span class="pre">-&gt;</span> <span class="pre">expression</span> <span class="pre">string</span></code> giving the
+biological contribution to <code class="docutils literal notranslate"><span class="pre">d(state)/dt</span></code>. Every dynamic state
+must have an entry; use <code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code> to declare no biological
+dynamics.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BiologicalOde.algebraic">
+<span class="sig-name descname"><span class="pre">algebraic</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.BiologicalOde.algebraic" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BiologicalOde.derivatives">
+<span class="sig-name descname"><span class="pre">derivatives</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.BiologicalOde.derivatives" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BiologicalOde.rates">
+<span class="sig-name descname"><span class="pre">rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.Bounds" title="hybrax.format.dataclasses.Bounds"><span class="pre">Bounds</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.BiologicalOde.rates" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.DiscreteEvents">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">DiscreteEvents</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#DiscreteEvents"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.DiscreteEvents" title="Link to this definition">¶</a></dt>
+<dd><p>Discrete event times: bolus feeds, sampling, volume jumps, and similar.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.DiscreteEvents.labels">
+<span class="sig-name descname"><span class="pre">labels</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.DiscreteEvents.labels" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.DiscreteEvents.metadata">
+<span class="sig-name descname"><span class="pre">metadata</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.DiscreteEvents.metadata" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.DiscreteEvents.times">
+<span class="sig-name descname"><span class="pre">times</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.numpy.ndarray</span></span><a class="headerlink" href="#hybrax.format.dataclasses.DiscreteEvents.times" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.FeedMedium">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">FeedMedium</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#FeedMedium"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.FeedMedium" title="Link to this definition">¶</a></dt>
+<dd><p>Feed medium definition for ODE RHS calculations.</p>
+<p><code class="docutils literal notranslate"><span class="pre">density</span></code>/<code class="docutils literal notranslate"><span class="pre">density_unit</span></code> are bookkeeping metadata only: the
+RHS/mass-balance math (mechanistic.py) never reads them, so they default
+to the common aqueous-solution assumption (1 kg/L) rather than being
+required.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.FeedMedium.components">
+<span class="sig-name descname"><span class="pre">components</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.FeedMediumComponent" title="hybrax.format.dataclasses.FeedMediumComponent"><span class="pre">FeedMediumComponent</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.FeedMedium.components" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.FeedMedium.density">
+<span class="sig-name descname"><span class="pre">density</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1.0</span></span><a class="headerlink" href="#hybrax.format.dataclasses.FeedMedium.density" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.FeedMedium.density_unit">
+<span class="sig-name descname"><span class="pre">density_unit</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'kg/L'</span></span><a class="headerlink" href="#hybrax.format.dataclasses.FeedMedium.density_unit" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.FeedMedium.name">
+<span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.FeedMedium.name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.FeedMediumComponent">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">FeedMediumComponent</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#FeedMediumComponent"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.FeedMediumComponent" title="Link to this definition">¶</a></dt>
+<dd><p>One named component of a feed medium’s composition.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.FeedMediumComponent.concentration">
+<span class="sig-name descname"><span class="pre">concentration</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">hybrax.format.time_series.TimeSeries</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.StaticVariable" title="hybrax.format.dataclasses.StaticVariable"><span class="pre">StaticVariable</span></a></span><a class="headerlink" href="#hybrax.format.dataclasses.FeedMediumComponent.concentration" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.FeedMediumComponent.is_controlled">
+<span class="sig-name descname"><span class="pre">is_controlled</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></span><a class="headerlink" href="#hybrax.format.dataclasses.FeedMediumComponent.is_controlled" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.FeedMediumComponent.name">
+<span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.FeedMediumComponent.name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.FeedMediumComponent.unit">
+<span class="sig-name descname"><span class="pre">unit</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.FeedMediumComponent.unit" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.Inflow">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">Inflow</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#Inflow"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.Inflow" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#hybrax.format.dataclasses.VolumeChange" title="hybrax.format.dataclasses.VolumeChange"><code class="xref py py-obj docutils literal notranslate"><span class="pre">VolumeChange</span></code></a></p>
+<p>Volume change from a feed (inflow). Includes the feed medium composition.</p>
+<p>All delta values should be &gt;= 0.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.Inflow.feed_medium">
+<span class="sig-name descname"><span class="pre">feed_medium</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.FeedMedium" title="hybrax.format.dataclasses.FeedMedium"><span class="pre">FeedMedium</span></a></span><a class="headerlink" href="#hybrax.format.dataclasses.Inflow.feed_medium" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.Outflow">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">Outflow</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#Outflow"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.Outflow" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#hybrax.format.dataclasses.VolumeChange" title="hybrax.format.dataclasses.VolumeChange"><code class="xref py py-obj docutils literal notranslate"><span class="pre">VolumeChange</span></code></a></p>
+<p>Volume change from sampling/removal (outflow). No feed medium.</p>
+<p>All delta values should be &lt;= 0.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.Outflow.retention">
+<span class="sig-name descname"><span class="pre">retention</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.Outflow.retention" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessOrdering">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">ProcessOrdering</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#ProcessOrdering"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.ProcessOrdering" title="Link to this definition">¶</a></dt>
+<dd><p>Canonical name ordering across all derived mechanistic modules.</p>
+<p>Built once from a <a class="reference internal" href="#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcess</span></code></a> via
+<a class="reference internal" href="../mechanistic/index.html#hybrax.format.mechanistic.get_process_ordering" title="hybrax.format.mechanistic.get_process_ordering"><code class="xref py py-func docutils literal notranslate"><span class="pre">hybrax.format.mechanistic.get_process_ordering()</span></code></a>. <code class="docutils literal notranslate"><span class="pre">RhsOde</span></code>,
+<code class="docutils literal notranslate"><span class="pre">ControlSplines</span></code>, and the spline/event helpers all consume this object
+so the layout of every state/control/rate vector is determined in exactly
+one place.</p>
+<p>Ordering rules:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">name_modeled_rates</span></code> preserves the user-supplied insertion order of
+<code class="docutils literal notranslate"><span class="pre">BiologicalOde.rates</span></code> (downstream consumers such as <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>
+pass rate vectors in this order).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">name_modeled_algebraic</span></code> is topo-sorted by inter-algebraic
+dependencies; ties broken alphabetically.</p></li>
+<li><p>All other tuples are alphabetical within their sub-group.</p></li>
+</ul>
+<dl class="simple">
+<dt>State vector layout:</dt><dd><p><code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">[name_modeled_RMCs...</span> <span class="pre">|</span> <span class="pre">name_modeled_PVs...</span> <span class="pre">|</span> <span class="pre">V]</span></code></p>
+</dd>
+<dt>Control vector layout (output of <code class="docutils literal notranslate"><span class="pre">ControlSplines.__call__</span></code>):</dt><dd><p><code class="docutils literal notranslate"><span class="pre">u</span> <span class="pre">=</span> <span class="pre">[name_controlled_Inflows...</span> <span class="pre">|</span> <span class="pre">name_controlled_Outflows...</span> <span class="pre">|</span>
+<span class="pre">name_controlled_PVs...]</span></code></p>
+</dd>
+</dl>
+<p>The first <code class="docutils literal notranslate"><span class="pre">len(Inflows)+len(Outflows)</span></code> entries of <code class="docutils literal notranslate"><span class="pre">u</span></code> are flow rates (spline
+derivatives); the remaining <code class="docutils literal notranslate"><span class="pre">len(PVs)</span></code> entries are direct values.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessOrdering.name_controlled_Inflows">
+<span class="sig-name descname"><span class="pre">name_controlled_Inflows</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.ProcessOrdering.name_controlled_Inflows" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessOrdering.name_controlled_Outflows">
+<span class="sig-name descname"><span class="pre">name_controlled_Outflows</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.ProcessOrdering.name_controlled_Outflows" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessOrdering.name_controlled_PVs">
+<span class="sig-name descname"><span class="pre">name_controlled_PVs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.ProcessOrdering.name_controlled_PVs" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessOrdering.name_modeled_Inflows">
+<span class="sig-name descname"><span class="pre">name_modeled_Inflows</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.ProcessOrdering.name_modeled_Inflows" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessOrdering.name_modeled_Outflows">
+<span class="sig-name descname"><span class="pre">name_modeled_Outflows</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.ProcessOrdering.name_modeled_Outflows" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessOrdering.name_modeled_PVs">
+<span class="sig-name descname"><span class="pre">name_modeled_PVs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.ProcessOrdering.name_modeled_PVs" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessOrdering.name_modeled_RMCs">
+<span class="sig-name descname"><span class="pre">name_modeled_RMCs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.ProcessOrdering.name_modeled_RMCs" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessOrdering.name_modeled_algebraic">
+<span class="sig-name descname"><span class="pre">name_modeled_algebraic</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.ProcessOrdering.name_modeled_algebraic" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessOrdering.name_modeled_rates">
+<span class="sig-name descname"><span class="pre">name_modeled_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.ProcessOrdering.name_modeled_rates" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessVariable">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">ProcessVariable</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#ProcessVariable"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.ProcessVariable" title="Link to this definition">¶</a></dt>
+<dd><p>One process variable: a controlled input, or a modeled state.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessVariable.bounds">
+<span class="sig-name descname"><span class="pre">bounds</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.Bounds" title="hybrax.format.dataclasses.Bounds"><span class="pre">Bounds</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">(None,</span> <span class="pre">None)</span></span><a class="headerlink" href="#hybrax.format.dataclasses.ProcessVariable.bounds" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessVariable.is_controlled">
+<span class="sig-name descname"><span class="pre">is_controlled</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><a class="headerlink" href="#hybrax.format.dataclasses.ProcessVariable.is_controlled" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessVariable.name">
+<span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.ProcessVariable.name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessVariable.unit">
+<span class="sig-name descname"><span class="pre">unit</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.ProcessVariable.unit" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ProcessVariable.values">
+<span class="sig-name descname"><span class="pre">values</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">hybrax.format.time_series.TimeSeries</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.StaticVariable" title="hybrax.format.dataclasses.StaticVariable"><span class="pre">StaticVariable</span></a></span><a class="headerlink" href="#hybrax.format.dataclasses.ProcessVariable.values" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.PseudobatchTransform">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">PseudobatchTransform</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#PseudobatchTransform"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.PseudobatchTransform" title="Link to this definition">¶</a></dt>
+<dd><p>Process-level pseudobatch transform bundle.</p>
+<p><cite>adf</cite> stores the shared accumulated dilution factor. <cite>feed_corrections</cite>
+stores species-specific feed corrections needed to map between transformed
+and real concentration. <cite>sample_compensation</cite> and <cite>accumulated_feeds</cite> store
+optional helper traces for transparency/debugging.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.PseudobatchTransform.accumulated_feeds">
+<span class="sig-name descname"><span class="pre">accumulated_feeds</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">hybrax.format.time_series.TimeSeries</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.PseudobatchTransform.accumulated_feeds" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.PseudobatchTransform.adf">
+<span class="sig-name descname"><span class="pre">adf</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">hybrax.format.time_series.TimeSeries</span></span><a class="headerlink" href="#hybrax.format.dataclasses.PseudobatchTransform.adf" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.PseudobatchTransform.feed_corrections">
+<span class="sig-name descname"><span class="pre">feed_corrections</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">hybrax.format.time_series.TimeSeries</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.PseudobatchTransform.feed_corrections" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.PseudobatchTransform.sample_compensation">
+<span class="sig-name descname"><span class="pre">sample_compensation</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">hybrax.format.time_series.TimeSeries</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.PseudobatchTransform.sample_compensation" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ReactorMedium">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">ReactorMedium</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#ReactorMedium"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.ReactorMedium" title="Link to this definition">¶</a></dt>
+<dd><p>Reactor medium definition for ODE RHS calculations.</p>
+<p><code class="docutils literal notranslate"><span class="pre">density</span></code>/<code class="docutils literal notranslate"><span class="pre">density_unit</span></code> are bookkeeping metadata only, with the same
+default as <a class="reference internal" href="#hybrax.format.dataclasses.FeedMedium" title="hybrax.format.dataclasses.FeedMedium"><code class="xref py py-class docutils literal notranslate"><span class="pre">FeedMedium</span></code></a>.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ReactorMedium.components">
+<span class="sig-name descname"><span class="pre">components</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMediumComponent" title="hybrax.format.dataclasses.ReactorMediumComponent"><span class="pre">ReactorMediumComponent</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.ReactorMedium.components" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ReactorMedium.density">
+<span class="sig-name descname"><span class="pre">density</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1.0</span></span><a class="headerlink" href="#hybrax.format.dataclasses.ReactorMedium.density" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ReactorMedium.density_unit">
+<span class="sig-name descname"><span class="pre">density_unit</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'kg/L'</span></span><a class="headerlink" href="#hybrax.format.dataclasses.ReactorMedium.density_unit" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ReactorMedium.name">
+<span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.ReactorMedium.name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ReactorMediumComponent">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">ReactorMediumComponent</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#ReactorMediumComponent"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.ReactorMediumComponent" title="Link to this definition">¶</a></dt>
+<dd><p>One reactor-medium component: its concentration, optional pseudobatch series, and bounds.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ReactorMediumComponent.bounds">
+<span class="sig-name descname"><span class="pre">bounds</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.Bounds" title="hybrax.format.dataclasses.Bounds"><span class="pre">Bounds</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">(0.0,</span> <span class="pre">None)</span></span><a class="headerlink" href="#hybrax.format.dataclasses.ReactorMediumComponent.bounds" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ReactorMediumComponent.concentration">
+<span class="sig-name descname"><span class="pre">concentration</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">hybrax.format.time_series.TimeSeries</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.StaticVariable" title="hybrax.format.dataclasses.StaticVariable"><span class="pre">StaticVariable</span></a></span><a class="headerlink" href="#hybrax.format.dataclasses.ReactorMediumComponent.concentration" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ReactorMediumComponent.name">
+<span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.ReactorMediumComponent.name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ReactorMediumComponent.pseudobatch_concentration">
+<span class="sig-name descname"><span class="pre">pseudobatch_concentration</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">hybrax.format.time_series.TimeSeries</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.StaticVariable" title="hybrax.format.dataclasses.StaticVariable"><span class="pre">StaticVariable</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.ReactorMediumComponent.pseudobatch_concentration" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ReactorMediumComponent.unit">
+<span class="sig-name descname"><span class="pre">unit</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.ReactorMediumComponent.unit" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.StaticVariable">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">StaticVariable</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#StaticVariable"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.StaticVariable" title="Link to this definition">¶</a></dt>
+<dd><p>Raw experimental value for a time-independent parameter.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.StaticVariable.value">
+<span class="sig-name descname"><span class="pre">value</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#hybrax.format.dataclasses.StaticVariable.value" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.TimeAxis">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">TimeAxis</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#TimeAxis"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.TimeAxis" title="Link to this definition">¶</a></dt>
+<dd><p>Time axis for a process: its unit, start/end bounds, and time_reference anchor.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.TimeAxis.end">
+<span class="sig-name descname"><span class="pre">end</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#hybrax.format.dataclasses.TimeAxis.end" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.TimeAxis.start">
+<span class="sig-name descname"><span class="pre">start</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#hybrax.format.dataclasses.TimeAxis.start" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.TimeAxis.time_reference">
+<span class="sig-name descname"><span class="pre">time_reference</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.TimeAxis.time_reference" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.TimeAxis.unit">
+<span class="sig-name descname"><span class="pre">unit</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.TimeAxis.unit" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.Volume">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">Volume</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#Volume"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.Volume" title="Link to this definition">¶</a></dt>
+<dd><p>Container for all volume-related information in a process.</p>
+<p>Kept separate from states and controls because volume can be both
+controlled and modeled, and is affected by multiple operations (feeds,
+sampling, evaporation).</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.Volume.bounds">
+<span class="sig-name descname"><span class="pre">bounds</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.Bounds" title="hybrax.format.dataclasses.Bounds"><span class="pre">Bounds</span></a></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">(None,</span> <span class="pre">None)</span></span><a class="headerlink" href="#hybrax.format.dataclasses.Volume.bounds" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.Volume.initial_volume">
+<span class="sig-name descname"><span class="pre">initial_volume</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#hybrax.format.dataclasses.Volume.initial_volume" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.Volume.total_volume">
+<span class="sig-name descname"><span class="pre">total_volume</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">hybrax.format.time_series.TimeSeries</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.Volume.total_volume" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.Volume.unit">
+<span class="sig-name descname"><span class="pre">unit</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.Volume.unit" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.Volume.volume_changes">
+<span class="sig-name descname"><span class="pre">volume_changes</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.VolumeChange" title="hybrax.format.dataclasses.VolumeChange"><span class="pre">VolumeChange</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.Volume.volume_changes" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.VolumeChange">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">VolumeChange</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#VolumeChange"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.VolumeChange" title="Link to this definition">¶</a></dt>
+<dd><p>Base class for volume change events, discrete or continuous.</p>
+<p>Volume changes are saved in the volume unit (L, m3, or kg), not as a rate.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.VolumeChange.is_continuous">
+<span class="sig-name descname"><span class="pre">is_continuous</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><a class="headerlink" href="#hybrax.format.dataclasses.VolumeChange.is_continuous" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.VolumeChange.is_controlled">
+<span class="sig-name descname"><span class="pre">is_controlled</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><a class="headerlink" href="#hybrax.format.dataclasses.VolumeChange.is_controlled" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.VolumeChange.name">
+<span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.VolumeChange.name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.VolumeChange.unit">
+<span class="sig-name descname"><span class="pre">unit</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.VolumeChange.unit" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.VolumeChange.values">
+<span class="sig-name descname"><span class="pre">values</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">hybrax.format.time_series.TimeSeries</span></span><a class="headerlink" href="#hybrax.format.dataclasses.VolumeChange.values" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.silence_assumptions">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">silence_assumptions</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#silence_assumptions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.silence_assumptions" title="Link to this definition">¶</a></dt>
+<dd><p>Temporarily suppress hybrax.format’s auto-assumption notices.</p>
+<p>Useful when constructing or loading many <code class="docutils literal notranslate"><span class="pre">BioProcess</span></code> objects in a
+loop (e.g. building a <code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code>), where a per-process
+notice would otherwise repeat once per dataset.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.Bounds">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">Bounds</span></span><a class="headerlink" href="#hybrax.format.dataclasses.Bounds" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="../inspect/index.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">hybrax.format.inspect</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="../index.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">hybrax.format</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Bioprocess Modeling Collective
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">hybrax.format.dataclasses</a><ul>
+<li><a class="reference internal" href="#attributes">Attributes</a></li>
+<li><a class="reference internal" href="#classes">Classes</a></li>
+<li><a class="reference internal" href="#functions">Functions</a></li>
+<li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.AugmentedBioProcess"><code class="docutils literal notranslate"><span class="pre">AugmentedBioProcess</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.AugmentedBioProcess.parent_process"><code class="docutils literal notranslate"><span class="pre">AugmentedBioProcess.parent_process</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess"><code class="docutils literal notranslate"><span class="pre">BioProcess</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.biological_ode"><code class="docutils literal notranslate"><span class="pre">BioProcess.biological_ode</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.discrete_events"><code class="docutils literal notranslate"><span class="pre">BioProcess.discrete_events</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.metadata"><code class="docutils literal notranslate"><span class="pre">BioProcess.metadata</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.process_variables"><code class="docutils literal notranslate"><span class="pre">BioProcess.process_variables</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.pseudobatch_transform"><code class="docutils literal notranslate"><span class="pre">BioProcess.pseudobatch_transform</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.reactor_medium"><code class="docutils literal notranslate"><span class="pre">BioProcess.reactor_medium</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.time_axis"><code class="docutils literal notranslate"><span class="pre">BioProcess.time_axis</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.volume"><code class="docutils literal notranslate"><span class="pre">BioProcess.volume</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessCollection"><code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessCollection.case_id"><code class="docutils literal notranslate"><span class="pre">BioProcessCollection.case_id</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessCollection.citation"><code class="docutils literal notranslate"><span class="pre">BioProcessCollection.citation</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessCollection.metadata"><code class="docutils literal notranslate"><span class="pre">BioProcessCollection.metadata</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessCollection.organism"><code class="docutils literal notranslate"><span class="pre">BioProcessCollection.organism</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessCollection.processes"><code class="docutils literal notranslate"><span class="pre">BioProcessCollection.processes</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata"><code class="docutils literal notranslate"><span class="pre">BioProcessMetadata</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata.name"><code class="docutils literal notranslate"><span class="pre">BioProcessMetadata.name</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata.notes"><code class="docutils literal notranslate"><span class="pre">BioProcessMetadata.notes</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata.process_type"><code class="docutils literal notranslate"><span class="pre">BioProcessMetadata.process_type</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BiologicalOde"><code class="docutils literal notranslate"><span class="pre">BiologicalOde</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BiologicalOde.algebraic"><code class="docutils literal notranslate"><span class="pre">BiologicalOde.algebraic</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BiologicalOde.derivatives"><code class="docutils literal notranslate"><span class="pre">BiologicalOde.derivatives</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BiologicalOde.rates"><code class="docutils literal notranslate"><span class="pre">BiologicalOde.rates</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.DiscreteEvents"><code class="docutils literal notranslate"><span class="pre">DiscreteEvents</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.DiscreteEvents.labels"><code class="docutils literal notranslate"><span class="pre">DiscreteEvents.labels</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.DiscreteEvents.metadata"><code class="docutils literal notranslate"><span class="pre">DiscreteEvents.metadata</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.DiscreteEvents.times"><code class="docutils literal notranslate"><span class="pre">DiscreteEvents.times</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.FeedMedium"><code class="docutils literal notranslate"><span class="pre">FeedMedium</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.FeedMedium.components"><code class="docutils literal notranslate"><span class="pre">FeedMedium.components</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.FeedMedium.density"><code class="docutils literal notranslate"><span class="pre">FeedMedium.density</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.FeedMedium.density_unit"><code class="docutils literal notranslate"><span class="pre">FeedMedium.density_unit</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.FeedMedium.name"><code class="docutils literal notranslate"><span class="pre">FeedMedium.name</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.FeedMediumComponent"><code class="docutils literal notranslate"><span class="pre">FeedMediumComponent</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.FeedMediumComponent.concentration"><code class="docutils literal notranslate"><span class="pre">FeedMediumComponent.concentration</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.FeedMediumComponent.is_controlled"><code class="docutils literal notranslate"><span class="pre">FeedMediumComponent.is_controlled</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.FeedMediumComponent.name"><code class="docutils literal notranslate"><span class="pre">FeedMediumComponent.name</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.FeedMediumComponent.unit"><code class="docutils literal notranslate"><span class="pre">FeedMediumComponent.unit</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.Inflow"><code class="docutils literal notranslate"><span class="pre">Inflow</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.Inflow.feed_medium"><code class="docutils literal notranslate"><span class="pre">Inflow.feed_medium</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.Outflow"><code class="docutils literal notranslate"><span class="pre">Outflow</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.Outflow.retention"><code class="docutils literal notranslate"><span class="pre">Outflow.retention</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessOrdering"><code class="docutils literal notranslate"><span class="pre">ProcessOrdering</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessOrdering.name_controlled_Inflows"><code class="docutils literal notranslate"><span class="pre">ProcessOrdering.name_controlled_Inflows</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessOrdering.name_controlled_Outflows"><code class="docutils literal notranslate"><span class="pre">ProcessOrdering.name_controlled_Outflows</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessOrdering.name_controlled_PVs"><code class="docutils literal notranslate"><span class="pre">ProcessOrdering.name_controlled_PVs</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessOrdering.name_modeled_Inflows"><code class="docutils literal notranslate"><span class="pre">ProcessOrdering.name_modeled_Inflows</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessOrdering.name_modeled_Outflows"><code class="docutils literal notranslate"><span class="pre">ProcessOrdering.name_modeled_Outflows</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessOrdering.name_modeled_PVs"><code class="docutils literal notranslate"><span class="pre">ProcessOrdering.name_modeled_PVs</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessOrdering.name_modeled_RMCs"><code class="docutils literal notranslate"><span class="pre">ProcessOrdering.name_modeled_RMCs</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessOrdering.name_modeled_algebraic"><code class="docutils literal notranslate"><span class="pre">ProcessOrdering.name_modeled_algebraic</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessOrdering.name_modeled_rates"><code class="docutils literal notranslate"><span class="pre">ProcessOrdering.name_modeled_rates</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessVariable"><code class="docutils literal notranslate"><span class="pre">ProcessVariable</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessVariable.bounds"><code class="docutils literal notranslate"><span class="pre">ProcessVariable.bounds</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessVariable.is_controlled"><code class="docutils literal notranslate"><span class="pre">ProcessVariable.is_controlled</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessVariable.name"><code class="docutils literal notranslate"><span class="pre">ProcessVariable.name</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessVariable.unit"><code class="docutils literal notranslate"><span class="pre">ProcessVariable.unit</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ProcessVariable.values"><code class="docutils literal notranslate"><span class="pre">ProcessVariable.values</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.PseudobatchTransform"><code class="docutils literal notranslate"><span class="pre">PseudobatchTransform</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.PseudobatchTransform.accumulated_feeds"><code class="docutils literal notranslate"><span class="pre">PseudobatchTransform.accumulated_feeds</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.PseudobatchTransform.adf"><code class="docutils literal notranslate"><span class="pre">PseudobatchTransform.adf</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.PseudobatchTransform.feed_corrections"><code class="docutils literal notranslate"><span class="pre">PseudobatchTransform.feed_corrections</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.PseudobatchTransform.sample_compensation"><code class="docutils literal notranslate"><span class="pre">PseudobatchTransform.sample_compensation</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMedium"><code class="docutils literal notranslate"><span class="pre">ReactorMedium</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMedium.components"><code class="docutils literal notranslate"><span class="pre">ReactorMedium.components</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMedium.density"><code class="docutils literal notranslate"><span class="pre">ReactorMedium.density</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMedium.density_unit"><code class="docutils literal notranslate"><span class="pre">ReactorMedium.density_unit</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMedium.name"><code class="docutils literal notranslate"><span class="pre">ReactorMedium.name</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMediumComponent"><code class="docutils literal notranslate"><span class="pre">ReactorMediumComponent</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMediumComponent.bounds"><code class="docutils literal notranslate"><span class="pre">ReactorMediumComponent.bounds</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMediumComponent.concentration"><code class="docutils literal notranslate"><span class="pre">ReactorMediumComponent.concentration</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMediumComponent.name"><code class="docutils literal notranslate"><span class="pre">ReactorMediumComponent.name</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMediumComponent.pseudobatch_concentration"><code class="docutils literal notranslate"><span class="pre">ReactorMediumComponent.pseudobatch_concentration</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMediumComponent.unit"><code class="docutils literal notranslate"><span class="pre">ReactorMediumComponent.unit</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.StaticVariable"><code class="docutils literal notranslate"><span class="pre">StaticVariable</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.StaticVariable.value"><code class="docutils literal notranslate"><span class="pre">StaticVariable.value</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.TimeAxis"><code class="docutils literal notranslate"><span class="pre">TimeAxis</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.TimeAxis.end"><code class="docutils literal notranslate"><span class="pre">TimeAxis.end</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.TimeAxis.start"><code class="docutils literal notranslate"><span class="pre">TimeAxis.start</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.TimeAxis.time_reference"><code class="docutils literal notranslate"><span class="pre">TimeAxis.time_reference</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.TimeAxis.unit"><code class="docutils literal notranslate"><span class="pre">TimeAxis.unit</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.Volume"><code class="docutils literal notranslate"><span class="pre">Volume</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.Volume.bounds"><code class="docutils literal notranslate"><span class="pre">Volume.bounds</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.Volume.initial_volume"><code class="docutils literal notranslate"><span class="pre">Volume.initial_volume</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.Volume.total_volume"><code class="docutils literal notranslate"><span class="pre">Volume.total_volume</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.Volume.unit"><code class="docutils literal notranslate"><span class="pre">Volume.unit</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.Volume.volume_changes"><code class="docutils literal notranslate"><span class="pre">Volume.volume_changes</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.VolumeChange"><code class="docutils literal notranslate"><span class="pre">VolumeChange</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.VolumeChange.is_continuous"><code class="docutils literal notranslate"><span class="pre">VolumeChange.is_continuous</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.VolumeChange.is_controlled"><code class="docutils literal notranslate"><span class="pre">VolumeChange.is_controlled</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.VolumeChange.name"><code class="docutils literal notranslate"><span class="pre">VolumeChange.name</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.VolumeChange.unit"><code class="docutils literal notranslate"><span class="pre">VolumeChange.unit</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.VolumeChange.values"><code class="docutils literal notranslate"><span class="pre">VolumeChange.values</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.silence_assumptions"><code class="docutils literal notranslate"><span class="pre">silence_assumptions()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.Bounds"><code class="docutils literal notranslate"><span class="pre">Bounds</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../../_static/documentation_options.js?v=04266cf0"></script>
+    <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script src="../../../../_static/custom.js?v=fec45a96"></script>
+    </body>
+</html>

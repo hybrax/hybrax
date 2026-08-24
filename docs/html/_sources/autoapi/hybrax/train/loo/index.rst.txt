@@ -1,0 +1,306 @@
+hybrax.train.loo
+================
+
+.. py:module:: hybrax.train.loo
+
+.. autoapi-nested-parse::
+
+   Leave-one/some-process-out cross-validation for ``hybrax.train``.
+
+   Config-driven, mirroring ``train``: a ``loo`` section in the run config defines
+   the folds (:class:`~hybrax.train.run_config.HoldoutSet` entries in
+   ``per_fold_holdout_sets``, or classic leave-one-out when omitted) and the
+   fold-level parallelism.
+
+   Each fold trains as **its own subprocess** so it can expose a private JAX CPU
+   device count — the JAX host-device count is fixed per process at import, so
+   concurrent in-process folds cannot get separate shards. The user picks how many
+   folds run at once (``loo.parallel_folds``); the orchestrator chooses the per-fold
+   JAX device count (``devices_per_fold = n_cpu // parallel_folds`` by default),
+   lets the OS schedule the worker processes, then aggregates their on-disk losses
+   into ``loo_summary.csv`` / ``loo_aggregate.json``. ``run_loo_cv(resume=True)``
+   skips only identity-matched, complete folds and re-runs the rest.
+
+   This module stays a thin orchestrator on top of the harness preparation,
+   training, and evaluation entry points; it does not reimplement batching or loss
+   calculation.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.loo.FoldGroup
+   hybrax.train.loo.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.loo.Fold
+   hybrax.train.loo.FoldResult
+   hybrax.train.loo.LOOResult
+   hybrax.train.loo.PreparedFold
+   hybrax.train.loo.TrainedFold
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.loo.compute_parallel_split
+   hybrax.train.loo.execute_trained_fold
+   hybrax.train.loo.prepare_single_fold
+   hybrax.train.loo.prepare_single_fold_from_runtime_artifact
+   hybrax.train.loo.produce_runtime_artifact
+   hybrax.train.loo.resolve_folds
+   hybrax.train.loo.run_loo_cv
+   hybrax.train.loo.run_single_fold
+   hybrax.train.loo.train_prepared_fold
+
+
+Module Contents
+---------------
+
+.. py:class:: Fold
+
+   One resolved cross-validation fold.
+
+   ``test`` is the held-out evaluation set; ``train`` is the
+   (augmentation-corrected) set actually trained on; ``slug`` is the on-disk
+   directory name under ``<output>/folds/``.
+
+
+   .. py:attribute:: idx
+      :type:  int
+
+
+   .. py:attribute:: seed
+      :type:  int
+
+
+   .. py:attribute:: slug
+      :type:  str
+
+
+   .. py:attribute:: test
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: train
+      :type:  tuple[str, ...]
+
+
+.. py:class:: FoldResult
+
+   Outputs of a single executed fold (returned by :func:`run_single_fold`).
+
+
+   .. py:attribute:: fold
+      :type:  Fold
+
+
+   .. py:attribute:: fold_dir
+      :type:  pathlib.Path
+
+
+   .. py:attribute:: fold_seed
+      :type:  int
+
+
+   .. py:attribute:: forward_result
+      :type:  hybrax.train.harness.ForwardResult
+
+
+   .. py:attribute:: train_result
+      :type:  hybrax.train.harness.TrainHarnessResult
+
+
+.. py:class:: LOOResult
+
+   Outputs of a full LOO sweep (returned by :func:`run_loo_cv`).
+
+
+   .. py:attribute:: aggregate
+      :type:  dict[str, Any]
+
+
+   .. py:attribute:: aggregate_json_path
+      :type:  pathlib.Path
+
+
+   .. py:attribute:: devices_per_fold
+      :type:  int
+
+
+   .. py:attribute:: fold_dirs
+      :type:  tuple[pathlib.Path, ...]
+
+
+   .. py:attribute:: parallel_folds
+      :type:  int
+
+
+   .. py:attribute:: summary_csv_path
+      :type:  pathlib.Path
+
+
+.. py:class:: PreparedFold
+
+   Collection-free inputs for one fold's training.
+
+
+   .. py:attribute:: config_json
+      :type:  pathlib.Path
+
+
+   .. py:attribute:: effective_cfg
+      :type:  hybrax.train.run_config.RunConfig
+
+
+   .. py:attribute:: fold
+      :type:  Fold
+
+
+   .. py:attribute:: fold_custom
+      :type:  pathlib.Path | None
+
+
+   .. py:attribute:: fold_dir
+      :type:  pathlib.Path
+
+
+   .. py:attribute:: fold_seed
+      :type:  int
+
+
+   .. py:attribute:: training
+      :type:  hybrax.train.harness.PreparedTraining
+
+
+.. py:class:: TrainedFold
+
+   Lean inputs retained for one fold's final evaluation.
+
+
+   .. py:attribute:: config
+      :type:  hybrax.train.harness.TrainHarnessConfig
+
+
+   .. py:attribute:: config_json
+      :type:  pathlib.Path
+
+
+   .. py:attribute:: fold
+      :type:  Fold
+
+
+   .. py:attribute:: fold_dir
+      :type:  pathlib.Path
+
+
+   .. py:attribute:: fold_seed
+      :type:  int
+
+
+   .. py:attribute:: output_predictions
+      :type:  hybrax.train.run_config.PredictionScope
+
+
+   .. py:attribute:: prediction_parent_process_names
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: store
+      :type:  hybrax.train.training_data.TrainingDataStore
+
+
+   .. py:attribute:: target_names
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: train_result
+      :type:  hybrax.train.harness.TrainHarnessResult
+
+
+.. py:function:: compute_parallel_split(n_folds, n_cpu, parallel_folds, *, devices_per_fold = None, max_devices_per_fold = None)
+
+   Return ``(parallel_folds, devices_per_fold)`` for the fold pool.
+
+   ``parallel_folds`` is the user-chosen fold concurrency. If
+   ``devices_per_fold`` is omitted, the per-fold JAX CPU device budget is split
+   across concurrent folds: ``devices_per_fold = n_cpu // parallel`` (so a
+   single fold exposes many devices, many folds expose one device each).
+   Devices never exceed ``max_devices_per_fold`` (the smallest fold's batch —
+   exposing more host devices than the batch only deadlocks the pmap collective).
+
+   Invariant: ``parallel_folds * devices_per_fold <= n_cpu``. There is no RAM
+   sizing here — the user owns the memory call via ``parallel_folds``.
+
+
+.. py:function:: execute_trained_fold(trained)
+
+   Evaluate and write one trained fold from its lean runtime inputs.
+
+
+.. py:function:: prepare_single_fold(collection, *, cfg, custom_module, output_dir, fold_idx, custom_py = None)
+
+   Resolve and prepare one fold without starting its training.
+
+
+.. py:function:: prepare_single_fold_from_runtime_artifact(*, cfg, custom_module, output_dir, bundle_path, artifact_path, fold_idx)
+
+   Prepare one fold solely from its validated runtime artifact.
+
+
+.. py:function:: produce_runtime_artifact(*, cfg, custom_module, output_dir, bundle_path)
+
+   Collection-owning, short-lived producer for all fold runtime inputs.
+
+
+.. py:function:: resolve_folds(collection, loo_cfg, base_seed, *, data_processes = None)
+
+   Resolve config into concrete folds.
+
+   ``per_fold_holdout_sets is None`` → classic leave-one-out (one fold per
+   parent group). Otherwise each :class:`HoldoutSet` becomes a fold:
+   ``test = entry.test``; ``train = entry.train`` or everything not in ``test``.
+   Augmentation is corrected in both modes: holding out any member of an
+   augmentation group excludes the whole group from train (see
+   ``_augmentation_group_of``/``_resolve_train``).
+
+   ``data_processes`` (from ``DataConfig.processes``), when given, restricts
+   the process universe available to fold construction *before*
+   ``per_fold_holdout_sets``/classic-LOO see it: names outside it can never
+   end up in a fold's ``test``/``train``, and ``per_fold_holdout_sets``
+   entries that reference such a name raise instead of silently including
+   it.
+
+
+.. py:function:: run_loo_cv(*, cfg, config_path, output_dir, resume = False)
+
+   Dispatch artifact-backed workers and aggregate their fold outputs.
+
+
+.. py:function:: run_single_fold(collection, *, cfg, custom_module, output_dir, fold_idx, custom_py = None)
+
+   Prepare and execute one fold for direct Python callers.
+
+   The CLI uses the two-stage entry points directly so its collection-owning
+   frame returns to collection-free execution before training starts.
+
+
+.. py:function:: train_prepared_fold(prepared)
+
+   Train one prepared fold and retain only final-evaluation inputs.
+
+
+.. py:data:: FoldGroup
+
+.. py:data:: logger
+

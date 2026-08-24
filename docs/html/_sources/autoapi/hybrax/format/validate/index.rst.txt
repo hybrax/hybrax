@@ -1,0 +1,336 @@
+hybrax.format.validate
+======================
+
+.. py:module:: hybrax.format.validate
+
+.. autoapi-nested-parse::
+
+   Validation utilities for bioprocess data
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.format.validate.validate_augmented_parent_refs
+   hybrax.format.validate.validate_biological_ode
+   hybrax.format.validate.validate_biological_ode_equivalence
+   hybrax.format.validate.validate_biomass_in_reactor_medium
+   hybrax.format.validate.validate_bounds
+   hybrax.format.validate.validate_bounds_against_data
+   hybrax.format.validate.validate_cross_process_consistency
+   hybrax.format.validate.validate_discrete_events
+   hybrax.format.validate.validate_for_publication
+   hybrax.format.validate.validate_initial_state_alignment
+   hybrax.format.validate.validate_measurement_sampling_alignment
+   hybrax.format.validate.validate_outflow_retention
+   hybrax.format.validate.validate_process
+   hybrax.format.validate.validate_time_axis
+   hybrax.format.validate.validate_timeseries_shape
+   hybrax.format.validate.validate_timestamp_bounds
+   hybrax.format.validate.validate_volume_change_sign
+   hybrax.format.validate.validate_volume_change_states
+   hybrax.format.validate.validate_volume_consistency
+   hybrax.format.validate.validate_volume_units
+
+
+Module Contents
+---------------
+
+.. py:function:: validate_augmented_parent_refs(container)
+
+   Verify ``AugmentedBioProcess.parent_process`` references in a container.
+
+   For every :class:`AugmentedBioProcess` in ``container.processes``, the
+   referenced ``parent_process`` must be a key in the same ``processes``
+   dict and must point to a non-augmented :class:`BioProcess` (chained
+   augmentation is not supported in v1).
+
+   :param container: A :class:`BioProcessCollection`.
+
+   :returns: ``(all_valid, results)``. ``results`` always contains at least one
+             ``(check_ok, message)`` entry: one per problem found, or a single
+             ``PASS`` entry when there are none.
+
+
+.. py:function:: validate_biological_ode(process)
+
+   Validate ``process.biological_ode`` if present.
+
+   Checks (skipped when ``biological_ode is None``):
+
+   - Every reactor-medium component and uncontrolled process variable
+     (the dynamic states) must have an entry in ``derivatives``.
+   - Every key in ``derivatives`` must correspond to a dynamic state.
+   - All expressions parse successfully via ``sympy.sympify``.
+   - Every free symbol in any expression resolves to a dynamic state, a
+     controlled process variable (input), an algebraic name, or a declared
+     rate name.
+   - Algebraic-variable dependencies are acyclic.
+   - Rate names do not collide with state, algebraic, or controlled-PV names.
+   - All bounds tuples are sane (``lo <= hi`` when both set).
+
+
+.. py:function:: validate_biological_ode_equivalence(container)
+
+   Verify all processes in *container* share the same ``biological_ode``.
+
+   Equivalence requires identical ``algebraic``, ``derivatives``, and
+   ``rates`` dicts (same keys mapped to the same values). Containers with
+   zero or one process trivially pass.
+
+   Returns ``(is_valid, message)``.
+
+
+.. py:function:: validate_biomass_in_reactor_medium(process)
+
+   Check that the reactor medium contains a component whose name is
+   ``'biomass'`` (case-insensitive).
+
+   :param process: BioProcess object to validate.
+
+   :returns: A tuple ``(is_valid, message)``.
+
+
+.. py:function:: validate_bounds(process)
+
+   Sanity-check all bounds tuples on the process (states, PVs, volume).
+
+
+.. py:function:: validate_bounds_against_data(process)
+
+   Check measured/raw data values against their own declared Bounds.
+
+   For every ``ReactorMediumComponent.concentration``,
+   ``ProcessVariable.values``, and (when present) ``Volume.total_volume``
+   that carries a *set* Bounds tuple (either side non-``None``), compares
+   the actual scalar (``StaticVariable``) or ``TimeSeries.values`` array
+   against ``(lo, hi)`` and reports how many datapoints violate the bound.
+
+   Out of scope: ``BiologicalOde.rates`` bounds. No rate-inversion
+   machinery exists to compute a measured rate value to check against them
+   (see ``validate_biological_ode``'s tuple-only sanity check on rates).
+
+
+.. py:function:: validate_cross_process_consistency(collection)
+
+   Verify every process in *collection* shares identical structure.
+
+   Compares, against the first process as reference:
+
+   - The same reactor-medium component names, each with the same concentration
+     type (``TimeSeries`` or ``StaticVariable``) and unit.
+   - The same process-variable names, each with the same value type
+     (``TimeSeries`` or ``StaticVariable``) and unit.
+   - The same volume unit.
+   - The same time-axis unit and reference. Start and end may differ.
+
+   Volume-change names may differ because processes in one study can use
+   different feed and sampling strategies.
+
+   Collections with zero or one process trivially pass.
+
+   Returns ``(is_valid, results)``. ``results`` always contains at least
+   one ``(check_ok, message)`` entry: one per mismatch found, or a single
+   ``PASS`` entry when consistent.
+
+
+.. py:function:: validate_discrete_events(process)
+
+   Check event time shape, ordering, bounds, and label count.
+
+
+.. py:function:: validate_for_publication(collection)
+
+   Validate a collection for storage/publication as a coherent case study.
+
+   This is hybrax.format's own concern (is this collection well-formed and
+   internally coherent), distinct from hybrax.train's training-readiness
+   concern (``hybrax.train.validate.validate_for_training``). Runs
+   :func:`validate_process` for every process, then
+   :func:`validate_cross_process_consistency` and
+   :func:`validate_augmented_parent_refs`.
+
+   :param collection: :class:`BioProcessCollection` object to validate.
+
+   :returns: A tuple ``(all_valid, report)`` where ``all_valid`` is ``True`` only
+             when every per-process validation passes *and* the cross-process
+             structure is consistent, and ``report`` is a dict mapping each
+             process name to its list of ``(check_ok, message)`` results.
+             Cross-process consistency results are stored under the key
+             ``"__consistency__"``, augmented-parent findings under the key
+             ``"__augmented__"``. Both are always non-empty.
+
+   :raises TypeError: If ``collection`` is not a :class:`BioProcessCollection`.
+
+
+.. py:function:: validate_initial_state_alignment(process)
+
+   Every dynamic reactor-medium component and process variable must have a
+   measurement at ``process.time_axis.start``, matching where
+   ``volume.initial_volume`` is anchored. Otherwise the ODE's initial state
+   and initial volume come from different points in time.
+
+
+.. py:function:: validate_measurement_sampling_alignment(process, rel_threshold = 0.0001)
+
+   Check that reactor medium measurement times are not slightly offset from
+   sampling times.
+
+   When a concentration measurement is taken just *after* a sampling event
+   (e.g. 0.0003 h later), it's ambiguous which side of the (discontinuous)
+   event it belongs to. The accumulated dilution factor (ADF) in the
+   pseudobatch transform may use the wrong reactor volume, corrupting the
+   normalisation and downstream spline calculations.
+
+   This function flags every measurement time point that is close to (but not
+   exactly at) a sampling time point, where "close" means within
+   ``rel_threshold`` of the total process length.
+
+   :param process: BioProcess object to validate.
+   :param rel_threshold: Maximum relative deviation (fraction of process length)
+                         that is considered "suspiciously close".  Default is ``1e-4``
+                         (0.01 %).
+
+   :returns: A tuple ``(is_valid, message)``.
+
+
+.. py:function:: validate_outflow_retention(process)
+
+   For every Outflow's ``retention``, every key must be a declared
+   reactor-medium component name, every value must satisfy
+   ``0.0 <= sigma <= 1.0``, and a non-empty ``retention`` is only allowed
+   on a continuous Outflow. The RHS mechanistic model only ever consults
+   retention for continuous flows (see ``_build_retention`` in
+   ``mechanistic.py``), so retention set on a discrete Outflow would
+   otherwise be silently ignored rather than doing anything.
+
+   :param process: BioProcess object to validate.
+
+   :returns: A tuple ``(is_valid, message)``.
+
+
+.. py:function:: validate_process(process)
+
+   Run all available validation checks on a single BioProcess.
+
+   Checks performed, in order:
+   - Discrete-event time shape, ordering, bounds, and label count.
+   - TimeSeries shape and ordering for every reactor-medium component,
+     process variable, volume change, and measured total volume.
+   - The process time axis starts no later than it ends.
+   - Every timestamp falls within the process time-axis bounds.
+   - Every volume change uses the process volume unit.
+   - Sign consistency for every volume change.
+   - State-variable / feed-medium coverage for positive volume changes.
+   - Outflow ``retention`` keys/values (:func:`validate_outflow_retention`).
+   - Presence of a ``biomass`` component in the reactor medium.
+   - Every dynamic state has a measurement at ``time_axis.start``, matching
+     where ``volume.initial_volume`` is anchored.
+   - Measurement/sampling timestamp alignment.
+   - Bounds tuple sanity.
+   - Measured data falls within its own declared ``Bounds``.
+   - Biological ODE structure.
+
+   :param process: BioProcess object to validate.
+
+   :returns: A tuple ``(all_valid, results)`` where ``all_valid`` is ``True`` only
+             when every individual check passes and ``results`` is a list of
+             ``(check_ok, message)`` pairs, one per check.
+
+   :raises TypeError: If ``process`` is not a :class:`BioProcess` instance.
+
+
+.. py:function:: validate_time_axis(process)
+
+   Check that the process time axis starts no later than it ends.
+
+
+.. py:function:: validate_timeseries_shape(ts, name = '', *, allow_empty = False)
+
+   Check that a TimeSeries has consistent shapes and ordered times.
+
+   Verifies:
+   - ``times`` and ``values`` are 1-D arrays.
+   - Both arrays have the same length.
+   - ``times`` are nonempty unless ``allow_empty`` is true.
+   - ``times`` are strictly monotonically increasing (no duplicates).
+
+   :param ts: TimeSeries object to validate.
+   :param name: Optional label used in the message (e.g. the variable name).
+   :param allow_empty: Whether matching empty arrays represent a valid event sequence.
+
+   :returns: A tuple ``(is_valid, message)``.
+
+
+.. py:function:: validate_timestamp_bounds(process)
+
+   Check timestamps against valid inclusive time-axis bounds.
+
+   Skip this policy-dependent check when the time axis itself is inverted.
+
+
+.. py:function:: validate_volume_change_sign(volume_change)
+
+   Verify that a volume change has correct sign for its type.
+
+   For a ``Inflow`` all values must be ≥ 0.
+   For a ``Outflow`` all values must be ≤ 0.
+   If the concrete type is unknown, fall back to verifying that the change is
+   purely positive or purely negative (never mixed).
+
+   :param volume_change: Inflow or Outflow object.
+
+   :returns: A tuple ``(is_valid, message)``.
+
+
+.. py:function:: validate_volume_change_states(process)
+
+   For every *positive* volume change, verify that explicitly declared feed
+   components corresponding to dynamic reactor states use the same unit
+   string. Omitted reactor components are valid and mean zero concentration.
+
+   A "state variable" is a reactor-medium component whose concentration is
+   a TimeSeries (i.e. it is measured dynamically over time), as opposed to a
+   StaticVariable.
+
+   :param process: BioProcess object to validate.
+
+   :returns: A tuple ``(is_valid, message)`` where ``is_valid`` is ``True`` when
+             every declared dynamic feed component uses the matching unit string.
+
+
+.. py:function:: validate_volume_consistency(process, final_volume = None)
+
+   Validate that volume changes sum to expected final volume.
+
+   This function checks whether the sum of all volume changes (feeds, sampling, etc.)
+   is consistent with the expected final volume. It handles both continuous
+   (cumulative time series) and discrete volume changes.
+
+   Note: as these values may be on different time-scale and this check is
+   supposed to be run _before_ any modeling or spline interpolation happens,
+   here only the last time points are considered.
+
+   :param process: BioProcess object whose volume changes are validated.
+   :param final_volume: Expected final volume in the process's volume unit.  When
+                        provided the function checks that the sum of all volume changes plus
+                        ``process.volume.initial_volume`` is within 5 % of this value.
+
+   :returns:
+
+             - ``is_valid`` is ``True`` when the relative deviation between the
+               calculated and expected final volume is ≤ 5 %.
+             - ``message`` is a human-readable summary of the volume balance.
+             - ``total_change`` is the net volume change (sum of all individual
+               volume changes, in the process's volume unit).
+   :rtype: A tuple ``(is_valid, message, total_change)`` where
+
+
+.. py:function:: validate_volume_units(process)
+
+   Require every volume change to use the process volume unit.
+
+

@@ -1,0 +1,173 @@
+hybrax.train.logging
+====================
+
+.. py:module:: hybrax.train.logging
+
+.. autoapi-nested-parse::
+
+   Per-update console, in-memory, CSV, and JSONL training telemetry.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.logging.RunLogger
+   hybrax.train.logging.StepRecord
+
+
+Module Contents
+---------------
+
+.. py:class:: RunLogger(*, log_process_losses = False, metrics_csv = None, metrics_jsonl = None, log_decimals = 4, logger_name = 'hybrax.train.harness')
+
+   Console table + in-memory history + ``metrics.csv``/``metrics.jsonl`` writer.
+
+   One instance covers one training run: :meth:`start` opens the output files
+   and prints the run banner, :meth:`record_step` is called once per training
+   step, and :meth:`finalize`/:meth:`close` flush and release the file
+   handles. Usable as a context manager (``__enter__``/``__exit__`` call
+   :meth:`close`).
+
+
+   .. py:method:: close()
+
+      Close the JSONL file handle, if one is open.
+
+
+
+   .. py:method:: finalize()
+
+      Flush the JSONL file and return the run's full in-memory history.
+
+      :returns: Every ``_history`` series (loss, timing, per-process/per-target
+                breakdowns, holdout results) plus ``target_names``.
+
+
+
+   .. py:method:: record_rebuild(step_index)
+
+      Log and count a train-step JIT rebuild at ``step_index``.
+
+
+
+   .. py:method:: record_step(record)
+
+      Log ``record``'s console row, append it to history, and write it to
+      ``metrics.csv``/``metrics.jsonl`` (whichever are configured).
+
+      :raises RuntimeError: If called before :meth:`start`.
+
+
+
+   .. py:method:: snapshot()
+
+      Return a snapshot of the history recorded so far.
+
+
+
+   .. py:method:: start(*, target_names, process_names, total_updates, compile_warmup_seconds)
+
+      Open the CSV/JSONL files (if configured) and log the run banner.
+
+      :param target_names: Loss-term names, in the order every step's
+                           ``per_target_loss`` is reported in.
+      :param process_names: Every process in the training run, for the banner
+                            only.
+      :param total_updates: Total optimizer steps the run will take, used to
+                            size the console table's step column.
+      :param compile_warmup_seconds: JIT warmup time to report in the banner.
+
+
+
+.. py:class:: StepRecord
+
+   One training step's loss/timing/diagnostics, as handed to :class:`RunLogger`.
+
+
+   .. py:attribute:: batch_in_epoch
+      :type:  int
+
+
+   .. py:attribute:: epoch
+      :type:  int
+
+
+   .. py:attribute:: epoch_mean_loss
+      :type:  float | None
+      :value: None
+
+
+
+   .. py:attribute:: epoch_time_seconds
+      :type:  float | None
+      :value: None
+
+
+
+   .. py:attribute:: failed_process_names
+      :type:  tuple[str, ...]
+      :value: ()
+
+
+
+   .. py:attribute:: grad_norm
+      :type:  float | None
+      :value: None
+
+
+
+   .. py:attribute:: holdout_label
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: holdout_loss
+      :type:  float | None
+      :value: None
+
+
+
+   .. py:attribute:: mean_loss
+      :type:  float
+
+
+   .. py:attribute:: per_process_loss
+      :type:  tuple[float, ...]
+
+
+   .. py:attribute:: per_target_loss
+      :type:  tuple[float, ...]
+
+
+   .. py:attribute:: process_names
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: rebuild_count
+      :type:  int
+
+
+   .. py:attribute:: samples_seen
+      :type:  int
+
+
+   .. py:attribute:: step
+      :type:  int
+
+
+   .. py:attribute:: step_dt
+      :type:  float
+
+
+   .. py:attribute:: target_names
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: total_updates
+      :type:  int
+
+

@@ -1,0 +1,1347 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html">
+        <link rel="prefetch" href="../../../_static/hybrax_logo.png" as="image">
+
+    <link rel="shortcut icon" href="../../../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>hybrax.train.training_data - Bioprocess Modeling with Hybrax</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=98a1085a" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #eeffcc;
+  --color-code-foreground: black;
+  --color-brand-primary: #2563eb;
+  --color-brand-content: #2563eb;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">Bioprocess Modeling with Hybrax</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../../_static/hybrax_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">Hybrax Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/why.html">Why this exists</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/concepts.html">Concepts and Vocabulary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/find.html">Which page do I need?</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/01_your_first_dataset.html">1. Import your Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/02_look_at_it.html">2. View your Dataset</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/03_train.html">3. Train a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/04_your_first_custom_py.html">4. Custom Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/05_predict.html">5. Predict Processes</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.format guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/data_model.html">The Data Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/load_and_save.html">Loading and saving</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/validate_and_inspect.html">Validating and inspecting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/volume_feeds_events.html">Volume, feeds and events</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/time_series_and_splines.html">Time series and splines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/limits_and_gotchas.html">Limits and gotchas</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/further_reading.html">Further reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/config.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/hooks_cheatsheet.html">Customization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/prepare.html">Prepare</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/train.html">Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/reaction_module.html">The Reaction Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/loss_module.html">The Loss Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/scaling.html">Scaling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/forward.html">Forward</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/loo.html">Cross-Validation (LOO)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/save_load_predict.html">The Python API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/further_reading.html">Further Reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/freezing.html">Freezing parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/augmentation.html">Augmentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">A Gaussian-process model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">A KAN model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed.html">OptFed</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/modeled_pv.html">A modeled process variable</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../troubleshooting/errors.html">Errors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../troubleshooting/silent_failures.html">Silent failures</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Under the hood</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../under_the_hood/design_rationale.html">Design Rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributors.html">Contributors</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/hybrax/format/index.html">hybrax.format</a><input aria-label="Toggle navigation of hybrax.format" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/dataclasses/index.html">hybrax.format.dataclasses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/index.html">hybrax.format.time_series</a><input aria-label="Toggle navigation of hybrax.format.time_series" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/constants/index.html">hybrax.format.time_series.constants</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/grid_utils/index.html">hybrax.format.time_series.grid_utils</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/io/index.html">hybrax.format.time_series.io</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/ppoly/index.html">hybrax.format.time_series.ppoly</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/spline_ops/index.html">hybrax.format.time_series.spline_ops</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/timeseries/index.html">hybrax.format.time_series.timeseries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/validate/index.html">hybrax.format.validate</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/hybrax/train/index.html">hybrax.train</a><input aria-label="Toggle navigation of hybrax.train" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/augmentation/index.html">hybrax.train.augmentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/augmentation_plot/index.html">hybrax.train.augmentation_plot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/bounds_loss/index.html">hybrax.train.bounds_loss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/checkpointing/index.html">hybrax.train.checkpointing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/cli/index.html">hybrax.train.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/forward_plotting/index.html">hybrax.train.forward_plotting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/harness/index.html">hybrax.train.harness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/inspect/index.html">hybrax.train.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/logging/index.html">hybrax.train.logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/loo/index.html">hybrax.train.loo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/loo_metrics/index.html">hybrax.train.loo_metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_context/index.html">hybrax.train.runtime_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/serialization/index.html">hybrax.train.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/trainer/index.html">hybrax.train.trainer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for hybrax.train.training_data</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Padded JAX measurement tensors, and the per-process/batch views over them.</span>
+
+<span class="sd">Mirrors ``controls_store.py``'s split (``PerProcessControls`` /</span>
+<span class="sd">``BatchControls`` / ``ControlsStore``) for measured targets instead of</span>
+<span class="sd">controls: ``PerProcessTrainingData`` and ``BatchTrainingData`` are the</span>
+<span class="sd">evaluators, ``TrainingDataStore`` is the collection-level loader.</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">BioProcessCollection</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.mechanistic</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhsOde</span><span class="p">,</span> <span class="n">build_rhs_ode</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_process_collection</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.validate</span><span class="w"> </span><span class="kn">import</span> <span class="n">validate_biological_ode_equivalence</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.controls_store</span><span class="w"> </span><span class="kn">import</span> <span class="n">BatchControls</span><span class="p">,</span> <span class="n">ControlsStore</span><span class="p">,</span> <span class="n">PerProcessControls</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.wrapper</span><span class="w"> </span><span class="kn">import</span> <span class="n">validate_rhs_ode_compatibility</span>
+
+
+<span class="n">TARGET_SOURCE_AUTO</span> <span class="o">=</span> <span class="s2">"auto"</span>
+<span class="n">TARGET_SOURCE_PROCESS_VARIABLES</span> <span class="o">=</span> <span class="s2">"process_variables"</span>
+<span class="n">TARGET_SOURCE_REACTOR_COMPONENTS</span> <span class="o">=</span> <span class="s2">"reactor_components"</span>
+<span class="c1"># Fit BOTH the modeled RMCs and the modeled (uncontrolled) PVs. Targets are</span>
+<span class="c1"># ordered to match the integrated state's leading block</span>
+<span class="c1"># ``[name_modeled_RMCs | name_modeled_PVs]`` so ``target_state_indices`` stays a</span>
+<span class="c1"># simple ``range(n)``; every modeled RMC and PV must carry a time series.</span>
+<span class="n">TARGET_SOURCE_COMBINED</span> <span class="o">=</span> <span class="s2">"combined"</span>
+<span class="n">TARGET_SOURCES</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">TARGET_SOURCE_AUTO</span><span class="p">,</span>
+    <span class="n">TARGET_SOURCE_PROCESS_VARIABLES</span><span class="p">,</span>
+    <span class="n">TARGET_SOURCE_REACTOR_COMPONENTS</span><span class="p">,</span>
+    <span class="n">TARGET_SOURCE_COMBINED</span><span class="p">,</span>
+<span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_combined_measured_targets</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">rhs_ode</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""Measured (RMC, PV) target names for ``TARGET_SOURCE_COMBINED``, each</span>
+<span class="sd">    ordered to match the integrated state (``rhs_ode.name_modeled_RMCs`` then</span>
+<span class="sd">    ``rhs_ode.name_modeled_PVs``). Every modeled RMC and PV must have a time</span>
+<span class="sd">    series — otherwise the ``range(n)`` state-index mapping would be wrong."""</span>
+    <span class="n">components</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="p">,</span> <span class="s2">"components"</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{}</span>
+    <span class="n">rmc_targets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs_ode</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">:</span>
+        <span class="n">component</span> <span class="o">=</span> <span class="n">components</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">component</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">_is_timeseries_compatible</span><span class="p">(</span><span class="n">component</span><span class="o">.</span><span class="n">concentration</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: target_source='combined' requires every "</span>
+                <span class="sa">f</span><span class="s2">"modeled RMC to carry a time series; </span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2"> does not."</span>
+            <span class="p">)</span>
+        <span class="n">rmc_targets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+    <span class="n">pv_targets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs_ode</span><span class="o">.</span><span class="n">name_modeled_PVs</span><span class="p">:</span>
+        <span class="n">variable</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">variable</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">_is_timeseries_compatible</span><span class="p">(</span><span class="n">variable</span><span class="o">.</span><span class="n">values</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: target_source='combined' requires every "</span>
+                <span class="sa">f</span><span class="s2">"modeled PV to carry a time series; </span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2"> does not."</span>
+            <span class="p">)</span>
+        <span class="n">pv_targets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">rmc_targets</span><span class="p">,</span> <span class="n">pv_targets</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_normalize_target_source</span><span class="p">(</span><span class="n">target_source</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">value</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">target_source</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">value</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">TARGET_SOURCES</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"target_source must be one of </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">TARGET_SOURCES</span><span class="p">)</span><span class="si">!r}</span><span class="s2">, got </span><span class="si">{</span><span class="n">value</span><span class="si">!r}</span><span class="s2">"</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">value</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_coerce_process_index</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">process_order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Resolve process key/index to canonical process name and index."""</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">process</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">process_order</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"unknown process name: </span><span class="si">{</span><span class="n">process</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">process</span><span class="p">,</span> <span class="n">process_order</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
+
+    <span class="n">index</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">index</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">index</span> <span class="o">&gt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">process_order</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"process index out of range: </span><span class="si">{</span><span class="n">index</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">process_order</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="n">index</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_process_variable_targets</span><span class="p">(</span><span class="n">process</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="k">return</span> <span class="p">[</span>
+        <span class="n">name</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">variable</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">bool</span><span class="p">(</span><span class="n">variable</span><span class="o">.</span><span class="n">is_controlled</span><span class="p">)</span>
+    <span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_is_timeseries_compatible</span><span class="p">(</span><span class="n">values</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="s2">"times"</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="s2">"values"</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="n">ts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">times</span><span class="p">)</span>
+    <span class="n">ys</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">values</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">ts</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span>
+        <span class="ow">and</span> <span class="n">ys</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span>
+        <span class="ow">and</span> <span class="n">ts</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="ow">and</span> <span class="n">ys</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="ow">and</span> <span class="n">ts</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="n">ys</span><span class="o">.</span><span class="n">size</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_reactor_component_timeseries_targets</span><span class="p">(</span><span class="n">process</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="n">components</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="p">,</span> <span class="s2">"components"</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{}</span>
+    <span class="n">targets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">component</span> <span class="ow">in</span> <span class="n">components</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">_is_timeseries_compatible</span><span class="p">(</span><span class="n">component</span><span class="o">.</span><span class="n">concentration</span><span class="p">):</span>
+            <span class="n">targets</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">targets</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_supports_configured_process_variables</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">,</span>
+    <span class="n">configured_order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">configured_order</span><span class="p">:</span>
+        <span class="n">variable</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">variable</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">bool</span><span class="p">(</span><span class="n">variable</span><span class="o">.</span><span class="n">is_controlled</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="kc">True</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_supports_configured_reactor_components</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">,</span>
+    <span class="n">configured_order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+    <span class="n">components</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="p">,</span> <span class="s2">"components"</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">configured_order</span><span class="p">:</span>
+        <span class="n">component</span> <span class="o">=</span> <span class="n">components</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">component</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">_is_timeseries_compatible</span><span class="p">(</span><span class="n">component</span><span class="o">.</span><span class="n">concentration</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="kc">True</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_target_source</span><span class="p">(</span>
+    <span class="n">collection</span><span class="p">:</span> <span class="n">BioProcessCollection</span><span class="p">,</span>
+    <span class="n">process_order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">configured_order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">target_source</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">requested</span> <span class="o">=</span> <span class="n">_normalize_target_source</span><span class="p">(</span><span class="n">target_source</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">requested</span> <span class="o">!=</span> <span class="n">TARGET_SOURCE_AUTO</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">requested</span>
+
+    <span class="k">if</span> <span class="n">configured_order</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">process_variable_ok</span> <span class="o">=</span> <span class="nb">all</span><span class="p">(</span>
+            <span class="n">_supports_configured_process_variables</span><span class="p">(</span>
+                <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">[</span><span class="n">process_name</span><span class="p">],</span>
+                <span class="n">configured_order</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">process_name</span> <span class="ow">in</span> <span class="n">process_order</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">process_variable_ok</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">TARGET_SOURCE_PROCESS_VARIABLES</span>
+
+        <span class="n">reactor_component_ok</span> <span class="o">=</span> <span class="nb">all</span><span class="p">(</span>
+            <span class="n">_supports_configured_reactor_components</span><span class="p">(</span>
+                <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">[</span><span class="n">process_name</span><span class="p">],</span>
+                <span class="n">configured_order</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="k">for</span> <span class="n">process_name</span> <span class="ow">in</span> <span class="n">process_order</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">reactor_component_ok</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">TARGET_SOURCE_REACTOR_COMPONENTS</span>
+
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"target_source='auto' could not resolve configured targets across "</span>
+            <span class="s2">"all processes as either measured process variables or reactor "</span>
+            <span class="s2">"components"</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">all</span><span class="p">(</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">_process_variable_targets</span><span class="p">(</span><span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">[</span><span class="n">process_name</span><span class="p">]))</span> <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">process_name</span> <span class="ow">in</span> <span class="n">process_order</span>
+    <span class="p">):</span>
+        <span class="k">return</span> <span class="n">TARGET_SOURCE_PROCESS_VARIABLES</span>
+
+    <span class="k">if</span> <span class="nb">all</span><span class="p">(</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">_reactor_component_timeseries_targets</span><span class="p">(</span><span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">[</span><span class="n">process_name</span><span class="p">]))</span>
+        <span class="o">&gt;</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">process_name</span> <span class="ow">in</span> <span class="n">process_order</span>
+    <span class="p">):</span>
+        <span class="k">return</span> <span class="n">TARGET_SOURCE_REACTOR_COMPONENTS</span>
+
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+        <span class="s2">"target_source='auto' could not find a valid shared target source "</span>
+        <span class="s2">"across processes"</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_measurement_targets</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">,</span>
+    <span class="n">configured_order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">target_source</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Determine ordered measured target names for one process."""</span>
+    <span class="k">if</span> <span class="n">target_source</span> <span class="o">==</span> <span class="n">TARGET_SOURCE_PROCESS_VARIABLES</span><span class="p">:</span>
+        <span class="n">measured</span> <span class="o">=</span> <span class="n">_process_variable_targets</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">configured_order</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">measured</span>
+        <span class="n">missing</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">configured_order</span> <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">process_variables</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: configured target variables missing "</span>
+                <span class="sa">f</span><span class="s2">"from process variables: </span><span class="si">{</span><span class="n">missing</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span>
+        <span class="n">controlled</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">name</span>
+            <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">configured_order</span>
+            <span class="k">if</span> <span class="nb">bool</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">is_controlled</span><span class="p">)</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="n">controlled</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: configured target variables must be "</span>
+                <span class="sa">f</span><span class="s2">"measured (is_controlled=False), got controlled targets: "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">controlled</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">configured_order</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">target_source</span> <span class="o">==</span> <span class="n">TARGET_SOURCE_REACTOR_COMPONENTS</span><span class="p">:</span>
+        <span class="n">measured</span> <span class="o">=</span> <span class="n">_reactor_component_timeseries_targets</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">configured_order</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">measured</span>
+        <span class="n">components</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="p">,</span> <span class="s2">"components"</span><span class="p">,</span> <span class="p">{})</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="n">missing</span> <span class="o">=</span> <span class="p">[</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">configured_order</span> <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">components</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: configured target components missing from "</span>
+                <span class="sa">f</span><span class="s2">"reactor_medium.components: </span><span class="si">{</span><span class="n">missing</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span>
+        <span class="n">invalid</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">name</span>
+            <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">configured_order</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">_is_timeseries_compatible</span><span class="p">(</span><span class="n">components</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">concentration</span><span class="p">)</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="n">invalid</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: configured target components must be "</span>
+                <span class="s2">"time-series compatible (times+values), got: "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">invalid</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">configured_order</span><span class="p">)</span>
+
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"unsupported target_source: </span><span class="si">{</span><span class="n">target_source</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_target_values</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">target_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">target_source</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Raw variable object for one target, dispatched by source group."""</span>
+    <span class="k">if</span> <span class="n">target_source</span> <span class="o">==</span> <span class="n">TARGET_SOURCE_PROCESS_VARIABLES</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="p">[</span><span class="n">target_name</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+    <span class="k">if</span> <span class="n">target_source</span> <span class="o">==</span> <span class="n">TARGET_SOURCE_REACTOR_COMPONENTS</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="n">target_name</span><span class="p">]</span><span class="o">.</span><span class="n">concentration</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"unsupported target_source: </span><span class="si">{</span><span class="n">target_source</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_initial_value_numpy</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">,</span>
+    <span class="n">target_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">target_source</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">t0</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="n">values</span> <span class="o">=</span> <span class="n">_target_values</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">target_name</span><span class="p">,</span> <span class="n">target_source</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="s2">"times"</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="s2">"values"</span><span class="p">):</span>
+        <span class="n">ts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="n">ys</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="n">matches</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">flatnonzero</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">ts</span><span class="p">,</span> <span class="n">t0</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-9</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">matches</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: state </span><span class="si">{</span><span class="n">target_name</span><span class="si">!r}</span><span class="s2"> has no "</span>
+                <span class="sa">f</span><span class="s2">"initial value at t=</span><span class="si">{</span><span class="n">t0</span><span class="si">:</span><span class="s2">.6g</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">ys</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">matches</span><span class="p">[</span><span class="mi">0</span><span class="p">])])</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="s2">"value"</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: state </span><span class="si">{</span><span class="n">target_name</span><span class="si">!r}</span><span class="s2"> must be a time-series "</span>
+        <span class="s2">"or static variable"</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_timeseries_numpy</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">,</span>
+    <span class="n">target_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">target_source</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Extract measurement time/value arrays from one target source."""</span>
+    <span class="n">values</span> <span class="o">=</span> <span class="n">_target_values</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">target_name</span><span class="p">,</span> <span class="n">target_source</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="s2">"times"</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="s2">"values"</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: target </span><span class="si">{</span><span class="n">target_name</span><span class="si">!r}</span><span class="s2"> must be a "</span>
+            <span class="s2">"time-series variable with times and values"</span>
+        <span class="p">)</span>
+    <span class="n">ts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">ys</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">ts</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">ys</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">ts</span><span class="o">.</span><span class="n">size</span> <span class="o">!=</span> <span class="n">ys</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: target </span><span class="si">{</span><span class="n">target_name</span><span class="si">!r}</span><span class="s2"> has invalid "</span>
+            <span class="s2">"time/value shape"</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">ts</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: target </span><span class="si">{</span><span class="n">target_name</span><span class="si">!r}</span><span class="s2"> has no measurement points"</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">ts</span><span class="p">,</span> <span class="n">ys</span>
+
+
+<div class="viewcode-block" id="replace_rhs_ode_process_matrices">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.replace_rhs_ode_process_matrices">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">replace_rhs_ode_process_matrices</span><span class="p">(</span>
+    <span class="n">rhs_ode</span><span class="p">:</span> <span class="n">RhsOde</span><span class="p">,</span>
+    <span class="n">Cin_controlled_Inflows</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+    <span class="n">Cin_modeled_Inflows</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+    <span class="n">retention_controlled_Outflows</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+    <span class="n">retention_modeled_Outflows</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhsOde</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Replace all process-specific physical matrices on an ODE template."""</span>
+    <span class="k">return</span> <span class="n">eqx</span><span class="o">.</span><span class="n">tree_at</span><span class="p">(</span>
+        <span class="k">lambda</span> <span class="n">rhs</span><span class="p">:</span> <span class="p">(</span>
+            <span class="n">rhs</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span><span class="p">,</span>
+            <span class="n">rhs</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span><span class="p">,</span>
+            <span class="n">rhs</span><span class="o">.</span><span class="n">retention_controlled_Outflows</span><span class="p">,</span>
+            <span class="n">rhs</span><span class="o">.</span><span class="n">retention_modeled_Outflows</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="n">rhs_ode</span><span class="p">,</span>
+        <span class="p">(</span>
+            <span class="n">Cin_controlled_Inflows</span><span class="p">,</span>
+            <span class="n">Cin_modeled_Inflows</span><span class="p">,</span>
+            <span class="n">retention_controlled_Outflows</span><span class="p">,</span>
+            <span class="n">retention_modeled_Outflows</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="PerProcessTrainingData">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.PerProcessTrainingData">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PerProcessTrainingData</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Per-process active view over padded training-data tensors."""</span>
+
+    <span class="c1"># Canonical process key from prepared metadata.</span>
+    <span class="n">process_name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="c1"># Integer row index into collection-level stacked arrays.</span>
+    <span class="n">process_index</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="c1"># Measured-target names split by BioProcess group. Either or both may be</span>
+    <span class="c1"># populated depending on target_source.</span>
+    <span class="n">name_measured_RMCs</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="n">name_measured_PVs</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="c1"># Modeled volume-change names (mirrored from store for JIT-friendly</span>
+    <span class="c1"># per-process access).</span>
+    <span class="n">name_modeled_Inflows</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="n">name_modeled_Outflows</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="c1"># Number of active measurement rows for this process.</span>
+    <span class="n">n_measured</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="c1"># Padded measurement times for this process.</span>
+    <span class="n">t_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># Padded measurement values for this process, columns follow</span>
+    <span class="c1"># ``name_measured`` (RMC targets, PV targets, or both) then the cumulative</span>
+    <span class="c1"># volume tail for ``name_modeled_Inflows + name_modeled_Outflows``.</span>
+    <span class="n">y_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># Padded per-cell boolean mask `[max_n_meas, n_y_cols]`. True iff the</span>
+    <span class="c1"># corresponding (timestamp, target) pair is a real measurement; False</span>
+    <span class="c1"># for rows beyond ``n_measured`` and for cells where a target has no</span>
+    <span class="c1"># measurement at that timestamp on the union grid.</span>
+    <span class="n">mask_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># Full physical initial state `[all_RMCs..., all_PVs..., V, modeled_cum...]`.</span>
+    <span class="n">y0_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># This process's flow matrices. A wrapper's baked matrices belong to</span>
+    <span class="c1"># whichever process supplied its template, so every solve substitutes all</span>
+    <span class="c1"># four alongside ``controls``.</span>
+    <span class="n">Cin_controlled_Inflows</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="n">Cin_modeled_Inflows</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="n">retention_controlled_Outflows</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="n">retention_modeled_Outflows</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># Per-process controls view from ControlsStore.</span>
+    <span class="n">controls</span><span class="p">:</span> <span class="n">PerProcessControls</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">active_t_measured</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Active measurement-time prefix."""</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">t_measured</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_measured</span><span class="p">]</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">active_y_measured</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Active measurement/value prefix."""</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">y_measured</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_measured</span><span class="p">]</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">active_mask_measured</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Active measurement-mask prefix."""</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask_measured</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_measured</span><span class="p">]</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">name_measured</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""Combined measured-target names in state order</span>
+<span class="sd">        ``[name_measured_RMCs | name_measured_PVs]``."""</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_measured_RMCs</span><span class="p">)</span> <span class="o">+</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_measured_PVs</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="BatchTrainingData">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.BatchTrainingData">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BatchTrainingData</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Aligned measurement and control rows for a process-index batch."""</span>
+
+    <span class="c1"># Global process indices used to gather this batch view.</span>
+    <span class="n">process_indices</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># Controls gathered in the same row order as the measurements.</span>
+    <span class="n">controls</span><span class="p">:</span> <span class="n">BatchControls</span>
+    <span class="c1"># Gathered measurement times `[batch_size, max_n_meas]`.</span>
+    <span class="n">t_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># Gathered measurement values `[batch_size, max_n_meas, n_y_cols]`.</span>
+    <span class="n">y_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># Gathered per-cell measurement masks `[batch_size, max_n_meas, n_y_cols]`.</span>
+    <span class="n">mask_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># Gathered active measurement counts `[batch_size]`.</span>
+    <span class="n">n_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># Gathered full physical initial state vectors.</span>
+    <span class="n">y0_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># Process-aligned Outflow retention matrices.</span>
+    <span class="n">retention_controlled_Outflows</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="n">retention_modeled_Outflows</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span></div>
+
+
+
+<div class="viewcode-block" id="TrainingDataStore">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.TrainingDataStore">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">TrainingDataStore</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Collection-level training-data store built from a prepared collection.</span>
+
+<span class="sd">    The y_measured columns are ``[targets..., modeled Inflow cumulative...,</span>
+<span class="sd">    modeled Outflow cumulative...]``, where targets may be RMCs, PVs, or both.</span>
+<span class="sd">    V is in the ODE state but not in the loss targets.</span>
+
+<span class="sd">    The y0 vector has layout ``[all RMCs..., all PVs..., V(0), modeled Inflow</span>
+<span class="sd">    cumulative..., modeled Outflow cumulative...]``, matching the physical ODE</span>
+<span class="sd">    state order expected by the wrapper.</span>
+<span class="sd">    """</span>
+
+    <span class="c1"># Stable process order across all stacked arrays.</span>
+    <span class="n">process_order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+    <span class="c1"># Measured-target names split by BioProcess group. Either or both may be</span>
+    <span class="c1"># non-empty; ``name_measured`` returns the loss/target column labels.</span>
+    <span class="n">name_measured_RMCs</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="n">name_measured_PVs</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="c1"># Ordered modeled-Inflow names (shared across processes). Each contributes</span>
+    <span class="c1"># one cumulative-volume column to y_measured.</span>
+    <span class="n">name_modeled_Inflows</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="c1"># Ordered modeled-Outflow names. Each contributes one cumulative-volume</span>
+    <span class="c1"># column to y_measured after the Inflow block, mirroring</span>
+    <span class="c1"># ``RhsOde.name_modeled_Outflows`` ordering.</span>
+    <span class="n">name_modeled_Outflows</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="c1"># Shared controls store for this prepared artifact.</span>
+    <span class="n">controls_store</span><span class="p">:</span> <span class="n">ControlsStore</span>
+    <span class="c1"># Canonical ODE structure plus process-aligned flow matrices.</span>
+    <span class="n">rhs_ode</span><span class="p">:</span> <span class="n">RhsOde</span>
+    <span class="n">Cin_controlled_Inflows</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="n">Cin_modeled_Inflows</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="n">retention_controlled_Outflows</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="n">retention_modeled_Outflows</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># Padded measurement times `[n_processes, max_n_meas]`.</span>
+    <span class="n">t_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># Padded measurement values</span>
+    <span class="c1"># `[n_processes, max_n_meas, n_targets + n_modeled_flows]`.</span>
+    <span class="n">y_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># Padded per-cell measurement mask `[n_processes, max_n_meas, n_y_cols]`.</span>
+    <span class="c1"># True iff the corresponding (timestamp, target) pair is a real</span>
+    <span class="c1"># measurement. The modeled-flow cumulative columns are dense by</span>
+    <span class="c1"># construction (mask=True throughout).</span>
+    <span class="n">mask_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># Active measurement counts per process.</span>
+    <span class="n">n_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="c1"># Initial state matrix `[n_processes, n_RMC + n_PV + 1 + n_modeled_flows]`</span>
+    <span class="c1"># where layout is `[all_RMCs_0..., all_PVs_0..., V(0), B_modeled_cum_0(0), ...]`.</span>
+    <span class="n">y0_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__check_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Equinox post-init hook: reject a store with no measured targets at all.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If both ``name_measured_RMCs`` and</span>
+<span class="sd">                ``name_measured_PVs`` are empty.</span>
+<span class="sd">        """</span>
+        <span class="c1"># At least one of name_measured_RMCs / name_measured_PVs must be</span>
+        <span class="c1"># populated; ``combined`` sets both. Fail-fast per CLAUDE.md principle 7.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_measured_RMCs</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">name_measured_PVs</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"TrainingDataStore: at least one of name_measured_RMCs / "</span>
+                <span class="s2">"name_measured_PVs must be non-empty."</span>
+            <span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">name_measured</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">"""Loss/target column labels in ``[RMC targets | PV targets]`` order."""</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_measured_RMCs</span><span class="p">)</span> <span class="o">+</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_measured_PVs</span><span class="p">)</span>
+
+<div class="viewcode-block" id="TrainingDataStore.from_collection">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.TrainingDataStore.from_collection">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_collection</span><span class="p">(</span>
+        <span class="bp">cls</span><span class="p">,</span>
+        <span class="n">collection</span><span class="p">:</span> <span class="n">BioProcessCollection</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">target_variable_order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">target_source</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">TARGET_SOURCE_PROCESS_VARIABLES</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrainingDataStore</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Build training-data tensors from a prepared process collection."""</span>
+        <span class="n">controls_store</span> <span class="o">=</span> <span class="n">ControlsStore</span><span class="o">.</span><span class="n">from_collection</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
+        <span class="n">process_order</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">controls_store</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">process_order</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"process collection is empty"</span><span class="p">)</span>
+        <span class="n">rhs_odes</span> <span class="o">=</span> <span class="p">[</span><span class="n">build_rhs_ode</span><span class="p">(</span><span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">[</span><span class="n">name</span><span class="p">])</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">process_order</span><span class="p">]</span>
+        <span class="n">ref_rhs_ode</span> <span class="o">=</span> <span class="n">rhs_odes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="n">target_order</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">target_variable_order</span><span class="p">)</span> <span class="k">if</span> <span class="n">target_variable_order</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="n">resolved_target_source</span> <span class="o">=</span> <span class="n">_resolve_target_source</span><span class="p">(</span>
+            <span class="n">collection</span><span class="o">=</span><span class="n">collection</span><span class="p">,</span>
+            <span class="n">process_order</span><span class="o">=</span><span class="n">process_order</span><span class="p">,</span>
+            <span class="n">configured_order</span><span class="o">=</span><span class="n">target_order</span><span class="p">,</span>
+            <span class="n">target_source</span><span class="o">=</span><span class="n">target_source</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">per_process_targets</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="n">reference_targets</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="c1"># Source family (reactor_components / process_variables) per target column,</span>
+        <span class="c1"># aligned with ``reference_targets``. ``combined`` mixes both.</span>
+        <span class="n">reference_target_sources</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="k">for</span> <span class="n">process_name</span><span class="p">,</span> <span class="n">rhs_ode</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">process_order</span><span class="p">,</span> <span class="n">rhs_odes</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+            <span class="n">process</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">[</span><span class="n">process_name</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">resolved_target_source</span> <span class="o">==</span> <span class="n">TARGET_SOURCE_COMBINED</span><span class="p">:</span>
+                <span class="n">rmc_targets</span><span class="p">,</span> <span class="n">pv_targets</span> <span class="o">=</span> <span class="n">_combined_measured_targets</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">rhs_ode</span><span class="p">)</span>
+                <span class="n">current_targets</span> <span class="o">=</span> <span class="n">rmc_targets</span> <span class="o">+</span> <span class="n">pv_targets</span>
+                <span class="n">current_sources</span> <span class="o">=</span> <span class="p">[</span><span class="n">TARGET_SOURCE_REACTOR_COMPONENTS</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span>
+                    <span class="n">rmc_targets</span>
+                <span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="n">TARGET_SOURCE_PROCESS_VARIABLES</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">pv_targets</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">current_targets</span> <span class="o">=</span> <span class="n">_measurement_targets</span><span class="p">(</span>
+                    <span class="n">process</span><span class="p">,</span>
+                    <span class="n">target_order</span><span class="p">,</span>
+                    <span class="n">resolved_target_source</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="n">current_sources</span> <span class="o">=</span> <span class="p">[</span><span class="n">resolved_target_source</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">current_targets</span><span class="p">)</span>
+            <span class="n">per_process_targets</span><span class="p">[</span><span class="n">process_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">current_targets</span>
+
+            <span class="k">if</span> <span class="n">reference_targets</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">reference_targets</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">current_targets</span><span class="p">)</span>
+                <span class="n">reference_target_sources</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">current_sources</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">current_targets</span> <span class="o">!=</span> <span class="n">reference_targets</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">"training data requires identical measured target names/order "</span>
+                    <span class="sa">f</span><span class="s2">"across processes; </span><span class="si">{</span><span class="n">process_name</span><span class="si">!r}</span><span class="s2"> has </span><span class="si">{</span><span class="n">current_targets</span><span class="si">!r}</span><span class="s2"> "</span>
+                    <span class="sa">f</span><span class="s2">"but expected </span><span class="si">{</span><span class="n">reference_targets</span><span class="si">!r}</span><span class="s2">"</span>
+                <span class="p">)</span>
+
+        <span class="n">biological_ode_ok</span><span class="p">,</span> <span class="n">biological_ode_message</span> <span class="o">=</span> <span class="n">validate_biological_ode_equivalence</span><span class="p">(</span>
+            <span class="n">collection</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">biological_ode_ok</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">biological_ode_message</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">process_name</span><span class="p">,</span> <span class="n">rhs_ode</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">process_order</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">rhs_odes</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+            <span class="n">validate_rhs_ode_compatibility</span><span class="p">(</span>
+                <span class="n">process_order</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">ref_rhs_ode</span><span class="p">,</span> <span class="n">process_name</span><span class="p">,</span> <span class="n">rhs_ode</span>
+            <span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">reference_targets</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">AssertionError</span><span class="p">(</span><span class="s2">"non-empty process order produced no targets"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">reference_targets</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"no measured target variables found in process collection"</span><span class="p">)</span>
+
+        <span class="c1"># Split the resolved target names into the RMC / PV tuples. For</span>
+        <span class="c1"># ``combined`` the RMC columns come first (the source list discriminates);</span>
+        <span class="c1"># the single-source families populate exactly one tuple.</span>
+        <span class="n">name_measured_PVs</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">resolved_target_source</span> <span class="o">==</span> <span class="n">TARGET_SOURCE_COMBINED</span><span class="p">:</span>
+            <span class="n">n_rmc</span> <span class="o">=</span> <span class="n">reference_target_sources</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="n">TARGET_SOURCE_REACTOR_COMPONENTS</span><span class="p">)</span>
+            <span class="n">name_measured_RMCs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">reference_targets</span><span class="p">[:</span><span class="n">n_rmc</span><span class="p">])</span>
+            <span class="n">name_measured_PVs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">reference_targets</span><span class="p">[</span><span class="n">n_rmc</span><span class="p">:])</span>
+        <span class="k">elif</span> <span class="n">resolved_target_source</span> <span class="o">==</span> <span class="n">TARGET_SOURCE_REACTOR_COMPONENTS</span><span class="p">:</span>
+            <span class="n">name_measured_RMCs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">reference_targets</span><span class="p">)</span>
+            <span class="n">name_measured_PVs</span> <span class="o">=</span> <span class="p">()</span>
+        <span class="k">elif</span> <span class="n">resolved_target_source</span> <span class="o">==</span> <span class="n">TARGET_SOURCE_PROCESS_VARIABLES</span><span class="p">:</span>
+            <span class="n">name_measured_RMCs</span> <span class="o">=</span> <span class="p">()</span>
+            <span class="n">name_measured_PVs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">reference_targets</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"resolved target_source must be one of "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">TARGET_SOURCE_REACTOR_COMPONENTS</span><span class="si">!r}</span><span class="s2">, "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">TARGET_SOURCE_PROCESS_VARIABLES</span><span class="si">!r}</span><span class="s2">, "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">TARGET_SOURCE_COMBINED</span><span class="si">!r}</span><span class="s2">, got </span><span class="si">{</span><span class="n">resolved_target_source</span><span class="si">!r}</span><span class="s2">"</span>
+            <span class="p">)</span>
+
+        <span class="n">name_modeled_Inflows</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">ref_rhs_ode</span><span class="o">.</span><span class="n">name_modeled_Inflows</span><span class="p">)</span>
+        <span class="n">name_modeled_Outflows</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">ref_rhs_ode</span><span class="o">.</span><span class="n">name_modeled_Outflows</span><span class="p">)</span>
+        <span class="n">n_modeled</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">name_modeled_Inflows</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">name_modeled_Outflows</span><span class="p">)</span>
+
+        <span class="n">per_process_times</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">per_process_values</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">per_process_masks</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">per_process_y0</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">n_meas_list</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">max_n_meas</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">n_targets</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">reference_targets</span><span class="p">)</span>
+        <span class="c1"># y_measured columns = [species targets..., B_modeled_cum per Inflow...,</span>
+        <span class="c1"># B_modeled_cum per Outflow...].</span>
+        <span class="n">n_y_cols</span> <span class="o">=</span> <span class="n">n_targets</span> <span class="o">+</span> <span class="n">n_modeled</span>
+
+        <span class="k">for</span> <span class="n">process_name</span><span class="p">,</span> <span class="n">process_rhs_ode</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">process_order</span><span class="p">,</span> <span class="n">rhs_odes</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+            <span class="n">process</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">[</span><span class="n">process_name</span><span class="p">]</span>
+            <span class="n">process_targets</span> <span class="o">=</span> <span class="n">per_process_targets</span><span class="p">[</span><span class="n">process_name</span><span class="p">]</span>
+
+            <span class="c1"># Per-target (times, values) — each target may have its own grid.</span>
+            <span class="c1"># ``reference_target_sources`` resolves each column to its source</span>
+            <span class="c1"># family (combined mixes reactor components and process variables).</span>
+            <span class="n">per_target_times</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">per_target_values</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">col_source</span><span class="p">,</span> <span class="n">target_name</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span>
+                <span class="n">reference_target_sources</span><span class="p">,</span> <span class="n">process_targets</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span>
+            <span class="p">):</span>
+                <span class="n">ts</span><span class="p">,</span> <span class="n">ys</span> <span class="o">=</span> <span class="n">_timeseries_numpy</span><span class="p">(</span>
+                    <span class="n">process</span><span class="p">,</span>
+                    <span class="n">target_name</span><span class="p">,</span>
+                    <span class="n">col_source</span><span class="p">,</span>
+                <span class="p">)</span>
+                <span class="n">per_target_times</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ts</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">))</span>
+                <span class="n">per_target_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ys</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">))</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">per_target_times</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">process_name</span><span class="si">}</span><span class="s2">: no measurement data for targets"</span><span class="p">)</span>
+
+            <span class="c1"># Union grid across all per-target measurement times.</span>
+            <span class="n">union_ts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">per_target_times</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">))</span>
+            <span class="n">t0_union</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">union_ts</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+            <span class="c1"># Strict t[0] requirement: every target must have a measurement</span>
+            <span class="c1"># at union_ts[0]. Otherwise y0 is undefined.</span>
+            <span class="k">for</span> <span class="n">tname</span><span class="p">,</span> <span class="n">t_arr</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">process_targets</span><span class="p">,</span> <span class="n">per_target_times</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">t_arr</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span>
+                    <span class="n">np</span><span class="o">.</span><span class="n">isclose</span><span class="p">(</span><span class="n">t_arr</span><span class="p">,</span> <span class="n">t0_union</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-9</span><span class="p">)</span>
+                <span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">"Process </span><span class="si">{</span><span class="n">process_name</span><span class="si">!r}</span><span class="s2">: target </span><span class="si">{</span><span class="n">tname</span><span class="si">!r}</span><span class="s2"> has no "</span>
+                        <span class="sa">f</span><span class="s2">"measurement at union_grid t[0] = </span><span class="si">{</span><span class="n">t0_union</span><span class="si">:</span><span class="s2">.6g</span><span class="si">}</span><span class="s2">. "</span>
+                        <span class="sa">f</span><span class="s2">"Either supply a t=</span><span class="si">{</span><span class="n">t0_union</span><span class="si">:</span><span class="s2">.6g</span><span class="si">}</span><span class="s2"> measurement, mark "</span>
+                        <span class="sa">f</span><span class="s2">"this variable as a StaticVariable, or remove it from "</span>
+                        <span class="sa">f</span><span class="s2">"target_variable_order."</span>
+                    <span class="p">)</span>
+
+            <span class="c1"># Build (n_measured, n_y_cols) value + mask matrices on the union grid.</span>
+            <span class="n">n_measured</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">union_ts</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
+            <span class="n">y_matrix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_measured</span><span class="p">,</span> <span class="n">n_y_cols</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+            <span class="n">mask_matrix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_measured</span><span class="p">,</span> <span class="n">n_y_cols</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+
+            <span class="k">for</span> <span class="n">col_idx</span><span class="p">,</span> <span class="p">(</span><span class="n">t_arr</span><span class="p">,</span> <span class="n">v_arr</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span>
+                <span class="nb">zip</span><span class="p">(</span><span class="n">per_target_times</span><span class="p">,</span> <span class="n">per_target_values</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="p">):</span>
+                <span class="c1"># Map each target measurement onto its row in the union grid.</span>
+                <span class="c1"># np.searchsorted on a sorted union finds exact-match positions.</span>
+                <span class="n">positions</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">union_ts</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">)</span>
+                <span class="c1"># Clamp pathological out-of-range positions defensively.</span>
+                <span class="n">positions</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">positions</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">n_measured</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="n">y_matrix</span><span class="p">[</span><span class="n">positions</span><span class="p">,</span> <span class="n">col_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">v_arr</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+                <span class="n">mask_matrix</span><span class="p">[</span><span class="n">positions</span><span class="p">,</span> <span class="n">col_idx</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+
+            <span class="c1"># Modeled-VC cumulative columns: dense by construction, fill the</span>
+            <span class="c1"># value via linear interpolation of the cumulative volume trace</span>
+            <span class="c1"># and mark mask True throughout. Layout matches y_measured's</span>
+            <span class="c1"># column order: Inflows first, then Outflows.</span>
+            <span class="n">v0</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">initial_volume</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">fn</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">name_modeled_Inflows</span> <span class="o">+</span> <span class="n">name_modeled_Outflows</span><span class="p">):</span>
+                <span class="n">col_idx</span> <span class="o">=</span> <span class="n">n_targets</span> <span class="o">+</span> <span class="n">k</span>
+                <span class="n">vc</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">volume_changes</span><span class="p">[</span><span class="n">fn</span><span class="p">]</span>
+                <span class="n">vc_t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">vc</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+                <span class="n">vc_v</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">vc</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+                <span class="n">b_col</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">interp</span><span class="p">(</span>
+                    <span class="n">union_ts</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">),</span>
+                    <span class="n">vc_t</span><span class="p">,</span>
+                    <span class="n">vc_v</span><span class="p">,</span>
+                    <span class="n">left</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">vc_v</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+                    <span class="n">right</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">vc_v</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]),</span>
+                <span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+                <span class="n">y_matrix</span><span class="p">[:,</span> <span class="n">col_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">b_col</span>
+                <span class="n">mask_matrix</span><span class="p">[:,</span> <span class="n">col_idx</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+
+            <span class="c1"># Full physical initial state:</span>
+            <span class="c1"># [all modeled RMCs | all modeled PVs | V | modeled_cum...].</span>
+            <span class="c1"># Loss targets may be a subset (e.g. PV-only), but the solver still</span>
+            <span class="c1"># needs every modeled physical state axis.</span>
+            <span class="n">y0_state</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
+                <span class="p">[</span>
+                    <span class="o">*</span><span class="p">(</span>
+                        <span class="n">_initial_value_numpy</span><span class="p">(</span>
+                            <span class="n">process</span><span class="p">,</span>
+                            <span class="n">name</span><span class="p">,</span>
+                            <span class="n">TARGET_SOURCE_REACTOR_COMPONENTS</span><span class="p">,</span>
+                            <span class="n">t0_union</span><span class="p">,</span>
+                        <span class="p">)</span>
+                        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">process_rhs_ode</span><span class="o">.</span><span class="n">name_modeled_RMCs</span>
+                    <span class="p">),</span>
+                    <span class="o">*</span><span class="p">(</span>
+                        <span class="n">_initial_value_numpy</span><span class="p">(</span>
+                            <span class="n">process</span><span class="p">,</span>
+                            <span class="n">name</span><span class="p">,</span>
+                            <span class="n">TARGET_SOURCE_PROCESS_VARIABLES</span><span class="p">,</span>
+                            <span class="n">t0_union</span><span class="p">,</span>
+                        <span class="p">)</span>
+                        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">process_rhs_ode</span><span class="o">.</span><span class="n">name_modeled_PVs</span>
+                    <span class="p">),</span>
+                <span class="p">],</span>
+                <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">y0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
+                <span class="p">[</span>
+                    <span class="n">y0_state</span><span class="p">,</span>
+                    <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">v0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+                    <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_modeled</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+                <span class="p">],</span>
+                <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="n">max_n_meas</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">max_n_meas</span><span class="p">,</span> <span class="n">n_measured</span><span class="p">)</span>
+            <span class="n">per_process_times</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">union_ts</span><span class="p">)</span>
+            <span class="n">per_process_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">y_matrix</span><span class="p">)</span>
+            <span class="n">per_process_masks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">mask_matrix</span><span class="p">)</span>
+            <span class="n">per_process_y0</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">y0</span><span class="p">)</span>
+            <span class="n">n_meas_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">n_measured</span><span class="p">)</span>
+
+        <span class="n">n_processes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">process_order</span><span class="p">)</span>
+        <span class="n">t_measured</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_processes</span><span class="p">,</span> <span class="n">max_n_meas</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+        <span class="n">y_measured</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_processes</span><span class="p">,</span> <span class="n">max_n_meas</span><span class="p">,</span> <span class="n">n_y_cols</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+        <span class="n">mask_measured</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_processes</span><span class="p">,</span> <span class="n">max_n_meas</span><span class="p">,</span> <span class="n">n_y_cols</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="p">(</span><span class="n">ts</span><span class="p">,</span> <span class="n">ys</span><span class="p">,</span> <span class="n">mk</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span>
+            <span class="nb">zip</span><span class="p">(</span>
+                <span class="n">per_process_times</span><span class="p">,</span>
+                <span class="n">per_process_values</span><span class="p">,</span>
+                <span class="n">per_process_masks</span><span class="p">,</span>
+                <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">):</span>
+            <span class="n">n_measured</span> <span class="o">=</span> <span class="n">n_meas_list</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+            <span class="n">t_measured</span><span class="p">[</span><span class="n">index</span><span class="p">,</span> <span class="p">:</span><span class="n">n_measured</span><span class="p">]</span> <span class="o">=</span> <span class="n">ts</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+            <span class="n">y_measured</span><span class="p">[</span><span class="n">index</span><span class="p">,</span> <span class="p">:</span><span class="n">n_measured</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">ys</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+            <span class="n">mask_measured</span><span class="p">[</span><span class="n">index</span><span class="p">,</span> <span class="p">:</span><span class="n">n_measured</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">mk</span>
+
+        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span>
+            <span class="n">process_order</span><span class="o">=</span><span class="n">process_order</span><span class="p">,</span>
+            <span class="n">name_measured_RMCs</span><span class="o">=</span><span class="n">name_measured_RMCs</span><span class="p">,</span>
+            <span class="n">name_measured_PVs</span><span class="o">=</span><span class="n">name_measured_PVs</span><span class="p">,</span>
+            <span class="n">name_modeled_Inflows</span><span class="o">=</span><span class="n">name_modeled_Inflows</span><span class="p">,</span>
+            <span class="n">name_modeled_Outflows</span><span class="o">=</span><span class="n">name_modeled_Outflows</span><span class="p">,</span>
+            <span class="n">controls_store</span><span class="o">=</span><span class="n">controls_store</span><span class="p">,</span>
+            <span class="n">rhs_ode</span><span class="o">=</span><span class="n">ref_rhs_ode</span><span class="p">,</span>
+            <span class="n">Cin_controlled_Inflows</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
+                <span class="p">[</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span> <span class="k">for</span> <span class="n">rhs_ode</span> <span class="ow">in</span> <span class="n">rhs_odes</span><span class="p">]</span>
+            <span class="p">),</span>
+            <span class="n">Cin_modeled_Inflows</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
+                <span class="p">[</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span> <span class="k">for</span> <span class="n">rhs_ode</span> <span class="ow">in</span> <span class="n">rhs_odes</span><span class="p">]</span>
+            <span class="p">),</span>
+            <span class="n">retention_controlled_Outflows</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
+                <span class="p">[</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">retention_controlled_Outflows</span> <span class="k">for</span> <span class="n">rhs_ode</span> <span class="ow">in</span> <span class="n">rhs_odes</span><span class="p">]</span>
+            <span class="p">),</span>
+            <span class="n">retention_modeled_Outflows</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
+                <span class="p">[</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">retention_modeled_Outflows</span> <span class="k">for</span> <span class="n">rhs_ode</span> <span class="ow">in</span> <span class="n">rhs_odes</span><span class="p">]</span>
+            <span class="p">),</span>
+            <span class="n">t_measured</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">t_measured</span><span class="p">),</span>
+            <span class="n">y_measured</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">y_measured</span><span class="p">),</span>
+            <span class="n">mask_measured</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">mask_measured</span><span class="p">),</span>
+            <span class="n">n_measured</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">n_meas_list</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span>
+            <span class="n">y0_measured</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">per_process_y0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)),</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="TrainingDataStore.from_json">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.TrainingDataStore.from_json">[docs]</a>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_json</span><span class="p">(</span>
+        <span class="bp">cls</span><span class="p">,</span>
+        <span class="n">prepared_json</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">target_variable_order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">target_source</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">TARGET_SOURCE_PROCESS_VARIABLES</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrainingDataStore</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Load a prepared JSON artifact and construct a training-data store."""</span>
+        <span class="n">collection</span> <span class="o">=</span> <span class="n">load_process_collection</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">prepared_json</span><span class="p">))</span>
+        <span class="k">return</span> <span class="bp">cls</span><span class="o">.</span><span class="n">from_collection</span><span class="p">(</span>
+            <span class="n">collection</span><span class="p">,</span>
+            <span class="n">target_variable_order</span><span class="o">=</span><span class="n">target_variable_order</span><span class="p">,</span>
+            <span class="n">target_source</span><span class="o">=</span><span class="n">target_source</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="TrainingDataStore.select_processes">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.TrainingDataStore.select_processes">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">select_processes</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">process_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+        <span class="n">collection</span><span class="p">:</span> <span class="n">BioProcessCollection</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrainingDataStore</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Return a closed parent-aligned row selection in the requested order."""</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">process_names</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"selected training store must be non-empty"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">)</span> <span class="o">!=</span> <span class="n">process_names</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"selected collection order must match process_names"</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">indices</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
+                <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">process_order</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">process_names</span><span class="p">],</span>
+                <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">error</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"unknown selected process: </span><span class="si">{</span><span class="n">error</span><span class="o">.</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">error</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">rows</span><span class="p">(</span><span class="n">array</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">array</span><span class="p">[</span><span class="n">indices</span><span class="p">]</span>
+
+        <span class="n">controlled_cin</span> <span class="o">=</span> <span class="n">rows</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span><span class="p">)</span>
+        <span class="n">modeled_cin</span> <span class="o">=</span> <span class="n">rows</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span><span class="p">)</span>
+        <span class="n">controlled_retention</span> <span class="o">=</span> <span class="n">rows</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">retention_controlled_Outflows</span><span class="p">)</span>
+        <span class="n">modeled_retention</span> <span class="o">=</span> <span class="n">rows</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">retention_modeled_Outflows</span><span class="p">)</span>
+        <span class="n">n_measured</span> <span class="o">=</span> <span class="n">rows</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_measured</span><span class="p">)</span>
+        <span class="n">max_measurements</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">n_measured</span><span class="p">)))</span>
+        <span class="n">rhs_ode</span> <span class="o">=</span> <span class="n">replace_rhs_ode_process_matrices</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">rhs_ode</span><span class="p">,</span>
+            <span class="n">controlled_cin</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+            <span class="n">modeled_cin</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+            <span class="n">controlled_retention</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+            <span class="n">modeled_retention</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">TrainingDataStore</span><span class="p">(</span>
+            <span class="n">process_order</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="n">process_names</span><span class="p">),</span>
+            <span class="n">name_measured_RMCs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name_measured_RMCs</span><span class="p">,</span>
+            <span class="n">name_measured_PVs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name_measured_PVs</span><span class="p">,</span>
+            <span class="n">name_modeled_Inflows</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name_modeled_Inflows</span><span class="p">,</span>
+            <span class="n">name_modeled_Outflows</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name_modeled_Outflows</span><span class="p">,</span>
+            <span class="n">rhs_ode</span><span class="o">=</span><span class="n">rhs_ode</span><span class="p">,</span>
+            <span class="n">controls_store</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">controls_store</span><span class="o">.</span><span class="n">select_processes</span><span class="p">(</span>
+                <span class="n">process_names</span><span class="p">,</span>
+                <span class="n">collection</span><span class="p">,</span>
+                <span class="n">modeled_rmc_names</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">),</span>
+            <span class="p">),</span>
+            <span class="n">Cin_controlled_Inflows</span><span class="o">=</span><span class="n">controlled_cin</span><span class="p">,</span>
+            <span class="n">Cin_modeled_Inflows</span><span class="o">=</span><span class="n">modeled_cin</span><span class="p">,</span>
+            <span class="n">retention_controlled_Outflows</span><span class="o">=</span><span class="n">controlled_retention</span><span class="p">,</span>
+            <span class="n">retention_modeled_Outflows</span><span class="o">=</span><span class="n">modeled_retention</span><span class="p">,</span>
+            <span class="n">t_measured</span><span class="o">=</span><span class="n">rows</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">t_measured</span><span class="p">)[:,</span> <span class="p">:</span><span class="n">max_measurements</span><span class="p">],</span>
+            <span class="n">y_measured</span><span class="o">=</span><span class="n">rows</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">y_measured</span><span class="p">)[:,</span> <span class="p">:</span><span class="n">max_measurements</span><span class="p">],</span>
+            <span class="n">mask_measured</span><span class="o">=</span><span class="n">rows</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mask_measured</span><span class="p">)[:,</span> <span class="p">:</span><span class="n">max_measurements</span><span class="p">],</span>
+            <span class="n">n_measured</span><span class="o">=</span><span class="n">n_measured</span><span class="p">,</span>
+            <span class="n">y0_measured</span><span class="o">=</span><span class="n">rows</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">y0_measured</span><span class="p">),</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="TrainingDataStore.validate_control_support">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.TrainingDataStore.validate_control_support">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">validate_control_support</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">process_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Validate measured solve spans for the processes about to be solved."""</span>
+        <span class="n">spans</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">process_name</span> <span class="ow">in</span> <span class="n">process_names</span><span class="p">:</span>
+            <span class="n">_</span><span class="p">,</span> <span class="n">process_index</span> <span class="o">=</span> <span class="n">_coerce_process_index</span><span class="p">(</span><span class="n">process_name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
+            <span class="n">n_measured</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_measured</span><span class="p">[</span><span class="n">process_index</span><span class="p">]))</span>
+            <span class="n">active_ts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">t_measured</span><span class="p">[</span><span class="n">process_index</span><span class="p">,</span> <span class="p">:</span><span class="n">n_measured</span><span class="p">])</span>
+            <span class="n">spans</span><span class="p">[</span><span class="n">process_name</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">active_ts</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="nb">float</span><span class="p">(</span><span class="n">active_ts</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">controls_store</span><span class="o">.</span><span class="n">validate_supports</span><span class="p">(</span><span class="n">spans</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="TrainingDataStore.get_process">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.TrainingDataStore.get_process">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">process</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PerProcessTrainingData</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Return per-process training data by canonical name or integer index."""</span>
+        <span class="n">process_name</span><span class="p">,</span> <span class="n">process_index</span> <span class="o">=</span> <span class="n">_coerce_process_index</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">PerProcessTrainingData</span><span class="p">(</span>
+            <span class="n">process_name</span><span class="o">=</span><span class="n">process_name</span><span class="p">,</span>
+            <span class="n">process_index</span><span class="o">=</span><span class="n">process_index</span><span class="p">,</span>
+            <span class="n">name_measured_RMCs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name_measured_RMCs</span><span class="p">,</span>
+            <span class="n">name_measured_PVs</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name_measured_PVs</span><span class="p">,</span>
+            <span class="n">name_modeled_Inflows</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name_modeled_Inflows</span><span class="p">,</span>
+            <span class="n">name_modeled_Outflows</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name_modeled_Outflows</span><span class="p">,</span>
+            <span class="n">n_measured</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_measured</span><span class="p">[</span><span class="n">process_index</span><span class="p">]),</span>
+            <span class="n">t_measured</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">t_measured</span><span class="p">[</span><span class="n">process_index</span><span class="p">],</span>
+            <span class="n">y_measured</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">y_measured</span><span class="p">[</span><span class="n">process_index</span><span class="p">],</span>
+            <span class="n">mask_measured</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mask_measured</span><span class="p">[</span><span class="n">process_index</span><span class="p">],</span>
+            <span class="n">y0_measured</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">y0_measured</span><span class="p">[</span><span class="n">process_index</span><span class="p">],</span>
+            <span class="n">Cin_controlled_Inflows</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span><span class="p">[</span><span class="n">process_index</span><span class="p">],</span>
+            <span class="n">Cin_modeled_Inflows</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span><span class="p">[</span><span class="n">process_index</span><span class="p">],</span>
+            <span class="n">retention_controlled_Outflows</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">retention_controlled_Outflows</span><span class="p">[</span>
+                <span class="n">process_index</span>
+            <span class="p">],</span>
+            <span class="n">retention_modeled_Outflows</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">retention_modeled_Outflows</span><span class="p">[</span><span class="n">process_index</span><span class="p">],</span>
+            <span class="n">controls</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">controls_store</span><span class="o">.</span><span class="n">get_controls</span><span class="p">(</span><span class="n">process_name</span><span class="p">),</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="TrainingDataStore.gather_batch">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.TrainingDataStore.gather_batch">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">gather_batch</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">process_indices</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BatchTrainingData</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Gather a process-index batch view over stacked training-data tensors."""</span>
+        <span class="n">indices</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">process_indices</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">indices</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"process_indices must be a 1D array"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">indices</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"process_indices must be non-empty"</span><span class="p">)</span>
+
+        <span class="n">n_processes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">bool</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">indices</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">))</span> <span class="ow">or</span> <span class="nb">bool</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">indices</span> <span class="o">&gt;=</span> <span class="n">n_processes</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s2">"process index out of range in process_indices"</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">BatchTrainingData</span><span class="p">(</span>
+            <span class="n">process_indices</span><span class="o">=</span><span class="n">indices</span><span class="p">,</span>
+            <span class="n">controls</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">controls_store</span><span class="o">.</span><span class="n">_gather_batch_rows</span><span class="p">(</span><span class="n">indices</span><span class="p">),</span>
+            <span class="n">t_measured</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">t_measured</span><span class="p">[</span><span class="n">indices</span><span class="p">],</span>
+            <span class="n">y_measured</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">y_measured</span><span class="p">[</span><span class="n">indices</span><span class="p">],</span>
+            <span class="n">mask_measured</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mask_measured</span><span class="p">[</span><span class="n">indices</span><span class="p">],</span>
+            <span class="n">n_measured</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_measured</span><span class="p">[</span><span class="n">indices</span><span class="p">],</span>
+            <span class="n">y0_measured</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">y0_measured</span><span class="p">[</span><span class="n">indices</span><span class="p">],</span>
+            <span class="n">retention_controlled_Outflows</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">retention_controlled_Outflows</span><span class="p">[</span><span class="n">indices</span><span class="p">],</span>
+            <span class="n">retention_modeled_Outflows</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">retention_modeled_Outflows</span><span class="p">[</span><span class="n">indices</span><span class="p">],</span>
+        <span class="p">)</span></div>
+</div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Bioprocess Modeling Collective
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=04266cf0"></script>
+    <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script src="../../../_static/custom.js?v=fec45a96"></script>
+    </body>
+</html>

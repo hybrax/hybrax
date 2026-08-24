@@ -1,0 +1,1362 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="hybrax.train.inspect" href="../inspect/index.html"><link rel="prev" title="hybrax.train.forward_plotting" href="../forward_plotting/index.html">
+        <link rel="prefetch" href="../../../../_static/hybrax_logo.png" as="image">
+
+    <link rel="shortcut icon" href="../../../../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>hybrax.train.harness - Bioprocess Modeling with Hybrax</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=98a1085a" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #eeffcc;
+  --color-code-foreground: black;
+  --color-brand-primary: #2563eb;
+  --color-brand-content: #2563eb;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../../index.html"><div class="brand">Bioprocess Modeling with Hybrax</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../../../_static/hybrax_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">Hybrax Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/why.html">Why this exists</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/concepts.html">Concepts and Vocabulary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/find.html">Which page do I need?</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/01_your_first_dataset.html">1. Import your Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/02_look_at_it.html">2. View your Dataset</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/03_train.html">3. Train a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/04_your_first_custom_py.html">4. Custom Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/05_predict.html">5. Predict Processes</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.format guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/data_model.html">The Data Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/load_and_save.html">Loading and saving</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/validate_and_inspect.html">Validating and inspecting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/volume_feeds_events.html">Volume, feeds and events</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/time_series_and_splines.html">Time series and splines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/limits_and_gotchas.html">Limits and gotchas</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/further_reading.html">Further reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/config.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/hooks_cheatsheet.html">Customization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/prepare.html">Prepare</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/train.html">Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/reaction_module.html">The Reaction Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/loss_module.html">The Loss Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/scaling.html">Scaling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/forward.html">Forward</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/loo.html">Cross-Validation (LOO)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/save_load_predict.html">The Python API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/further_reading.html">Further Reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/mechanistic_rates.html">Mechanistic models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/dense_loss.html">Custom losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/stateful.html">Stateful models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/freezing.html">Freezing parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/augmentation.html">Augmentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/gaussian_process.html">A Gaussian-process model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/kan.html">A KAN model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/optfed.html">OptFed</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/glutamine_decay.html">Glutamine decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/modeled_pv.html">A modeled process variable</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../troubleshooting/errors.html">Errors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../troubleshooting/silent_failures.html">Silent failures</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Under the hood</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../under_the_hood/design_rationale.html">Design Rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../contributors.html">Contributors</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul class="current">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../format/index.html">hybrax.format</a><input aria-label="Toggle navigation of hybrax.format" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../format/dataclasses/index.html">hybrax.format.dataclasses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/inspect/index.html">hybrax.format.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/json_io/index.html">hybrax.format.json_io</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/serialization/index.html">hybrax.format.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/simulation/index.html">hybrax.format.simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/splines/index.html">hybrax.format.splines</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../format/time_series/index.html">hybrax.format.time_series</a><input aria-label="Toggle navigation of hybrax.format.time_series" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../format/time_series/constants/index.html">hybrax.format.time_series.constants</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../format/time_series/grid_utils/index.html">hybrax.format.time_series.grid_utils</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../format/time_series/io/index.html">hybrax.format.time_series.io</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../format/time_series/ppoly/index.html">hybrax.format.time_series.ppoly</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../format/time_series/spline_ops/index.html">hybrax.format.time_series.spline_ops</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../format/time_series/timeseries/index.html">hybrax.format.time_series.timeseries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/validate/index.html">hybrax.format.validate</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current has-children"><a class="reference internal" href="../index.html">hybrax.train</a><input aria-label="Toggle navigation of hybrax.train" checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../augmentation/index.html">hybrax.train.augmentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../augmentation_plot/index.html">hybrax.train.augmentation_plot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../bounds_loss/index.html">hybrax.train.bounds_loss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../checkpointing/index.html">hybrax.train.checkpointing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cli/index.html">hybrax.train.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../constants/index.html">hybrax.train.constants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../controls/index.html">hybrax.train.controls</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../defaults/index.html">hybrax.train.defaults</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../dense/index.html">hybrax.train.dense</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../forward_plotting/index.html">hybrax.train.forward_plotting</a></li>
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">hybrax.train.harness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../inspect/index.html">hybrax.train.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../logging/index.html">hybrax.train.logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../loo/index.html">hybrax.train.loo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../loo_metrics/index.html">hybrax.train.loo_metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../model_api/index.html">hybrax.train.model_api</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../physical_solve/index.html">hybrax.train.physical_solve</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../prepare/index.html">hybrax.train.prepare</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../run_config/index.html">hybrax.train.run_config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../runtime_context/index.html">hybrax.train.runtime_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../serialization/index.html">hybrax.train.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../trainer/index.html">hybrax.train.trainer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../training_data/index.html">hybrax.train.training_data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../utils/index.html">hybrax.train.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../wrapper/index.html">hybrax.train.wrapper</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../../../../_sources/autoapi/hybrax/train/harness/index.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="module-hybrax.train.harness">
+<span id="hybrax-train-harness"></span><h1>hybrax.train.harness<a class="headerlink" href="#module-hybrax.train.harness" title="Link to this heading">¶</a></h1>
+<p>The training and forward-evaluation harness: the layer above <code class="docutils literal notranslate"><span class="pre">trainer.py</span></code>’s single batch step.</p>
+<p>This module provides:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">train_collection</span></code> / <code class="docutils literal notranslate"><span class="pre">train_from_collection</span></code> / <code class="docutils literal notranslate"><span class="pre">train_from_prepared_json</span></code> —
+train one reaction/loss module pair over a batch stream, at increasing
+levels of convenience (a prepared store, a raw collection, a prepared JSON
+file on disk).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">model_predict</span></code> / <code class="docutils literal notranslate"><span class="pre">forward_from_collection</span></code> / <code class="docutils literal notranslate"><span class="pre">evaluate_trained_wrapper</span></code> —
+run a trained model forward over new or held-out data, without touching the
+optimizer.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">prepare_training</span></code> / <code class="docutils literal notranslate"><span class="pre">prepare_training_from_runtime_artifact</span></code> /
+<code class="docutils literal notranslate"><span class="pre">train_harness_config_from_run_config</span></code> — build every hook-visible object
+(reaction module, loss module, optimizer, harness config) from a
+<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.RunConfig" title="hybrax.train.run_config.RunConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">RunConfig</span></code></a> and a runtime artifact, the
+path the CLI and LOO folds both go through.</p></li>
+</ul>
+<p>Batching, the JIT-compiled train step, and per-sample loss evaluation live in
+<code class="docutils literal notranslate"><span class="pre">trainer.py</span></code>; this module owns everything around that step — process
+selection, checkpointing, logging, and the public entry points.</p>
+<section id="attributes">
+<h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.harness.logger" title="hybrax.train.harness.logger"><code class="xref py py-obj docutils literal notranslate"><span class="pre">logger</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="classes">
+<h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.harness.ForwardConfig" title="hybrax.train.harness.ForwardConfig"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ForwardConfig</span></code></a></p></td>
+<td><p>Configuration for a forward evaluation run (no optimizer).</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.harness.ForwardResult" title="hybrax.train.harness.ForwardResult"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ForwardResult</span></code></a></p></td>
+<td><p>Outputs of a trained-wrapper forward evaluation.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.harness.PreparedTraining" title="hybrax.train.harness.PreparedTraining"><code class="xref py py-obj docutils literal notranslate"><span class="pre">PreparedTraining</span></code></a></p></td>
+<td><p>Collection-free inputs for <a class="reference internal" href="#hybrax.train.harness.train_collection" title="hybrax.train.harness.train_collection"><code class="xref py py-func docutils literal notranslate"><span class="pre">train_collection()</span></code></a>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig" title="hybrax.train.harness.TrainHarnessConfig"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TrainHarnessConfig</span></code></a></p></td>
+<td><p>Configuration for collection-level training harness runs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult" title="hybrax.train.harness.TrainHarnessResult"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TrainHarnessResult</span></code></a></p></td>
+<td><p>Summary object returned by the training harness.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="functions">
+<h2>Functions<a class="headerlink" href="#functions" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.harness.build_optimizer_for_run" title="hybrax.train.harness.build_optimizer_for_run"><code class="xref py py-obj docutils literal notranslate"><span class="pre">build_optimizer_for_run</span></code></a>(*, custom_module, custom_cfg, ...)</p></td>
+<td><p>Resolve the optimizer exactly as <a class="reference internal" href="#hybrax.train.harness.train_from_collection" title="hybrax.train.harness.train_from_collection"><code class="xref py py-func docutils literal notranslate"><span class="pre">train_from_collection()</span></code></a> does.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.harness.compute_dense_exports" title="hybrax.train.harness.compute_dense_exports"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_dense_exports</span></code></a>(trained_wrapper, store, ...[, ...])</p></td>
+<td><p>Evaluate <code class="docutils literal notranslate"><span class="pre">process_names</span></code> in padded JIT batches and build dense exports.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.harness.derive_update_budget" title="hybrax.train.harness.derive_update_budget"><code class="xref py py-obj docutils literal notranslate"><span class="pre">derive_update_budget</span></code></a>(config, *, selected_process_count)</p></td>
+<td><p>Validate batching config and derive the run's total optimizer-step count.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.harness.evaluate_trained_wrapper" title="hybrax.train.harness.evaluate_trained_wrapper"><code class="xref py py-obj docutils literal notranslate"><span class="pre">evaluate_trained_wrapper</span></code></a>(trained_wrapper, store, *, ...)</p></td>
+<td><p>Evaluate an existing store and trained wrapper without reconstruction.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.harness.forward_from_collection" title="hybrax.train.harness.forward_from_collection"><code class="xref py py-obj docutils literal notranslate"><span class="pre">forward_from_collection</span></code></a>(collection, *, model_path[, ...])</p></td>
+<td><p>Run one forward pass per selected process of <code class="docutils literal notranslate"><span class="pre">collection</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.harness.model_predict" title="hybrax.train.harness.model_predict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">model_predict</span></code></a>(trained_wrapper, config, collection, *)</p></td>
+<td><p>Forward-solve a trained model over <code class="docutils literal notranslate"><span class="pre">collection</span></code> in one batched solve.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.harness.prepare_training" title="hybrax.train.harness.prepare_training"><code class="xref py py-obj docutils literal notranslate"><span class="pre">prepare_training</span></code></a>(collection, *[, config, custom_py, ...])</p></td>
+<td><p>Build runtime inputs while borrowing, but never retaining, collection.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.harness.prepare_training_from_runtime_artifact" title="hybrax.train.harness.prepare_training_from_runtime_artifact"><code class="xref py py-obj docutils literal notranslate"><span class="pre">prepare_training_from_runtime_artifact</span></code></a>(artifact, *, ...)</p></td>
+<td><p>Prepare training solely from an already-loaded runtime artifact.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.harness.summarize_train_step_input_signature" title="hybrax.train.harness.summarize_train_step_input_signature"><code class="xref py py-obj docutils literal notranslate"><span class="pre">summarize_train_step_input_signature</span></code></a>(*values)</p></td>
+<td><p>Return a stable pytree leaf-shape/type summary for train-step inputs.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.harness.train_collection" title="hybrax.train.harness.train_collection"><code class="xref py py-obj docutils literal notranslate"><span class="pre">train_collection</span></code></a>(store, *, reaction_module[, ...])</p></td>
+<td><p>Train one reaction module over one or many processes from one store.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.harness.train_from_collection" title="hybrax.train.harness.train_from_collection"><code class="xref py py-obj docutils literal notranslate"><span class="pre">train_from_collection</span></code></a>(collection, *[, config, ...])</p></td>
+<td><p>Prepare and train; external collection references remain caller-owned.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.harness.train_from_prepared_json" title="hybrax.train.harness.train_from_prepared_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">train_from_prepared_json</span></code></a>(prepared_json, *[, config, ...])</p></td>
+<td><p>Load a prepared JSON and train from it.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.harness.train_harness_config_from_run_config" title="hybrax.train.harness.train_harness_config_from_run_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">train_harness_config_from_run_config</span></code></a>(cfg, *, run_dir)</p></td>
+<td><p>Map a typed <code class="xref py py-class docutils literal notranslate"><span class="pre">RunConfig</span></code> + run-directory layout to the harness</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardConfig">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">ForwardConfig</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#ForwardConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.ForwardConfig" title="Link to this definition">¶</a></dt>
+<dd><p>Configuration for a forward evaluation run (no optimizer).</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardConfig.process_names">
+<span class="sig-name descname"><span class="pre">process_names</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.ForwardConfig.process_names" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardConfig.solver_atol">
+<span class="sig-name descname"><span class="pre">solver_atol</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1e-07</span></span><a class="headerlink" href="#hybrax.train.harness.ForwardConfig.solver_atol" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardConfig.solver_max_steps">
+<span class="sig-name descname"><span class="pre">solver_max_steps</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">4096</span></span><a class="headerlink" href="#hybrax.train.harness.ForwardConfig.solver_max_steps" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardConfig.solver_rtol">
+<span class="sig-name descname"><span class="pre">solver_rtol</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1e-05</span></span><a class="headerlink" href="#hybrax.train.harness.ForwardConfig.solver_rtol" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardConfig.solver_use_jump_ts">
+<span class="sig-name descname"><span class="pre">solver_use_jump_ts</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></span><a class="headerlink" href="#hybrax.train.harness.ForwardConfig.solver_use_jump_ts" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardConfig.target_source">
+<span class="sig-name descname"><span class="pre">target_source</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.ForwardConfig.target_source" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardConfig.target_variable_order">
+<span class="sig-name descname"><span class="pre">target_variable_order</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.ForwardConfig.target_variable_order" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardResult">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">ForwardResult</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#ForwardResult"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.ForwardResult" title="Link to this definition">¶</a></dt>
+<dd><p>Outputs of a trained-wrapper forward evaluation.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardResult.dense_exports">
+<span class="sig-name descname"><span class="pre">dense_exports</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="../postprocessing/index.html#hybrax.train.postprocessing.DenseProcessExport" title="hybrax.train.postprocessing.DenseProcessExport"><span class="pre">hybrax.train.postprocessing.DenseProcessExport</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.harness.ForwardResult.dense_exports" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardResult.name_modeled_Inflows">
+<span class="sig-name descname"><span class="pre">name_modeled_Inflows</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.harness.ForwardResult.name_modeled_Inflows" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardResult.name_modeled_Outflows">
+<span class="sig-name descname"><span class="pre">name_modeled_Outflows</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.harness.ForwardResult.name_modeled_Outflows" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardResult.per_process_per_target_loss">
+<span class="sig-name descname"><span class="pre">per_process_per_target_loss</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.harness.ForwardResult.per_process_per_target_loss" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardResult.per_process_total_loss">
+<span class="sig-name descname"><span class="pre">per_process_total_loss</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.harness.ForwardResult.per_process_total_loss" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardResult.process_names">
+<span class="sig-name descname"><span class="pre">process_names</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.harness.ForwardResult.process_names" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardResult.store">
+<span class="sig-name descname"><span class="pre">store</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../training_data/index.html#hybrax.train.training_data.TrainingDataStore" title="hybrax.train.training_data.TrainingDataStore"><span class="pre">hybrax.train.training_data.TrainingDataStore</span></a></span><a class="headerlink" href="#hybrax.train.harness.ForwardResult.store" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardResult.target_names">
+<span class="sig-name descname"><span class="pre">target_names</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.harness.ForwardResult.target_names" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardResult.trained_wrapper">
+<span class="sig-name descname"><span class="pre">trained_wrapper</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper" title="hybrax.train.wrapper.HybridOdeWrapper"><span class="pre">hybrax.train.wrapper.HybridOdeWrapper</span></a></span><a class="headerlink" href="#hybrax.train.harness.ForwardResult.trained_wrapper" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.ForwardResult.training_process_names">
+<span class="sig-name descname"><span class="pre">training_process_names</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.harness.ForwardResult.training_process_names" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.train.harness.PreparedTraining">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">PreparedTraining</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#PreparedTraining"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.PreparedTraining" title="Link to this definition">¶</a></dt>
+<dd><p>Collection-free inputs for <a class="reference internal" href="#hybrax.train.harness.train_collection" title="hybrax.train.harness.train_collection"><code class="xref py py-func docutils literal notranslate"><span class="pre">train_collection()</span></code></a>.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.PreparedTraining.config">
+<span class="sig-name descname"><span class="pre">config</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig" title="hybrax.train.harness.TrainHarnessConfig"><span class="pre">TrainHarnessConfig</span></a></span><a class="headerlink" href="#hybrax.train.harness.PreparedTraining.config" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.PreparedTraining.loss_module">
+<span class="sig-name descname"><span class="pre">loss_module</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.UserLossModule" title="hybrax.train.model_api.UserLossModule"><span class="pre">hybrax.train.model_api.UserLossModule</span></a></span><a class="headerlink" href="#hybrax.train.harness.PreparedTraining.loss_module" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.PreparedTraining.optimizer">
+<span class="sig-name descname"><span class="pre">optimizer</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">optax.GradientTransformation</span></span><a class="headerlink" href="#hybrax.train.harness.PreparedTraining.optimizer" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.PreparedTraining.prediction_parent_process_names">
+<span class="sig-name descname"><span class="pre">prediction_parent_process_names</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">()</span></span><a class="headerlink" href="#hybrax.train.harness.PreparedTraining.prediction_parent_process_names" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.PreparedTraining.reaction_module">
+<span class="sig-name descname"><span class="pre">reaction_module</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.UserReactionModule" title="hybrax.train.model_api.UserReactionModule"><span class="pre">hybrax.train.model_api.UserReactionModule</span></a></span><a class="headerlink" href="#hybrax.train.harness.PreparedTraining.reaction_module" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.PreparedTraining.store">
+<span class="sig-name descname"><span class="pre">store</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../training_data/index.html#hybrax.train.training_data.TrainingDataStore" title="hybrax.train.training_data.TrainingDataStore"><span class="pre">hybrax.train.training_data.TrainingDataStore</span></a></span><a class="headerlink" href="#hybrax.train.harness.PreparedTraining.store" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">TrainHarnessConfig</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#TrainHarnessConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig" title="Link to this definition">¶</a></dt>
+<dd><p>Configuration for collection-level training harness runs.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.allow_stateful_models">
+<span class="sig-name descname"><span class="pre">allow_stateful_models</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.allow_stateful_models" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.batch_seed">
+<span class="sig-name descname"><span class="pre">batch_seed</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.batch_seed" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.batch_size">
+<span class="sig-name descname"><span class="pre">batch_size</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.batch_size" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.checkpoint_dir">
+<span class="sig-name descname"><span class="pre">checkpoint_dir</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.checkpoint_dir" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.checkpoint_every">
+<span class="sig-name descname"><span class="pre">checkpoint_every</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.checkpoint_every" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.epochs">
+<span class="sig-name descname"><span class="pre">epochs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">5</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.epochs" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.grad_clip_norm">
+<span class="sig-name descname"><span class="pre">grad_clip_norm</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1000.0</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.grad_clip_norm" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.holdout_label">
+<span class="sig-name descname"><span class="pre">holdout_label</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'holdout'</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.holdout_label" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.holdout_processes">
+<span class="sig-name descname"><span class="pre">holdout_processes</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.holdout_processes" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.learning_rate">
+<span class="sig-name descname"><span class="pre">learning_rate</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">optax.Schedule</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.001</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.learning_rate" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.log_decimals">
+<span class="sig-name descname"><span class="pre">log_decimals</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">4</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.log_decimals" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.log_process_losses">
+<span class="sig-name descname"><span class="pre">log_process_losses</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.log_process_losses" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.metrics_csv">
+<span class="sig-name descname"><span class="pre">metrics_csv</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.metrics_csv" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.metrics_jsonl">
+<span class="sig-name descname"><span class="pre">metrics_jsonl</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.metrics_jsonl" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.optimizer_name">
+<span class="sig-name descname"><span class="pre">optimizer_name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'adam'</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.optimizer_name" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.prepared_path">
+<span class="sig-name descname"><span class="pre">prepared_path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.prepared_path" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.process_names">
+<span class="sig-name descname"><span class="pre">process_names</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.process_names" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.seed">
+<span class="sig-name descname"><span class="pre">seed</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.seed" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.shuffle_batches">
+<span class="sig-name descname"><span class="pre">shuffle_batches</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.shuffle_batches" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.solver_atol">
+<span class="sig-name descname"><span class="pre">solver_atol</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1e-07</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.solver_atol" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.solver_max_steps">
+<span class="sig-name descname"><span class="pre">solver_max_steps</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">2048</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.solver_max_steps" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.solver_rtol">
+<span class="sig-name descname"><span class="pre">solver_rtol</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1e-05</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.solver_rtol" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.solver_use_jump_ts">
+<span class="sig-name descname"><span class="pre">solver_use_jump_ts</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.solver_use_jump_ts" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.target_source">
+<span class="sig-name descname"><span class="pre">target_source</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'auto'</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.target_source" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.target_variable_order">
+<span class="sig-name descname"><span class="pre">target_variable_order</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.target_variable_order" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">TrainHarnessResult</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#TrainHarnessResult"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult" title="Link to this definition">¶</a></dt>
+<dd><p>Summary object returned by the training harness.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult.batch_process_names_by_step">
+<span class="sig-name descname"><span class="pre">batch_process_names_by_step</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult.batch_process_names_by_step" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult.compile_warmup_seconds">
+<span class="sig-name descname"><span class="pre">compile_warmup_seconds</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult.compile_warmup_seconds" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult.grad_norm_by_step">
+<span class="sig-name descname"><span class="pre">grad_norm_by_step</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">()</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult.grad_norm_by_step" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult.holdout_label">
+<span class="sig-name descname"><span class="pre">holdout_label</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult.holdout_label" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult.holdout_loss_by_step">
+<span class="sig-name descname"><span class="pre">holdout_loss_by_step</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult.holdout_loss_by_step" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult.holdout_per_target_by_step">
+<span class="sig-name descname"><span class="pre">holdout_per_target_by_step</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult.holdout_per_target_by_step" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult.mean_loss_by_step">
+<span class="sig-name descname"><span class="pre">mean_loss_by_step</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult.mean_loss_by_step" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult.per_process_loss_by_step">
+<span class="sig-name descname"><span class="pre">per_process_loss_by_step</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult.per_process_loss_by_step" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult.per_target_loss_by_step">
+<span class="sig-name descname"><span class="pre">per_target_loss_by_step</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">()</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult.per_target_loss_by_step" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult.step_time_seconds">
+<span class="sig-name descname"><span class="pre">step_time_seconds</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult.step_time_seconds" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult.target_names">
+<span class="sig-name descname"><span class="pre">target_names</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">()</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult.target_names" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult.train_step_input_signature">
+<span class="sig-name descname"><span class="pre">train_step_input_signature</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">object</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult.train_step_input_signature" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult.train_step_rebuild_count">
+<span class="sig-name descname"><span class="pre">train_step_rebuild_count</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult.train_step_rebuild_count" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult.trained_wrapper">
+<span class="sig-name descname"><span class="pre">trained_wrapper</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper" title="hybrax.train.wrapper.HybridOdeWrapper"><span class="pre">hybrax.train.wrapper.HybridOdeWrapper</span></a></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult.trained_wrapper" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessResult.updates_completed">
+<span class="sig-name descname"><span class="pre">updates_completed</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessResult.updates_completed" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.harness.build_optimizer_for_run">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">build_optimizer_for_run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_module</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_cfg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">train_cfg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">total_updates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#build_optimizer_for_run"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.build_optimizer_for_run" title="Link to this definition">¶</a></dt>
+<dd><p>Resolve the optimizer exactly as <a class="reference internal" href="#hybrax.train.harness.train_from_collection" title="hybrax.train.harness.train_from_collection"><code class="xref py py-func docutils literal notranslate"><span class="pre">train_from_collection()</span></code></a> does.</p>
+<p>Applies the optional <code class="docutils literal notranslate"><span class="pre">build_learning_rate</span></code> + <code class="docutils literal notranslate"><span class="pre">build_optimizer</span></code> hooks,
+falling back to the default chain. Returns <code class="docutils literal notranslate"><span class="pre">(optimizer,</span> <span class="pre">train_cfg)</span></code> where
+<code class="docutils literal notranslate"><span class="pre">train_cfg</span></code> carries any hook-overridden learning rate.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>custom_cfg</strong> (<em>Any</em>)</p></li>
+<li><p><strong>train_cfg</strong> (<a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig" title="hybrax.train.harness.TrainHarnessConfig"><em>TrainHarnessConfig</em></a>)</p></li>
+<li><p><strong>total_updates</strong> (<em>int</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>tuple[optax.GradientTransformation, <a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig" title="hybrax.train.harness.TrainHarnessConfig">TrainHarnessConfig</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.harness.compute_dense_exports">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">compute_dense_exports</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trained_wrapper</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">store</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">process_names</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">solver_max_steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">solver_rtol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">solver_atol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">solver_use_jump_ts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prediction_grid_n</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">200</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#compute_dense_exports"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.compute_dense_exports" title="Link to this definition">¶</a></dt>
+<dd><p>Evaluate <code class="docutils literal notranslate"><span class="pre">process_names</span></code> in padded JIT batches and build dense exports.</p>
+<p>The single source of dense prediction trajectories for forward and final
+training exports. The prediction grid is harvested from the same loss solve
+(<code class="docutils literal notranslate"><span class="pre">BatchControls</span></code> + <code class="docutils literal notranslate"><span class="pre">discrete_events</span></code> <code class="docutils literal notranslate"><span class="pre">jump_ts</span></code>), so predictions match
+training and there is no second simulation. Returns <code class="docutils literal notranslate"><span class="pre">(per_sample_total,</span>
+<span class="pre">per_sample_per_target,</span> <span class="pre">dense_exports)</span></code> (loss arrays are <code class="docutils literal notranslate"><span class="pre">np</span></code>, aligned with
+<code class="docutils literal notranslate"><span class="pre">process_names</span></code>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trained_wrapper</strong> (<a class="reference internal" href="../wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper" title="hybrax.train.wrapper.HybridOdeWrapper"><em>hybrax.train.wrapper.HybridOdeWrapper</em></a>)</p></li>
+<li><p><strong>store</strong> (<a class="reference internal" href="../training_data/index.html#hybrax.train.training_data.TrainingDataStore" title="hybrax.train.training_data.TrainingDataStore"><em>hybrax.train.training_data.TrainingDataStore</em></a>)</p></li>
+<li><p><strong>process_names</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>]</em>)</p></li>
+<li><p><strong>solver_max_steps</strong> (<em>int</em>)</p></li>
+<li><p><strong>solver_rtol</strong> (<em>float</em>)</p></li>
+<li><p><strong>solver_atol</strong> (<em>float</em>)</p></li>
+<li><p><strong>solver_use_jump_ts</strong> (<em>bool</em>)</p></li>
+<li><p><strong>prediction_grid_n</strong> (<em>int</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>tuple[numpy.ndarray, numpy.ndarray, dict[str, <a class="reference internal" href="../postprocessing/index.html#hybrax.train.postprocessing.DenseProcessExport" title="hybrax.train.postprocessing.DenseProcessExport">hybrax.train.postprocessing.DenseProcessExport</a>]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.harness.derive_update_budget">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">derive_update_budget</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">selected_process_count</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#derive_update_budget"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.derive_update_budget" title="Link to this definition">¶</a></dt>
+<dd><p>Validate batching config and derive the run’s total optimizer-step count.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>config</strong> (<a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig" title="hybrax.train.harness.TrainHarnessConfig"><em>TrainHarnessConfig</em></a>) – Harness config; <code class="docutils literal notranslate"><span class="pre">batch_size=None</span></code> means full-batch.</p></li>
+<li><p><strong>selected_process_count</strong> (<em>int</em>) – Number of processes selected for training.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">(batch_size,</span> <span class="pre">batches_per_epoch,</span> <span class="pre">total_updates)</span></code>, where
+<code class="docutils literal notranslate"><span class="pre">total_updates</span> <span class="pre">=</span> <span class="pre">config.epochs</span> <span class="pre">*</span> <span class="pre">batches_per_epoch</span></code>.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">config</span></code>’s batching settings are invalid; see
+<code class="docutils literal notranslate"><span class="pre">_validate_batching_config</span></code>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>tuple[int, int, int]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.harness.evaluate_trained_wrapper">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">evaluate_trained_wrapper</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trained_wrapper</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">store</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_names</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">training_process_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">()</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prediction_process_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prediction_grid_n</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">200</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#evaluate_trained_wrapper"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.evaluate_trained_wrapper" title="Link to this definition">¶</a></dt>
+<dd><p>Evaluate an existing store and trained wrapper without reconstruction.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trained_wrapper</strong> (<a class="reference internal" href="../wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper" title="hybrax.train.wrapper.HybridOdeWrapper"><em>hybrax.train.wrapper.HybridOdeWrapper</em></a>)</p></li>
+<li><p><strong>store</strong> (<a class="reference internal" href="../training_data/index.html#hybrax.train.training_data.TrainingDataStore" title="hybrax.train.training_data.TrainingDataStore"><em>hybrax.train.training_data.TrainingDataStore</em></a>)</p></li>
+<li><p><strong>config</strong> (<a class="reference internal" href="#hybrax.train.harness.ForwardConfig" title="hybrax.train.harness.ForwardConfig"><em>ForwardConfig</em></a>)</p></li>
+<li><p><strong>target_names</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>]</em>)</p></li>
+<li><p><strong>training_process_names</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>]</em>)</p></li>
+<li><p><strong>prediction_process_names</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>prediction_grid_n</strong> (<em>int</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#hybrax.train.harness.ForwardResult" title="hybrax.train.harness.ForwardResult">ForwardResult</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.harness.forward_from_collection">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">forward_from_collection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_py</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">training_process_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prediction_process_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prediction_grid_n</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">200</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#forward_from_collection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.forward_from_collection" title="Link to this definition">¶</a></dt>
+<dd><p>Run one forward pass per selected process of <code class="docutils literal notranslate"><span class="pre">collection</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">collection</span></code> is <strong>evaluation data only</strong>. The model itself is rebuilt from
+the prepared collection <em>it</em> trained on: that input is resolved from
+<code class="docutils literal notranslate"><span class="pre">model_path</span></code>’s run directory and its recorded
+<code class="docutils literal notranslate"><span class="pre">inputs.prepared_input.content_hash</span></code> is verified before any hook runs (see
+<a class="reference internal" href="../serialization/index.html#hybrax.train.serialization.reconstruct_training" title="hybrax.train.serialization.reconstruct_training"><code class="xref py py-func docutils literal notranslate"><span class="pre">reconstruct_training()</span></code></a>). So the reaction module,
+the loss module, every <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code> and the deserialisation template are exactly
+training’s, and evaluation data never reaches a constructor hook.</p>
+<p>A separate store is built from <code class="docutils literal notranslate"><span class="pre">collection</span></code> for the solves. It must be
+compatible with the training data — same measured/modeled variables in the
+same order — or the call fails with an explicit error.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>collection</strong> (<a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>) – Evaluation-only process collection to forward-solve.</p></li>
+<li><p><strong>model_path</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>) – Path to the trained model’s run/checkpoint directory.</p></li>
+<li><p><strong>config</strong> (<a class="reference internal" href="#hybrax.train.harness.ForwardConfig" title="hybrax.train.harness.ForwardConfig"><em>ForwardConfig</em></a><em> | </em><em>None</em>) – Forward-run settings (prediction scope, plotting), or
+<code class="docutils literal notranslate"><span class="pre">None</span></code> for defaults.</p></li>
+<li><p><strong>custom_py</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><em>None</em>) – Override for the recorded <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> path, or <code class="docutils literal notranslate"><span class="pre">None</span></code>
+to use the one the run recorded.</p></li>
+<li><p><strong>training_process_names</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>) – Restrict reconstruction to this subset of the
+model’s original training processes, or <code class="docutils literal notranslate"><span class="pre">None</span></code> for all of them.</p></li>
+<li><p><strong>run_config</strong> (<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.RunConfig" title="hybrax.train.run_config.RunConfig"><em>hybrax.train.run_config.RunConfig</em></a><em> | </em><em>None</em>) – Pre-loaded run config, or <code class="docutils literal notranslate"><span class="pre">None</span></code> to read it from
+<code class="docutils literal notranslate"><span class="pre">model_path</span></code>’s <code class="docutils literal notranslate"><span class="pre">config.json</span></code>.</p></li>
+<li><p><strong>custom_module</strong> (<em>Any</em><em> | </em><em>None</em>) – Pre-loaded custom module, or <code class="docutils literal notranslate"><span class="pre">None</span></code> to load it from
+<code class="docutils literal notranslate"><span class="pre">custom_py</span></code>/the recorded path.</p></li>
+<li><p><strong>prediction_process_names</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>) – Restrict prediction to this subset of
+<code class="docutils literal notranslate"><span class="pre">collection</span></code>’s processes, or <code class="docutils literal notranslate"><span class="pre">None</span></code> for all of them.</p></li>
+<li><p><strong>prediction_grid_n</strong> (<em>int</em>) – Size of the evenly-spaced prediction grid; see
+<a class="reference internal" href="#hybrax.train.harness.model_predict" title="hybrax.train.harness.model_predict"><code class="xref py py-func docutils literal notranslate"><span class="pre">model_predict()</span></code></a>’s <code class="docutils literal notranslate"><span class="pre">grid_n</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>per-process dense exports plus the rebuilt
+wrapper and config.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The forward result</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">collection</span></code>’s measured/modeled variables are
+incompatible with the training data.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.harness.model_predict">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">model_predict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trained_wrapper</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">collection</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">process_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grid_n</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">200</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#model_predict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.model_predict" title="Link to this definition">¶</a></dt>
+<dd><p>Forward-solve a trained model over <code class="docutils literal notranslate"><span class="pre">collection</span></code> in one batched solve.</p>
+<p>The companion to <code class="xref py py-func docutils literal notranslate"><span class="pre">model_load()</span></code>: pass the pair it returned plus
+the collection you want predictions for. Solver settings come from
+<code class="docutils literal notranslate"><span class="pre">config.solver</span></code> — the values the model was actually fitted under — so there
+is nothing to re-decide here.</p>
+<p><code class="docutils literal notranslate"><span class="pre">collection</span></code> may hold processes the model never trained on. Every process in
+a collection shares one <code class="docutils literal notranslate"><span class="pre">RhsOde</span></code> layout; only controls and events differ, and
+a mismatch fails fast via <code class="xref py py-func docutils literal notranslate"><span class="pre">validate_rhs_ode_compatibility()</span></code>.</p>
+<p>To predict a subset, pass <code class="docutils literal notranslate"><span class="pre">process_names</span></code> — do <strong>not</strong> slice
+<code class="docutils literal notranslate"><span class="pre">collection.processes</span></code>. The hybrax.train metadata block carries its own
+<code class="docutils literal notranslate"><span class="pre">process_order</span></code>, so a hand-sliced collection fails when the controls store
+is rebuilt.</p>
+<p><code class="docutils literal notranslate"><span class="pre">process_names</span></code> defaults to every process in <code class="docutils literal notranslate"><span class="pre">collection</span></code>. <code class="docutils literal notranslate"><span class="pre">grid_n</span></code> is
+the size of the evenly-spaced output grid; each process’s own measurement
+times are spliced into it, so the returned <code class="docutils literal notranslate"><span class="pre">t</span></code> is that union (sorted, and
+therefore usually a little longer than <code class="docutils literal notranslate"><span class="pre">grid_n</span></code>) — a node lands exactly on
+every measurement instead of interpolating across bolus/feed discontinuities.</p>
+<p>Two requirements on <code class="docutils literal notranslate"><span class="pre">collection</span></code>, both structural rather than incidental:</p>
+<ul class="simple">
+<li><p>Every process needs a measurement at its first time for <strong>every</strong> target —
+that is where the ODE initial condition comes from.</p></li>
+<li><p>The target set must match what the model was trained on
+(<code class="docutils literal notranslate"><span class="pre">config.data.targets</span></code>).</p></li>
+</ul>
+<p>Returns <code class="docutils literal notranslate"><span class="pre">{process_name:</span> <span class="pre">DenseProcessExport}</span></code>. Losses are deliberately not
+returned: they are meaningless for a process whose measurements are only a
+<code class="docutils literal notranslate"><span class="pre">t0</span></code> seed. Use <a class="reference internal" href="#hybrax.train.harness.evaluate_trained_wrapper" title="hybrax.train.harness.evaluate_trained_wrapper"><code class="xref py py-func docutils literal notranslate"><span class="pre">evaluate_trained_wrapper()</span></code></a> when you want them.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This reuses <code class="docutils literal notranslate"><span class="pre">trained_wrapper</span></code>’s <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code> as-is and never rebuilds the
+reaction module. <a class="reference internal" href="#hybrax.train.harness.forward_from_collection" title="hybrax.train.harness.forward_from_collection"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward_from_collection()</span></code></a> rebuilds them, but always
+from the model’s <em>own</em> recorded training input, so it does not re-scale the
+model against the collection it is asked to evaluate either.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trained_wrapper</strong> (<a class="reference internal" href="../wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper" title="hybrax.train.wrapper.HybridOdeWrapper"><em>hybrax.train.wrapper.HybridOdeWrapper</em></a>)</p></li>
+<li><p><strong>config</strong> (<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.RunConfig" title="hybrax.train.run_config.RunConfig"><em>hybrax.train.run_config.RunConfig</em></a>)</p></li>
+<li><p><strong>collection</strong> (<a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p></li>
+<li><p><strong>process_names</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>grid_n</strong> (<em>int</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>dict[str, <a class="reference internal" href="../postprocessing/index.html#hybrax.train.postprocessing.DenseProcessExport" title="hybrax.train.postprocessing.DenseProcessExport">hybrax.train.postprocessing.DenseProcessExport</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.harness.prepare_training">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">prepare_training</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_py</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">runtime_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#prepare_training"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.prepare_training" title="Link to this definition">¶</a></dt>
+<dd><p>Build runtime inputs while borrowing, but never retaining, collection.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>collection</strong> (<a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p></li>
+<li><p><strong>config</strong> (<a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig" title="hybrax.train.harness.TrainHarnessConfig"><em>TrainHarnessConfig</em></a><em> | </em><em>None</em>)</p></li>
+<li><p><strong>custom_py</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>runtime_config</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>run_config</strong> (<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.RunConfig" title="hybrax.train.run_config.RunConfig"><em>hybrax.train.run_config.RunConfig</em></a><em> | </em><em>None</em>)</p></li>
+<li><p><strong>custom_module</strong> (<em>Any</em><em> | </em><em>None</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#hybrax.train.harness.PreparedTraining" title="hybrax.train.harness.PreparedTraining">PreparedTraining</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.harness.prepare_training_from_runtime_artifact">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">prepare_training_from_runtime_artifact</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">artifact</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_module</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_cfg</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#prepare_training_from_runtime_artifact"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.prepare_training_from_runtime_artifact" title="Link to this definition">¶</a></dt>
+<dd><p>Prepare training solely from an already-loaded runtime artifact.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>artifact</strong> (<a class="reference internal" href="../runtime_artifact/index.html#hybrax.train.runtime_artifact.RuntimeArtifact" title="hybrax.train.runtime_artifact.RuntimeArtifact"><em>hybrax.train.runtime_artifact.RuntimeArtifact</em></a>)</p></li>
+<li><p><strong>config</strong> (<a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig" title="hybrax.train.harness.TrainHarnessConfig"><em>TrainHarnessConfig</em></a>)</p></li>
+<li><p><strong>custom_module</strong> (<em>Any</em>)</p></li>
+<li><p><strong>custom_cfg</strong> (<em>Any</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#hybrax.train.harness.PreparedTraining" title="hybrax.train.harness.PreparedTraining">PreparedTraining</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.harness.summarize_train_step_input_signature">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">summarize_train_step_input_signature</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">values</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#summarize_train_step_input_signature"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.summarize_train_step_input_signature" title="Link to this definition">¶</a></dt>
+<dd><p>Return a stable pytree leaf-shape/type summary for train-step inputs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>values</strong> (<em>object</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>tuple[object, …]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.harness.train_collection">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">train_collection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">reaction_module</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loss_module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">optimizer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#train_collection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.train_collection" title="Link to this definition">¶</a></dt>
+<dd><p>Train one reaction module over one or many processes from one store.</p>
+<p>Scales live on <code class="docutils literal notranslate"><span class="pre">reaction_module</span></code>; loss terms are produced by
+<code class="docutils literal notranslate"><span class="pre">loss_module</span></code> (both attached to the wrapper, partitioned together). When
+<code class="docutils literal notranslate"><span class="pre">loss_module</span></code> is None, the default per-target MSE module is used.
+<code class="docutils literal notranslate"><span class="pre">optimizer</span></code>, when provided (via the <code class="docutils literal notranslate"><span class="pre">build_optimizer</span></code> hook), fully owns
+optimizer construction; otherwise the default <code class="docutils literal notranslate"><span class="pre">_build_optimizer</span></code> chain is
+used.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>store</strong> (<a class="reference internal" href="../training_data/index.html#hybrax.train.training_data.TrainingDataStore" title="hybrax.train.training_data.TrainingDataStore"><em>hybrax.train.training_data.TrainingDataStore</em></a>) – Prepared training data for every candidate process.</p></li>
+<li><p><strong>reaction_module</strong> (<a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.UserReactionModule" title="hybrax.train.model_api.UserReactionModule"><em>hybrax.train.model_api.UserReactionModule</em></a>) – Reaction module to train.</p></li>
+<li><p><strong>loss_module</strong> (<a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.UserLossModule" title="hybrax.train.model_api.UserLossModule"><em>hybrax.train.model_api.UserLossModule</em></a><em> | </em><em>None</em>) – Loss module to train alongside it, or <code class="docutils literal notranslate"><span class="pre">None</span></code> for the
+default per-target MSE module.</p></li>
+<li><p><strong>config</strong> (<a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig" title="hybrax.train.harness.TrainHarnessConfig"><em>TrainHarnessConfig</em></a><em> | </em><em>None</em>) – Harness settings (batching, optimizer, solver, checkpointing,
+logging), or <code class="docutils literal notranslate"><span class="pre">None</span></code> for defaults.</p></li>
+<li><p><strong>optimizer</strong> (<em>optax.GradientTransformation</em><em> | </em><em>None</em>) – Pre-built optimizer, or <code class="docutils literal notranslate"><span class="pre">None</span></code> to use the default chain.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The trained wrapper plus the full per-step training history.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">reaction_module</span></code> has a nonzero latent state without
+<code class="docutils literal notranslate"><span class="pre">config.allow_stateful_models</span></code>, or <code class="docutils literal notranslate"><span class="pre">config</span></code>’s solver settings
+are non-positive.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult" title="hybrax.train.harness.TrainHarnessResult">TrainHarnessResult</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.harness.train_from_collection">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">train_from_collection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_py</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">runtime_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#train_from_collection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.train_from_collection" title="Link to this definition">¶</a></dt>
+<dd><p>Prepare and train; external collection references remain caller-owned.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>collection</strong> (<a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p></li>
+<li><p><strong>config</strong> (<a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig" title="hybrax.train.harness.TrainHarnessConfig"><em>TrainHarnessConfig</em></a><em> | </em><em>None</em>)</p></li>
+<li><p><strong>custom_py</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>runtime_config</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>run_config</strong> (<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.RunConfig" title="hybrax.train.run_config.RunConfig"><em>hybrax.train.run_config.RunConfig</em></a><em> | </em><em>None</em>)</p></li>
+<li><p><strong>custom_module</strong> (<em>Any</em><em> | </em><em>None</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult" title="hybrax.train.harness.TrainHarnessResult">TrainHarnessResult</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.harness.train_from_prepared_json">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">train_from_prepared_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared_json</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_py</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">runtime_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#train_from_prepared_json"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.train_from_prepared_json" title="Link to this definition">¶</a></dt>
+<dd><p>Load a prepared JSON and train from it.</p>
+<p>Thin wrapper around <a class="reference internal" href="#hybrax.train.harness.train_from_collection" title="hybrax.train.harness.train_from_collection"><code class="xref py py-func docutils literal notranslate"><span class="pre">train_from_collection()</span></code></a> for callers that
+only have a path. Callers that already hold a deserialized collection
+should invoke <code class="docutils literal notranslate"><span class="pre">train_from_collection</span></code> directly to avoid loading the
+prepared JSON twice.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>prepared_json</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>)</p></li>
+<li><p><strong>config</strong> (<a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig" title="hybrax.train.harness.TrainHarnessConfig"><em>TrainHarnessConfig</em></a><em> | </em><em>None</em>)</p></li>
+<li><p><strong>custom_py</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>runtime_config</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult" title="hybrax.train.harness.TrainHarnessResult">TrainHarnessResult</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.harness.train_harness_config_from_run_config">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">train_harness_config_from_run_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_dir</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#train_harness_config_from_run_config"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.train_harness_config_from_run_config" title="Link to this definition">¶</a></dt>
+<dd><p>Map a typed <code class="xref py py-class docutils literal notranslate"><span class="pre">RunConfig</span></code> + run-directory layout to the harness
+config, wiring the run-dir artifact paths (<code class="docutils literal notranslate"><span class="pre">metrics.csv</span></code>, <code class="docutils literal notranslate"><span class="pre">checkpoints/</span></code>)
+and the checkpoint/output/logging sections. Shared by the CLI train and LOO
+paths.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cfg</strong> (<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.RunConfig" title="hybrax.train.run_config.RunConfig"><em>hybrax.train.run_config.RunConfig</em></a>)</p></li>
+<li><p><strong>run_dir</strong> (<em>pathlib.Path</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig" title="hybrax.train.harness.TrainHarnessConfig">TrainHarnessConfig</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="hybrax.train.harness.logger">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#hybrax.train.harness.logger" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="../inspect/index.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">hybrax.train.inspect</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="../forward_plotting/index.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">hybrax.train.forward_plotting</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Bioprocess Modeling Collective
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">hybrax.train.harness</a><ul>
+<li><a class="reference internal" href="#attributes">Attributes</a></li>
+<li><a class="reference internal" href="#classes">Classes</a></li>
+<li><a class="reference internal" href="#functions">Functions</a></li>
+<li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardConfig"><code class="docutils literal notranslate"><span class="pre">ForwardConfig</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardConfig.process_names"><code class="docutils literal notranslate"><span class="pre">ForwardConfig.process_names</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardConfig.solver_atol"><code class="docutils literal notranslate"><span class="pre">ForwardConfig.solver_atol</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardConfig.solver_max_steps"><code class="docutils literal notranslate"><span class="pre">ForwardConfig.solver_max_steps</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardConfig.solver_rtol"><code class="docutils literal notranslate"><span class="pre">ForwardConfig.solver_rtol</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardConfig.solver_use_jump_ts"><code class="docutils literal notranslate"><span class="pre">ForwardConfig.solver_use_jump_ts</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardConfig.target_source"><code class="docutils literal notranslate"><span class="pre">ForwardConfig.target_source</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardConfig.target_variable_order"><code class="docutils literal notranslate"><span class="pre">ForwardConfig.target_variable_order</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardResult"><code class="docutils literal notranslate"><span class="pre">ForwardResult</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardResult.dense_exports"><code class="docutils literal notranslate"><span class="pre">ForwardResult.dense_exports</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardResult.name_modeled_Inflows"><code class="docutils literal notranslate"><span class="pre">ForwardResult.name_modeled_Inflows</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardResult.name_modeled_Outflows"><code class="docutils literal notranslate"><span class="pre">ForwardResult.name_modeled_Outflows</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardResult.per_process_per_target_loss"><code class="docutils literal notranslate"><span class="pre">ForwardResult.per_process_per_target_loss</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardResult.per_process_total_loss"><code class="docutils literal notranslate"><span class="pre">ForwardResult.per_process_total_loss</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardResult.process_names"><code class="docutils literal notranslate"><span class="pre">ForwardResult.process_names</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardResult.store"><code class="docutils literal notranslate"><span class="pre">ForwardResult.store</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardResult.target_names"><code class="docutils literal notranslate"><span class="pre">ForwardResult.target_names</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardResult.trained_wrapper"><code class="docutils literal notranslate"><span class="pre">ForwardResult.trained_wrapper</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.ForwardResult.training_process_names"><code class="docutils literal notranslate"><span class="pre">ForwardResult.training_process_names</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.train.harness.PreparedTraining"><code class="docutils literal notranslate"><span class="pre">PreparedTraining</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.harness.PreparedTraining.config"><code class="docutils literal notranslate"><span class="pre">PreparedTraining.config</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.PreparedTraining.loss_module"><code class="docutils literal notranslate"><span class="pre">PreparedTraining.loss_module</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.PreparedTraining.optimizer"><code class="docutils literal notranslate"><span class="pre">PreparedTraining.optimizer</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.PreparedTraining.prediction_parent_process_names"><code class="docutils literal notranslate"><span class="pre">PreparedTraining.prediction_parent_process_names</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.PreparedTraining.reaction_module"><code class="docutils literal notranslate"><span class="pre">PreparedTraining.reaction_module</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.PreparedTraining.store"><code class="docutils literal notranslate"><span class="pre">PreparedTraining.store</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.allow_stateful_models"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.allow_stateful_models</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.batch_seed"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.batch_seed</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.batch_size"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.batch_size</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.checkpoint_dir"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.checkpoint_dir</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.checkpoint_every"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.checkpoint_every</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.epochs"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.epochs</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.grad_clip_norm"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.grad_clip_norm</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.holdout_label"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.holdout_label</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.holdout_processes"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.holdout_processes</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.learning_rate"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.learning_rate</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.log_decimals"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.log_decimals</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.log_process_losses"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.log_process_losses</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.metrics_csv"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.metrics_csv</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.metrics_jsonl"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.metrics_jsonl</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.optimizer_name"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.optimizer_name</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.prepared_path"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.prepared_path</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.process_names"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.process_names</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.seed"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.seed</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.shuffle_batches"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.shuffle_batches</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.solver_atol"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.solver_atol</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.solver_max_steps"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.solver_max_steps</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.solver_rtol"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.solver_rtol</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.solver_use_jump_ts"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.solver_use_jump_ts</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.target_source"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.target_source</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.target_variable_order"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.target_variable_order</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult.batch_process_names_by_step"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult.batch_process_names_by_step</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult.compile_warmup_seconds"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult.compile_warmup_seconds</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult.grad_norm_by_step"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult.grad_norm_by_step</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult.holdout_label"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult.holdout_label</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult.holdout_loss_by_step"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult.holdout_loss_by_step</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult.holdout_per_target_by_step"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult.holdout_per_target_by_step</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult.mean_loss_by_step"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult.mean_loss_by_step</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult.per_process_loss_by_step"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult.per_process_loss_by_step</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult.per_target_loss_by_step"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult.per_target_loss_by_step</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult.step_time_seconds"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult.step_time_seconds</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult.target_names"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult.target_names</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult.train_step_input_signature"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult.train_step_input_signature</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult.train_step_rebuild_count"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult.train_step_rebuild_count</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult.trained_wrapper"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult.trained_wrapper</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult.updates_completed"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult.updates_completed</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.train.harness.build_optimizer_for_run"><code class="docutils literal notranslate"><span class="pre">build_optimizer_for_run()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.compute_dense_exports"><code class="docutils literal notranslate"><span class="pre">compute_dense_exports()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.derive_update_budget"><code class="docutils literal notranslate"><span class="pre">derive_update_budget()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.evaluate_trained_wrapper"><code class="docutils literal notranslate"><span class="pre">evaluate_trained_wrapper()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.forward_from_collection"><code class="docutils literal notranslate"><span class="pre">forward_from_collection()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.model_predict"><code class="docutils literal notranslate"><span class="pre">model_predict()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.prepare_training"><code class="docutils literal notranslate"><span class="pre">prepare_training()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.prepare_training_from_runtime_artifact"><code class="docutils literal notranslate"><span class="pre">prepare_training_from_runtime_artifact()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.summarize_train_step_input_signature"><code class="docutils literal notranslate"><span class="pre">summarize_train_step_input_signature()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.train_collection"><code class="docutils literal notranslate"><span class="pre">train_collection()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.train_from_collection"><code class="docutils literal notranslate"><span class="pre">train_from_collection()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.train_from_prepared_json"><code class="docutils literal notranslate"><span class="pre">train_from_prepared_json()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.train_harness_config_from_run_config"><code class="docutils literal notranslate"><span class="pre">train_harness_config_from_run_config()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.logger"><code class="docutils literal notranslate"><span class="pre">logger</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../../_static/documentation_options.js?v=04266cf0"></script>
+    <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script src="../../../../_static/custom.js?v=fec45a96"></script>
+    </body>
+</html>

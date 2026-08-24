@@ -1,0 +1,53 @@
+hybrax.train
+============
+
+.. py:module:: hybrax.train
+
+.. autoapi-nested-parse::
+
+   hybrax.train: the training harness, config, and CLI over hybrax.format processes.
+
+   Public names are lazily re-exported from their owning submodule via
+   ``__getattr__``/``_EXPORTS`` below, so importing ``hybrax.train`` does not
+   eagerly import JAX or any training submodule.
+
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/hybrax/train/augmentation/index
+   /autoapi/hybrax/train/augmentation_plot/index
+   /autoapi/hybrax/train/bounds_loss/index
+   /autoapi/hybrax/train/checkpointing/index
+   /autoapi/hybrax/train/cli/index
+   /autoapi/hybrax/train/constants/index
+   /autoapi/hybrax/train/controls/index
+   /autoapi/hybrax/train/controls_store/index
+   /autoapi/hybrax/train/defaults/index
+   /autoapi/hybrax/train/dense/index
+   /autoapi/hybrax/train/diffrax_callbacks/index
+   /autoapi/hybrax/train/forward_plotting/index
+   /autoapi/hybrax/train/harness/index
+   /autoapi/hybrax/train/inspect/index
+   /autoapi/hybrax/train/logging/index
+   /autoapi/hybrax/train/loo/index
+   /autoapi/hybrax/train/loo_metrics/index
+   /autoapi/hybrax/train/model_api/index
+   /autoapi/hybrax/train/physical_solve/index
+   /autoapi/hybrax/train/postprocessing/index
+   /autoapi/hybrax/train/prepare/index
+   /autoapi/hybrax/train/run_config/index
+   /autoapi/hybrax/train/runtime_artifact/index
+   /autoapi/hybrax/train/runtime_context/index
+   /autoapi/hybrax/train/serialization/index
+   /autoapi/hybrax/train/trainer/index
+   /autoapi/hybrax/train/training_data/index
+   /autoapi/hybrax/train/utils/index
+   /autoapi/hybrax/train/validate/index
+   /autoapi/hybrax/train/wrapper/index
+
+

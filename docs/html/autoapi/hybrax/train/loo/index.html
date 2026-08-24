@@ -1,0 +1,1012 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="hybrax.train.loo_metrics" href="../loo_metrics/index.html"><link rel="prev" title="hybrax.train.logging" href="../logging/index.html">
+        <link rel="prefetch" href="../../../../_static/hybrax_logo.png" as="image">
+
+    <link rel="shortcut icon" href="../../../../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>hybrax.train.loo - Bioprocess Modeling with Hybrax</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=98a1085a" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #eeffcc;
+  --color-code-foreground: black;
+  --color-brand-primary: #2563eb;
+  --color-brand-content: #2563eb;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../../index.html"><div class="brand">Bioprocess Modeling with Hybrax</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../../../_static/hybrax_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">Hybrax Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/why.html">Why this exists</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/concepts.html">Concepts and Vocabulary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/find.html">Which page do I need?</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/01_your_first_dataset.html">1. Import your Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/02_look_at_it.html">2. View your Dataset</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/03_train.html">3. Train a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/04_your_first_custom_py.html">4. Custom Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/05_predict.html">5. Predict Processes</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.format guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/data_model.html">The Data Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/load_and_save.html">Loading and saving</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/validate_and_inspect.html">Validating and inspecting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/volume_feeds_events.html">Volume, feeds and events</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/time_series_and_splines.html">Time series and splines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/limits_and_gotchas.html">Limits and gotchas</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/further_reading.html">Further reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/config.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/hooks_cheatsheet.html">Customization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/prepare.html">Prepare</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/train.html">Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/reaction_module.html">The Reaction Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/loss_module.html">The Loss Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/scaling.html">Scaling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/forward.html">Forward</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/loo.html">Cross-Validation (LOO)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/save_load_predict.html">The Python API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/further_reading.html">Further Reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/mechanistic_rates.html">Mechanistic models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/dense_loss.html">Custom losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/stateful.html">Stateful models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/freezing.html">Freezing parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/augmentation.html">Augmentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/gaussian_process.html">A Gaussian-process model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/kan.html">A KAN model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/optfed.html">OptFed</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/glutamine_decay.html">Glutamine decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/modeled_pv.html">A modeled process variable</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../troubleshooting/errors.html">Errors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../troubleshooting/silent_failures.html">Silent failures</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Under the hood</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../under_the_hood/design_rationale.html">Design Rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../contributors.html">Contributors</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul class="current">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../format/index.html">hybrax.format</a><input aria-label="Toggle navigation of hybrax.format" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../format/dataclasses/index.html">hybrax.format.dataclasses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/inspect/index.html">hybrax.format.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/json_io/index.html">hybrax.format.json_io</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/serialization/index.html">hybrax.format.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/simulation/index.html">hybrax.format.simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/splines/index.html">hybrax.format.splines</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../format/time_series/index.html">hybrax.format.time_series</a><input aria-label="Toggle navigation of hybrax.format.time_series" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../format/time_series/constants/index.html">hybrax.format.time_series.constants</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../format/time_series/grid_utils/index.html">hybrax.format.time_series.grid_utils</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../format/time_series/io/index.html">hybrax.format.time_series.io</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../format/time_series/ppoly/index.html">hybrax.format.time_series.ppoly</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../format/time_series/spline_ops/index.html">hybrax.format.time_series.spline_ops</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../format/time_series/timeseries/index.html">hybrax.format.time_series.timeseries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/validate/index.html">hybrax.format.validate</a></li>
+</ul>
+</li>
+<li class="toctree-l1 current has-children"><a class="reference internal" href="../index.html">hybrax.train</a><input aria-label="Toggle navigation of hybrax.train" checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../augmentation/index.html">hybrax.train.augmentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../augmentation_plot/index.html">hybrax.train.augmentation_plot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../bounds_loss/index.html">hybrax.train.bounds_loss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../checkpointing/index.html">hybrax.train.checkpointing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cli/index.html">hybrax.train.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../constants/index.html">hybrax.train.constants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../controls/index.html">hybrax.train.controls</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../defaults/index.html">hybrax.train.defaults</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../dense/index.html">hybrax.train.dense</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../forward_plotting/index.html">hybrax.train.forward_plotting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../harness/index.html">hybrax.train.harness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../inspect/index.html">hybrax.train.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../logging/index.html">hybrax.train.logging</a></li>
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">hybrax.train.loo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../loo_metrics/index.html">hybrax.train.loo_metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../model_api/index.html">hybrax.train.model_api</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../physical_solve/index.html">hybrax.train.physical_solve</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../prepare/index.html">hybrax.train.prepare</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../run_config/index.html">hybrax.train.run_config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../runtime_context/index.html">hybrax.train.runtime_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../serialization/index.html">hybrax.train.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../trainer/index.html">hybrax.train.trainer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../training_data/index.html">hybrax.train.training_data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../utils/index.html">hybrax.train.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../wrapper/index.html">hybrax.train.wrapper</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../../../../_sources/autoapi/hybrax/train/loo/index.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="module-hybrax.train.loo">
+<span id="hybrax-train-loo"></span><h1>hybrax.train.loo<a class="headerlink" href="#module-hybrax.train.loo" title="Link to this heading">¶</a></h1>
+<p>Leave-one/some-process-out cross-validation for <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>.</p>
+<p>Config-driven, mirroring <code class="docutils literal notranslate"><span class="pre">train</span></code>: a <code class="docutils literal notranslate"><span class="pre">loo</span></code> section in the run config defines
+the folds (<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.HoldoutSet" title="hybrax.train.run_config.HoldoutSet"><code class="xref py py-class docutils literal notranslate"><span class="pre">HoldoutSet</span></code></a> entries in
+<code class="docutils literal notranslate"><span class="pre">per_fold_holdout_sets</span></code>, or classic leave-one-out when omitted) and the
+fold-level parallelism.</p>
+<p>Each fold trains as <strong>its own subprocess</strong> so it can expose a private JAX CPU
+device count — the JAX host-device count is fixed per process at import, so
+concurrent in-process folds cannot get separate shards. The user picks how many
+folds run at once (<code class="docutils literal notranslate"><span class="pre">loo.parallel_folds</span></code>); the orchestrator chooses the per-fold
+JAX device count (<code class="docutils literal notranslate"><span class="pre">devices_per_fold</span> <span class="pre">=</span> <span class="pre">n_cpu</span> <span class="pre">//</span> <span class="pre">parallel_folds</span></code> by default),
+lets the OS schedule the worker processes, then aggregates their on-disk losses
+into <code class="docutils literal notranslate"><span class="pre">loo_summary.csv</span></code> / <code class="docutils literal notranslate"><span class="pre">loo_aggregate.json</span></code>. <code class="docutils literal notranslate"><span class="pre">run_loo_cv(resume=True)</span></code>
+skips only identity-matched, complete folds and re-runs the rest.</p>
+<p>This module stays a thin orchestrator on top of the harness preparation,
+training, and evaluation entry points; it does not reimplement batching or loss
+calculation.</p>
+<section id="attributes">
+<h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.loo.FoldGroup" title="hybrax.train.loo.FoldGroup"><code class="xref py py-obj docutils literal notranslate"><span class="pre">FoldGroup</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.loo.logger" title="hybrax.train.loo.logger"><code class="xref py py-obj docutils literal notranslate"><span class="pre">logger</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="classes">
+<h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.loo.Fold" title="hybrax.train.loo.Fold"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Fold</span></code></a></p></td>
+<td><p>One resolved cross-validation fold.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.loo.FoldResult" title="hybrax.train.loo.FoldResult"><code class="xref py py-obj docutils literal notranslate"><span class="pre">FoldResult</span></code></a></p></td>
+<td><p>Outputs of a single executed fold (returned by <a class="reference internal" href="#hybrax.train.loo.run_single_fold" title="hybrax.train.loo.run_single_fold"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_single_fold()</span></code></a>).</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.loo.LOOResult" title="hybrax.train.loo.LOOResult"><code class="xref py py-obj docutils literal notranslate"><span class="pre">LOOResult</span></code></a></p></td>
+<td><p>Outputs of a full LOO sweep (returned by <a class="reference internal" href="#hybrax.train.loo.run_loo_cv" title="hybrax.train.loo.run_loo_cv"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_loo_cv()</span></code></a>).</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.loo.PreparedFold" title="hybrax.train.loo.PreparedFold"><code class="xref py py-obj docutils literal notranslate"><span class="pre">PreparedFold</span></code></a></p></td>
+<td><p>Collection-free inputs for one fold's training.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.loo.TrainedFold" title="hybrax.train.loo.TrainedFold"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TrainedFold</span></code></a></p></td>
+<td><p>Lean inputs retained for one fold's final evaluation.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="functions">
+<h2>Functions<a class="headerlink" href="#functions" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.loo.compute_parallel_split" title="hybrax.train.loo.compute_parallel_split"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_parallel_split</span></code></a>(n_folds, n_cpu, parallel_folds, *)</p></td>
+<td><p>Return <code class="docutils literal notranslate"><span class="pre">(parallel_folds,</span> <span class="pre">devices_per_fold)</span></code> for the fold pool.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.loo.execute_trained_fold" title="hybrax.train.loo.execute_trained_fold"><code class="xref py py-obj docutils literal notranslate"><span class="pre">execute_trained_fold</span></code></a>(trained)</p></td>
+<td><p>Evaluate and write one trained fold from its lean runtime inputs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.loo.prepare_single_fold" title="hybrax.train.loo.prepare_single_fold"><code class="xref py py-obj docutils literal notranslate"><span class="pre">prepare_single_fold</span></code></a>(collection, *, cfg, custom_module, ...)</p></td>
+<td><p>Resolve and prepare one fold without starting its training.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.loo.prepare_single_fold_from_runtime_artifact" title="hybrax.train.loo.prepare_single_fold_from_runtime_artifact"><code class="xref py py-obj docutils literal notranslate"><span class="pre">prepare_single_fold_from_runtime_artifact</span></code></a>(*, cfg, ...)</p></td>
+<td><p>Prepare one fold solely from its validated runtime artifact.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.loo.produce_runtime_artifact" title="hybrax.train.loo.produce_runtime_artifact"><code class="xref py py-obj docutils literal notranslate"><span class="pre">produce_runtime_artifact</span></code></a>(*, cfg, custom_module, ...)</p></td>
+<td><p>Collection-owning, short-lived producer for all fold runtime inputs.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.loo.resolve_folds" title="hybrax.train.loo.resolve_folds"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_folds</span></code></a>(collection, loo_cfg, base_seed, *[, ...])</p></td>
+<td><p>Resolve config into concrete folds.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.loo.run_loo_cv" title="hybrax.train.loo.run_loo_cv"><code class="xref py py-obj docutils literal notranslate"><span class="pre">run_loo_cv</span></code></a>(*, cfg, config_path, output_dir[, resume])</p></td>
+<td><p>Dispatch artifact-backed workers and aggregate their fold outputs.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.loo.run_single_fold" title="hybrax.train.loo.run_single_fold"><code class="xref py py-obj docutils literal notranslate"><span class="pre">run_single_fold</span></code></a>(collection, *, cfg, custom_module, ...)</p></td>
+<td><p>Prepare and execute one fold for direct Python callers.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.loo.train_prepared_fold" title="hybrax.train.loo.train_prepared_fold"><code class="xref py py-obj docutils literal notranslate"><span class="pre">train_prepared_fold</span></code></a>(prepared)</p></td>
+<td><p>Train one prepared fold and retain only final-evaluation inputs.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.train.loo.Fold">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">Fold</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#Fold"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.Fold" title="Link to this definition">¶</a></dt>
+<dd><p>One resolved cross-validation fold.</p>
+<p><code class="docutils literal notranslate"><span class="pre">test</span></code> is the held-out evaluation set; <code class="docutils literal notranslate"><span class="pre">train</span></code> is the
+(augmentation-corrected) set actually trained on; <code class="docutils literal notranslate"><span class="pre">slug</span></code> is the on-disk
+directory name under <code class="docutils literal notranslate"><span class="pre">&lt;output&gt;/folds/</span></code>.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.Fold.idx">
+<span class="sig-name descname"><span class="pre">idx</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.loo.Fold.idx" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.Fold.seed">
+<span class="sig-name descname"><span class="pre">seed</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.loo.Fold.seed" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.Fold.slug">
+<span class="sig-name descname"><span class="pre">slug</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.train.loo.Fold.slug" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.Fold.test">
+<span class="sig-name descname"><span class="pre">test</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.loo.Fold.test" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.Fold.train">
+<span class="sig-name descname"><span class="pre">train</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.loo.Fold.train" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.train.loo.FoldResult">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">FoldResult</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#FoldResult"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.FoldResult" title="Link to this definition">¶</a></dt>
+<dd><p>Outputs of a single executed fold (returned by <a class="reference internal" href="#hybrax.train.loo.run_single_fold" title="hybrax.train.loo.run_single_fold"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_single_fold()</span></code></a>).</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.FoldResult.fold">
+<span class="sig-name descname"><span class="pre">fold</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.loo.Fold" title="hybrax.train.loo.Fold"><span class="pre">Fold</span></a></span><a class="headerlink" href="#hybrax.train.loo.FoldResult.fold" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.FoldResult.fold_dir">
+<span class="sig-name descname"><span class="pre">fold_dir</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span><a class="headerlink" href="#hybrax.train.loo.FoldResult.fold_dir" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.FoldResult.fold_seed">
+<span class="sig-name descname"><span class="pre">fold_seed</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.loo.FoldResult.fold_seed" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.FoldResult.forward_result">
+<span class="sig-name descname"><span class="pre">forward_result</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../harness/index.html#hybrax.train.harness.ForwardResult" title="hybrax.train.harness.ForwardResult"><span class="pre">hybrax.train.harness.ForwardResult</span></a></span><a class="headerlink" href="#hybrax.train.loo.FoldResult.forward_result" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.FoldResult.train_result">
+<span class="sig-name descname"><span class="pre">train_result</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../harness/index.html#hybrax.train.harness.TrainHarnessResult" title="hybrax.train.harness.TrainHarnessResult"><span class="pre">hybrax.train.harness.TrainHarnessResult</span></a></span><a class="headerlink" href="#hybrax.train.loo.FoldResult.train_result" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.train.loo.LOOResult">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">LOOResult</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#LOOResult"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.LOOResult" title="Link to this definition">¶</a></dt>
+<dd><p>Outputs of a full LOO sweep (returned by <a class="reference internal" href="#hybrax.train.loo.run_loo_cv" title="hybrax.train.loo.run_loo_cv"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_loo_cv()</span></code></a>).</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.LOOResult.aggregate">
+<span class="sig-name descname"><span class="pre">aggregate</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.loo.LOOResult.aggregate" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.LOOResult.aggregate_json_path">
+<span class="sig-name descname"><span class="pre">aggregate_json_path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span><a class="headerlink" href="#hybrax.train.loo.LOOResult.aggregate_json_path" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.LOOResult.devices_per_fold">
+<span class="sig-name descname"><span class="pre">devices_per_fold</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.loo.LOOResult.devices_per_fold" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.LOOResult.fold_dirs">
+<span class="sig-name descname"><span class="pre">fold_dirs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">pathlib.Path</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.loo.LOOResult.fold_dirs" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.LOOResult.parallel_folds">
+<span class="sig-name descname"><span class="pre">parallel_folds</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.loo.LOOResult.parallel_folds" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.LOOResult.summary_csv_path">
+<span class="sig-name descname"><span class="pre">summary_csv_path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span><a class="headerlink" href="#hybrax.train.loo.LOOResult.summary_csv_path" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.train.loo.PreparedFold">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">PreparedFold</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#PreparedFold"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.PreparedFold" title="Link to this definition">¶</a></dt>
+<dd><p>Collection-free inputs for one fold’s training.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.PreparedFold.config_json">
+<span class="sig-name descname"><span class="pre">config_json</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span><a class="headerlink" href="#hybrax.train.loo.PreparedFold.config_json" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.PreparedFold.effective_cfg">
+<span class="sig-name descname"><span class="pre">effective_cfg</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.RunConfig" title="hybrax.train.run_config.RunConfig"><span class="pre">hybrax.train.run_config.RunConfig</span></a></span><a class="headerlink" href="#hybrax.train.loo.PreparedFold.effective_cfg" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.PreparedFold.fold">
+<span class="sig-name descname"><span class="pre">fold</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.loo.Fold" title="hybrax.train.loo.Fold"><span class="pre">Fold</span></a></span><a class="headerlink" href="#hybrax.train.loo.PreparedFold.fold" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.PreparedFold.fold_custom">
+<span class="sig-name descname"><span class="pre">fold_custom</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.loo.PreparedFold.fold_custom" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.PreparedFold.fold_dir">
+<span class="sig-name descname"><span class="pre">fold_dir</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span><a class="headerlink" href="#hybrax.train.loo.PreparedFold.fold_dir" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.PreparedFold.fold_seed">
+<span class="sig-name descname"><span class="pre">fold_seed</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.loo.PreparedFold.fold_seed" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.PreparedFold.training">
+<span class="sig-name descname"><span class="pre">training</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../harness/index.html#hybrax.train.harness.PreparedTraining" title="hybrax.train.harness.PreparedTraining"><span class="pre">hybrax.train.harness.PreparedTraining</span></a></span><a class="headerlink" href="#hybrax.train.loo.PreparedFold.training" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.train.loo.TrainedFold">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">TrainedFold</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#TrainedFold"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.TrainedFold" title="Link to this definition">¶</a></dt>
+<dd><p>Lean inputs retained for one fold’s final evaluation.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.TrainedFold.config">
+<span class="sig-name descname"><span class="pre">config</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../harness/index.html#hybrax.train.harness.TrainHarnessConfig" title="hybrax.train.harness.TrainHarnessConfig"><span class="pre">hybrax.train.harness.TrainHarnessConfig</span></a></span><a class="headerlink" href="#hybrax.train.loo.TrainedFold.config" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.TrainedFold.config_json">
+<span class="sig-name descname"><span class="pre">config_json</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span><a class="headerlink" href="#hybrax.train.loo.TrainedFold.config_json" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.TrainedFold.fold">
+<span class="sig-name descname"><span class="pre">fold</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.loo.Fold" title="hybrax.train.loo.Fold"><span class="pre">Fold</span></a></span><a class="headerlink" href="#hybrax.train.loo.TrainedFold.fold" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.TrainedFold.fold_dir">
+<span class="sig-name descname"><span class="pre">fold_dir</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span><a class="headerlink" href="#hybrax.train.loo.TrainedFold.fold_dir" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.TrainedFold.fold_seed">
+<span class="sig-name descname"><span class="pre">fold_seed</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.loo.TrainedFold.fold_seed" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.TrainedFold.output_predictions">
+<span class="sig-name descname"><span class="pre">output_predictions</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.PredictionScope" title="hybrax.train.run_config.PredictionScope"><span class="pre">hybrax.train.run_config.PredictionScope</span></a></span><a class="headerlink" href="#hybrax.train.loo.TrainedFold.output_predictions" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.TrainedFold.prediction_parent_process_names">
+<span class="sig-name descname"><span class="pre">prediction_parent_process_names</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.loo.TrainedFold.prediction_parent_process_names" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.TrainedFold.store">
+<span class="sig-name descname"><span class="pre">store</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../training_data/index.html#hybrax.train.training_data.TrainingDataStore" title="hybrax.train.training_data.TrainingDataStore"><span class="pre">hybrax.train.training_data.TrainingDataStore</span></a></span><a class="headerlink" href="#hybrax.train.loo.TrainedFold.store" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.TrainedFold.target_names">
+<span class="sig-name descname"><span class="pre">target_names</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.loo.TrainedFold.target_names" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.TrainedFold.train_result">
+<span class="sig-name descname"><span class="pre">train_result</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../harness/index.html#hybrax.train.harness.TrainHarnessResult" title="hybrax.train.harness.TrainHarnessResult"><span class="pre">hybrax.train.harness.TrainHarnessResult</span></a></span><a class="headerlink" href="#hybrax.train.loo.TrainedFold.train_result" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.loo.compute_parallel_split">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">compute_parallel_split</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_folds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_cpu</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parallel_folds</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">devices_per_fold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_devices_per_fold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#compute_parallel_split"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.compute_parallel_split" title="Link to this definition">¶</a></dt>
+<dd><p>Return <code class="docutils literal notranslate"><span class="pre">(parallel_folds,</span> <span class="pre">devices_per_fold)</span></code> for the fold pool.</p>
+<p><code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code> is the user-chosen fold concurrency. If
+<code class="docutils literal notranslate"><span class="pre">devices_per_fold</span></code> is omitted, the per-fold JAX CPU device budget is split
+across concurrent folds: <code class="docutils literal notranslate"><span class="pre">devices_per_fold</span> <span class="pre">=</span> <span class="pre">n_cpu</span> <span class="pre">//</span> <span class="pre">parallel</span></code> (so a
+single fold exposes many devices, many folds expose one device each).
+Devices never exceed <code class="docutils literal notranslate"><span class="pre">max_devices_per_fold</span></code> (the smallest fold’s batch —
+exposing more host devices than the batch only deadlocks the pmap collective).</p>
+<p>Invariant: <code class="docutils literal notranslate"><span class="pre">parallel_folds</span> <span class="pre">*</span> <span class="pre">devices_per_fold</span> <span class="pre">&lt;=</span> <span class="pre">n_cpu</span></code>. There is no RAM
+sizing here — the user owns the memory call via <code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n_folds</strong> (<em>int</em>)</p></li>
+<li><p><strong>n_cpu</strong> (<em>int</em>)</p></li>
+<li><p><strong>parallel_folds</strong> (<em>int</em>)</p></li>
+<li><p><strong>devices_per_fold</strong> (<em>int</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>max_devices_per_fold</strong> (<em>int</em><em> | </em><em>None</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>tuple[int, int]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.loo.execute_trained_fold">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">execute_trained_fold</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trained</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#execute_trained_fold"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.execute_trained_fold" title="Link to this definition">¶</a></dt>
+<dd><p>Evaluate and write one trained fold from its lean runtime inputs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>trained</strong> (<a class="reference internal" href="#hybrax.train.loo.TrainedFold" title="hybrax.train.loo.TrainedFold"><em>TrainedFold</em></a>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#hybrax.train.loo.FoldResult" title="hybrax.train.loo.FoldResult">FoldResult</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.loo.prepare_single_fold">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">prepare_single_fold</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">cfg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_module</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_py</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#prepare_single_fold"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.prepare_single_fold" title="Link to this definition">¶</a></dt>
+<dd><p>Resolve and prepare one fold without starting its training.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>collection</strong> (<a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p></li>
+<li><p><strong>cfg</strong> (<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.RunConfig" title="hybrax.train.run_config.RunConfig"><em>hybrax.train.run_config.RunConfig</em></a>)</p></li>
+<li><p><strong>custom_module</strong> (<em>Any</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>output_dir</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>)</p></li>
+<li><p><strong>fold_idx</strong> (<em>int</em>)</p></li>
+<li><p><strong>custom_py</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><em>None</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#hybrax.train.loo.PreparedFold" title="hybrax.train.loo.PreparedFold">PreparedFold</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.loo.prepare_single_fold_from_runtime_artifact">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">prepare_single_fold_from_runtime_artifact</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">cfg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_module</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bundle_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">artifact_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_idx</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#prepare_single_fold_from_runtime_artifact"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.prepare_single_fold_from_runtime_artifact" title="Link to this definition">¶</a></dt>
+<dd><p>Prepare one fold solely from its validated runtime artifact.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cfg</strong> (<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.RunConfig" title="hybrax.train.run_config.RunConfig"><em>hybrax.train.run_config.RunConfig</em></a>)</p></li>
+<li><p><strong>custom_module</strong> (<em>Any</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>output_dir</strong> (<em>pathlib.Path</em>)</p></li>
+<li><p><strong>bundle_path</strong> (<em>pathlib.Path</em>)</p></li>
+<li><p><strong>artifact_path</strong> (<em>pathlib.Path</em>)</p></li>
+<li><p><strong>fold_idx</strong> (<em>int</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#hybrax.train.loo.PreparedFold" title="hybrax.train.loo.PreparedFold">PreparedFold</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.loo.produce_runtime_artifact">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">produce_runtime_artifact</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">cfg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_module</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bundle_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#produce_runtime_artifact"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.produce_runtime_artifact" title="Link to this definition">¶</a></dt>
+<dd><p>Collection-owning, short-lived producer for all fold runtime inputs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cfg</strong> (<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.RunConfig" title="hybrax.train.run_config.RunConfig"><em>hybrax.train.run_config.RunConfig</em></a>)</p></li>
+<li><p><strong>custom_module</strong> (<em>Any</em>)</p></li>
+<li><p><strong>output_dir</strong> (<em>pathlib.Path</em>)</p></li>
+<li><p><strong>bundle_path</strong> (<em>pathlib.Path</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.loo.resolve_folds">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">resolve_folds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loo_cfg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base_seed</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">data_processes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#resolve_folds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.resolve_folds" title="Link to this definition">¶</a></dt>
+<dd><p>Resolve config into concrete folds.</p>
+<p><code class="docutils literal notranslate"><span class="pre">per_fold_holdout_sets</span> <span class="pre">is</span> <span class="pre">None</span></code> → classic leave-one-out (one fold per
+parent group). Otherwise each <code class="xref py py-class docutils literal notranslate"><span class="pre">HoldoutSet</span></code> becomes a fold:
+<code class="docutils literal notranslate"><span class="pre">test</span> <span class="pre">=</span> <span class="pre">entry.test</span></code>; <code class="docutils literal notranslate"><span class="pre">train</span> <span class="pre">=</span> <span class="pre">entry.train</span></code> or everything not in <code class="docutils literal notranslate"><span class="pre">test</span></code>.
+Augmentation is corrected in both modes: holding out any member of an
+augmentation group excludes the whole group from train (see
+<code class="docutils literal notranslate"><span class="pre">_augmentation_group_of</span></code>/<code class="docutils literal notranslate"><span class="pre">_resolve_train</span></code>).</p>
+<p><code class="docutils literal notranslate"><span class="pre">data_processes</span></code> (from <code class="docutils literal notranslate"><span class="pre">DataConfig.processes</span></code>), when given, restricts
+the process universe available to fold construction <em>before</em>
+<code class="docutils literal notranslate"><span class="pre">per_fold_holdout_sets</span></code>/classic-LOO see it: names outside it can never
+end up in a fold’s <code class="docutils literal notranslate"><span class="pre">test</span></code>/<code class="docutils literal notranslate"><span class="pre">train</span></code>, and <code class="docutils literal notranslate"><span class="pre">per_fold_holdout_sets</span></code>
+entries that reference such a name raise instead of silently including
+it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>collection</strong> (<a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p></li>
+<li><p><strong>loo_cfg</strong> (<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.LooConfig" title="hybrax.train.run_config.LooConfig"><em>hybrax.train.run_config.LooConfig</em></a><em> | </em><em>None</em>)</p></li>
+<li><p><strong>base_seed</strong> (<em>int</em>)</p></li>
+<li><p><strong>data_processes</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>tuple[<a class="reference internal" href="#hybrax.train.loo.Fold" title="hybrax.train.loo.Fold">Fold</a>, …]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.loo.run_loo_cv">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">run_loo_cv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">cfg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">resume</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#run_loo_cv"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.run_loo_cv" title="Link to this definition">¶</a></dt>
+<dd><p>Dispatch artifact-backed workers and aggregate their fold outputs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cfg</strong> (<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.RunConfig" title="hybrax.train.run_config.RunConfig"><em>hybrax.train.run_config.RunConfig</em></a>)</p></li>
+<li><p><strong>config_path</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>)</p></li>
+<li><p><strong>output_dir</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>)</p></li>
+<li><p><strong>resume</strong> (<em>bool</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#hybrax.train.loo.LOOResult" title="hybrax.train.loo.LOOResult">LOOResult</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.loo.run_single_fold">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">run_single_fold</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">cfg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_module</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_py</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#run_single_fold"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.run_single_fold" title="Link to this definition">¶</a></dt>
+<dd><p>Prepare and execute one fold for direct Python callers.</p>
+<p>The CLI uses the two-stage entry points directly so its collection-owning
+frame returns to collection-free execution before training starts.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>collection</strong> (<a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p></li>
+<li><p><strong>cfg</strong> (<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.RunConfig" title="hybrax.train.run_config.RunConfig"><em>hybrax.train.run_config.RunConfig</em></a>)</p></li>
+<li><p><strong>custom_module</strong> (<em>Any</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>output_dir</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>)</p></li>
+<li><p><strong>fold_idx</strong> (<em>int</em>)</p></li>
+<li><p><strong>custom_py</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><em>None</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#hybrax.train.loo.FoldResult" title="hybrax.train.loo.FoldResult">FoldResult</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.loo.train_prepared_fold">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">train_prepared_fold</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prepared</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#train_prepared_fold"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.train_prepared_fold" title="Link to this definition">¶</a></dt>
+<dd><p>Train one prepared fold and retain only final-evaluation inputs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>prepared</strong> (<a class="reference internal" href="#hybrax.train.loo.PreparedFold" title="hybrax.train.loo.PreparedFold"><em>PreparedFold</em></a>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#hybrax.train.loo.TrainedFold" title="hybrax.train.loo.TrainedFold">TrainedFold</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="hybrax.train.loo.FoldGroup">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">FoldGroup</span></span><a class="headerlink" href="#hybrax.train.loo.FoldGroup" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="hybrax.train.loo.logger">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#hybrax.train.loo.logger" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="../loo_metrics/index.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">hybrax.train.loo_metrics</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="../logging/index.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">hybrax.train.logging</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Bioprocess Modeling Collective
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">hybrax.train.loo</a><ul>
+<li><a class="reference internal" href="#attributes">Attributes</a></li>
+<li><a class="reference internal" href="#classes">Classes</a></li>
+<li><a class="reference internal" href="#functions">Functions</a></li>
+<li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#hybrax.train.loo.Fold"><code class="docutils literal notranslate"><span class="pre">Fold</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.loo.Fold.idx"><code class="docutils literal notranslate"><span class="pre">Fold.idx</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.Fold.seed"><code class="docutils literal notranslate"><span class="pre">Fold.seed</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.Fold.slug"><code class="docutils literal notranslate"><span class="pre">Fold.slug</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.Fold.test"><code class="docutils literal notranslate"><span class="pre">Fold.test</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.Fold.train"><code class="docutils literal notranslate"><span class="pre">Fold.train</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.train.loo.FoldResult"><code class="docutils literal notranslate"><span class="pre">FoldResult</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.loo.FoldResult.fold"><code class="docutils literal notranslate"><span class="pre">FoldResult.fold</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.FoldResult.fold_dir"><code class="docutils literal notranslate"><span class="pre">FoldResult.fold_dir</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.FoldResult.fold_seed"><code class="docutils literal notranslate"><span class="pre">FoldResult.fold_seed</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.FoldResult.forward_result"><code class="docutils literal notranslate"><span class="pre">FoldResult.forward_result</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.FoldResult.train_result"><code class="docutils literal notranslate"><span class="pre">FoldResult.train_result</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.train.loo.LOOResult"><code class="docutils literal notranslate"><span class="pre">LOOResult</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.loo.LOOResult.aggregate"><code class="docutils literal notranslate"><span class="pre">LOOResult.aggregate</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.LOOResult.aggregate_json_path"><code class="docutils literal notranslate"><span class="pre">LOOResult.aggregate_json_path</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.LOOResult.devices_per_fold"><code class="docutils literal notranslate"><span class="pre">LOOResult.devices_per_fold</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.LOOResult.fold_dirs"><code class="docutils literal notranslate"><span class="pre">LOOResult.fold_dirs</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.LOOResult.parallel_folds"><code class="docutils literal notranslate"><span class="pre">LOOResult.parallel_folds</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.LOOResult.summary_csv_path"><code class="docutils literal notranslate"><span class="pre">LOOResult.summary_csv_path</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.train.loo.PreparedFold"><code class="docutils literal notranslate"><span class="pre">PreparedFold</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.loo.PreparedFold.config_json"><code class="docutils literal notranslate"><span class="pre">PreparedFold.config_json</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.PreparedFold.effective_cfg"><code class="docutils literal notranslate"><span class="pre">PreparedFold.effective_cfg</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.PreparedFold.fold"><code class="docutils literal notranslate"><span class="pre">PreparedFold.fold</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.PreparedFold.fold_custom"><code class="docutils literal notranslate"><span class="pre">PreparedFold.fold_custom</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.PreparedFold.fold_dir"><code class="docutils literal notranslate"><span class="pre">PreparedFold.fold_dir</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.PreparedFold.fold_seed"><code class="docutils literal notranslate"><span class="pre">PreparedFold.fold_seed</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.PreparedFold.training"><code class="docutils literal notranslate"><span class="pre">PreparedFold.training</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.train.loo.TrainedFold"><code class="docutils literal notranslate"><span class="pre">TrainedFold</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.loo.TrainedFold.config"><code class="docutils literal notranslate"><span class="pre">TrainedFold.config</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.TrainedFold.config_json"><code class="docutils literal notranslate"><span class="pre">TrainedFold.config_json</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.TrainedFold.fold"><code class="docutils literal notranslate"><span class="pre">TrainedFold.fold</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.TrainedFold.fold_dir"><code class="docutils literal notranslate"><span class="pre">TrainedFold.fold_dir</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.TrainedFold.fold_seed"><code class="docutils literal notranslate"><span class="pre">TrainedFold.fold_seed</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.TrainedFold.output_predictions"><code class="docutils literal notranslate"><span class="pre">TrainedFold.output_predictions</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.TrainedFold.prediction_parent_process_names"><code class="docutils literal notranslate"><span class="pre">TrainedFold.prediction_parent_process_names</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.TrainedFold.store"><code class="docutils literal notranslate"><span class="pre">TrainedFold.store</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.TrainedFold.target_names"><code class="docutils literal notranslate"><span class="pre">TrainedFold.target_names</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.TrainedFold.train_result"><code class="docutils literal notranslate"><span class="pre">TrainedFold.train_result</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.train.loo.compute_parallel_split"><code class="docutils literal notranslate"><span class="pre">compute_parallel_split()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.execute_trained_fold"><code class="docutils literal notranslate"><span class="pre">execute_trained_fold()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.prepare_single_fold"><code class="docutils literal notranslate"><span class="pre">prepare_single_fold()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.prepare_single_fold_from_runtime_artifact"><code class="docutils literal notranslate"><span class="pre">prepare_single_fold_from_runtime_artifact()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.produce_runtime_artifact"><code class="docutils literal notranslate"><span class="pre">produce_runtime_artifact()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.resolve_folds"><code class="docutils literal notranslate"><span class="pre">resolve_folds()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.run_loo_cv"><code class="docutils literal notranslate"><span class="pre">run_loo_cv()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.run_single_fold"><code class="docutils literal notranslate"><span class="pre">run_single_fold()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.train_prepared_fold"><code class="docutils literal notranslate"><span class="pre">train_prepared_fold()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.FoldGroup"><code class="docutils literal notranslate"><span class="pre">FoldGroup</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.logger"><code class="docutils literal notranslate"><span class="pre">logger</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../../_static/documentation_options.js?v=04266cf0"></script>
+    <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script src="../../../../_static/custom.js?v=fec45a96"></script>
+    </body>
+</html>

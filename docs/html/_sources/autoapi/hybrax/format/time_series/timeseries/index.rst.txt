@@ -1,0 +1,148 @@
+hybrax.format.time_series.timeseries
+====================================
+
+.. py:module:: hybrax.format.time_series.timeseries
+
+.. autoapi-nested-parse::
+
+   TimeSeries core data model and invariant validation.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.format.time_series.timeseries.TimeSeries
+
+
+Module Contents
+---------------
+
+.. py:class:: TimeSeries(*, times = None, values = None, derived = False, jump_times = None, poly = None, breaks = None, coeffs = None, segment_start_piece_idx = None, continuity_side = 'right', metadata = None)
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Scalar-valued time series with optional samples and/or spline state.
+
+   All floating-point array fields (`times`, `values`, `jump_times`, `breaks`,
+   `coeffs`) are float64 (JAX x64 is enabled package-wide). The read-only
+   `dtype` property reports that dtype.
+
+
+   .. py:method:: deriv(order = 1)
+
+      Return a derived TimeSeries holding the spline derivative of the given order.
+
+
+
+   .. py:method:: evaluate(t, *, side=None)
+
+      Evaluate the spline representation at time ``t``.
+
+
+
+   .. py:method:: evaluate_many(ts, *, side=None)
+
+      Evaluate the spline representation at a 1D array of times ``ts``.
+
+
+
+   .. py:method:: from_dict(data)
+      :classmethod:
+
+
+
+   .. py:method:: from_input_dict(input_data, process_key, variable)
+      :classmethod:
+
+
+
+   .. py:method:: from_process_state(process_state, variable)
+      :classmethod:
+
+
+
+   .. py:method:: integrate(a, b)
+
+      Integrate the spline representation from ``a`` to ``b``.
+
+
+
+   .. py:method:: lin_interp(t)
+
+      Linearly interpolate the discrete samples at time ``t``.
+
+
+
+   .. py:method:: to_dict()
+
+
+   .. py:method:: to_pd_series()
+
+      Convert the discrete samples to a ``pandas.Series`` indexed by time.
+
+
+
+   .. py:attribute:: breaks
+      :type:  jax.numpy.ndarray | None
+      :value: None
+
+
+
+   .. py:attribute:: coeffs
+      :type:  jax.numpy.ndarray | None
+      :value: None
+
+
+
+   .. py:attribute:: continuity_side
+      :type:  str
+
+
+   .. py:attribute:: derived
+      :type:  bool
+
+
+   .. py:property:: dtype
+
+      Floating-point dtype of the series arrays (float64 under x64).
+
+
+   .. py:attribute:: jump_times
+      :type:  jax.numpy.ndarray | None
+      :value: None
+
+
+
+   .. py:attribute:: metadata
+      :type:  Any
+
+
+   .. py:property:: poly
+      :type: hybrax.format.time_series.ppoly.PPoly | None
+
+
+      Return the owned spline evaluator for the canonical spline state.
+
+
+   .. py:attribute:: segment_start_piece_idx
+      :type:  jax.numpy.ndarray | None
+      :value: None
+
+
+
+   .. py:attribute:: times
+      :type:  jax.numpy.ndarray | None
+      :value: None
+
+
+
+   .. py:attribute:: values
+      :type:  jax.numpy.ndarray | None
+      :value: None
+
+
+

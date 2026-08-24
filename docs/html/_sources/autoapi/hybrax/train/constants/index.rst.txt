@@ -1,0 +1,26 @@
+hybrax.train.constants
+======================
+
+.. py:module:: hybrax.train.constants
+
+.. autoapi-nested-parse::
+
+   Shared constants with no natural home in a more specific module.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.constants.METADATA_NAMESPACE
+
+
+Module Contents
+---------------
+
+.. py:data:: METADATA_NAMESPACE
+   :value: 'hybrax.train'
+
+

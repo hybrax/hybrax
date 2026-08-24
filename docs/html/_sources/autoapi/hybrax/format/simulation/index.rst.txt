@@ -1,0 +1,187 @@
+hybrax.format.simulation
+========================
+
+.. py:module:: hybrax.format.simulation
+
+.. autoapi-nested-parse::
+
+   Small simulation base API with generic sample/bolus event plumbing.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.format.simulation.EVENT_TYPE_BOLUS
+   hybrax.format.simulation.EVENT_TYPE_FERMENTATION_END
+   hybrax.format.simulation.EVENT_TYPE_SAMPLE
+   hybrax.format.simulation.ROW_TYPE_FERMENTATION_END
+   hybrax.format.simulation.ROW_TYPE_OFFLINE
+   hybrax.format.simulation.ROW_TYPE_ONLINE
+   hybrax.format.simulation.ROW_TYPE_ORDER
+   hybrax.format.simulation.ROW_TYPE_POST_EVENT
+   hybrax.format.simulation.ROW_TYPE_PRE_EVENT
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.format.simulation.Simulation
+   hybrax.format.simulation.SimulationEvent
+   hybrax.format.simulation.SimulationResult
+
+
+Module Contents
+---------------
+
+.. py:class:: Simulation
+
+   Common simulation event/output helpers.
+
+
+   .. py:method:: apply_events(state, events, *, state_names, reactor_state_names, volume_state_name = 'volume')
+
+      Apply sample-before-bolus events to one pre-event state.
+
+
+
+   .. py:method:: build_dense_rows(*, process, row_times, online_times, states_by_time, extra_by_time, events_by_time, state_names, reactor_state_names, volume_state_name)
+
+      Build rows ordered by time then online/offline/pre-event/post-event.
+
+
+
+   .. py:method:: build_event_rows(events, reactor_state_names)
+
+      Build one events.csv row per event operation.
+
+
+
+   .. py:method:: build_result(*, process, state_times, states, online_times, state_names, reactor_state_names, events = (), extra_columns = None, volume_state_name = 'volume')
+
+      Build dense rows, event rows, and optionally write CSV outputs.
+
+
+
+   .. py:method:: event_columns(reactor_state_names)
+
+      Return events.csv columns for given reactor state order.
+
+
+
+   .. py:method:: group_events(events)
+
+      Group events and enforce sample-before-bolus multiplicity rules.
+
+
+
+.. py:class:: SimulationEvent
+
+   One realized discrete event operation.
+
+
+   .. py:attribute:: delta_volume
+      :type:  float
+
+
+   .. py:attribute:: event_type
+      :type:  str
+
+
+   .. py:attribute:: feed_concentrations
+      :type:  Mapping[str, float]
+
+
+   .. py:attribute:: feed_id
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: process
+      :type:  str
+
+
+   .. py:attribute:: time
+      :type:  float
+
+
+.. py:class:: SimulationResult
+
+   In-memory simulation output plus rows ready for CSV writing.
+
+
+   .. py:attribute:: dense_rows
+      :type:  list[dict[str, Any]]
+
+
+   .. py:attribute:: event_columns
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: event_rows
+      :type:  list[dict[str, Any]]
+
+
+   .. py:attribute:: process
+      :type:  str
+
+
+   .. py:attribute:: reactor_state_names
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: row_columns
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: state_names
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: states
+      :type:  numpy.ndarray
+
+
+   .. py:attribute:: times
+      :type:  numpy.ndarray
+
+
+.. py:data:: EVENT_TYPE_BOLUS
+   :value: 'bolus'
+
+
+.. py:data:: EVENT_TYPE_FERMENTATION_END
+   :value: 'fermentation_end'
+
+
+.. py:data:: EVENT_TYPE_SAMPLE
+   :value: 'sample'
+
+
+.. py:data:: ROW_TYPE_FERMENTATION_END
+   :value: 'fermentation_end'
+
+
+.. py:data:: ROW_TYPE_OFFLINE
+   :value: 'offline'
+
+
+.. py:data:: ROW_TYPE_ONLINE
+   :value: 'online'
+
+
+.. py:data:: ROW_TYPE_ORDER
+
+.. py:data:: ROW_TYPE_POST_EVENT
+   :value: 'post-event'
+
+
+.. py:data:: ROW_TYPE_PRE_EVENT
+   :value: 'pre-event'
+
+

@@ -1,0 +1,227 @@
+hybrax.train.wrapper
+====================
+
+.. py:module:: hybrax.train.wrapper
+
+.. autoapi-nested-parse::
+
+   ``HybridOdeWrapper``: RAW physical-state ODE wrapper around a user reaction module.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.wrapper.HybridOdeWrapper
+   hybrax.train.wrapper.SaveOutputs
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.wrapper.validate_rhs_ode_compatibility
+
+
+Module Contents
+---------------
+
+.. py:class:: HybridOdeWrapper
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   RAW physical-state wrapper around a user reaction module.
+
+   ``physical_solve`` owns the scaled ODE reparameterization. This wrapper sees
+   RAW integrated state ``[RMCs | PVs | V | modeled_cum | latent]``, builds
+   scaled ``ReactionInputs`` for the module, and returns RAW derivatives/save
+   outputs. Save-time ``SCL_states`` stay physical-only; latent-derived
+   observables must use ``ReactionOutputs.auxiliary``.
+
+   The wrapper holds **no scale fields of its own** — every scale comes from
+   ``self.reaction_module.SCALE_*``.
+
+   The wrapper applies one safety clip — ``RAW_RMC_rhs = max(RAW_RMCs, 0)`` —
+   only on the path into ``RhsOde``. The module receives the **unclipped** SCL
+   slice so MLP gradient flow survives transient negative excursions.
+
+
+   .. py:method:: from_process(*, reaction_module, process, controls, target_state_indices = None, loss_module = None)
+      :classmethod:
+
+
+      Build a wrapper from a BioProcess and per-process controls.
+
+      :param reaction_module: Trained/untrained reaction module; its
+                              ``SCALE_*`` fields are validated against ``process``.
+      :param process: Process the ``RhsOde`` template is built from.
+      :param controls: This process's controls; see :func:`from_rhs_ode`.
+      :param target_state_indices: Forwarded to :func:`from_rhs_ode`.
+      :param loss_module: Forwarded to :func:`from_rhs_ode`.
+
+      :returns: The constructed wrapper.
+
+
+
+   .. py:method:: from_rhs_ode(*, reaction_module, rhs_ode, controls, target_state_indices = None, loss_module = None)
+      :classmethod:
+
+
+      Build a wrapper from an existing RhsOde runtime template.
+
+      Scales are read from ``reaction_module`` (a ``UserReactionModule``
+      subclass with ``SCALE_*`` fields). The constructor validates each
+      ``SCALE_*`` shape against the RhsOde / controls layout.
+
+      :param reaction_module: Reaction module supplying every ``SCALE_*``
+                              field and the model's ``__call__``.
+      :param rhs_ode: Canonical ODE structure this process's controls must
+                      agree with.
+      :param controls: This process's controls; its categorized name tuples
+                       must match ``rhs_ode``'s.
+      :param target_state_indices: State columns that are loss targets, or
+                                   ``None`` to default to ``[RMCs | PVs]`` plus the modeled
+                                   cumulative-flow columns (excluding ``V``).
+      :param loss_module: Loss module attached to the wrapper, or ``None`` for
+                          a forward-only wrapper.
+
+      :returns: The constructed wrapper.
+
+      :raises ValueError: If ``rhs_ode`` and ``controls`` disagree on
+          controlled-name categorization, a ``SCALE_*`` field has the
+          wrong shape, a rate-axis scaler has a non-zero offset, or a
+          stateful latent observable is not emitted via
+          ``ReactionOutputs.auxiliary``.
+      :raises TypeError: If ``reaction_module`` is missing a required
+          ``SCALE_*`` field.
+
+
+
+   .. py:method:: initial_physical_state_from_raw(RAW_state)
+
+      Append the module's RAW latent initial state to the physical state.
+
+
+
+   .. py:method:: physical_rhs(t, y_phys)
+
+      Return the derivative of the physical and latent state vector.
+
+      Continuous part only — discrete boluses/samples are handled as jumps.
+
+
+
+   .. py:method:: physical_save_outputs(t, y_phys)
+
+      ``SaveOutputs`` computed from the physical state (for loss/exports).
+
+
+
+   .. py:attribute:: controls
+      :type:  hybrax.train.controls_store.PerProcessControls
+
+
+   .. py:attribute:: loss_module
+      :type:  hybrax.train.model_api.UserLossModule | None
+      :value: None
+
+
+
+   .. py:attribute:: modeled_Inflow_names
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: modeled_Outflow_names
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: modeled_PV_names
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: modeled_RMC_names
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: n_controlled_Inflows
+      :type:  int
+
+
+   .. py:attribute:: n_controlled_Outflows
+      :type:  int
+
+
+   .. py:attribute:: n_controlled_PVs
+      :type:  int
+
+
+   .. py:attribute:: reaction_module
+      :type:  hybrax.train.model_api.UserReactionModule
+
+
+   .. py:attribute:: rhs_ode
+      :type:  hybrax.format.mechanistic.RhsOde
+
+
+   .. py:attribute:: target_state_indices
+      :type:  jax.Array
+
+
+.. py:class:: SaveOutputs
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Diffrax-saveable wrapper outputs.
+
+   ``SCL_states`` are in the solver's scaled state space; rates are RAW. Use
+   ``module.unscale_state`` to convert ``SCL_states`` to physical units when
+   exporting to CSV/JSONL.
+
+
+   .. py:attribute:: RAW_V
+      :type:  jax.Array
+
+
+   .. py:attribute:: RAW_V_export
+      :type:  jax.Array
+
+
+   .. py:attribute:: RAW_modeled_BiologicalOde_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: RAW_modeled_Inflows_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: RAW_modeled_Outflows_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_states
+      :type:  jax.Array
+
+
+   .. py:attribute:: auxiliary
+      :type:  dict[str, jax.Array] | None
+      :value: None
+
+
+
+.. py:function:: validate_rhs_ode_compatibility(reference_name, reference_rhs_ode, candidate_name, candidate_rhs_ode)
+
+   Validate that two RhsOde instances have compatible runtime axes.
+
+   :param reference_name: Label for ``reference_rhs_ode`` in any error message.
+   :param reference_rhs_ode: The RhsOde every name-field axis is compared against.
+   :param candidate_name: Label for ``candidate_rhs_ode`` in any error message.
+   :param candidate_rhs_ode: The RhsOde being checked for compatibility.
+
+   :raises ValueError: If any of the two RhsOdes' name-tuple fields differ.
+
+

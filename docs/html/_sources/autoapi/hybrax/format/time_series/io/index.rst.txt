@@ -1,0 +1,48 @@
+hybrax.format.time_series.io
+============================
+
+.. py:module:: hybrax.format.time_series.io
+
+.. autoapi-nested-parse::
+
+   Serialization and input adapters for TimeSeries.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.format.time_series.io.timeseries_from_dict
+   hybrax.format.time_series.io.timeseries_from_input_dict
+   hybrax.format.time_series.io.timeseries_from_process_state
+   hybrax.format.time_series.io.timeseries_to_dict
+
+
+Module Contents
+---------------
+
+.. py:function:: timeseries_from_dict(cls, data)
+
+   Construct a TimeSeries from canonical dict form.
+
+   All floating-point fields are float64 (x64 enabled package-wide). A legacy
+   ``"dtype"`` key in older serialized payloads is ignored.
+
+
+.. py:function:: timeseries_from_input_dict(cls, input_data, process_key, variable)
+
+   Build one TimeSeries from full input.json-like data.
+
+
+.. py:function:: timeseries_from_process_state(cls, process_state, variable)
+
+   Build one TimeSeries from metadata.hybrax-format.process_state for a variable.
+
+
+.. py:function:: timeseries_to_dict(series)
+
+   Serialize a TimeSeries instance to canonical dict form.
+
+

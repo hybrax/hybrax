@@ -1,0 +1,68 @@
+hybrax.format.time_series.ppoly
+===============================
+
+.. py:module:: hybrax.format.time_series.ppoly
+
+.. autoapi-nested-parse::
+
+   Owned piecewise cubic power-basis polynomial.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.format.time_series.ppoly.PPoly
+
+
+Module Contents
+---------------
+
+.. py:class:: PPoly(breaks, coeffs, continuity_side = 'right')
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Piecewise cubic polynomial with coeffs shaped (pieces, 4, *output_shape).
+
+
+   .. py:method:: derivative(order = 1)
+
+      Return the piecewise-polynomial derivative of the given order.
+
+
+
+   .. py:method:: from_samples_pchip(t, y, continuity_side = 'right')
+      :classmethod:
+
+
+      Build an owned PPoly from SciPy's PCHIP sample interpolator.
+
+      This constructor is a low-level conversion convenience. The project-wide
+      spline fitting policy remains smoothing-first and does not use this as a
+      fallback selector.
+
+
+
+   .. py:method:: from_scipy_ppoly(ppoly, continuity_side = 'right')
+      :classmethod:
+
+
+      Convert a SciPy PPoly to local power-basis coefficients.
+
+
+
+   .. py:attribute:: breaks
+      :type:  jax.numpy.ndarray
+
+
+   .. py:attribute:: coeffs
+      :type:  jax.numpy.ndarray
+
+
+   .. py:attribute:: continuity_side
+      :type:  str
+
+

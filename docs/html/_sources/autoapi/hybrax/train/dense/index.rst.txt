@@ -1,0 +1,82 @@
+hybrax.train.dense
+==================
+
+.. py:module:: hybrax.train.dense
+
+.. autoapi-nested-parse::
+
+   Dense-grid helpers for loss modules.
+
+   When a :class:`UserLossModule` opts in via the ``dense_grid_n`` property, the
+   trainer solves the ODE on the union of the measurement times and a uniform
+   linspace, then exposes both views on :class:`LossInputs`. The helpers here
+   build that union grid and provide mask utilities for skipping dense points
+   near controls-discontinuities (where finite differences are unreliable).
+
+   Lifted verbatim from the Martens structured example's internals so any
+   consumer can use them without re-inventing.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.dense.all_triple
+   hybrax.train.dense.build_union_time_grid
+   hybrax.train.dense.dense_point_mask_away_from_jumps
+   hybrax.train.dense.dense_triple_mask_away_from_jumps
+
+
+Module Contents
+---------------
+
+.. py:function:: all_triple(point_mask)
+
+   Return which consecutive three-point windows contain only valid points.
+
+   Curvature penalties use three neighboring trajectory points. If any point is
+   invalid—for example, because the solver failed before reaching it—the curvature
+   term involving that point must also be excluded.
+
+   Converts a point mask of length N into a three-point-window mask of length N - 2.
+
+
+.. py:function:: build_union_time_grid(t_measured, n_measured, n_dense = None, n_prediction = None)
+
+   Splice up to two evenly-spaced grids into the measurement grid.
+
+   ``n_dense`` is the loss module's dense grid (consumed by its loss);
+   ``n_prediction`` is an independent output grid (consumed by forward
+   evaluation for ``predictions.csv``). Either may be ``None``; both
+   spliced into the **same** sorted union so a single solve serves both. Both
+   counts are static.
+
+   Returns ``(t_eval_sorted, sample_indices, dense_t, dense_indices,
+   prediction_t, prediction_indices)``:
+   - ``t_eval_sorted`` — the sorted union grid; pass to the solver as ``t_eval``.
+   - ``sample_indices`` — for each measurement row, which output row in the
+     sorted union it corresponds to (so ``save_outputs[sample_indices]`` gives
+     the measurement-grid view).
+   - ``dense_t`` / ``dense_indices`` — the loss dense linspace and its sorted
+     positions (``None`` when ``n_dense is None``).
+   - ``prediction_t`` / ``prediction_indices`` — analogous for the prediction
+     grid (``None`` when ``n_prediction is None``).
+
+
+.. py:function:: dense_point_mask_away_from_jumps(dense_t, jump_ts, jump_epsilon_h)
+
+   Per-point mask: True iff ``dense_t[i]`` is farther than ``jump_epsilon_h``
+   from every jump time. When ``jump_ts is None`` (no discontinuities), every
+   point is kept.
+
+
+.. py:function:: dense_triple_mask_away_from_jumps(dense_t, jump_ts, jump_epsilon_h)
+
+   Per-triple mask: True for triples ``(i-1, i, i+1)`` whose time span
+   does not straddle any jump (with ``jump_epsilon_h`` padding on both sides).
+   Length ``dense_t.shape[0] - 2``. Use for finite-difference curvature
+   penalties so curvature is never measured across a discontinuity.
+
+

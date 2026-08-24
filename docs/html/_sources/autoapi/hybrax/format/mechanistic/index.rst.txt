@@ -1,0 +1,256 @@
+hybrax.format.mechanistic
+=========================
+
+.. py:module:: hybrax.format.mechanistic
+
+.. autoapi-nested-parse::
+
+   Mechanistic API for hybrax.format.
+
+   JAX/Equinox-compatible modules for building continuous-time control functions
+   and ODE right-hand sides directly from a :class:`~hybrax.format.BioProcess`. All
+   modules are fully JAX-jittable via ``equinox.filter_jit``.
+
+   Public API: :func:`get_process_ordering`, :func:`get_control_splines`,
+   :func:`build_rhs_ode`, :func:`extract_discrete_events`,
+   :func:`build_state_splines`, :func:`build_algebraic_func`. See each
+   function's own docstring for its call signature and output layout.
+
+   Forward integration of the process lives in ``hybrax.train``; this module does
+   not integrate. Rate inversion (recovering rate values from state splines)
+   is not implemented.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.format.mechanistic.ControlSplines
+   hybrax.format.mechanistic.RhsOde
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.format.mechanistic.build_algebraic_func
+   hybrax.format.mechanistic.build_rhs_ode
+   hybrax.format.mechanistic.build_state_splines
+   hybrax.format.mechanistic.extract_discrete_events
+   hybrax.format.mechanistic.get_control_splines
+   hybrax.format.mechanistic.get_process_ordering
+
+
+Module Contents
+---------------
+
+.. py:class:: ControlSplines
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   JAX/Equinox module that evaluates all controlled signals at time *t*.
+
+   Created by :func:`get_control_splines`.
+
+   Output layout of ``__call__(t)``::
+
+       u = [Inflow_flow_rates... | Outflow_flow_rates... | PV_values...]
+
+   The first ``len(name_controlled_Inflows) + len(name_controlled_Outflows)``
+   entries are spline derivatives (flow rates carrying the storage sign of
+   the underlying cumulative-volume series). The remaining entries are
+   direct PV values.
+
+
+   .. py:attribute:: name_controlled_Inflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_controlled_Outflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_controlled_PVs
+      :type:  tuple[str, ...]
+
+
+.. py:class:: RhsOde
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   JAX/Equinox module that evaluates the biological RHS for a process.
+
+   Built by :func:`build_rhs_ode` from ``process.biological_ode``
+   (auto-generated in :meth:`BioProcess.__post_init__` when not
+   user-supplied). The biological ``dc/dt`` per state comes from
+   user-written expression strings; hybrax.format adds the physical
+   contributions (feed, dilution, dV) on top.
+
+   Call signature::
+
+       dc_dt = rhs_ode(c, rates, u, f_modeled_Inflows, f_modeled_Outflows)
+
+   where:
+
+   - ``c = [name_modeled_RMCs... | name_modeled_PVs... | V]``.
+   - ``rates`` aligns with :attr:`name_modeled_rates`.
+   - ``u`` is the full control vector (output of ``ControlSplines``):
+     ``[Inflow_flows | Outflow_flows | PV_values]``.
+   - ``f_modeled_Inflows`` are uncontrolled Inflow flow rates aligned with
+     :attr:`name_modeled_Inflows` (non-negative).
+   - ``f_modeled_Outflows`` are uncontrolled Outflow flow rates aligned with
+     :attr:`name_modeled_Outflows` (non-positive, signed).
+
+   Returns ``dc/dt`` of shape ``(len(RMCs) + len(PVs) + 1,)``.
+
+
+   .. py:attribute:: Cin_controlled_Inflows
+      :type:  jax.numpy.ndarray
+
+
+   .. py:attribute:: Cin_modeled_Inflows
+      :type:  jax.numpy.ndarray
+
+
+   .. py:attribute:: algebraic_funcs
+      :type:  tuple
+
+
+   .. py:attribute:: derivative_funcs
+      :type:  tuple
+
+
+   .. py:attribute:: name_controlled_Inflows
+      :type:  tuple
+
+
+   .. py:attribute:: name_controlled_Outflows
+      :type:  tuple
+
+
+   .. py:attribute:: name_controlled_PVs
+      :type:  tuple
+
+
+   .. py:attribute:: name_modeled_Inflows
+      :type:  tuple
+
+
+   .. py:attribute:: name_modeled_Outflows
+      :type:  tuple
+
+
+   .. py:attribute:: name_modeled_PVs
+      :type:  tuple
+
+
+   .. py:attribute:: name_modeled_RMCs
+      :type:  tuple
+
+
+   .. py:attribute:: name_modeled_algebraic
+      :type:  tuple
+
+
+   .. py:attribute:: name_modeled_rates
+      :type:  tuple
+
+
+   .. py:attribute:: retention_controlled_Outflows
+      :type:  jax.numpy.ndarray
+
+
+   .. py:attribute:: retention_modeled_Outflows
+      :type:  jax.numpy.ndarray
+
+
+.. py:function:: build_algebraic_func(process, ordering = None)
+
+   Build a callable that evaluates the ``biological_ode.algebraic``
+   quantities from concrete ``(state_values, ctrl_pv_values, rates)``
+   arrays.
+
+   ``state_values`` is the non-volume state in canonical order
+   (``name_modeled_RMCs`` followed by ``name_modeled_PVs``);
+   ``ctrl_pv_values`` aligns with ``name_controlled_PVs``; ``rates``
+   aligns with ``name_modeled_rates``.
+
+   Returns ``{name: scalar}`` keyed by ``name_modeled_algebraic`` (topo
+   order). Useful for plotting / loss computation.
+
+
+.. py:function:: build_rhs_ode(process, ordering = None)
+
+   Build a :class:`RhsOde` from a process whose ``biological_ode`` is
+   set (auto-generated in :meth:`BioProcess.__post_init__` when not
+   user-supplied). Raises ``ValueError`` if the block is missing or
+   fails validation.
+
+
+.. py:function:: build_state_splines(process, ordering)
+
+   Build state splines from stored TimeSeries spline state.
+
+   Pseudobatch-transformed reactor components (identified through the
+   process-level ``pseudobatch_transform`` bundle) are returned as
+   real-space backtransform splines. Other reactor-component and
+   process-variable states are converted directly from their TimeSeries
+   or StaticVariable carriers.
+
+   Returns ``{state_name: spline_callable}`` for every non-volume state
+   in ``ordering.name_modeled_RMCs + ordering.name_modeled_PVs``.
+
+
+.. py:function:: extract_discrete_events(process, ordering)
+
+   Extract sampling and bolus-feed events from *process*.
+
+   Each event dict carries:
+
+   - ``t`` (float): event time
+   - ``kind`` (str): ``'sample'`` or ``'bolus_feed'``
+   - ``dV`` (float): signed volume change (positive = add, negative = remove)
+   - ``Cin`` (jnp.ndarray | None): feed composition aligned with
+     ``ordering.name_modeled_RMCs`` (None for sampling events)
+   - ``source`` (str): originating volume-change name
+
+   Events are sorted by time; sampling precedes bolus feeds at the same
+   timestamp. At most one sample and one bolus per timestamp.
+
+
+.. py:function:: get_control_splines(process, ordering = None)
+
+   Build a :class:`ControlSplines` module for *process*.
+
+   Block layout (Inflows → Outflows → PVs) is enforced by the canonical ordering
+   in :class:`ProcessOrdering`.
+
+
+.. py:function:: get_process_ordering(process)
+
+   Build the canonical :class:`ProcessOrdering` for a process.
+
+   All other mechanistic factories (``get_control_splines``,
+   ``build_rhs_ode``, ``extract_discrete_events``, ``build_state_splines``)
+   consume this object so every state/control/rate vector has the same
+   layout.
+
+   Validations performed here:
+
+   - Every continuous ``Inflow`` must define ``feed_medium`` and
+     every component in that medium must exist in
+     ``reactor_medium.components``.
+   - Every ``Outflow.retention`` key must name a reactor component, every
+     value must be in ``[0, 1]``, and discrete Outflows cannot set retention.
+   - Every non-controlled ``ProcessVariable`` must have a ``TimeSeries``
+     value carrier (static PVs must be ``is_controlled=True``).
+   - The ``BiologicalOde.algebraic`` graph must be acyclic.
+   - All names across every group must be unique (no shared names between
+     states, rates, algebraic, controlled PVs, Inflows, Outflows).
+
+

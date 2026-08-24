@@ -1,0 +1,1047 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html">
+        <link rel="prefetch" href="../../../_static/hybrax_logo.png" as="image">
+
+    <link rel="shortcut icon" href="../../../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>hybrax.format.dataclasses - Bioprocess Modeling with Hybrax</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=98a1085a" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #eeffcc;
+  --color-code-foreground: black;
+  --color-brand-primary: #2563eb;
+  --color-brand-content: #2563eb;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">Bioprocess Modeling with Hybrax</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../../_static/hybrax_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">Hybrax Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/why.html">Why this exists</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/concepts.html">Concepts and Vocabulary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/find.html">Which page do I need?</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/01_your_first_dataset.html">1. Import your Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/02_look_at_it.html">2. View your Dataset</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/03_train.html">3. Train a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/04_your_first_custom_py.html">4. Custom Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/05_predict.html">5. Predict Processes</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.format guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/data_model.html">The Data Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/load_and_save.html">Loading and saving</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/validate_and_inspect.html">Validating and inspecting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/volume_feeds_events.html">Volume, feeds and events</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/time_series_and_splines.html">Time series and splines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/limits_and_gotchas.html">Limits and gotchas</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/further_reading.html">Further reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/config.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/hooks_cheatsheet.html">Customization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/prepare.html">Prepare</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/train.html">Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/reaction_module.html">The Reaction Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/loss_module.html">The Loss Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/scaling.html">Scaling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/forward.html">Forward</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/loo.html">Cross-Validation (LOO)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/save_load_predict.html">The Python API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/further_reading.html">Further Reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/freezing.html">Freezing parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/augmentation.html">Augmentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">A Gaussian-process model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">A KAN model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed.html">OptFed</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/modeled_pv.html">A modeled process variable</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../troubleshooting/errors.html">Errors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../troubleshooting/silent_failures.html">Silent failures</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Under the hood</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../under_the_hood/design_rationale.html">Design Rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributors.html">Contributors</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/hybrax/format/index.html">hybrax.format</a><input aria-label="Toggle navigation of hybrax.format" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/dataclasses/index.html">hybrax.format.dataclasses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/index.html">hybrax.format.time_series</a><input aria-label="Toggle navigation of hybrax.format.time_series" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/constants/index.html">hybrax.format.time_series.constants</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/grid_utils/index.html">hybrax.format.time_series.grid_utils</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/io/index.html">hybrax.format.time_series.io</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/ppoly/index.html">hybrax.format.time_series.ppoly</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/spline_ops/index.html">hybrax.format.time_series.spline_ops</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/timeseries/index.html">hybrax.format.time_series.timeseries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/validate/index.html">hybrax.format.validate</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/hybrax/train/index.html">hybrax.train</a><input aria-label="Toggle navigation of hybrax.train" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/augmentation/index.html">hybrax.train.augmentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/augmentation_plot/index.html">hybrax.train.augmentation_plot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/bounds_loss/index.html">hybrax.train.bounds_loss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/checkpointing/index.html">hybrax.train.checkpointing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/cli/index.html">hybrax.train.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/forward_plotting/index.html">hybrax.train.forward_plotting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/harness/index.html">hybrax.train.harness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/inspect/index.html">hybrax.train.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/logging/index.html">hybrax.train.logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/loo/index.html">hybrax.train.loo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/loo_metrics/index.html">hybrax.train.loo_metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_context/index.html">hybrax.train.runtime_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/serialization/index.html">hybrax.train.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/trainer/index.html">hybrax.train.trainer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for hybrax.format.dataclasses</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""</span>
+<span class="sd">Bioprocess Benchmarking Dataset Structure</span>
+<span class="sd">JAX-compatible dataclasses for standardized bioprocess data</span>
+<span class="sd">"""</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">contextlib</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Set</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">._logging</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_logger</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.time_series</span><span class="w"> </span><span class="kn">import</span> <span class="n">TimeSeries</span>
+
+<span class="n">_logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+<span class="c1"># Bounds metadata: ``(lower, upper)`` with ``None`` on either side meaning</span>
+<span class="c1"># unbounded. RMCs default to nonnegative; other carriers default unbounded.</span>
+<span class="c1"># Bounds are pure metadata: not enforced inside RhsOde / integrator. Consumers</span>
+<span class="c1"># (e.g. hybrax.train's loss generator) read them off the process to build</span>
+<span class="c1"># soft-constraint penalties.</span>
+<span class="n">Bounds</span> <span class="o">=</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span>
+<span class="n">_NO_BOUNDS</span><span class="p">:</span> <span class="n">Bounds</span> <span class="o">=</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<span class="n">_DEFAULT_RMC_BOUNDS</span><span class="p">:</span> <span class="n">Bounds</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_format_bounds</span><span class="p">(</span><span class="n">bounds</span><span class="p">:</span> <span class="n">Bounds</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Format a bounds tuple for display, hiding the unbounded default.</span>
+
+<span class="sd">    Shared by ``inspect.print_process_structure`` and this module's own</span>
+<span class="sd">    auto-assumption notices. Kept here, not in ``inspect.py``, since</span>
+<span class="sd">    ``inspect.py`` already imports from this module and the reverse would be</span>
+<span class="sd">    a circular import.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">bounds</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="p">(</span><span class="n">bounds</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">"unbounded"</span>
+    <span class="n">lo</span> <span class="o">=</span> <span class="s2">"-inf"</span> <span class="k">if</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">bounds</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">:</span><span class="s2">g</span><span class="si">}</span><span class="s2">"</span>
+    <span class="n">hi</span> <span class="o">=</span> <span class="s2">"+inf"</span> <span class="k">if</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">bounds</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">:</span><span class="s2">g</span><span class="si">}</span><span class="s2">"</span>
+    <span class="k">return</span> <span class="sa">f</span><span class="s2">"[</span><span class="si">{</span><span class="n">lo</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">hi</span><span class="si">}</span><span class="s2">]"</span>
+
+
+<span class="c1"># ============================================================</span>
+<span class="c1"># Auto-assumption notices</span>
+<span class="c1"># ============================================================</span>
+<span class="c1">#</span>
+<span class="c1"># hybrax.format fills a small number of required-but-unspecified values with a</span>
+<span class="c1"># documented default (e.g. a feed medium's missing reactor-component</span>
+<span class="c1"># concentration) instead of erroring. Every such fill is announced through</span>
+<span class="c1"># `_announce_assumption` so it is never silent. Use `silence_assumptions()`</span>
+<span class="c1"># to suppress these notices when constructing/loading many processes in a</span>
+<span class="c1"># loop, where a per-process notice would otherwise repeat once per dataset.</span>
+
+<span class="n">_ANNOUNCE_ASSUMPTIONS</span> <span class="o">=</span> <span class="kc">True</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_announce_assumption</span><span class="p">(</span><span class="n">message</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">_ANNOUNCE_ASSUMPTIONS</span><span class="p">:</span>
+        <span class="n">_logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"Assumption: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="silence_assumptions">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.silence_assumptions">[docs]</a>
+<span class="nd">@contextlib</span><span class="o">.</span><span class="n">contextmanager</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">silence_assumptions</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">"""Temporarily suppress hybrax.format's auto-assumption notices.</span>
+
+<span class="sd">    Useful when constructing or loading many ``BioProcess`` objects in a</span>
+<span class="sd">    loop (e.g. building a ``BioProcessCollection``), where a per-process</span>
+<span class="sd">    notice would otherwise repeat once per dataset.</span>
+<span class="sd">    """</span>
+    <span class="k">global</span> <span class="n">_ANNOUNCE_ASSUMPTIONS</span>
+    <span class="n">previous</span> <span class="o">=</span> <span class="n">_ANNOUNCE_ASSUMPTIONS</span>
+    <span class="n">_ANNOUNCE_ASSUMPTIONS</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">yield</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">_ANNOUNCE_ASSUMPTIONS</span> <span class="o">=</span> <span class="n">previous</span></div>
+
+
+
+<div class="viewcode-block" id="ProcessOrdering">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.ProcessOrdering">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProcessOrdering</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Canonical name ordering across all derived mechanistic modules.</span>
+
+<span class="sd">    Built once from a :class:`BioProcess` via</span>
+<span class="sd">    :func:`hybrax.format.mechanistic.get_process_ordering`. ``RhsOde``,</span>
+<span class="sd">    ``ControlSplines``, and the spline/event helpers all consume this object</span>
+<span class="sd">    so the layout of every state/control/rate vector is determined in exactly</span>
+<span class="sd">    one place.</span>
+
+<span class="sd">    Ordering rules:</span>
+
+<span class="sd">    - ``name_modeled_rates`` preserves the user-supplied insertion order of</span>
+<span class="sd">      ``BiologicalOde.rates`` (downstream consumers such as ``hybrax.train``</span>
+<span class="sd">      pass rate vectors in this order).</span>
+<span class="sd">    - ``name_modeled_algebraic`` is topo-sorted by inter-algebraic</span>
+<span class="sd">      dependencies; ties broken alphabetically.</span>
+<span class="sd">    - All other tuples are alphabetical within their sub-group.</span>
+
+<span class="sd">    State vector layout:</span>
+<span class="sd">        ``c = [name_modeled_RMCs... | name_modeled_PVs... | V]``</span>
+
+<span class="sd">    Control vector layout (output of ``ControlSplines.__call__``):</span>
+<span class="sd">        ``u = [name_controlled_Inflows... | name_controlled_Outflows... |</span>
+<span class="sd">        name_controlled_PVs...]``</span>
+
+<span class="sd">    The first ``len(Inflows)+len(Outflows)`` entries of ``u`` are flow rates (spline</span>
+<span class="sd">    derivatives); the remaining ``len(PVs)`` entries are direct values.</span>
+<span class="sd">    """</span>
+
+    <span class="n">name_modeled_rates</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="n">name_modeled_algebraic</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="n">name_modeled_RMCs</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="n">name_modeled_PVs</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="n">name_modeled_Inflows</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="n">name_modeled_Outflows</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="n">name_controlled_PVs</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="n">name_controlled_Inflows</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+    <span class="n">name_controlled_Outflows</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span></div>
+
+
+
+<span class="c1"># TODO for later: standardize unit spelling so it might be used for unit checks</span>
+
+
+<div class="viewcode-block" id="DiscreteEvents">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.DiscreteEvents">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">DiscreteEvents</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Discrete event times: bolus feeds, sampling, volume jumps, and similar."""</span>
+
+    <span class="n">times</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span>  <span class="c1"># sorted, unique event times</span>
+    <span class="n">labels</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">list</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">metadata</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+
+<span class="c1"># ============================================================</span>
+<span class="c1"># Low-Level Structures</span>
+<span class="c1"># ============================================================</span>
+
+
+<div class="viewcode-block" id="TimeAxis">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.TimeAxis">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">TimeAxis</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Time axis for a process: its unit, start/end bounds, and time_reference anchor."""</span>
+
+    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># e.g. "hours", "days"</span>
+    <span class="n">start</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">end</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">time_reference</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># e.g. "inoculation", "first_feed", "operator_defined"</span></div>
+
+
+
+<div class="viewcode-block" id="StaticVariable">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.StaticVariable">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">StaticVariable</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Raw experimental value for a time-independent parameter."""</span>
+
+    <span class="n">value</span><span class="p">:</span> <span class="nb">float</span></div>
+
+
+
+<div class="viewcode-block" id="ProcessVariable">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.ProcessVariable">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ProcessVariable</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""One process variable: a controlled input, or a modeled state."""</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># original name from paper</span>
+    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># e.g. "g/L", "g/L/h", "°C"</span>
+    <span class="n">is_controlled</span><span class="p">:</span> <span class="p">(</span>
+        <span class="nb">bool</span>  <span class="c1"># True if this variable is a control input, False if it's a state variable</span>
+    <span class="p">)</span>
+    <span class="n">values</span><span class="p">:</span> <span class="n">TimeSeries</span> <span class="o">|</span> <span class="n">StaticVariable</span>
+    <span class="n">bounds</span><span class="p">:</span> <span class="n">Bounds</span> <span class="o">=</span> <span class="n">_NO_BOUNDS</span>  <span class="c1"># (lo, hi); None on either side = unbounded</span></div>
+
+
+
+<div class="viewcode-block" id="FeedMediumComponent">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.FeedMediumComponent">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">FeedMediumComponent</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""One named component of a feed medium's composition."""</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># eg. "glucose", "ammonium", "inductor"</span>
+    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># e.g. "g/L", "mM"</span>
+    <span class="n">concentration</span><span class="p">:</span> <span class="n">TimeSeries</span> <span class="o">|</span> <span class="n">StaticVariable</span>
+    <span class="n">is_controlled</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+
+<div class="viewcode-block" id="ReactorMediumComponent">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.ReactorMediumComponent">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ReactorMediumComponent</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""One reactor-medium component: its concentration, optional pseudobatch series, and bounds."""</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># eg. "glucose", "ammonium", "inductor"</span>
+    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># e.g. "g/L", "mM"</span>
+    <span class="n">concentration</span><span class="p">:</span> <span class="n">TimeSeries</span> <span class="o">|</span> <span class="n">StaticVariable</span>
+    <span class="n">pseudobatch_concentration</span><span class="p">:</span> <span class="n">TimeSeries</span> <span class="o">|</span> <span class="n">StaticVariable</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">bounds</span><span class="p">:</span> <span class="n">Bounds</span> <span class="o">=</span> <span class="n">_DEFAULT_RMC_BOUNDS</span></div>
+
+
+
+<div class="viewcode-block" id="FeedMedium">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.FeedMedium">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">FeedMedium</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Feed medium definition for ODE RHS calculations.</span>
+
+<span class="sd">    ``density``/``density_unit`` are bookkeeping metadata only: the</span>
+<span class="sd">    RHS/mass-balance math (mechanistic.py) never reads them, so they default</span>
+<span class="sd">    to the common aqueous-solution assumption (1 kg/L) rather than being</span>
+<span class="sd">    required.</span>
+<span class="sd">    """</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">density</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="n">density_unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"kg/L"</span>
+    <span class="n">components</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">FeedMediumComponent</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="ReactorMedium">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.ReactorMedium">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ReactorMedium</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Reactor medium definition for ODE RHS calculations.</span>
+
+<span class="sd">    ``density``/``density_unit`` are bookkeeping metadata only, with the same</span>
+<span class="sd">    default as :class:`FeedMedium`.</span>
+<span class="sd">    """</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">density</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="n">density_unit</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"kg/L"</span>
+    <span class="n">components</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">ReactorMediumComponent</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="BioProcessMetadata">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessMetadata">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">BioProcessMetadata</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Static reactor characteristics."""</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">process_type</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># "batch", "fed_batch", "continuous"</span>
+    <span class="n">notes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="VolumeChange">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.VolumeChange">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">VolumeChange</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Base class for volume change events, discrete or continuous.</span>
+
+<span class="sd">    Volume changes are saved in the volume unit (L, m3, or kg), not as a rate.</span>
+<span class="sd">    """</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="c1"># e.g. "L", "m3", "kg"; not "L/h" or "kg/h" derived units.</span>
+    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">is_controlled</span><span class="p">:</span> <span class="nb">bool</span>  <span class="c1"># True if controlled, False if modeled</span>
+    <span class="n">is_continuous</span><span class="p">:</span> <span class="nb">bool</span>  <span class="c1"># True if continuous, False if discrete</span>
+    <span class="n">values</span><span class="p">:</span> <span class="n">TimeSeries</span>  <span class="c1"># For continuous changes (cumulative or rate)</span></div>
+
+
+
+<div class="viewcode-block" id="Inflow">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.Inflow">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Inflow</span><span class="p">(</span><span class="n">VolumeChange</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Volume change from a feed (inflow). Includes the feed medium composition.</span>
+
+<span class="sd">    All delta values should be &gt;= 0.</span>
+<span class="sd">    """</span>
+
+    <span class="n">feed_medium</span><span class="p">:</span> <span class="n">FeedMedium</span></div>
+
+
+
+<div class="viewcode-block" id="Outflow">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.Outflow">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Outflow</span><span class="p">(</span><span class="n">VolumeChange</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Volume change from sampling/removal (outflow). No feed medium.</span>
+
+<span class="sd">    All delta values should be &lt;= 0.</span>
+<span class="sd">    """</span>
+
+    <span class="n">retention</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span></div>
+
+    <span class="c1"># sigma in [0, 1] per reactor-medium component name. Missing key =&gt; 0</span>
+    <span class="c1"># (species fully leaves with the outflow: sampling/harvest, the only</span>
+    <span class="c1"># behavior before this field existed). sigma=1 =&gt; fully retained (e.g.</span>
+    <span class="c1"># cells in perfusion; solutes in evaporation). sigma models *reduced</span>
+    <span class="c1"># removal relative to a well-mixed outlet only*: it cannot represent a</span>
+    <span class="c1"># component being enriched in the outflow above bulk concentration (e.g.</span>
+    <span class="c1"># preferential stripping/volatilization). Only meaningful on a</span>
+    <span class="c1"># continuous Outflow (is_continuous=True); a non-empty value here on a</span>
+    <span class="c1"># discrete Outflow is rejected at construction/validation time. No</span>
+    <span class="c1"># physical meaning on Inflow (feeds add, never retain).</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_check_outflow_retention</span><span class="p">(</span>
+    <span class="n">vc_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">vc</span><span class="p">:</span> <span class="s2">"Outflow"</span><span class="p">,</span> <span class="n">rmc_names</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="nb">frozenset</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Return validation errors for one Outflow's retention (empty = valid).</span>
+
+<span class="sd">    Single source of truth for the three retention rules, shared by</span>
+<span class="sd">    :func:`BioProcess.__post_init__`, :func:`mechanistic.get_process_ordering`,</span>
+<span class="sd">    and :func:`validate.validate_outflow_retention`. Each enforces it at a</span>
+<span class="sd">    different point (construction, RHS-build, opt-in audit) since ``Outflow``</span>
+<span class="sd">    is a plain mutable dataclass and construction-time validity does not</span>
+<span class="sd">    guarantee ongoing validity.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">vc</span><span class="o">.</span><span class="n">retention</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">vc</span><span class="o">.</span><span class="n">is_continuous</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span>
+            <span class="sa">f</span><span class="s2">"Outflow </span><span class="si">{</span><span class="n">vc_name</span><span class="si">!r}</span><span class="s2"> sets retention </span><span class="si">{</span><span class="n">vc</span><span class="o">.</span><span class="n">retention</span><span class="si">!r}</span><span class="s2"> but is "</span>
+            <span class="s2">"discrete (is_continuous=False). Retention is only implemented "</span>
+            <span class="s2">"for continuous Outflows; setting it on a discrete Outflow would "</span>
+            <span class="s2">"be silently ignored by the RHS ODE."</span>
+        <span class="p">]</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">unknown</span> <span class="o">=</span> <span class="p">[</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">vc</span><span class="o">.</span><span class="n">retention</span> <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">rmc_names</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"Outflow </span><span class="si">{</span><span class="n">vc_name</span><span class="si">!r}</span><span class="s2"> retention references unknown reactor "</span>
+            <span class="sa">f</span><span class="s2">"component(s): </span><span class="si">{</span><span class="n">unknown</span><span class="si">}</span><span class="s2">."</span>
+        <span class="p">)</span>
+    <span class="n">out_of_range</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">name</span><span class="p">:</span> <span class="n">value</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">vc</span><span class="o">.</span><span class="n">retention</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="ow">not</span> <span class="mf">0.0</span> <span class="o">&lt;=</span> <span class="n">value</span> <span class="o">&lt;=</span> <span class="mf">1.0</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="n">out_of_range</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"Outflow </span><span class="si">{</span><span class="n">vc_name</span><span class="si">!r}</span><span class="s2"> retention value(s) out of [0, 1]: </span><span class="si">{</span><span class="n">out_of_range</span><span class="si">}</span><span class="s2">."</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">errors</span>
+
+
+<div class="viewcode-block" id="Volume">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.Volume">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Volume</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Container for all volume-related information in a process.</span>
+
+<span class="sd">    Kept separate from states and controls because volume can be both</span>
+<span class="sd">    controlled and modeled, and is affected by multiple operations (feeds,</span>
+<span class="sd">    sampling, evaporation).</span>
+<span class="sd">    """</span>
+
+    <span class="n">initial_volume</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># e.g. "L", "m3", "kg"</span>
+    <span class="n">volume_changes</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">VolumeChange</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">total_volume</span><span class="p">:</span> <span class="n">TimeSeries</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">bounds</span><span class="p">:</span> <span class="n">Bounds</span> <span class="o">=</span> <span class="n">_NO_BOUNDS</span>  <span class="c1"># (lo, hi) on V; None on either side = unbounded</span></div>
+
+
+
+<span class="c1"># ============================================================</span>
+<span class="c1"># User-defined biological ODE</span>
+<span class="c1"># ============================================================</span>
+
+
+<div class="viewcode-block" id="BiologicalOde">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BiologicalOde">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">BiologicalOde</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""User-defined per-state biological RHS expressions.</span>
+
+<span class="sd">    Describes only the *biological* part of ``dc/dt``. Physical contributions</span>
+<span class="sd">    (feed inflow, dilution, sample outflow, volume dynamics) continue to be</span>
+<span class="sd">    added by hybrax.format from the existing :class:`VolumeChange` machinery and</span>
+<span class="sd">    are not part of this block.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        algebraic: Mapping ``name -&gt; expression string``. Algebraic (no time</span>
+<span class="sd">            derivative), recomputed every RHS call. Must be acyclic.</span>
+<span class="sd">        rates: Mapping ``name -&gt; Bounds``. Names of abstract specific rates</span>
+<span class="sd">            that the runtime supplies; ``len(rates)`` is the rate-vector</span>
+<span class="sd">            dimension. Each value is a ``(lower, upper)`` tuple with ``None``</span>
+<span class="sd">            on either side meaning unbounded; use ``(None, None)`` (i.e.</span>
+<span class="sd">            ``_NO_BOUNDS``) for rates without bounds.</span>
+<span class="sd">        derivatives: Mapping ``state_name -&gt; expression string`` giving the</span>
+<span class="sd">            biological contribution to ``d(state)/dt``. Every dynamic state</span>
+<span class="sd">            must have an entry; use ``"0"`` to declare no biological</span>
+<span class="sd">            dynamics.</span>
+<span class="sd">    """</span>
+
+    <span class="n">algebraic</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">rates</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Bounds</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">derivatives</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_format_biological_ode_lines</span><span class="p">(</span><span class="n">bo</span><span class="p">:</span> <span class="n">BiologicalOde</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Render a BiologicalOde's algebraic/rates/derivatives as display lines.</span>
+
+<span class="sd">    Shared by `_auto_generate_biological_ode`'s assumption notice and</span>
+<span class="sd">    `inspect.print_process_structure`. Kept here, next to `BiologicalOde`</span>
+<span class="sd">    itself, for the same import-direction reason as `_format_bounds`.</span>
+<span class="sd">    """</span>
+    <span class="n">lines</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">bo</span><span class="o">.</span><span class="n">algebraic</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">Algebraic (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">bo</span><span class="o">.</span><span class="n">algebraic</span><span class="p">)</span><span class="si">}</span><span class="s2">):"</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">expr</span> <span class="ow">in</span> <span class="n">bo</span><span class="o">.</span><span class="n">algebraic</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">  </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> = </span><span class="si">{</span><span class="n">expr</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">bo</span><span class="o">.</span><span class="n">rates</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">Rates (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">bo</span><span class="o">.</span><span class="n">rates</span><span class="p">)</span><span class="si">}</span><span class="s2">):"</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">bounds</span> <span class="ow">in</span> <span class="n">bo</span><span class="o">.</span><span class="n">rates</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">  </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">: bounds=</span><span class="si">{</span><span class="n">_format_bounds</span><span class="p">(</span><span class="n">bounds</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">bo</span><span class="o">.</span><span class="n">derivatives</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">Derivatives (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">bo</span><span class="o">.</span><span class="n">derivatives</span><span class="p">)</span><span class="si">}</span><span class="s2">):"</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">expr</span> <span class="ow">in</span> <span class="n">bo</span><span class="o">.</span><span class="n">derivatives</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">  d(</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">)/dt|biological = </span><span class="si">{</span><span class="n">expr</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">lines</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_auto_generate_biological_ode</span><span class="p">(</span><span class="n">process</span><span class="p">:</span> <span class="s2">"BioProcess"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BiologicalOde</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Generate the minimal default :class:`BiologicalOde` for a process.</span>
+
+<span class="sd">    For every reactor-medium component ``c`` the derivative is</span>
+<span class="sd">    ``q_&lt;c&gt; * &lt;biomass&gt;``; for every dynamic (non-controlled, non-static)</span>
+<span class="sd">    process variable ``p`` it is ``r_&lt;p&gt;``. Static process variables</span>
+<span class="sd">    (``StaticVariable`` values) are skipped: they have no biological</span>
+<span class="sd">    derivative, matching the legacy auto-RHS semantics that zeroed their</span>
+<span class="sd">    rate contribution.</span>
+
+<span class="sd">    Rate insertion order is biomass-first reactor components followed by</span>
+<span class="sd">    dynamic process variables, so the flat rates array layout matches the</span>
+<span class="sd">    insertion order of :attr:`BiologicalOde.rates`.</span>
+
+<span class="sd">    Auto-generation requires a ``"biomass"`` reactor-medium component</span>
+<span class="sd">    (case-insensitive). Users who do not have a biomass component must</span>
+<span class="sd">    define ``BioProcess.biological_ode`` themselves; the</span>
+<span class="sd">    :meth:`BioProcess.__post_init__` skips auto-generation when the user</span>
+<span class="sd">    already supplied a block.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">BiologicalOde</span><span class="p">()</span>
+    <span class="n">biomass_name</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span>
+        <span class="p">(</span>
+            <span class="n">n</span>
+            <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span>
+            <span class="k">if</span> <span class="n">n</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">"biomass"</span>
+        <span class="p">),</span>
+        <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">biomass_name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"auto-generated BiologicalOde requires a 'biomass' component "</span>
+            <span class="s2">"in process.reactor_medium.components. Pass an explicit "</span>
+            <span class="s2">"BioProcess.biological_ode to skip auto-generation. "</span>
+            <span class="sa">f</span><span class="s2">"Available reactor components: "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
+        <span class="p">)</span>
+
+    <span class="n">rmc_names</span> <span class="o">=</span> <span class="p">[</span><span class="n">biomass_name</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span>
+        <span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span> <span class="k">if</span> <span class="n">n</span> <span class="o">!=</span> <span class="n">biomass_name</span>
+    <span class="p">]</span>
+    <span class="n">pv_dynamic</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">name</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">pv</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="k">if</span> <span class="p">(</span><span class="ow">not</span> <span class="n">pv</span><span class="o">.</span><span class="n">is_controlled</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pv</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">TimeSeries</span><span class="p">)</span>
+    <span class="p">]</span>
+
+    <span class="n">rates</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Bounds</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">rmc</span> <span class="ow">in</span> <span class="n">rmc_names</span><span class="p">:</span>
+        <span class="n">rates</span><span class="p">[</span><span class="sa">f</span><span class="s2">"q_</span><span class="si">{</span><span class="n">rmc</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span> <span class="o">=</span> <span class="n">_NO_BOUNDS</span>
+    <span class="k">for</span> <span class="n">pv</span> <span class="ow">in</span> <span class="n">pv_dynamic</span><span class="p">:</span>
+        <span class="n">rates</span><span class="p">[</span><span class="sa">f</span><span class="s2">"r_</span><span class="si">{</span><span class="n">pv</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span> <span class="o">=</span> <span class="n">_NO_BOUNDS</span>
+
+    <span class="n">derivatives</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">rmc</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"q_</span><span class="si">{</span><span class="n">rmc</span><span class="si">}</span><span class="s2"> * </span><span class="si">{</span><span class="n">biomass_name</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">rmc</span> <span class="ow">in</span> <span class="n">rmc_names</span>
+    <span class="p">}</span>
+    <span class="n">derivatives</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="n">pv</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"r_</span><span class="si">{</span><span class="n">pv</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">pv</span> <span class="ow">in</span> <span class="n">pv_dynamic</span><span class="p">})</span>
+
+    <span class="n">bo</span> <span class="o">=</span> <span class="n">BiologicalOde</span><span class="p">(</span><span class="n">algebraic</span><span class="o">=</span><span class="p">{},</span> <span class="n">rates</span><span class="o">=</span><span class="n">rates</span><span class="p">,</span> <span class="n">derivatives</span><span class="o">=</span><span class="n">derivatives</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">_ANNOUNCE_ASSUMPTIONS</span><span class="p">:</span>
+        <span class="n">detail</span> <span class="o">=</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_format_biological_ode_lines</span><span class="p">(</span><span class="n">bo</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">"  "</span><span class="p">))</span>
+        <span class="n">_logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">"Assumption: process.biological_ode not provided; auto-generating "</span>
+            <span class="sa">f</span><span class="s2">"a default using reactor component </span><span class="si">{</span><span class="n">biomass_name</span><span class="si">!r}</span><span class="s2"> as the "</span>
+            <span class="sa">f</span><span class="s2">"biomass/growth driver. Pass an explicit BioProcess.biological_ode "</span>
+            <span class="sa">f</span><span class="s2">"to override:</span><span class="se">\n</span><span class="si">{</span><span class="n">detail</span><span class="si">}</span><span class="s2">"</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">bo</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_announce_missing_inflow_concentrations</span><span class="p">(</span><span class="n">process</span><span class="p">:</span> <span class="s2">"BioProcess"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Announce reactor components omitted from each Inflow feed medium.</span>
+
+<span class="sd">    Omitted components remain absent from the caller-owned mapping and are</span>
+<span class="sd">    interpreted as zero when mechanistic feed-composition vectors are built.</span>
+<span class="sd">    An entirely missing ``feed_medium`` remains a hard error elsewhere.</span>
+<span class="sd">    """</span>
+    <span class="n">rmc_names</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">vc_name</span><span class="p">,</span> <span class="n">vc</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">volume_changes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">vc</span><span class="p">,</span> <span class="n">Inflow</span><span class="p">)</span> <span class="ow">or</span> <span class="n">vc</span><span class="o">.</span><span class="n">feed_medium</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">feed</span> <span class="o">=</span> <span class="n">vc</span><span class="o">.</span><span class="n">feed_medium</span>
+        <span class="n">missing</span> <span class="o">=</span> <span class="p">[</span><span class="n">rmc</span> <span class="k">for</span> <span class="n">rmc</span> <span class="ow">in</span> <span class="n">rmc_names</span> <span class="k">if</span> <span class="n">rmc</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">feed</span><span class="o">.</span><span class="n">components</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
+            <span class="n">_announce_assumption</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"feed medium </span><span class="si">{</span><span class="n">feed</span><span class="o">.</span><span class="n">name</span><span class="si">!r}</span><span class="s2"> of Inflow </span><span class="si">{</span><span class="n">vc_name</span><span class="si">!r}</span><span class="s2"> did not define "</span>
+                <span class="sa">f</span><span class="s2">"a concentration for reactor component(s) </span><span class="si">{</span><span class="n">missing</span><span class="si">}</span><span class="s2">; assuming 0."</span>
+            <span class="p">)</span>
+
+
+<div class="viewcode-block" id="PseudobatchTransform">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.PseudobatchTransform">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">PseudobatchTransform</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Process-level pseudobatch transform bundle.</span>
+
+<span class="sd">    `adf` stores the shared accumulated dilution factor. `feed_corrections`</span>
+<span class="sd">    stores species-specific feed corrections needed to map between transformed</span>
+<span class="sd">    and real concentration. `sample_compensation` and `accumulated_feeds` store</span>
+<span class="sd">    optional helper traces for transparency/debugging.</span>
+<span class="sd">    """</span>
+
+    <span class="n">adf</span><span class="p">:</span> <span class="n">TimeSeries</span>
+    <span class="n">feed_corrections</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">TimeSeries</span><span class="p">]</span>
+    <span class="n">sample_compensation</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">TimeSeries</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">accumulated_feeds</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">TimeSeries</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># ============================================================</span>
+<span class="c1"># Process Level</span>
+<span class="c1"># ============================================================</span>
+
+
+<div class="viewcode-block" id="BioProcess">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BioProcess">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">BioProcess</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Single experimental bioprocess run: time axis, volume, media, and variables.</span>
+
+<span class="sd">    ``biological_ode`` auto-generates from ``reactor_medium``/</span>
+<span class="sd">    ``process_variables`` if not supplied; see</span>
+<span class="sd">    ``_auto_generate_biological_ode``.</span>
+<span class="sd">    """</span>
+
+    <span class="n">metadata</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BioProcessMetadata</span><span class="p">]</span>
+    <span class="n">time_axis</span><span class="p">:</span> <span class="n">TimeAxis</span>
+    <span class="n">volume</span><span class="p">:</span> <span class="n">Volume</span>
+    <span class="n">reactor_medium</span><span class="p">:</span> <span class="n">ReactorMedium</span>
+    <span class="n">process_variables</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">ProcessVariable</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">discrete_events</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">DiscreteEvents</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">biological_ode</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BiologicalOde</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">pseudobatch_transform</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PseudobatchTransform</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">volume</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"BioProcess.volume is required"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reactor_medium</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"BioProcess.reactor_medium is required"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">time_axis</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"BioProcess.time_axis is required"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">biological_ode</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">biological_ode</span> <span class="o">=</span> <span class="n">_auto_generate_biological_ode</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="n">_announce_missing_inflow_concentrations</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="n">rmc_names</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">)</span>
+        <span class="n">retention_errors</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">error</span>
+            <span class="k">for</span> <span class="n">vc_name</span><span class="p">,</span> <span class="n">vc</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">volume_changes</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">vc</span><span class="p">,</span> <span class="n">Outflow</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">error</span> <span class="ow">in</span> <span class="n">_check_outflow_retention</span><span class="p">(</span><span class="n">vc_name</span><span class="p">,</span> <span class="n">vc</span><span class="p">,</span> <span class="n">rmc_names</span><span class="p">)</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="n">retention_errors</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">retention_errors</span><span class="p">))</span></div>
+
+
+
+<div class="viewcode-block" id="AugmentedBioProcess">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.AugmentedBioProcess">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">kw_only</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">AugmentedBioProcess</span><span class="p">(</span><span class="n">BioProcess</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""A synthetic variant of an existing :class:`BioProcess`.</span>
+
+<span class="sd">    Same fields as :class:`BioProcess` plus a mandatory ``parent_process``</span>
+<span class="sd">    string referencing the parent's key in the enclosing</span>
+<span class="sd">    :class:`BioProcessCollection`. Augmented children</span>
+<span class="sd">    inherit the parent's structural identity (control/state schema,</span>
+<span class="sd">    medium semantics) and must be grouped with the parent for any</span>
+<span class="sd">    train/eval split so synthetic siblings cannot leak into a fold whose</span>
+<span class="sd">    parent is held out.</span>
+
+<span class="sd">    This is a placeholder in v1: no augmentation logic produces these</span>
+<span class="sd">    objects yet, but the data shape is fixed so downstream packages</span>
+<span class="sd">    (e.g. ``hybrax.train``'s LOO orchestrator) can rely on it.</span>
+<span class="sd">    """</span>
+
+    <span class="n">parent_process</span><span class="p">:</span> <span class="nb">str</span></div>
+
+
+
+<span class="c1"># ============================================================</span>
+<span class="c1"># Case Study Level</span>
+<span class="c1"># ============================================================</span>
+
+
+<div class="viewcode-block" id="BioProcessCollection">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">BioProcessCollection</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Collection of processes, optionally identified as a published case study.</span>
+
+<span class="sd">    ``case_id``/``organism``/``citation`` set (all non-empty) mark this as a</span>
+<span class="sd">    full case study from one publication/dataset. Left ``None`` (the default),</span>
+<span class="sd">    this is raw/intermediate data with no case-study identity. ``metadata``</span>
+<span class="sd">    remains a free-form dict for arbitrary provenance (e.g. hybrax.train's</span>
+<span class="sd">    namespaced metadata block).</span>
+<span class="sd">    """</span>
+
+    <span class="n">case_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">organism</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">citation</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">metadata</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">processes</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">BioProcess</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Bioprocess Modeling Collective
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=04266cf0"></script>
+    <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script src="../../../_static/custom.js?v=fec45a96"></script>
+    </body>
+</html>

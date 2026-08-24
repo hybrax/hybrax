@@ -1,0 +1,134 @@
+hybrax.train.defaults
+=====================
+
+.. py:module:: hybrax.train.defaults
+
+.. autoapi-nested-parse::
+
+   Default hooks and modules used when a run's ``custom.py`` doesn't override them.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.defaults.DefaultLossModule
+   hybrax.train.defaults.DefaultReactionModule
+   hybrax.train.defaults.DefaultStatefulReactionModule
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.defaults.default_build_loss_module
+   hybrax.train.defaults.default_build_reaction_module
+   hybrax.train.defaults.default_transform_process_collection
+
+
+Module Contents
+---------------
+
+.. py:class:: DefaultLossModule(*, target_names)
+
+   Bases: :py:obj:`hybrax.train.model_api.UserLossModule`
+
+
+   Per-target SCL-space measurement loss — the default when no loss hook.
+
+   Emits one named term per measured target (named after the target). Override
+   ``residual_reduction`` to swap the per-target reduction (MSE → MAE / Huber).
+
+
+   .. py:method:: residual_reduction(residual, mask)
+
+      Per-column reduction of the masked residual; default mean-squared.
+
+      ``residual`` / ``mask`` are ``(n_meas, n_target)``; returns
+      ``(n_target,)``. Each column is normalised by its own active-cell count
+      so sparsely-measured targets are not diluted by padding rows.
+
+
+
+   .. py:property:: loss_names
+      :type: tuple[str, ...]
+
+
+      Equal to ``target_names``, one loss term per measured target.
+
+
+   .. py:attribute:: target_names
+      :type:  tuple[str, ...]
+
+
+.. py:class:: DefaultReactionModule(*, key, depth = 2, width_size = None, **scale_kwargs)
+
+   Bases: :py:obj:`hybrax.train.model_api.UserReactionModule`
+
+
+   Minimal default reaction model for harness runs.
+
+   Predicts ``SCL_modeled_BiologicalOde_rates`` (which includes any ``r_<pv>``
+   PV rates) from the SCL species + modeled-PV slices. Ignores controls; emits
+   zero-valued modeled Inflow and Outflow rates. Uses tanh/Glorot for shallow
+   networks and SiLU/He for deeper networks. The rate head starts near zero.
+
+
+   .. py:attribute:: model
+      :type:  equinox.nn.MLP
+
+
+.. py:class:: DefaultStatefulReactionModule(*, key, n_latent, **scale_kwargs)
+
+   Bases: :py:obj:`hybrax.train.model_api.UserReactionModule`
+
+
+   Standard-GRU latent-ODE reaction model with calibrated output heads.
+
+   The GRU consumes physical and control inputs, with ``h`` passed only as its
+   hidden state. Input kernels use per-gate Glorot initialization, recurrent
+   kernels are per-gate orthogonal, and internal biases start at zero.
+
+
+   .. py:attribute:: gru_cell
+      :type:  equinox.nn.GRUCell
+
+
+   .. py:attribute:: inflow_head
+      :type:  equinox.nn.Linear | None
+
+
+   .. py:attribute:: outflow_head
+      :type:  equinox.nn.Linear | None
+
+
+   .. py:attribute:: rate_head
+      :type:  equinox.nn.Linear
+
+
+.. py:function:: default_build_loss_module(*, target_names, process_names, config, seed, training_parent_collection)
+
+   Default train hook for loss-module construction (per-target MSE).
+
+
+.. py:function:: default_build_reaction_module(*, target_names, process_names, config, seed, training_parent_collection, **scale_kwargs)
+
+   Default train hook for reaction-module construction.
+
+   Derives the rates head size from the prepared canonical
+   ``rhs_ode.name_modeled_rates`` so user-defined ODEs with rate counts that
+   differ from the species count are supported out of the box.
+
+   If the optional ``estimate_all_scales`` hook supplied SCALE_* values, they
+   arrive via ``scale_kwargs`` and are stored on the module. Otherwise the
+   scale axes default to unit scales (no scaling).
+
+
+.. py:function:: default_transform_process_collection(collection, config)
+
+   Default prep hook for process-collection transformation.
+
+

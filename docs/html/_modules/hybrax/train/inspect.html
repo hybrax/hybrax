@@ -1,0 +1,846 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html">
+        <link rel="prefetch" href="../../../_static/hybrax_logo.png" as="image">
+
+    <link rel="shortcut icon" href="../../../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>hybrax.train.inspect - Bioprocess Modeling with Hybrax</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=98a1085a" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #eeffcc;
+  --color-code-foreground: black;
+  --color-brand-primary: #2563eb;
+  --color-brand-content: #2563eb;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">Bioprocess Modeling with Hybrax</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../../_static/hybrax_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">Hybrax Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/why.html">Why this exists</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/concepts.html">Concepts and Vocabulary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/find.html">Which page do I need?</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/01_your_first_dataset.html">1. Import your Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/02_look_at_it.html">2. View your Dataset</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/03_train.html">3. Train a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/04_your_first_custom_py.html">4. Custom Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/05_predict.html">5. Predict Processes</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.format guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/data_model.html">The Data Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/load_and_save.html">Loading and saving</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/validate_and_inspect.html">Validating and inspecting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/volume_feeds_events.html">Volume, feeds and events</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/time_series_and_splines.html">Time series and splines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/limits_and_gotchas.html">Limits and gotchas</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/further_reading.html">Further reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/config.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/hooks_cheatsheet.html">Customization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/prepare.html">Prepare</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/train.html">Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/reaction_module.html">The Reaction Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/loss_module.html">The Loss Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/scaling.html">Scaling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/forward.html">Forward</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/loo.html">Cross-Validation (LOO)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/save_load_predict.html">The Python API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/further_reading.html">Further Reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/freezing.html">Freezing parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/augmentation.html">Augmentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">A Gaussian-process model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">A KAN model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed.html">OptFed</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/modeled_pv.html">A modeled process variable</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../troubleshooting/errors.html">Errors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../troubleshooting/silent_failures.html">Silent failures</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Under the hood</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../under_the_hood/design_rationale.html">Design Rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributors.html">Contributors</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/hybrax/format/index.html">hybrax.format</a><input aria-label="Toggle navigation of hybrax.format" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/dataclasses/index.html">hybrax.format.dataclasses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/index.html">hybrax.format.time_series</a><input aria-label="Toggle navigation of hybrax.format.time_series" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/constants/index.html">hybrax.format.time_series.constants</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/grid_utils/index.html">hybrax.format.time_series.grid_utils</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/io/index.html">hybrax.format.time_series.io</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/ppoly/index.html">hybrax.format.time_series.ppoly</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/spline_ops/index.html">hybrax.format.time_series.spline_ops</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/timeseries/index.html">hybrax.format.time_series.timeseries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/validate/index.html">hybrax.format.validate</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/hybrax/train/index.html">hybrax.train</a><input aria-label="Toggle navigation of hybrax.train" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/augmentation/index.html">hybrax.train.augmentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/augmentation_plot/index.html">hybrax.train.augmentation_plot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/bounds_loss/index.html">hybrax.train.bounds_loss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/checkpointing/index.html">hybrax.train.checkpointing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/cli/index.html">hybrax.train.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/forward_plotting/index.html">hybrax.train.forward_plotting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/harness/index.html">hybrax.train.harness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/inspect/index.html">hybrax.train.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/logging/index.html">hybrax.train.logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/loo/index.html">hybrax.train.loo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/loo_metrics/index.html">hybrax.train.loo_metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_context/index.html">hybrax.train.runtime_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/serialization/index.html">hybrax.train.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/trainer/index.html">hybrax.train.trainer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for hybrax.train.inspect</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Read-only introspection helpers for trained modules and wrappers.</span>
+
+<span class="sd">Two responsibilities:</span>
+
+<span class="sd">- ``format_trainable_structure`` / ``print_trainable_structure``: render a</span>
+<span class="sd">  table of every array leaf on a :class:`UserReactionModule` subclass,</span>
+<span class="sd">  tagged ``trainable`` or ``frozen``. Used by the training harness at</span>
+<span class="sd">  startup so the trainable surface is visible at a glance.</span>
+
+<span class="sd">- ``format_reaction_schema`` / ``print_reaction_schema``: render labeled</span>
+<span class="sd">  tables for the :class:`ReactionInputs` / :class:`ReactionOutputs` axes</span>
+<span class="sd">  of a wrapper, with names sourced from ``rhs_ode`` and ``controls``.</span>
+<span class="sd">  Lets a user cross-reference each SCL vector slot with the underlying</span>
+<span class="sd">  hybrax.format entity it represents.</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.tree_util</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jtu</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.model_api</span><span class="w"> </span><span class="kn">import</span> <span class="n">_resolve_effective_tag</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.mechanistic</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhsOde</span>
+
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.controls_store</span><span class="w"> </span><span class="kn">import</span> <span class="n">PerProcessControls</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.wrapper</span><span class="w"> </span><span class="kn">import</span> <span class="n">HybridOdeWrapper</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Trainable-structure printer</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_shape_str</span><span class="p">(</span><span class="n">leaf</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">eqx</span><span class="o">.</span><span class="n">is_array</span><span class="p">(</span><span class="n">leaf</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">str</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">leaf</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
+    <span class="k">return</span> <span class="s2">"()"</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_path_to_name</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="s2">""</span>
+    <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">path</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="n">jtu</span><span class="o">.</span><span class="n">GetAttrKey</span><span class="p">):</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">"</span> <span class="k">if</span> <span class="n">name</span> <span class="k">else</span> <span class="n">entry</span><span class="o">.</span><span class="n">name</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="n">jtu</span><span class="o">.</span><span class="n">SequenceKey</span><span class="p">):</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">[</span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">idx</span><span class="si">}</span><span class="s2">]"</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="n">jtu</span><span class="o">.</span><span class="n">DictKey</span><span class="p">):</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">[</span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">key</span><span class="si">!r}</span><span class="s2">]"</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">.</span><span class="si">{</span><span class="n">entry</span><span class="si">}</span><span class="s2">"</span> <span class="k">if</span> <span class="n">name</span> <span class="k">else</span> <span class="nb">str</span><span class="p">(</span><span class="n">entry</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">name</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_collect_structure_rows</span><span class="p">(</span><span class="n">module</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""Walk every array leaf of ``module`` via JAX's own pytree flattening.</span>
+
+<span class="sd">    Tag resolution is delegated to ``_resolve_effective_tag`` (model_api.py)</span>
+<span class="sd">    — the same function ``partition_trainable`` uses to build the</span>
+<span class="sd">    optimizer's filter spec — so this display can't drift from what</span>
+<span class="sd">    actually gets trained, and no container type (list, tuple, dict, ...)</span>
+<span class="sd">    can hide a leaf the way a hand-rolled isinstance walk could. Non-array</span>
+<span class="sd">    leaves (ints, callables, dtypes, etc.) and ``None`` fields are skipped</span>
+<span class="sd">    entirely, matching what JAX's own flattening already treats as leafless.</span>
+<span class="sd">    """</span>
+    <span class="n">rows</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">leaves_with_paths</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">jtu</span><span class="o">.</span><span class="n">tree_flatten_with_path</span><span class="p">(</span><span class="n">module</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">path</span><span class="p">,</span> <span class="n">leaf</span> <span class="ow">in</span> <span class="n">leaves_with_paths</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">eqx</span><span class="o">.</span><span class="n">is_array</span><span class="p">(</span><span class="n">leaf</span><span class="p">):</span>
+            <span class="k">continue</span>
+        <span class="n">tag</span> <span class="o">=</span> <span class="n">_resolve_effective_tag</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
+        <span class="n">leaf_tag</span> <span class="o">=</span> <span class="n">tag</span> <span class="k">if</span> <span class="n">eqx</span><span class="o">.</span><span class="n">is_inexact_array</span><span class="p">(</span><span class="n">leaf</span><span class="p">)</span> <span class="k">else</span> <span class="kc">False</span>
+        <span class="n">status</span> <span class="o">=</span> <span class="s2">"trainable"</span> <span class="k">if</span> <span class="n">leaf_tag</span> <span class="ow">is</span> <span class="kc">True</span> <span class="k">else</span> <span class="s2">"frozen"</span>
+        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">_path_to_name</span><span class="p">(</span><span class="n">path</span><span class="p">),</span> <span class="n">_shape_str</span><span class="p">(</span><span class="n">leaf</span><span class="p">),</span> <span class="n">status</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">rows</span>
+
+
+<div class="viewcode-block" id="format_trainable_structure">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/inspect/index.html#hybrax.train.inspect.format_trainable_structure">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">format_trainable_structure</span><span class="p">(</span>
+    <span class="n">module</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">name_width</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">shape_width</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">status_width</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"UserReactionModule"</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Return a tabular string of (name, shape, status) for the full module.</span>
+
+<span class="sd">    Status is ``trainable`` or ``frozen``.</span>
+<span class="sd">    """</span>
+    <span class="n">rows</span> <span class="o">=</span> <span class="n">_collect_structure_rows</span><span class="p">(</span><span class="n">module</span><span class="p">)</span>
+
+    <span class="n">header</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"name"</span><span class="p">,</span> <span class="s2">"shape"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">)</span>
+    <span class="n">width_floor</span> <span class="o">=</span> <span class="mi">3</span>
+    <span class="k">if</span> <span class="n">name_width</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">name_width</span> <span class="o">=</span> <span class="nb">max</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">header</span><span class="p">[</span><span class="mi">0</span><span class="p">])]</span> <span class="o">+</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">width_floor</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">shape_width</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">shape_width</span> <span class="o">=</span> <span class="nb">max</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">header</span><span class="p">[</span><span class="mi">1</span><span class="p">])]</span> <span class="o">+</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">width_floor</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">status_width</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">status_width</span> <span class="o">=</span> <span class="nb">max</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">header</span><span class="p">[</span><span class="mi">2</span><span class="p">])]</span> <span class="o">+</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">width_floor</span><span class="p">])</span>
+
+    <span class="n">total_width</span> <span class="o">=</span> <span class="n">name_width</span> <span class="o">+</span> <span class="n">shape_width</span> <span class="o">+</span> <span class="n">status_width</span> <span class="o">+</span> <span class="mi">10</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_fmt_row</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">shape</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">status</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="n">name_cell</span> <span class="o">=</span> <span class="n">name</span> <span class="o">+</span> <span class="s2">" "</span> <span class="o">*</span> <span class="p">(</span><span class="n">name_width</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+        <span class="n">shape_cell</span> <span class="o">=</span> <span class="s2">" "</span> <span class="o">*</span> <span class="p">(</span><span class="n">shape_width</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">))</span> <span class="o">+</span> <span class="n">shape</span>
+        <span class="n">status_cell</span> <span class="o">=</span> <span class="s2">" "</span> <span class="o">*</span> <span class="p">(</span><span class="n">status_width</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">status</span><span class="p">))</span> <span class="o">+</span> <span class="n">status</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"| </span><span class="si">{</span><span class="n">name_cell</span><span class="si">}</span><span class="s2"> | </span><span class="si">{</span><span class="n">shape_cell</span><span class="si">}</span><span class="s2"> | </span><span class="si">{</span><span class="n">status_cell</span><span class="si">}</span><span class="s2"> |"</span>
+
+    <span class="n">divider</span> <span class="o">=</span> <span class="s2">"+"</span> <span class="o">+</span> <span class="s2">"-"</span> <span class="o">*</span> <span class="p">(</span><span class="n">total_width</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="s2">"+"</span>
+    <span class="n">title</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">" </span><span class="si">{</span><span class="n">title</span><span class="si">}</span><span class="s2"> Structure "</span>
+    <span class="n">title_pad_total</span> <span class="o">=</span> <span class="n">total_width</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
+    <span class="n">title_left</span> <span class="o">=</span> <span class="n">title_pad_total</span> <span class="o">//</span> <span class="mi">2</span>
+    <span class="n">title_right</span> <span class="o">=</span> <span class="n">title_pad_total</span> <span class="o">-</span> <span class="n">title_left</span>
+    <span class="n">title_line</span> <span class="o">=</span> <span class="s2">"+"</span> <span class="o">+</span> <span class="s2">"-"</span> <span class="o">*</span> <span class="n">title_left</span> <span class="o">+</span> <span class="n">title</span> <span class="o">+</span> <span class="s2">"-"</span> <span class="o">*</span> <span class="n">title_right</span> <span class="o">+</span> <span class="s2">"+"</span>
+
+    <span class="n">lines</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">title_line</span><span class="p">]</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_fmt_row</span><span class="p">(</span><span class="n">header</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">header</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">header</span><span class="p">[</span><span class="mi">2</span><span class="p">]))</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">divider</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">rows</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">status</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">:</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_fmt_row</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">status</span><span class="p">))</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s2">"no array leaves"</span>
+        <span class="n">pad</span> <span class="o">=</span> <span class="n">total_width</span> <span class="o">-</span> <span class="mi">4</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"| </span><span class="si">{</span><span class="n">msg</span><span class="si">}{</span><span class="s1">' '</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">pad</span><span class="si">}</span><span class="s2"> |"</span><span class="p">)</span>
+    <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">divider</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="print_trainable_structure">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/inspect/index.html#hybrax.train.inspect.print_trainable_structure">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">print_trainable_structure</span><span class="p">(</span>
+    <span class="n">module</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"UserReactionModule"</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Print the trainable-structure table."""</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">format_trainable_structure</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">),</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Reaction-schema printer</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<span class="n">_NAMES_CELL_WIDTH</span> <span class="o">=</span> <span class="mi">60</span>  <span class="c1"># max width of the wrappable "names" column</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_shape_tuple_str</span><span class="p">(</span><span class="o">*</span><span class="n">dims</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">dims</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s2">"()"</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">dims</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"(</span><span class="si">{</span><span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">,)"</span>
+    <span class="k">return</span> <span class="s2">"("</span> <span class="o">+</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">dims</span><span class="p">)</span> <span class="o">+</span> <span class="s2">")"</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_wrap_names_to_width</span><span class="p">(</span>
+    <span class="n">names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">width</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">hang_indent</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Wrap a comma-joined name list to fit ``width`` characters per line.</span>
+
+<span class="sd">    ``hang_indent`` adds spaces to continuation lines (used for ``rows:`` /</span>
+<span class="sd">    ``cols:`` follow-up labels so the wrapped tail aligns under the first</span>
+<span class="sd">    name rather than the label prefix).</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">names</span><span class="p">:</span>
+        <span class="c1"># Empty cell — the (0,)/(0, N) shape already signals "no entries".</span>
+        <span class="k">return</span> <span class="p">[</span><span class="s2">""</span><span class="p">]</span>
+    <span class="n">lines</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">current</span> <span class="o">=</span> <span class="s2">""</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">names</span><span class="p">):</span>
+        <span class="n">piece</span> <span class="o">=</span> <span class="n">name</span> <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">names</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">, "</span>
+        <span class="n">current_width</span> <span class="o">=</span> <span class="n">width</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">lines</span> <span class="k">else</span> <span class="p">(</span><span class="n">width</span> <span class="o">-</span> <span class="n">hang_indent</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">current</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">current</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">piece</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">current_width</span><span class="p">:</span>
+            <span class="c1"># Continuation: keep the trailing comma so readers see the list</span>
+            <span class="c1"># continues onto the next line.</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">current</span><span class="o">.</span><span class="n">rstrip</span><span class="p">())</span>
+            <span class="n">current</span> <span class="o">=</span> <span class="n">piece</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">current</span> <span class="o">+=</span> <span class="n">piece</span>
+    <span class="k">if</span> <span class="n">current</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">current</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span><span class="o">.</span><span class="n">rstrip</span><span class="p">(</span><span class="s2">","</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">hang_indent</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="n">lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">+</span> <span class="p">[</span><span class="s2">" "</span> <span class="o">*</span> <span class="n">hang_indent</span> <span class="o">+</span> <span class="n">ln</span> <span class="k">for</span> <span class="n">ln</span> <span class="ow">in</span> <span class="n">lines</span><span class="p">[</span><span class="mi">1</span><span class="p">:]]</span>
+    <span class="k">return</span> <span class="n">lines</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_names_cell_lines</span><span class="p">(</span>
+    <span class="n">names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">cin_followup</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">width</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Produce the wrapped lines that should appear in the names cell.</span>
+
+<span class="sd">    For 2-D Cin matrices ``cin_followup`` carries ``(row_names, col_names)``</span>
+<span class="sd">    and the cell renders ``rows:`` and ``cols:`` sub-blocks instead of the</span>
+<span class="sd">    flat name list.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">cin_followup</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_wrap_names_to_width</span><span class="p">(</span><span class="n">names</span><span class="p">,</span> <span class="n">width</span><span class="p">)</span>
+
+    <span class="c1"># 2-D Cin: always emit both `rows:` and `cols:` labels so the matrix</span>
+    <span class="c1"># axes are visible even when one dimension is empty.</span>
+    <span class="n">row_names</span><span class="p">,</span> <span class="n">col_names</span> <span class="o">=</span> <span class="n">cin_followup</span>
+    <span class="n">rows_block</span> <span class="o">=</span> <span class="n">_wrap_names_to_width</span><span class="p">(</span><span class="n">row_names</span><span class="p">,</span> <span class="n">width</span> <span class="o">-</span> <span class="mi">6</span><span class="p">,</span> <span class="n">hang_indent</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+    <span class="n">rows_block</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"rows: "</span> <span class="o">+</span> <span class="n">rows_block</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">cols_block</span> <span class="o">=</span> <span class="n">_wrap_names_to_width</span><span class="p">(</span><span class="n">col_names</span><span class="p">,</span> <span class="n">width</span> <span class="o">-</span> <span class="mi">6</span><span class="p">,</span> <span class="n">hang_indent</span><span class="o">=</span><span class="mi">6</span><span class="p">)</span>
+    <span class="n">cols_block</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"cols: "</span> <span class="o">+</span> <span class="n">cols_block</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">rows_block</span> <span class="o">+</span> <span class="n">cols_block</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_reaction_schema_rows</span><span class="p">(</span>
+    <span class="n">rhs_ode</span><span class="p">:</span> <span class="s2">"RhsOde"</span><span class="p">,</span>
+    <span class="n">controls</span><span class="p">:</span> <span class="s2">"PerProcessControls"</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span>
+    <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]],</span>
+    <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]],</span>
+    <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]],</span>
+<span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Build the (inputs, outputs, matrix_followups) row collections.</span>
+
+<span class="sd">    ``matrix_followups`` carries ``(axis_name, row_names, col_names)`` for</span>
+<span class="sd">    each 2-D Cin matrix so the renderer can emit indented ``rows:``/``cols:``</span>
+<span class="sd">    lines underneath the table row.</span>
+<span class="sd">    """</span>
+    <span class="n">name_RMCs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">)</span>
+    <span class="n">name_modeled_PVs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">name_modeled_PVs</span><span class="p">)</span>
+    <span class="n">name_modeled_Inflows</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">name_modeled_Inflows</span><span class="p">)</span>
+    <span class="n">name_controlled_Inflows</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">)</span>
+    <span class="n">name_modeled_Outflows</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">name_modeled_Outflows</span><span class="p">)</span>
+    <span class="n">name_controlled_Outflows</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">name_controlled_Outflows</span><span class="p">)</span>
+    <span class="n">name_controlled_PVs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">name_controlled_PVs</span><span class="p">)</span>
+    <span class="n">name_modeled_rates</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">name_modeled_rates</span><span class="p">)</span>
+
+    <span class="n">n_RMCs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">name_RMCs</span><span class="p">)</span>
+    <span class="n">n_modeled_PVs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">name_modeled_PVs</span><span class="p">)</span>
+    <span class="n">n_modeled_Inflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">name_modeled_Inflows</span><span class="p">)</span>
+    <span class="n">n_controlled_Inflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">name_controlled_Inflows</span><span class="p">)</span>
+    <span class="n">n_modeled_Outflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">name_modeled_Outflows</span><span class="p">)</span>
+    <span class="n">n_controlled_Outflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">name_controlled_Outflows</span><span class="p">)</span>
+    <span class="n">n_controlled_PVs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">name_controlled_PVs</span><span class="p">)</span>
+    <span class="n">n_modeled_rates</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">name_modeled_rates</span><span class="p">)</span>
+
+    <span class="n">inputs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span><span class="s2">"SCL_modeled_RMCs"</span><span class="p">,</span> <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_RMCs</span><span class="p">),</span> <span class="n">name_RMCs</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">"SCL_modeled_PVs"</span><span class="p">,</span> <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_modeled_PVs</span><span class="p">),</span> <span class="n">name_modeled_PVs</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">"SCL_modeled_V"</span><span class="p">,</span> <span class="s2">"()"</span><span class="p">,</span> <span class="p">(</span><span class="s2">"V_real"</span><span class="p">,)),</span>
+        <span class="p">(</span>
+            <span class="s2">"SCL_modeled_Inflows_cumulative"</span><span class="p">,</span>
+            <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_modeled_Inflows</span><span class="p">),</span>
+            <span class="n">name_modeled_Inflows</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="p">(</span>
+            <span class="s2">"SCL_modeled_Outflows_cumulative"</span><span class="p">,</span>
+            <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_modeled_Outflows</span><span class="p">),</span>
+            <span class="n">name_modeled_Outflows</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="p">(</span>
+            <span class="s2">"SCL_controlled_Inflows_cumulative"</span><span class="p">,</span>
+            <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_controlled_Inflows</span><span class="p">),</span>
+            <span class="n">name_controlled_Inflows</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="p">(</span>
+            <span class="s2">"SCL_controlled_Inflows_rates"</span><span class="p">,</span>
+            <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_controlled_Inflows</span><span class="p">),</span>
+            <span class="n">name_controlled_Inflows</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="p">(</span>
+            <span class="s2">"SCL_controlled_Inflows_Cin"</span><span class="p">,</span>
+            <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_controlled_Inflows</span><span class="p">,</span> <span class="n">n_RMCs</span><span class="p">),</span>
+            <span class="p">(),</span>  <span class="c1"># 2-D: detail rendered as follow-up lines</span>
+        <span class="p">),</span>
+        <span class="p">(</span>
+            <span class="s2">"SCL_controlled_Outflows_cumulative"</span><span class="p">,</span>
+            <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_controlled_Outflows</span><span class="p">),</span>
+            <span class="n">name_controlled_Outflows</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="p">(</span>
+            <span class="s2">"SCL_controlled_Outflows_rates"</span><span class="p">,</span>
+            <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_controlled_Outflows</span><span class="p">),</span>
+            <span class="n">name_controlled_Outflows</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="p">(</span>
+            <span class="s2">"RAW_controlled_Outflows_retention"</span><span class="p">,</span>
+            <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_controlled_Outflows</span><span class="p">,</span> <span class="n">n_RMCs</span><span class="p">),</span>
+            <span class="p">(),</span>
+        <span class="p">),</span>
+        <span class="p">(</span>
+            <span class="s2">"RAW_modeled_Outflows_retention"</span><span class="p">,</span>
+            <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_modeled_Outflows</span><span class="p">,</span> <span class="n">n_RMCs</span><span class="p">),</span>
+            <span class="p">(),</span>
+        <span class="p">),</span>
+        <span class="p">(</span>
+            <span class="s2">"SCL_controlled_PVs"</span><span class="p">,</span>
+            <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_controlled_PVs</span><span class="p">),</span>
+            <span class="n">name_controlled_PVs</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="p">(</span>
+            <span class="s2">"SCL_modeled_Inflows_Cin"</span><span class="p">,</span>
+            <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_modeled_Inflows</span><span class="p">,</span> <span class="n">n_RMCs</span><span class="p">),</span>
+            <span class="p">(),</span>
+        <span class="p">),</span>
+    <span class="p">]</span>
+
+    <span class="n">outputs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span>
+            <span class="s2">"SCL_modeled_BiologicalOde_rates"</span><span class="p">,</span>
+            <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_modeled_rates</span><span class="p">),</span>
+            <span class="n">name_modeled_rates</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="p">(</span>
+            <span class="s2">"SCL_modeled_Inflows_rates"</span><span class="p">,</span>
+            <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_modeled_Inflows</span><span class="p">),</span>
+            <span class="n">name_modeled_Inflows</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="p">(</span>
+            <span class="s2">"SCL_modeled_Outflows_rates"</span><span class="p">,</span>
+            <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_modeled_Outflows</span><span class="p">),</span>
+            <span class="n">name_modeled_Outflows</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">]</span>
+
+    <span class="n">matrix_followups</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span><span class="s2">"SCL_controlled_Inflows_Cin"</span><span class="p">,</span> <span class="n">name_controlled_Inflows</span><span class="p">,</span> <span class="n">name_RMCs</span><span class="p">),</span>
+        <span class="p">(</span><span class="s2">"SCL_modeled_Inflows_Cin"</span><span class="p">,</span> <span class="n">name_modeled_Inflows</span><span class="p">,</span> <span class="n">name_RMCs</span><span class="p">),</span>
+        <span class="p">(</span>
+            <span class="s2">"RAW_controlled_Outflows_retention"</span><span class="p">,</span>
+            <span class="n">name_controlled_Outflows</span><span class="p">,</span>
+            <span class="n">name_RMCs</span><span class="p">,</span>
+        <span class="p">),</span>
+        <span class="p">(</span><span class="s2">"RAW_modeled_Outflows_retention"</span><span class="p">,</span> <span class="n">name_modeled_Outflows</span><span class="p">,</span> <span class="n">name_RMCs</span><span class="p">),</span>
+    <span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">outputs</span><span class="p">,</span> <span class="n">matrix_followups</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_render_schema_table</span><span class="p">(</span>
+    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">rows</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]],</span>
+    <span class="n">matrix_followups_by_name</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Render a bordered schema table matching the ``RhsOde Structure`` style.</span>
+
+<span class="sd">    Names that exceed the names column wrap onto additional rows that</span>
+<span class="sd">    repeat the same outer ``|`` borders, with the axis + shape cells blank</span>
+<span class="sd">    on continuation lines. 2-D Cin matrices put their ``rows:`` / ``cols:``</span>
+<span class="sd">    sub-blocks inside the names cell so the table stays rectangular.</span>
+<span class="sd">    """</span>
+    <span class="n">header</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"axis"</span><span class="p">,</span> <span class="s2">"shape"</span><span class="p">,</span> <span class="s2">"names"</span><span class="p">)</span>
+    <span class="n">width_floor</span> <span class="o">=</span> <span class="mi">3</span>
+
+    <span class="n">pre_lines</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">axis</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">names</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">:</span>
+        <span class="n">cell_lines</span> <span class="o">=</span> <span class="n">_names_cell_lines</span><span class="p">(</span>
+            <span class="n">names</span><span class="p">,</span> <span class="n">matrix_followups_by_name</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">axis</span><span class="p">),</span> <span class="n">_NAMES_CELL_WIDTH</span>
+        <span class="p">)</span>
+        <span class="n">pre_lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cell_lines</span><span class="p">)</span>
+
+    <span class="n">axis_width</span> <span class="o">=</span> <span class="nb">max</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">header</span><span class="p">[</span><span class="mi">0</span><span class="p">])]</span> <span class="o">+</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">width_floor</span><span class="p">])</span>
+    <span class="n">shape_width</span> <span class="o">=</span> <span class="nb">max</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">header</span><span class="p">[</span><span class="mi">1</span><span class="p">])]</span> <span class="o">+</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">r</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">width_floor</span><span class="p">])</span>
+    <span class="n">names_width</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
+        <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">header</span><span class="p">[</span><span class="mi">2</span><span class="p">])]</span>
+        <span class="o">+</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">line</span><span class="p">)</span> <span class="k">for</span> <span class="n">block</span> <span class="ow">in</span> <span class="n">pre_lines</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">block</span><span class="p">]</span>
+        <span class="o">+</span> <span class="p">[</span><span class="n">width_floor</span><span class="p">]</span>
+    <span class="p">)</span>
+
+    <span class="n">total_width</span> <span class="o">=</span> <span class="n">axis_width</span> <span class="o">+</span> <span class="n">shape_width</span> <span class="o">+</span> <span class="n">names_width</span> <span class="o">+</span> <span class="mi">10</span>  <span class="c1"># borders + separators</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_fmt_row</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">c</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"| </span><span class="si">{</span><span class="n">a</span><span class="si">}{</span><span class="s1">' '</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="n">axis_width</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="n">a</span><span class="p">))</span><span class="si">}</span><span class="s2">"</span>
+            <span class="sa">f</span><span class="s2">" | </span><span class="si">{</span><span class="n">b</span><span class="si">}{</span><span class="s1">' '</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="n">shape_width</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="n">b</span><span class="p">))</span><span class="si">}</span><span class="s2">"</span>
+            <span class="sa">f</span><span class="s2">" | </span><span class="si">{</span><span class="n">c</span><span class="si">}{</span><span class="s1">' '</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="n">names_width</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="n">c</span><span class="p">))</span><span class="si">}</span><span class="s2"> |"</span>
+        <span class="p">)</span>
+
+    <span class="n">divider</span> <span class="o">=</span> <span class="s2">"+"</span> <span class="o">+</span> <span class="s2">"-"</span> <span class="o">*</span> <span class="p">(</span><span class="n">total_width</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="s2">"+"</span>
+    <span class="n">title_pad_total</span> <span class="o">=</span> <span class="n">total_width</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">title</span><span class="p">)</span> <span class="o">-</span> <span class="mi">2</span>  <span class="c1"># two spaces around title</span>
+    <span class="n">title_left</span> <span class="o">=</span> <span class="n">title_pad_total</span> <span class="o">//</span> <span class="mi">2</span>
+    <span class="n">title_right</span> <span class="o">=</span> <span class="n">title_pad_total</span> <span class="o">-</span> <span class="n">title_left</span>
+    <span class="n">title_line</span> <span class="o">=</span> <span class="s2">"+"</span> <span class="o">+</span> <span class="s2">"-"</span> <span class="o">*</span> <span class="n">title_left</span> <span class="o">+</span> <span class="s2">" "</span> <span class="o">+</span> <span class="n">title</span> <span class="o">+</span> <span class="s2">" "</span> <span class="o">+</span> <span class="s2">"-"</span> <span class="o">*</span> <span class="n">title_right</span> <span class="o">+</span> <span class="s2">"+"</span>
+
+    <span class="n">out</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">title_line</span><span class="p">]</span>
+    <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_fmt_row</span><span class="p">(</span><span class="n">header</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">header</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">header</span><span class="p">[</span><span class="mi">2</span><span class="p">]))</span>
+    <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">divider</span><span class="p">)</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">axis</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">_names</span><span class="p">),</span> <span class="n">cell_lines</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">pre_lines</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_fmt_row</span><span class="p">(</span><span class="n">axis</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">cell_lines</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+        <span class="k">for</span> <span class="n">cont</span> <span class="ow">in</span> <span class="n">cell_lines</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
+            <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_fmt_row</span><span class="p">(</span><span class="s2">""</span><span class="p">,</span> <span class="s2">""</span><span class="p">,</span> <span class="n">cont</span><span class="p">))</span>
+    <span class="n">out</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">divider</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="format_reaction_schema">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/inspect/index.html#hybrax.train.inspect.format_reaction_schema">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">format_reaction_schema</span><span class="p">(</span>
+    <span class="n">rhs_ode</span><span class="p">:</span> <span class="s2">"RhsOde"</span><span class="p">,</span>
+    <span class="n">controls</span><span class="p">:</span> <span class="s2">"PerProcessControls"</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Return labeled tables for ReactionInputs + ReactionOutputs axes.</span>
+
+<span class="sd">    Each table row names the SCL_* axis, its shape, and the hybrax.format</span>
+<span class="sd">    entity names that map to each slot. 2-D Cin matrices render as one</span>
+<span class="sd">    row with shape ``(n_rows, n_cols)`` followed by indented</span>
+<span class="sd">    ``rows:``/``cols:`` lines naming the matrix axes.</span>
+<span class="sd">    """</span>
+    <span class="n">inputs_rows</span><span class="p">,</span> <span class="n">outputs_rows</span><span class="p">,</span> <span class="n">matrix_followups</span> <span class="o">=</span> <span class="n">_reaction_schema_rows</span><span class="p">(</span>
+        <span class="n">rhs_ode</span><span class="p">,</span> <span class="n">controls</span>
+    <span class="p">)</span>
+    <span class="n">matrix_followups_by_name</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">name</span><span class="p">:</span> <span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">cols</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">rows</span><span class="p">,</span> <span class="n">cols</span> <span class="ow">in</span> <span class="n">matrix_followups</span>
+    <span class="p">}</span>
+
+    <span class="n">inputs_table</span> <span class="o">=</span> <span class="n">_render_schema_table</span><span class="p">(</span>
+        <span class="s2">"ReactionInputs Schema"</span><span class="p">,</span> <span class="n">inputs_rows</span><span class="p">,</span> <span class="n">matrix_followups_by_name</span>
+    <span class="p">)</span>
+    <span class="n">outputs_table</span> <span class="o">=</span> <span class="n">_render_schema_table</span><span class="p">(</span><span class="s2">"ReactionOutputs Schema"</span><span class="p">,</span> <span class="n">outputs_rows</span><span class="p">,</span> <span class="p">{})</span>
+    <span class="k">return</span> <span class="n">inputs_table</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n\n</span><span class="s2">"</span> <span class="o">+</span> <span class="n">outputs_table</span></div>
+
+
+
+<div class="viewcode-block" id="print_reaction_schema">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/inspect/index.html#hybrax.train.inspect.print_reaction_schema">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">print_reaction_schema</span><span class="p">(</span><span class="n">wrapper</span><span class="p">:</span> <span class="s2">"HybridOdeWrapper"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Print the labeled ReactionInputs / ReactionOutputs tables.</span>
+
+<span class="sd">    Sources names from ``wrapper.rhs_ode`` and ``wrapper.controls``.</span>
+<span class="sd">    """</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">format_reaction_schema</span><span class="p">(</span><span class="n">wrapper</span><span class="o">.</span><span class="n">rhs_ode</span><span class="p">,</span> <span class="n">wrapper</span><span class="o">.</span><span class="n">controls</span><span class="p">),</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Bioprocess Modeling Collective
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=04266cf0"></script>
+    <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script src="../../../_static/custom.js?v=fec45a96"></script>
+    </body>
+</html>

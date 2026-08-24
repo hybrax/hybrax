@@ -1,0 +1,171 @@
+hybrax.train.controls
+=====================
+
+.. py:module:: hybrax.train.controls
+
+.. autoapi-nested-parse::
+
+   Extracting a process's controlled signals and discrete events as NumPy evaluators.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.controls.ControlSourceBundle
+   hybrax.train.controls.SignalSource
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.controls.build_linear_payload
+   hybrax.train.controls.build_spline_payload
+   hybrax.train.controls.collect_discrete_event_metadata
+   hybrax.train.controls.select_control_sources
+
+
+Module Contents
+---------------
+
+.. py:class:: ControlSourceBundle
+
+   Categorised control sources from a process.
+
+   Layout mirrors hybrax.format ``ControlSplines`` — the continuous controls the
+   RHS integrates via RhsOde's ``u`` argument. Discrete bolus/sample events are
+   NOT controls here; they are applied as state jumps by the callbacks solve:
+
+       [name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]
+
+
+   .. py:property:: all_names
+      :type: tuple[str, ...]
+
+
+      Every controlled name, in canonical Inflow/Outflow/PV order.
+
+
+   .. py:property:: all_sources
+      :type: list[SignalSource]
+
+
+      Every :class:`SignalSource`, in :attr:`all_names` order.
+
+
+   .. py:attribute:: name_controlled_Inflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_controlled_Outflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_controlled_PVs
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: sources_by_name
+      :type:  dict[str, SignalSource]
+
+
+.. py:class:: SignalSource
+
+   One controlled signal (Inflow, Outflow, or PV) as a hybrid spline/linear evaluator.
+
+
+   .. py:attribute:: continuity_side
+      :type:  str | None
+      :value: None
+
+
+
+   .. py:attribute:: derivative
+      :type:  Callable[[numpy.ndarray], numpy.ndarray]
+
+
+   .. py:attribute:: evaluator
+      :type:  Callable[[numpy.ndarray], numpy.ndarray]
+
+
+   .. py:attribute:: is_static
+      :type:  bool
+      :value: False
+
+
+
+   .. py:attribute:: kind
+      :type:  str
+
+
+   .. py:attribute:: metadata
+      :type:  dict[str, Any]
+
+
+   .. py:attribute:: name
+      :type:  str
+
+
+   .. py:attribute:: spline_breaks
+      :type:  numpy.ndarray | None
+      :value: None
+
+
+
+   .. py:attribute:: spline_coeffs
+      :type:  numpy.ndarray | None
+      :value: None
+
+
+
+   .. py:property:: support
+      :type: tuple[float, float]
+
+
+      Closed source support; static controls are unbounded.
+
+
+   .. py:attribute:: times
+      :type:  numpy.ndarray
+
+
+   .. py:attribute:: values
+      :type:  numpy.ndarray
+
+
+.. py:function:: build_linear_payload(process, sources)
+
+   Build an exact process-local payload for raw and static controls.
+
+
+.. py:function:: build_spline_payload(sources)
+
+   Rebase spline sources onto one union break grid.
+
+
+.. py:function:: collect_discrete_event_metadata(process, species_names)
+
+   Collect sample/bolus event times, volumes, and feed compositions.
+
+   Feeds :class:`ControlsStore`'s sample/bolus event arrays for the
+   callbacks-based state-jump solve (see ``physical_solve.py``).
+   hybrax.format owns event validation and species alignment. Signed Outflow deltas
+   become positive removal magnitudes exactly once at this solver boundary.
+
+
+.. py:function:: select_control_sources(process)
+
+   Build one :class:`SignalSource` per controlled Inflow, Outflow, and PV.
+
+   :param process: Process to extract controlled signals from; categorization
+                   (which Inflows/Outflows/PVs are controlled) comes from
+                   ``get_process_ordering(process)``.
+
+   :returns: A bundle with the categorized name tuples and every source, keyed by
+             name.
+
+

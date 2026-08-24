@@ -1,0 +1,94 @@
+hybrax.format.serialization
+===========================
+
+.. py:module:: hybrax.format.serialization
+
+.. autoapi-nested-parse::
+
+   Serialization utilities for bioprocess benchmarking dataset.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.format.serialization.DEFAULT_JSON_FILENAME
+   hybrax.format.serialization.DEFAULT_JSON_GZ_FILENAME
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.format.serialization.NumpyEncoder
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.format.serialization.load_process_collection
+   hybrax.format.serialization.save_process_collection
+
+
+Module Contents
+---------------
+
+.. py:class:: NumpyEncoder(*, skipkeys=False, ensure_ascii=True, check_circular=True, allow_nan=True, sort_keys=False, indent=None, separators=None, default=None)
+
+   Bases: :py:obj:`json.JSONEncoder`
+
+
+   JSON encoder that handles numpy/JAX arrays.
+
+
+   .. py:method:: default(obj)
+
+      Implement this method in a subclass such that it returns
+      a serializable object for ``o``, or calls the base implementation
+      (to raise a ``TypeError``).
+
+      For example, to support arbitrary iterators, you could
+      implement default like this::
+
+          def default(self, o):
+              try:
+                  iterable = iter(o)
+              except TypeError:
+                  pass
+              else:
+                  return list(iterable)
+              # Let the base class default method raise the TypeError
+              return super().default(o)
+
+
+
+
+.. py:function:: load_process_collection(path)
+
+   Load a BioProcessCollection incrementally from JSON.
+
+   `path` may be a JSON file path or a directory containing `data.json`.
+   The YAJL-backed parser also accepts ``//`` and ``/* ... */`` comments.
+
+
+.. py:function:: save_process_collection(collection, path)
+
+   Save a BioProcessCollection as JSON.
+
+   `path` may be a JSON file path or a directory, in which case `data.json`
+   is written inside it.
+
+
+.. py:data:: DEFAULT_JSON_FILENAME
+   :value: 'data.json'
+
+
+.. py:data:: DEFAULT_JSON_GZ_FILENAME
+   :value: 'data.json.gz'
+
+

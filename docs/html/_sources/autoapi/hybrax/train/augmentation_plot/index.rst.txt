@@ -1,0 +1,39 @@
+hybrax.train.augmentation_plot
+==============================
+
+.. py:module:: hybrax.train.augmentation_plot
+
+.. autoapi-nested-parse::
+
+   Preview plot of augmented children against their parent's fitted spline.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.augmentation_plot.AUGMENTATION_PLOT_FILENAME
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.augmentation_plot.render_augmentation_plot
+
+
+Module Contents
+---------------
+
+.. py:function:: render_augmentation_plot(collection, augmentation, output_path)
+
+   Plot parent spline fit quality, data, and augmented observations.
+
+
+.. py:data:: AUGMENTATION_PLOT_FILENAME
+   :value: 'augmented-data.png'
+
+

@@ -1,0 +1,126 @@
+hybrax.format.inspect
+=====================
+
+.. py:module:: hybrax.format.inspect
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.format.inspect.plot_collection
+   hybrax.format.inspect.plot_process
+   hybrax.format.inspect.plot_timeseries
+   hybrax.format.inspect.print_collection_structure
+   hybrax.format.inspect.print_process_structure
+   hybrax.format.inspect.print_rhs_ode
+
+
+Module Contents
+---------------
+
+.. py:function:: plot_collection(collection, figsize_per_panel=(5, 3), save_path=None, show=True)
+
+   Plot all dynamic and static variables for every process in a BioProcessCollection.
+
+   All unique variables are discovered across every process first.  Each
+   variable gets its own subplot and all processes are overlaid using
+   distinct colours.  TimeSeries with ≤ 50 points are drawn with markers;
+   longer series are lines only.
+
+   :param collection: BioProcessCollection object to plot.
+   :param figsize_per_panel: ``(width, height)`` in inches for each subplot.
+   :param save_path: optional path to save the figure to.
+   :param show: if True (default), return the Figure for display/inspection.
+                if False, the figure is saved (if save_path given) and then
+                closed immediately, freeing its memory; nothing is returned.
+
+   :returns: matplotlib.figure.Figure, or None if show=False.
+
+
+.. py:function:: plot_process(process, figsize_per_panel=(5, 3), save_path=None, show=True)
+
+   Plot all dynamic and static variables of a BioProcess in a two-column figure.
+
+   Each variable gets its own subplot.  TimeSeries with ≤ 50 points are drawn
+   with markers; longer series are drawn as lines only.  StaticVariable values
+   are shown as horizontal dashed lines spanning the process time range.
+
+   All subplots share the same x-axis range (``TimeAxis.start`` to
+   ``TimeAxis.end``).
+
+   :param process: BioProcess object to plot.
+   :param figsize_per_panel: ``(width, height)`` in inches for each subplot.
+   :param save_path: optional path to save the figure to.
+   :param show: if True (default), return the Figure for display/inspection.
+                if False, the figure is saved (if save_path given) and then
+                closed immediately, freeing its memory; nothing is returned.
+
+   :returns: matplotlib.figure.Figure, or None if show=False.
+
+
+.. py:function:: plot_timeseries(ts, figsize=(6, 4), save_path=None, show=True)
+
+   Plot one TimeSeries's discrete samples as a line.
+
+
+.. py:function:: print_collection_structure(collection, verbosity = 3)
+
+   Print a hierarchical view of a BioProcessCollection.
+
+   :param collection: BioProcessCollection object to inspect
+   :param verbosity: Detail level (1=minimal, 2=medium, 3=full)
+
+                     - Level 3 (most verbose): organism, citation (when set),
+                       per-process datapoint counts, and total datapoints
+                     - Level 2 (mid verbose): organism and process names listed
+                       (no citation, no datapoint counts)
+                     - Level 1 (least verbose): case_id/label and process count only
+
+
+.. py:function:: print_process_structure(process, verbosity = 3)
+
+   Print a hierarchical view of the BioProcess object structure.
+
+   :param process: BioProcess object to inspect
+   :param verbosity: Detail level (1=minimal, 2=medium, 3=full)
+
+                     - Level 3 (most verbose): full details including units, value
+                       ranges, spline info
+                     - Level 2 (mid verbose): variable names and data type/size,
+                       no units or value ranges
+                     - Level 1 (least verbose): just which variables are saved,
+                       no other details
+
+   .. rubric:: Example
+
+   >>> print_process_structure(process, verbosity=1)
+   >>> print_process_structure(process, verbosity=2)
+   >>> print_process_structure(process)
+
+
+.. py:function:: print_rhs_ode(target, ordering = None)
+
+   Print the mechanistic ODE structure as a single ASCII box with two
+   sub-tables (Algebraic, Derivatives).
+
+   Accepts a :class:`BioProcess` or a
+   :class:`BioProcessCollection`. For multi-process containers,
+   :func:`hybrax.format.validate.validate_biological_ode_equivalence` is
+   invoked first and the title represents the whole container. The
+   individual process picked to render is not exposed.
+
+   The Derivatives sub-table separates the *Biological* expression
+   (verbatim from ``biological_ode.derivatives``) from the physical flow
+   contributions that hybrax.format adds on top. Inflows contribute
+   ``+ feed(...)`` and ``− dilution(...)``. Retained material contributes
+   ``+ retention(<Outflow>=<fraction>)`` for each affected RMC; unretained
+   Outflows have no concentration contribution. The Volume sub-table lists
+   V separately with *Additions* (Inflow sum) and *Removals*
+   (``− |<Outflow sum>|``) columns.
+
+   :raises ValueError: if a multi-process container's processes do not share
+       equivalent ``biological_ode`` blocks.
+
+

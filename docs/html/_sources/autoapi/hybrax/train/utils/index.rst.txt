@@ -1,0 +1,69 @@
+hybrax.train.utils
+==================
+
+.. py:module:: hybrax.train.utils
+
+.. autoapi-nested-parse::
+
+   Loading a run's ``custom.py`` and reading its config/hooks.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.utils.get_hook
+   hybrax.train.utils.hook_is_customized
+   hybrax.train.utils.load_custom_module
+   hybrax.train.utils.resolve_config
+   hybrax.train.utils.split_hooks_by_customization
+
+
+Module Contents
+---------------
+
+.. py:function:: get_hook(module, name, default)
+
+   Return ``module``'s attribute ``name`` if defined, else ``default``.
+
+
+.. py:function:: hook_is_customized(module, name)
+
+   Whether custom.py defines an attribute named ``name`` (vs. using the default).
+
+
+.. py:function:: load_custom_module(custom_py)
+
+   Import ``custom_py`` as a standalone module named ``hybrax_train_user_custom``.
+
+   :param custom_py: Path to the ``custom.py`` file, or ``None``.
+
+   :returns: The imported module, or ``None`` when ``custom_py`` is ``None``.
+
+   :raises FileNotFoundError: If ``custom_py`` does not exist.
+   :raises ImportError: If a module spec cannot be built for ``custom_py``.
+
+
+.. py:function:: resolve_config(module, config)
+
+   Merge a custom module's config with an explicit override, override wins.
+
+   Reads ``module.get_config()`` if defined, else ``module.CONFIG`` if
+   defined, else starts empty; then overlays ``config`` on top.
+
+   :param module: Loaded ``custom.py`` module, or ``None`` to skip it.
+   :param config: Explicit config values to overlay, or ``None``.
+
+   :returns: The merged config dict.
+
+   :raises TypeError: If ``module.get_config()`` returns a non-dict, non-``None``
+       value, or ``module.CONFIG`` is not a dict.
+
+
+.. py:function:: split_hooks_by_customization(module, hook_names)
+
+   Split ``hook_names`` into (customized, default) buckets for logging.
+
+

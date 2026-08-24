@@ -1,0 +1,223 @@
+hybrax.train.postprocessing
+===========================
+
+.. py:module:: hybrax.train.postprocessing
+
+.. autoapi-nested-parse::
+
+   Post-training model serialization, prediction exports, and loss curves.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.postprocessing.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.postprocessing.ControlDiagnostic
+   hybrax.train.postprocessing.DenseProcessExport
+   hybrax.train.postprocessing.ProcessControlDiagnostics
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.postprocessing.aggregate_dense_exports
+   hybrax.train.postprocessing.dense_exports_from_save_outputs
+   hybrax.train.postprocessing.export_predictions_csv
+   hybrax.train.postprocessing.load_model_metadata
+   hybrax.train.postprocessing.plot_cross_fold_loss_curves
+   hybrax.train.postprocessing.plot_grad_norm_curve
+   hybrax.train.postprocessing.plot_loss_curve
+   hybrax.train.postprocessing.render_control_diagnostics
+   hybrax.train.postprocessing.save_model_metadata
+
+
+Module Contents
+---------------
+
+.. py:class:: ControlDiagnostic
+
+   One control's prepare-time diagnostic (picklable, plain numpy).
+
+
+   .. py:attribute:: curve_t
+      :type:  numpy.ndarray
+
+
+   .. py:attribute:: curve_values
+      :type:  numpy.ndarray
+
+
+   .. py:attribute:: grid_t
+      :type:  numpy.ndarray
+
+
+   .. py:attribute:: is_spline
+      :type:  bool
+
+
+   .. py:attribute:: max_rel_dev
+      :type:  float
+
+
+   .. py:attribute:: name
+      :type:  str
+
+
+   .. py:attribute:: raw_times
+      :type:  numpy.ndarray
+
+
+   .. py:attribute:: raw_values
+      :type:  numpy.ndarray
+
+
+   .. py:attribute:: unit
+      :type:  str
+
+
+.. py:class:: DenseProcessExport
+
+   Dense, human-facing per-process export arrays in physical units.
+
+   ``q_rates`` is aligned with ``rhs_ode.name_modeled_rates`` (the modeled
+   biological rate vector), not with ``modeled_RMC_names``. Under a
+   user-defined ``BiologicalOde`` these orderings differ. Modeled Inflow and
+   Outflow rates remain separate physical arrays with their storage signs.
+
+
+   .. py:attribute:: auxiliary
+      :type:  dict[str, numpy.ndarray] | None
+      :value: None
+
+
+
+   .. py:attribute:: b_modeled_cum
+      :type:  numpy.ndarray
+
+
+   .. py:attribute:: c_species
+      :type:  numpy.ndarray
+
+
+   .. py:attribute:: modeled_Inflow_rates
+      :type:  numpy.ndarray
+
+
+   .. py:attribute:: modeled_Outflow_rates
+      :type:  numpy.ndarray
+
+
+   .. py:attribute:: q_rates
+      :type:  numpy.ndarray
+
+
+   .. py:attribute:: t
+      :type:  numpy.ndarray
+
+
+   .. py:attribute:: v_real
+      :type:  numpy.ndarray
+
+
+.. py:class:: ProcessControlDiagnostics
+
+   Per-process control diagnostics — fed to :func:`render_control_diagnostics`.
+
+
+   .. py:attribute:: controls
+      :type:  tuple[ControlDiagnostic, ...]
+
+
+   .. py:attribute:: process_name
+      :type:  str
+
+
+   .. py:attribute:: time_unit
+      :type:  str
+
+
+.. py:function:: aggregate_dense_exports(per_model)
+
+   Stack per-model dense exports into per-process (mean, std) exports.
+
+   All models must share the same processes and dense ``t`` grid. Mismatched
+   time grids are rejected before any values are combined.
+
+
+.. py:function:: dense_exports_from_save_outputs(prediction_t, prediction_save_outputs, trained_wrapper, process_names)
+
+   Slice one batched forward solve's prediction block into per-process exports.
+
+   Pure reshaping (no ODE solve): the leading axis of every leaf is the process
+   batch (aligned with ``process_names``); un-scale ``SCL_states`` to physical
+   and pick the canonical export columns (``c_*``, ``V_real``, cumulative
+   modeled Inflows and Outflows, biological ``q_*`` rates, separate modeled
+   Inflow/Outflow rates, and per-key ``auxiliary``).
+
+
+.. py:function:: export_predictions_csv(trained_wrapper, dense_exports, output_path, process_names = None)
+
+   Write dense predictions.csv from precomputed per-process exports (no solve).
+
+   ``dense_exports`` comes from :func:`hybrax.train.harness.compute_dense_exports`
+   (the single batched solve). This function only formats and writes rows.
+
+
+.. py:function:: load_model_metadata(path)
+
+   Read a model metadata sidecar; returns {} if the file does not exist.
+
+
+.. py:function:: plot_cross_fold_loss_curves(fold_curves, output_path, *, title = 'Cross-fold loss', monitor_label = 'holdout')
+
+   Overlay every fold's train and monitor loss on shared log-y axes.
+
+   Each entry in ``fold_curves`` is
+   ``(label, train_steps, train_loss, monitor_steps, monitor_loss)``. Train
+   curves are drawn solid and monitor (holdout) curves dashed in the same
+   per-fold colour; folds with no usable history are skipped.
+
+
+.. py:function:: plot_grad_norm_curve(grad_norms, output_path, *, title = 'Gradient norm')
+
+   Draw global L2 gradient norm against training step and save as PNG.
+
+
+.. py:function:: plot_loss_curve(losses, output_path, *, title = 'Training loss', per_target_loss_by_step = None, target_names = None, monitor_loss_by_step = None, monitor_per_target_by_step = None, monitor_label = None)
+
+   Draw loss-vs-step curves on a log-y axis and save as PNG.
+
+   Layout: one subplot per loss. The first panel ("total") shows the
+   ``losses`` series and, if provided, the total ``monitor_loss_by_step``
+   series overlaid as a dashed line. If ``per_target_loss_by_step`` is
+   provided, one additional panel is added per target — each also overlays the
+   matching ``monitor_per_target_by_step`` term (dashed) so the holdout loss is
+   broken down per target, not just in total.
+
+
+.. py:function:: render_control_diagnostics(diagnostics, output_dir)
+
+   Render one figure overlaying, per control: the raw measured samples, the
+   stored control curve the solver uses (fitted spline or linear interpolation),
+   and the dense-grid knot density. Writes ``<process>_controls.png``.
+
+
+.. py:function:: save_model_metadata(path, meta)
+
+   Write a small JSON sidecar next to a saved model.
+
+
+.. py:data:: logger
+

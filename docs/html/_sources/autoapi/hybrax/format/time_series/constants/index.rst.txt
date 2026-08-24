@@ -1,0 +1,61 @@
+hybrax.format.time_series.constants
+===================================
+
+.. py:module:: hybrax.format.time_series.constants
+
+.. autoapi-nested-parse::
+
+   Centralized defaults for TimeSeries numerical behavior.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.format.time_series.constants.APPROX_ABS_FLOOR
+   hybrax.format.time_series.constants.APPROX_INITIAL_S
+   hybrax.format.time_series.constants.APPROX_MAX_REFIT_ATTEMPTS
+   hybrax.format.time_series.constants.APPROX_REL_ERR_TARGET
+   hybrax.format.time_series.constants.APPROX_S_REDUCTION_FACTOR
+   hybrax.format.time_series.constants.DIVISION_NEAR_ZERO_THRESHOLD
+   hybrax.format.time_series.constants.TIME_DEDUP_ATOL
+   hybrax.format.time_series.constants.TIME_DEDUP_RTOL
+
+
+Module Contents
+---------------
+
+.. py:data:: APPROX_ABS_FLOOR
+   :value: 1e-08
+
+
+.. py:data:: APPROX_INITIAL_S
+   :value: 1.0
+
+
+.. py:data:: APPROX_MAX_REFIT_ATTEMPTS
+   :value: 8
+
+
+.. py:data:: APPROX_REL_ERR_TARGET
+   :value: 0.001
+
+
+.. py:data:: APPROX_S_REDUCTION_FACTOR
+   :value: 0.5
+
+
+.. py:data:: DIVISION_NEAR_ZERO_THRESHOLD
+   :value: 1e-08
+
+
+.. py:data:: TIME_DEDUP_ATOL
+   :value: 1e-08
+
+
+.. py:data:: TIME_DEDUP_RTOL
+   :value: 1e-07
+
+

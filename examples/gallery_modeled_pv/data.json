@@ -1,0 +1,569 @@
+{
+  "case_id": "demo_modeled_pv",
+  "organism": "None (synthetic biomass + a glycosylation-fraction quality attribute)",
+  "citation": "Simulated data \u2014 bp-docs demo, not a real experiment.",
+  "metadata": null,
+  "processes": {
+    "run_1": {
+      "metadata": {
+        "name": "run_1",
+        "process_type": "fed_batch",
+        "notes": "Simulated CHO-like batch culture with one large dilution bolus midway through the run: biomass concentration is diluted by the volume increase, glyco_frac (a modeled process variable) is not (documentation demo)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 20.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  2.0,
+                  4.0,
+                  6.0,
+                  8.0,
+                  9.9,
+                  10.1,
+                  12.0,
+                  14.0,
+                  16.0,
+                  18.0,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.1,
+                  0.13654424623093772,
+                  0.18012581301369177,
+                  0.2597269829103185,
+                  0.33021526227382636,
+                  0.4298518270145345,
+                  0.2254822840289992,
+                  0.2976956925364234,
+                  0.4163891972650861,
+                  0.5257131361663794,
+                  0.746747616813204,
+                  0.9965869946466699
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {
+        "glyco_frac": {
+          "name": "glyco_frac",
+          "unit": "-",
+          "is_controlled": false,
+          "values": {
+            "times": {
+              "__ndarray__": [
+                0.0,
+                2.0,
+                4.0,
+                6.0,
+                8.0,
+                9.9,
+                10.1,
+                12.0,
+                14.0,
+                16.0,
+                18.0,
+                20.0
+              ],
+              "dtype": "float64"
+            },
+            "values": {
+              "__ndarray__": [
+                0.95,
+                0.875669030288825,
+                0.8098950410524168,
+                0.8258455163964599,
+                0.7323755051713301,
+                0.7216193889621088,
+                0.690943791448945,
+                0.6504984178336968,
+                0.6292100866997677,
+                0.5894202344823654,
+                0.53997258415109,
+                0.5389936809724544
+              ],
+              "dtype": "float64"
+            },
+            "type": "TimeSeries",
+            "derived": false,
+            "jump_times": {
+              "__ndarray__": [],
+              "dtype": "float64"
+            },
+            "continuity_side": "right"
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {
+          "dilution_bolus": {
+            "name": "dilution_bolus",
+            "unit": "L",
+            "is_controlled": true,
+            "is_continuous": false,
+            "values": {
+              "times": {
+                "__ndarray__": [
+                  10.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  1.0
+                ],
+                "dtype": "float64"
+              },
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            },
+            "type": "Inflow",
+            "feed_medium": {
+              "name": "dilution_feed",
+              "density": 1.0,
+              "density_unit": "kg/L",
+              "components": {
+                "biomass": {
+                  "name": "biomass",
+                  "unit": "g/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": {
+            "lower": 0.0,
+            "upper": null
+          },
+          "r_glyco_frac": {
+            "lower": 0.0,
+            "upper": null
+          }
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glyco_frac": "-r_glyco_frac * glyco_frac"
+        }
+      }
+    },
+    "run_2": {
+      "metadata": {
+        "name": "run_2",
+        "process_type": "fed_batch",
+        "notes": "Simulated CHO-like batch culture with one large dilution bolus midway through the run: biomass concentration is diluted by the volume increase, glyco_frac (a modeled process variable) is not (documentation demo)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 20.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  2.0,
+                  4.0,
+                  6.0,
+                  8.0,
+                  9.9,
+                  10.1,
+                  12.0,
+                  14.0,
+                  16.0,
+                  18.0,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.15,
+                  0.20440147743794207,
+                  0.2879239292415453,
+                  0.354483256037405,
+                  0.5074475814839341,
+                  0.6358411645909887,
+                  0.3586412551577466,
+                  0.45486726528029037,
+                  0.6221119672213463,
+                  0.816715846903697,
+                  1.0937721797145425,
+                  1.5399741346394935
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {
+        "glyco_frac": {
+          "name": "glyco_frac",
+          "unit": "-",
+          "is_controlled": false,
+          "values": {
+            "times": {
+              "__ndarray__": [
+                0.0,
+                2.0,
+                4.0,
+                6.0,
+                8.0,
+                9.9,
+                10.1,
+                12.0,
+                14.0,
+                16.0,
+                18.0,
+                20.0
+              ],
+              "dtype": "float64"
+            },
+            "values": {
+              "__ndarray__": [
+                0.9,
+                0.8399791879251083,
+                0.8484352032216371,
+                0.7307700487361579,
+                0.6956909870170734,
+                0.6809523751988349,
+                0.6735220353060393,
+                0.6300202102929073,
+                0.566765265575901,
+                0.5765528210213802,
+                0.49670222704354156,
+                0.5202697761190958
+              ],
+              "dtype": "float64"
+            },
+            "type": "TimeSeries",
+            "derived": false,
+            "jump_times": {
+              "__ndarray__": [],
+              "dtype": "float64"
+            },
+            "continuity_side": "right"
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {
+          "dilution_bolus": {
+            "name": "dilution_bolus",
+            "unit": "L",
+            "is_controlled": true,
+            "is_continuous": false,
+            "values": {
+              "times": {
+                "__ndarray__": [
+                  10.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  1.0
+                ],
+                "dtype": "float64"
+              },
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            },
+            "type": "Inflow",
+            "feed_medium": {
+              "name": "dilution_feed",
+              "density": 1.0,
+              "density_unit": "kg/L",
+              "components": {
+                "biomass": {
+                  "name": "biomass",
+                  "unit": "g/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": {
+            "lower": 0.0,
+            "upper": null
+          },
+          "r_glyco_frac": {
+            "lower": 0.0,
+            "upper": null
+          }
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glyco_frac": "-r_glyco_frac * glyco_frac"
+        }
+      }
+    },
+    "run_3": {
+      "metadata": {
+        "name": "run_3",
+        "process_type": "fed_batch",
+        "notes": "Simulated CHO-like batch culture with one large dilution bolus midway through the run: biomass concentration is diluted by the volume increase, glyco_frac (a modeled process variable) is not (documentation demo)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 20.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  2.0,
+                  4.0,
+                  6.0,
+                  8.0,
+                  9.9,
+                  10.1,
+                  12.0,
+                  14.0,
+                  16.0,
+                  18.0,
+                  20.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.08,
+                  0.10940139524948116,
+                  0.1390084296408719,
+                  0.18541273322309698,
+                  0.2486738554841976,
+                  0.35417229945160184,
+                  0.17650861014922842,
+                  0.22706750266112416,
+                  0.32481555850004135,
+                  0.43049135897123647,
+                  0.6456976114006381,
+                  0.7939760971413802
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {
+        "glyco_frac": {
+          "name": "glyco_frac",
+          "unit": "-",
+          "is_controlled": false,
+          "values": {
+            "times": {
+              "__ndarray__": [
+                0.0,
+                2.0,
+                4.0,
+                6.0,
+                8.0,
+                9.9,
+                10.1,
+                12.0,
+                14.0,
+                16.0,
+                18.0,
+                20.0
+              ],
+              "dtype": "float64"
+            },
+            "values": {
+              "__ndarray__": [
+                0.97,
+                0.921196629042887,
+                0.8532558312339333,
+                0.7963869758198211,
+                0.756858798438136,
+                0.7307078043960527,
+                0.7190265173270752,
+                0.6703237034378278,
+                0.6818880348536251,
+                0.5925255241522476,
+                0.5793993430242158,
+                0.5384099253304105
+              ],
+              "dtype": "float64"
+            },
+            "type": "TimeSeries",
+            "derived": false,
+            "jump_times": {
+              "__ndarray__": [],
+              "dtype": "float64"
+            },
+            "continuity_side": "right"
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {
+          "dilution_bolus": {
+            "name": "dilution_bolus",
+            "unit": "L",
+            "is_controlled": true,
+            "is_continuous": false,
+            "values": {
+              "times": {
+                "__ndarray__": [
+                  10.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  1.0
+                ],
+                "dtype": "float64"
+              },
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            },
+            "type": "Inflow",
+            "feed_medium": {
+              "name": "dilution_feed",
+              "density": 1.0,
+              "density_unit": "kg/L",
+              "components": {
+                "biomass": {
+                  "name": "biomass",
+                  "unit": "g/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 0.0
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": {
+            "lower": 0.0,
+            "upper": null
+          },
+          "r_glyco_frac": {
+            "lower": 0.0,
+            "upper": null
+          }
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glyco_frac": "-r_glyco_frac * glyco_frac"
+        }
+      }
+    }
+  }
+}

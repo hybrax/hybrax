@@ -1,0 +1,344 @@
+hybrax.train.training_data
+==========================
+
+.. py:module:: hybrax.train.training_data
+
+.. autoapi-nested-parse::
+
+   Padded JAX measurement tensors, and the per-process/batch views over them.
+
+   Mirrors ``controls_store.py``'s split (``PerProcessControls`` /
+   ``BatchControls`` / ``ControlsStore``) for measured targets instead of
+   controls: ``PerProcessTrainingData`` and ``BatchTrainingData`` are the
+   evaluators, ``TrainingDataStore`` is the collection-level loader.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.training_data.TARGET_SOURCES
+   hybrax.train.training_data.TARGET_SOURCE_AUTO
+   hybrax.train.training_data.TARGET_SOURCE_COMBINED
+   hybrax.train.training_data.TARGET_SOURCE_PROCESS_VARIABLES
+   hybrax.train.training_data.TARGET_SOURCE_REACTOR_COMPONENTS
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.training_data.BatchTrainingData
+   hybrax.train.training_data.PerProcessTrainingData
+   hybrax.train.training_data.TrainingDataStore
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.training_data.replace_rhs_ode_process_matrices
+
+
+Module Contents
+---------------
+
+.. py:class:: BatchTrainingData
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Aligned measurement and control rows for a process-index batch.
+
+
+   .. py:attribute:: controls
+      :type:  hybrax.train.controls_store.BatchControls
+
+
+   .. py:attribute:: mask_measured
+      :type:  jax.Array
+
+
+   .. py:attribute:: n_measured
+      :type:  jax.Array
+
+
+   .. py:attribute:: process_indices
+      :type:  jax.Array
+
+
+   .. py:attribute:: retention_controlled_Outflows
+      :type:  jax.Array
+
+
+   .. py:attribute:: retention_modeled_Outflows
+      :type:  jax.Array
+
+
+   .. py:attribute:: t_measured
+      :type:  jax.Array
+
+
+   .. py:attribute:: y0_measured
+      :type:  jax.Array
+
+
+   .. py:attribute:: y_measured
+      :type:  jax.Array
+
+
+.. py:class:: PerProcessTrainingData
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Per-process active view over padded training-data tensors.
+
+
+   .. py:attribute:: Cin_controlled_Inflows
+      :type:  jax.Array
+
+
+   .. py:attribute:: Cin_modeled_Inflows
+      :type:  jax.Array
+
+
+   .. py:property:: active_mask_measured
+      :type: jax.Array
+
+
+      Active measurement-mask prefix.
+
+
+   .. py:property:: active_t_measured
+      :type: jax.Array
+
+
+      Active measurement-time prefix.
+
+
+   .. py:property:: active_y_measured
+      :type: jax.Array
+
+
+      Active measurement/value prefix.
+
+
+   .. py:attribute:: controls
+      :type:  hybrax.train.controls_store.PerProcessControls
+
+
+   .. py:attribute:: mask_measured
+      :type:  jax.Array
+
+
+   .. py:attribute:: n_measured
+      :type:  int
+
+
+   .. py:property:: name_measured
+      :type: tuple[str, ...]
+
+
+      Combined measured-target names in state order
+      ``[name_measured_RMCs | name_measured_PVs]``.
+
+
+   .. py:attribute:: name_measured_PVs
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_measured_RMCs
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_modeled_Inflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_modeled_Outflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: process_index
+      :type:  int
+
+
+   .. py:attribute:: process_name
+      :type:  str
+
+
+   .. py:attribute:: retention_controlled_Outflows
+      :type:  jax.Array
+
+
+   .. py:attribute:: retention_modeled_Outflows
+      :type:  jax.Array
+
+
+   .. py:attribute:: t_measured
+      :type:  jax.Array
+
+
+   .. py:attribute:: y0_measured
+      :type:  jax.Array
+
+
+   .. py:attribute:: y_measured
+      :type:  jax.Array
+
+
+.. py:class:: TrainingDataStore
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Collection-level training-data store built from a prepared collection.
+
+   The y_measured columns are ``[targets..., modeled Inflow cumulative...,
+   modeled Outflow cumulative...]``, where targets may be RMCs, PVs, or both.
+   V is in the ODE state but not in the loss targets.
+
+   The y0 vector has layout ``[all RMCs..., all PVs..., V(0), modeled Inflow
+   cumulative..., modeled Outflow cumulative...]``, matching the physical ODE
+   state order expected by the wrapper.
+
+
+   .. py:method:: from_collection(collection, *, target_variable_order = None, target_source = TARGET_SOURCE_PROCESS_VARIABLES)
+      :classmethod:
+
+
+      Build training-data tensors from a prepared process collection.
+
+
+
+   .. py:method:: from_json(prepared_json, *, target_variable_order = None, target_source = TARGET_SOURCE_PROCESS_VARIABLES)
+      :classmethod:
+
+
+      Load a prepared JSON artifact and construct a training-data store.
+
+
+
+   .. py:method:: gather_batch(process_indices)
+
+      Gather a process-index batch view over stacked training-data tensors.
+
+
+
+   .. py:method:: get_process(process)
+
+      Return per-process training data by canonical name or integer index.
+
+
+
+   .. py:method:: select_processes(process_names, collection)
+
+      Return a closed parent-aligned row selection in the requested order.
+
+
+
+   .. py:method:: validate_control_support(process_names)
+
+      Validate measured solve spans for the processes about to be solved.
+
+
+
+   .. py:attribute:: Cin_controlled_Inflows
+      :type:  jax.Array
+
+
+   .. py:attribute:: Cin_modeled_Inflows
+      :type:  jax.Array
+
+
+   .. py:attribute:: controls_store
+      :type:  hybrax.train.controls_store.ControlsStore
+
+
+   .. py:attribute:: mask_measured
+      :type:  jax.Array
+
+
+   .. py:attribute:: n_measured
+      :type:  jax.Array
+
+
+   .. py:property:: name_measured
+      :type: tuple[str, ...]
+
+
+      Loss/target column labels in ``[RMC targets | PV targets]`` order.
+
+
+   .. py:attribute:: name_measured_PVs
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_measured_RMCs
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_modeled_Inflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_modeled_Outflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: process_order
+      :type:  list[str]
+
+
+   .. py:attribute:: retention_controlled_Outflows
+      :type:  jax.Array
+
+
+   .. py:attribute:: retention_modeled_Outflows
+      :type:  jax.Array
+
+
+   .. py:attribute:: rhs_ode
+      :type:  hybrax.format.mechanistic.RhsOde
+
+
+   .. py:attribute:: t_measured
+      :type:  jax.Array
+
+
+   .. py:attribute:: y0_measured
+      :type:  jax.Array
+
+
+   .. py:attribute:: y_measured
+      :type:  jax.Array
+
+
+.. py:function:: replace_rhs_ode_process_matrices(rhs_ode, Cin_controlled_Inflows, Cin_modeled_Inflows, retention_controlled_Outflows, retention_modeled_Outflows)
+
+   Replace all process-specific physical matrices on an ODE template.
+
+
+.. py:data:: TARGET_SOURCES
+
+.. py:data:: TARGET_SOURCE_AUTO
+   :value: 'auto'
+
+
+.. py:data:: TARGET_SOURCE_COMBINED
+   :value: 'combined'
+
+
+.. py:data:: TARGET_SOURCE_PROCESS_VARIABLES
+   :value: 'process_variables'
+
+
+.. py:data:: TARGET_SOURCE_REACTOR_COMPONENTS
+   :value: 'reactor_components'
+
+

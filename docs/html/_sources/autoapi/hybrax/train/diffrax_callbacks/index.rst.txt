@@ -1,0 +1,11 @@
+hybrax.train.diffrax_callbacks
+==============================
+
+.. py:module:: hybrax.train.diffrax_callbacks
+
+.. autoapi-nested-parse::
+
+   Julia-style callback system for Diffrax.
+
+
+

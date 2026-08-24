@@ -1,0 +1,55 @@
+hybrax.format.json_io
+=====================
+
+.. py:module:: hybrax.format.json_io
+
+.. autoapi-nested-parse::
+
+   JSON input helpers.
+
+
+
+Exceptions
+----------
+
+.. autoapisummary::
+
+   hybrax.format.json_io.JSONParseError
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.format.json_io.has_top_level_key
+   hybrax.format.json_io.load_json
+   hybrax.format.json_io.loads_json
+
+
+Module Contents
+---------------
+
+.. py:exception:: JSONParseError
+
+   Bases: :py:obj:`ValueError`
+
+
+   Invalid hybrax.format JSON with source context.
+
+
+.. py:function:: has_top_level_key(path, key)
+
+   Return whether a JSON object's top level contains ``key``.
+
+
+.. py:function:: load_json(path)
+
+   Incrementally read and decode one UTF-8 JSON or JSON.GZ input.
+
+
+.. py:function:: loads_json(text)
+
+   Decode one JSON value, accepting YAJL-style comments.
+
+

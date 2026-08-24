@@ -1,0 +1,141 @@
+hybrax.train.trainer
+====================
+
+.. py:module:: hybrax.train.trainer
+
+.. autoapi-nested-parse::
+
+   The JIT-compiled per-sample solve and per-batch loss/gradient step.
+
+   ``build_batched_loss_fn`` builds the function ``harness.py`` JIT-compiles for
+   every train step: it vmaps a single sample's ODE solve plus loss module
+   evaluation (``evaluate_sample_with_loss_module``) across a batch, and
+   ``evaluate_one_sample_loss`` provides the equivalent single-sample path used
+   outside training (holdout evaluation, dense exports).
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.trainer.SingleSampleResult
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.trainer.build_batched_loss_fn
+   hybrax.train.trainer.clamp_padded_time_rows
+   hybrax.train.trainer.evaluate_one_sample_loss
+   hybrax.train.trainer.evaluate_sample_with_loss_module
+   hybrax.train.trainer.simulate_measurement_states
+
+
+Module Contents
+---------------
+
+.. py:class:: SingleSampleResult
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Single-sample default-loss evaluation plus solver-time observables.
+
+
+   .. py:attribute:: fail_time
+      :type:  jax.Array
+
+
+   .. py:attribute:: per_target_loss
+      :type:  jax.Array
+
+
+   .. py:attribute:: prediction_save_outputs
+      :type:  hybrax.train.wrapper.SaveOutputs | None
+      :value: None
+
+
+
+   .. py:attribute:: prediction_t
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: save_outputs
+      :type:  hybrax.train.wrapper.SaveOutputs
+
+
+   .. py:attribute:: states
+      :type:  jax.Array
+
+
+   .. py:attribute:: step
+      :type:  jax.Array
+
+
+   .. py:attribute:: total_loss
+      :type:  jax.Array
+
+
+.. py:function:: build_batched_loss_fn()
+
+   Build the batched loss fn that evaluates ``wrapper.loss_module``.
+
+   The returned fn receives RAW measurements (``batch.y_measured`` /
+   ``batch.y0_measured``); it pre-scales them via the module's ``SCALE_state``,
+   then vmaps :func:`evaluate_sample_with_loss_module` over the batch. The loss
+   module is read off the wrapper, so swapping it (or its trainable params)
+   flows through without rebuilding this closure.
+
+
+.. py:function:: clamp_padded_time_rows(times, lengths)
+
+   Right-clamp padded rows to avoid NaNs in padded tails.
+
+
+.. py:function:: evaluate_one_sample_loss(wrapper, batch_controls, row_idx, t_measured, SCL_target_measured, mask_measured, n_measured, RAW_y0_measured, cin, cin_modeled, retention, retention_modeled, jump_ts, *, max_solver_steps, solver_rtol, solver_atol, step = None)
+
+   One process -> ``(total_loss, per_target_loss, fail_time)``. Shared by the
+   vmap batched loss and the device-sharded (pmap) step. ``fail_time`` is ``+inf``
+   for a clean solve, finite when a segment bailed. ``y0`` stays RAW physical;
+   the callbacks solve (``physical_solve.solve_physical_states``) integrates it.
+
+
+.. py:function:: evaluate_sample_with_loss_module(wrapper, *, t_measured, SCL_target_measured, mask_measured, n_measured, RAW_y0_measured, jump_ts, max_solver_steps, solver_rtol, solver_atol, step = None, prediction_grid_n = None)
+
+   Solve once, build ``LossInputs``, and evaluate ``wrapper.loss_module``.
+
+   The single shared ODE solve produces ``save_outputs`` (SCL states, RAW
+   rates / volume). We derive the SCL/RAW trajectory pairs by elementwise
+   broadcast against the reaction module's ``SCALE_*`` (no vmap), build a
+   :class:`LossInputs`, and call the loss module. ``per_target_loss`` is the
+   stacked ``named_losses`` in ``loss_module.loss_names`` order; ``total_loss``
+   is their mean.
+
+   ``SCL_target_measured`` is the measurement matrix already divided by
+   ``module.SCALE_state[target_state_indices]`` (pre-scaled by the batched
+   wrapper). ``RAW_y0_measured`` is the full physical initial state.
+
+
+.. py:function:: simulate_measurement_states(wrapper, process_data, *, max_steps = 100000, rtol = 1e-05, atol = 1e-07)
+
+   RAW physical state trajectories at the active measurement timestamps.
+
+   Convenience entry point for forward/export/plotting and tests: it points the
+   wrapper at ``process_data``'s per-process controls and integrates from
+   ``process_data.y0_measured`` with the discrete-jump callbacks solve
+   (:func:`physical_solve.solve_physical_states`). Returns the RAW physical state
+   ``[modeled_RMCs | V | modeled cumulative flows]`` at each padded
+   measurement time. (Replaces the pre-callbacks single-solve of the same name;
+   no ``jump_ts`` argument — the callbacks solve lands segment ends on the events.)
+
+   For a stateful model the returned width is the full integrated ``n_state``
+   (physical columns followed by the trailing latent block); slice physical
+   columns by index rather than assuming the physical-only width.
+
+

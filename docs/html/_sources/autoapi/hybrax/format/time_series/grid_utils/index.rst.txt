@@ -1,0 +1,39 @@
+hybrax.format.time_series.grid_utils
+====================================
+
+.. py:module:: hybrax.format.time_series.grid_utils
+
+.. autoapi-nested-parse::
+
+   Helpers for time-grid merging and discrete sample synthesis.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.format.time_series.grid_utils.linear_interpolate_samples
+   hybrax.format.time_series.grid_utils.merge_times_with_tolerance
+   hybrax.format.time_series.grid_utils.synthesize_binary_samples
+
+
+Module Contents
+---------------
+
+.. py:function:: linear_interpolate_samples(source_times, source_values, target_times)
+
+   Linearly interpolate source samples onto a target time grid.
+
+
+.. py:function:: merge_times_with_tolerance(times_a, times_b, *, atol = TIME_DEDUP_ATOL, rtol = TIME_DEDUP_RTOL)
+
+   Merge two sorted time arrays with tolerance-based deduplication.
+
+
+.. py:function:: synthesize_binary_samples(left_times, left_values, right_times, right_values, *, op)
+
+   Synthesize discrete samples for simple derived binary operations.
+
+

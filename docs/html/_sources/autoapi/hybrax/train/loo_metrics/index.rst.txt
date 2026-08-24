@@ -1,0 +1,150 @@
+hybrax.train.loo_metrics
+========================
+
+.. py:module:: hybrax.train.loo_metrics
+
+.. autoapi-nested-parse::
+
+   Post-hoc LOO-CV goodness-of-fit metrics from per-fold predictions.csv.
+
+   Uses dense ``predictions.csv`` files produced when a LOO run explicitly sets
+   ``output.predictions`` to ``"parents"`` or ``"all"``. This computes R², NMAE,
+   MAE, and RMSE against the original measurements without reloading any model or
+   rerunning the solver. Inputs:
+
+   - ``<loo_output_dir>/folds/<parent>/predictions.csv`` — dense simulated
+     trajectory of each process for that fold.
+   - ``<loo_output_dir>/folds/<parent>/trained_wrapper.meta.json`` — sidecar
+     identifying which processes formed the holdout group for that fold.
+   - ``prepared.json`` — source of truth for measurement timestamps and
+     measured values per target.
+
+   Predictions are linearly interpolated to measurement timestamps before the
+   metrics are computed.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.loo_metrics.DEFAULT_METRICS
+   hybrax.train.loo_metrics.MetricFn
+   hybrax.train.loo_metrics.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.loo_metrics.LOOMetricsResult
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.loo_metrics.compute_aggregated_metrics
+   hybrax.train.loo_metrics.compute_loo_metrics
+   hybrax.train.loo_metrics.compute_metrics_from_predictions_csv
+   hybrax.train.loo_metrics.compute_per_process_metrics
+   hybrax.train.loo_metrics.format_incompleteness_banner
+
+
+Module Contents
+---------------
+
+.. py:class:: LOOMetricsResult
+
+   Outputs of :func:`compute_loo_metrics`.
+
+
+   .. py:attribute:: aggregate
+      :type:  dict[str, Any]
+
+
+   .. py:attribute:: aggregate_json_path
+      :type:  pathlib.Path | None
+
+
+   .. py:attribute:: metrics_csv_path
+      :type:  pathlib.Path | None
+
+
+   .. py:attribute:: per_fold_target
+      :type:  pandas.DataFrame
+
+
+.. py:function:: compute_aggregated_metrics(output_dirs, prepared_json, *, metrics = None, extra_metrics = None, target_names = None, include_volume_changes = True, include_train = False, equal_comparison = True)
+
+   Per-(target_kind, target_name) metrics, pooled within target.
+
+   For each target, ``(y_true, y_pred)`` arrays from every (run, fold,
+   holdout process) tuple are concatenated *within target only* — so
+   biomass [g/L] never gets mixed with cumulative feed [L]. Each
+   metric is then computed once on the concatenated array. Equal
+   weight per measurement point.
+
+   Mirrors ``MPMs/ANA_functions_02.NEW_compare_versions`` semantics:
+   ``y_pooled = US_true[:,:,j].flatten()`` ⇔ "concat across (process,
+   time) for target j".
+
+   Provenance is attached to ``df.attrs`` (same keys as
+   :func:`compute_per_process_metrics`).
+
+
+.. py:function:: compute_loo_metrics(loo_output_dir, prepared_json, *, target_names = None, write_outputs = True)
+
+   Compute per-fold/per-process/per-target R², NMAE, MAE, RMSE.
+
+   :param loo_output_dir: directory containing ``folds/<parent>/`` produced
+                          by ``hybrax loo``.
+   :param prepared_json: path to ``prepared.json`` *or* an already-loaded
+                         :class:`BioProcessCollection`. Source of measured values.
+   :param target_names: explicit subset of targets to score. Defaults to the
+                        sidecar's ``targets`` field, then to any ``c_<name>`` column
+                        present in ``predictions.csv``.
+   :param write_outputs: when ``True``, writes ``loo_metrics.csv`` and
+                         ``loo_metrics_aggregate.json`` next to ``folds/``.
+
+   :returns: :class:`LOOMetricsResult` with the per-(fold, holdout_process,
+             target) DataFrame and a per-target aggregate dict.
+
+
+.. py:function:: compute_metrics_from_predictions_csv(predictions_csv, prepared_json, *, target_names = None, process_names = None)
+
+   Compute the same metrics from a single ``predictions.csv``.
+
+   Useful for non-LOO ``hybrax train`` runs (one model, every process)
+   so the same metric definitions apply uniformly.
+
+
+.. py:function:: compute_per_process_metrics(output_dirs, prepared_json, *, metrics = None, extra_metrics = None, target_names = None, include_volume_changes = True, include_train = False, equal_comparison = True)
+
+   Per-(run, fold, holdout_process, target) goodness-of-fit metrics.
+
+   One row per process scored on its own ``(y_true, y_pred)`` pair —
+   equal weight per process. Useful for spot-checking which fold
+   drove the mean. For pooled-within-target metrics (equal weight per
+   measurement point) use :func:`compute_aggregated_metrics`.
+
+   Provenance — including any incompleteness flags or
+   ``equal_comparison`` drops — is attached to ``df.attrs``.
+
+
+.. py:function:: format_incompleteness_banner(df)
+
+   Return a multi-line banner string when ``df`` carries incomplete-LOO
+   flags, else None. Banner is suitable for ``print()``.
+
+
+.. py:data:: DEFAULT_METRICS
+   :type:  dict[str, MetricFn]
+
+.. py:data:: MetricFn
+
+.. py:data:: logger
+

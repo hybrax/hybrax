@@ -1,0 +1,105 @@
+hybrax.format.time_series.spline_ops
+====================================
+
+.. py:module:: hybrax.format.time_series.spline_ops
+
+.. autoapi-nested-parse::
+
+   Spline evaluation helpers for piecewise cubic power-basis splines.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.format.time_series.spline_ops.VALID_SIDES
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.format.time_series.spline_ops.derivative_coeffs
+   hybrax.format.time_series.spline_ops.evaluate_many
+   hybrax.format.time_series.spline_ops.evaluate_piece
+   hybrax.format.time_series.spline_ops.evaluate_scalar
+   hybrax.format.time_series.spline_ops.has_near_zero_piece_value
+   hybrax.format.time_series.spline_ops.integrate_definite
+   hybrax.format.time_series.spline_ops.merge_breaks
+   hybrax.format.time_series.spline_ops.merge_segment_starts
+   hybrax.format.time_series.spline_ops.piece_index
+   hybrax.format.time_series.spline_ops.rebase_piece
+   hybrax.format.time_series.spline_ops.rebase_to_breaks
+   hybrax.format.time_series.spline_ops.validate_side
+
+
+Module Contents
+---------------
+
+.. py:function:: derivative_coeffs(coeffs, order = 1)
+
+   Return power-basis coeffs for the derivative of the given order.
+
+
+.. py:function:: evaluate_many(ts, breaks, coeffs, side)
+
+   Evaluate a piecewise cubic spline at many time points.
+
+
+.. py:function:: evaluate_piece(coeff_row, dt)
+
+   Evaluate one cubic piece in Horner form.
+
+
+.. py:function:: evaluate_scalar(t, breaks, coeffs, side)
+
+   Evaluate a piecewise cubic spline at one time.
+
+
+.. py:function:: has_near_zero_piece_value(breaks, coeffs, threshold)
+
+   Return True if any piece gets within threshold of zero.
+
+
+.. py:function:: integrate_definite(breaks, coeffs, a, b)
+
+   Integrate a piecewise cubic spline from ``a`` to ``b``, clipped to its support.
+
+
+.. py:function:: merge_breaks(a, b)
+
+   Return the sorted union of two breakpoint arrays, deduplicated.
+
+
+.. py:function:: merge_segment_starts(breaks_a, starts_a, breaks_b, starts_b, merged_breaks)
+
+   Remap two operands' segment-start piece indices onto their merged breaks.
+
+
+.. py:function:: piece_index(t, breaks, side)
+
+   Return the piece index for time t with continuity-side semantics.
+
+
+.. py:function:: rebase_piece(coeff_row, shift)
+
+   Rebase cubic coeffs [a,b,c,d] from x0 to x0+shift.
+
+
+.. py:function:: rebase_to_breaks(breaks, coeffs, target_breaks)
+
+   Express spline coeffs on a refined breakpoint grid.
+
+
+.. py:function:: validate_side(side, *, name = 'side')
+
+   Raise ``ValueError`` unless ``side`` is ``'left'`` or ``'right'``.
+
+
+.. py:data:: VALID_SIDES
+   :value: ('left', 'right')
+
+

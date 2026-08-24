@@ -1,0 +1,1011 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="index" title="Index" href="../../../../genindex.html"><link rel="search" title="Search" href="../../../../search.html"><link rel="next" title="hybrax.train" href="../../train/index.html"><link rel="prev" title="hybrax.format.time_series.timeseries" href="../time_series/timeseries/index.html">
+        <link rel="prefetch" href="../../../../_static/hybrax_logo.png" as="image">
+
+    <link rel="shortcut icon" href="../../../../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>hybrax.format.validate - Bioprocess Modeling with Hybrax</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/custom.css?v=98a1085a" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #eeffcc;
+  --color-code-foreground: black;
+  --color-brand-primary: #2563eb;
+  --color-brand-content: #2563eb;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../../index.html"><div class="brand">Bioprocess Modeling with Hybrax</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../../../_static/hybrax_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">Hybrax Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/why.html">Why this exists</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/concepts.html">Concepts and Vocabulary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../start/find.html">Which page do I need?</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/01_your_first_dataset.html">1. Import your Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/02_look_at_it.html">2. View your Dataset</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/03_train.html">3. Train a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/04_your_first_custom_py.html">4. Custom Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../tutorials/05_predict.html">5. Predict Processes</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.format guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/data_model.html">The Data Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/load_and_save.html">Loading and saving</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/validate_and_inspect.html">Validating and inspecting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/volume_feeds_events.html">Volume, feeds and events</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/time_series_and_splines.html">Time series and splines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/limits_and_gotchas.html">Limits and gotchas</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../format/further_reading.html">Further reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/config.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/hooks_cheatsheet.html">Customization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/prepare.html">Prepare</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/train.html">Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/reaction_module.html">The Reaction Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/loss_module.html">The Loss Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/scaling.html">Scaling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/forward.html">Forward</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/loo.html">Cross-Validation (LOO)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/save_load_predict.html">The Python API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../train/further_reading.html">Further Reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/mechanistic_rates.html">Mechanistic models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/dense_loss.html">Custom losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/stateful.html">Stateful models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/freezing.html">Freezing parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/augmentation.html">Augmentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/gaussian_process.html">A Gaussian-process model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/kan.html">A KAN model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/optfed.html">OptFed</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/glutamine_decay.html">Glutamine decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/modeled_pv.html">A modeled process variable</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../troubleshooting/errors.html">Errors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../troubleshooting/silent_failures.html">Silent failures</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Under the hood</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../under_the_hood/design_rationale.html">Design Rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../contributors.html">Contributors</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul class="current">
+<li class="toctree-l1 current has-children"><a class="reference internal" href="../index.html">hybrax.format</a><input aria-label="Toggle navigation of hybrax.format" checked="" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../dataclasses/index.html">hybrax.format.dataclasses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../inspect/index.html">hybrax.format.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../json_io/index.html">hybrax.format.json_io</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../serialization/index.html">hybrax.format.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../simulation/index.html">hybrax.format.simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../splines/index.html">hybrax.format.splines</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../time_series/index.html">hybrax.format.time_series</a><input aria-label="Toggle navigation of hybrax.format.time_series" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../time_series/constants/index.html">hybrax.format.time_series.constants</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../time_series/grid_utils/index.html">hybrax.format.time_series.grid_utils</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../time_series/io/index.html">hybrax.format.time_series.io</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../time_series/ppoly/index.html">hybrax.format.time_series.ppoly</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../time_series/spline_ops/index.html">hybrax.format.time_series.spline_ops</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../time_series/timeseries/index.html">hybrax.format.time_series.timeseries</a></li>
+</ul>
+</li>
+<li class="toctree-l2 current current-page"><a class="current reference internal" href="#">hybrax.format.validate</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../train/index.html">hybrax.train</a><input aria-label="Toggle navigation of hybrax.train" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../train/augmentation/index.html">hybrax.train.augmentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/augmentation_plot/index.html">hybrax.train.augmentation_plot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/bounds_loss/index.html">hybrax.train.bounds_loss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/checkpointing/index.html">hybrax.train.checkpointing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/cli/index.html">hybrax.train.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/constants/index.html">hybrax.train.constants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/controls/index.html">hybrax.train.controls</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/defaults/index.html">hybrax.train.defaults</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/dense/index.html">hybrax.train.dense</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/forward_plotting/index.html">hybrax.train.forward_plotting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/harness/index.html">hybrax.train.harness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/inspect/index.html">hybrax.train.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/logging/index.html">hybrax.train.logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/loo/index.html">hybrax.train.loo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/loo_metrics/index.html">hybrax.train.loo_metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/model_api/index.html">hybrax.train.model_api</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/prepare/index.html">hybrax.train.prepare</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/run_config/index.html">hybrax.train.run_config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/runtime_context/index.html">hybrax.train.runtime_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/serialization/index.html">hybrax.train.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/trainer/index.html">hybrax.train.trainer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/training_data/index.html">hybrax.train.training_data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/utils/index.html">hybrax.train.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/wrapper/index.html">hybrax.train.wrapper</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="view-this-page">
+  <a class="muted-link" href="../../../../_sources/autoapi/hybrax/format/validate/index.rst.txt" title="View this page">
+    <svg><use href="#svg-eye"></use></svg>
+    <span class="visually-hidden">View this page</span>
+  </a>
+</div>
+<div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <section id="module-hybrax.format.validate">
+<span id="hybrax-format-validate"></span><h1>hybrax.format.validate<a class="headerlink" href="#module-hybrax.format.validate" title="Link to this heading">¶</a></h1>
+<p>Validation utilities for bioprocess data</p>
+<section id="functions">
+<h2>Functions<a class="headerlink" href="#functions" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_augmented_parent_refs" title="hybrax.format.validate.validate_augmented_parent_refs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_augmented_parent_refs</span></code></a>(container)</p></td>
+<td><p>Verify <code class="docutils literal notranslate"><span class="pre">AugmentedBioProcess.parent_process</span></code> references in a container.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_biological_ode" title="hybrax.format.validate.validate_biological_ode"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_biological_ode</span></code></a>(process)</p></td>
+<td><p>Validate <code class="docutils literal notranslate"><span class="pre">process.biological_ode</span></code> if present.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_biological_ode_equivalence" title="hybrax.format.validate.validate_biological_ode_equivalence"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_biological_ode_equivalence</span></code></a>(container)</p></td>
+<td><p>Verify all processes in <em>container</em> share the same <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_biomass_in_reactor_medium" title="hybrax.format.validate.validate_biomass_in_reactor_medium"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_biomass_in_reactor_medium</span></code></a>(process)</p></td>
+<td><p>Check that the reactor medium contains a component whose name is</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_bounds" title="hybrax.format.validate.validate_bounds"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_bounds</span></code></a>(process)</p></td>
+<td><p>Sanity-check all bounds tuples on the process (states, PVs, volume).</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_bounds_against_data" title="hybrax.format.validate.validate_bounds_against_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_bounds_against_data</span></code></a>(process)</p></td>
+<td><p>Check measured/raw data values against their own declared Bounds.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_cross_process_consistency" title="hybrax.format.validate.validate_cross_process_consistency"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_cross_process_consistency</span></code></a>(collection)</p></td>
+<td><p>Verify every process in <em>collection</em> shares identical structure.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_discrete_events" title="hybrax.format.validate.validate_discrete_events"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_discrete_events</span></code></a>(process)</p></td>
+<td><p>Check event time shape, ordering, bounds, and label count.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_for_publication" title="hybrax.format.validate.validate_for_publication"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_for_publication</span></code></a>(collection)</p></td>
+<td><p>Validate a collection for storage/publication as a coherent case study.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_initial_state_alignment" title="hybrax.format.validate.validate_initial_state_alignment"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_initial_state_alignment</span></code></a>(process)</p></td>
+<td><p>Every dynamic reactor-medium component and process variable must have a</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_measurement_sampling_alignment" title="hybrax.format.validate.validate_measurement_sampling_alignment"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_measurement_sampling_alignment</span></code></a>(process[, ...])</p></td>
+<td><p>Check that reactor medium measurement times are not slightly offset from</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_outflow_retention" title="hybrax.format.validate.validate_outflow_retention"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_outflow_retention</span></code></a>(process)</p></td>
+<td><p>For every Outflow's <code class="docutils literal notranslate"><span class="pre">retention</span></code>, every key must be a declared</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_process" title="hybrax.format.validate.validate_process"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_process</span></code></a>(process)</p></td>
+<td><p>Run all available validation checks on a single BioProcess.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_time_axis" title="hybrax.format.validate.validate_time_axis"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_time_axis</span></code></a>(process)</p></td>
+<td><p>Check that the process time axis starts no later than it ends.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_timeseries_shape" title="hybrax.format.validate.validate_timeseries_shape"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_timeseries_shape</span></code></a>(ts[, name, allow_empty])</p></td>
+<td><p>Check that a TimeSeries has consistent shapes and ordered times.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_timestamp_bounds" title="hybrax.format.validate.validate_timestamp_bounds"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_timestamp_bounds</span></code></a>(process)</p></td>
+<td><p>Check timestamps against valid inclusive time-axis bounds.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_volume_change_sign" title="hybrax.format.validate.validate_volume_change_sign"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_volume_change_sign</span></code></a>(volume_change)</p></td>
+<td><p>Verify that a volume change has correct sign for its type.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_volume_change_states" title="hybrax.format.validate.validate_volume_change_states"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_volume_change_states</span></code></a>(process)</p></td>
+<td><p>For every <em>positive</em> volume change, verify that explicitly declared feed</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_volume_consistency" title="hybrax.format.validate.validate_volume_consistency"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_volume_consistency</span></code></a>(process[, final_volume])</p></td>
+<td><p>Validate that volume changes sum to expected final volume.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_volume_units" title="hybrax.format.validate.validate_volume_units"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_volume_units</span></code></a>(process)</p></td>
+<td><p>Require every volume change to use the process volume unit.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="module-contents">
+<h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_augmented_parent_refs">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_augmented_parent_refs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">container</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_augmented_parent_refs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_augmented_parent_refs" title="Link to this definition">¶</a></dt>
+<dd><p>Verify <code class="docutils literal notranslate"><span class="pre">AugmentedBioProcess.parent_process</span></code> references in a container.</p>
+<p>For every <code class="xref py py-class docutils literal notranslate"><span class="pre">AugmentedBioProcess</span></code> in <code class="docutils literal notranslate"><span class="pre">container.processes</span></code>, the
+referenced <code class="docutils literal notranslate"><span class="pre">parent_process</span></code> must be a key in the same <code class="docutils literal notranslate"><span class="pre">processes</span></code>
+dict and must point to a non-augmented <code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcess</span></code> (chained
+augmentation is not supported in v1).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>container</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>) – A <code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcessCollection</span></code>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">(all_valid,</span> <span class="pre">results)</span></code>. <code class="docutils literal notranslate"><span class="pre">results</span></code> always contains at least one
+<code class="docutils literal notranslate"><span class="pre">(check_ok,</span> <span class="pre">message)</span></code> entry: one per problem found, or a single
+<code class="docutils literal notranslate"><span class="pre">PASS</span></code> entry when there are none.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[bool, List[Tuple[bool, str]]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_biological_ode">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_biological_ode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_biological_ode"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_biological_ode" title="Link to this definition">¶</a></dt>
+<dd><p>Validate <code class="docutils literal notranslate"><span class="pre">process.biological_ode</span></code> if present.</p>
+<p>Checks (skipped when <code class="docutils literal notranslate"><span class="pre">biological_ode</span> <span class="pre">is</span> <span class="pre">None</span></code>):</p>
+<ul class="simple">
+<li><p>Every reactor-medium component and uncontrolled process variable
+(the dynamic states) must have an entry in <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>.</p></li>
+<li><p>Every key in <code class="docutils literal notranslate"><span class="pre">derivatives</span></code> must correspond to a dynamic state.</p></li>
+<li><p>All expressions parse successfully via <code class="docutils literal notranslate"><span class="pre">sympy.sympify</span></code>.</p></li>
+<li><p>Every free symbol in any expression resolves to a dynamic state, a
+controlled process variable (input), an algebraic name, or a declared
+rate name.</p></li>
+<li><p>Algebraic-variable dependencies are acyclic.</p></li>
+<li><p>Rate names do not collide with state, algebraic, or controlled-PV names.</p></li>
+<li><p>All bounds tuples are sane (<code class="docutils literal notranslate"><span class="pre">lo</span> <span class="pre">&lt;=</span> <span class="pre">hi</span></code> when both set).</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_biological_ode_equivalence">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_biological_ode_equivalence</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">container</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_biological_ode_equivalence"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_biological_ode_equivalence" title="Link to this definition">¶</a></dt>
+<dd><p>Verify all processes in <em>container</em> share the same <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>.</p>
+<p>Equivalence requires identical <code class="docutils literal notranslate"><span class="pre">algebraic</span></code>, <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">rates</span></code> dicts (same keys mapped to the same values). Containers with
+zero or one process trivially pass.</p>
+<p>Returns <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">message)</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>container</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_biomass_in_reactor_medium">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_biomass_in_reactor_medium</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_biomass_in_reactor_medium"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_biomass_in_reactor_medium" title="Link to this definition">¶</a></dt>
+<dd><p>Check that the reactor medium contains a component whose name is
+<code class="docutils literal notranslate"><span class="pre">'biomass'</span></code> (case-insensitive).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>) – BioProcess object to validate.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">message)</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_bounds">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_bounds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_bounds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_bounds" title="Link to this definition">¶</a></dt>
+<dd><p>Sanity-check all bounds tuples on the process (states, PVs, volume).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_bounds_against_data">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_bounds_against_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_bounds_against_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_bounds_against_data" title="Link to this definition">¶</a></dt>
+<dd><p>Check measured/raw data values against their own declared Bounds.</p>
+<p>For every <code class="docutils literal notranslate"><span class="pre">ReactorMediumComponent.concentration</span></code>,
+<code class="docutils literal notranslate"><span class="pre">ProcessVariable.values</span></code>, and (when present) <code class="docutils literal notranslate"><span class="pre">Volume.total_volume</span></code>
+that carries a <em>set</em> Bounds tuple (either side non-<code class="docutils literal notranslate"><span class="pre">None</span></code>), compares
+the actual scalar (<code class="docutils literal notranslate"><span class="pre">StaticVariable</span></code>) or <code class="docutils literal notranslate"><span class="pre">TimeSeries.values</span></code> array
+against <code class="docutils literal notranslate"><span class="pre">(lo,</span> <span class="pre">hi)</span></code> and reports how many datapoints violate the bound.</p>
+<p>Out of scope: <code class="docutils literal notranslate"><span class="pre">BiologicalOde.rates</span></code> bounds. No rate-inversion
+machinery exists to compute a measured rate value to check against them
+(see <code class="docutils literal notranslate"><span class="pre">validate_biological_ode</span></code>’s tuple-only sanity check on rates).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_cross_process_consistency">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_cross_process_consistency</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_cross_process_consistency"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_cross_process_consistency" title="Link to this definition">¶</a></dt>
+<dd><p>Verify every process in <em>collection</em> shares identical structure.</p>
+<p>Compares, against the first process as reference:</p>
+<ul class="simple">
+<li><p>The same reactor-medium component names, each with the same concentration
+type (<code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> or <code class="docutils literal notranslate"><span class="pre">StaticVariable</span></code>) and unit.</p></li>
+<li><p>The same process-variable names, each with the same value type
+(<code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> or <code class="docutils literal notranslate"><span class="pre">StaticVariable</span></code>) and unit.</p></li>
+<li><p>The same volume unit.</p></li>
+<li><p>The same time-axis unit and reference. Start and end may differ.</p></li>
+</ul>
+<p>Volume-change names may differ because processes in one study can use
+different feed and sampling strategies.</p>
+<p>Collections with zero or one process trivially pass.</p>
+<p>Returns <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">results)</span></code>. <code class="docutils literal notranslate"><span class="pre">results</span></code> always contains at least
+one <code class="docutils literal notranslate"><span class="pre">(check_ok,</span> <span class="pre">message)</span></code> entry: one per mismatch found, or a single
+<code class="docutils literal notranslate"><span class="pre">PASS</span></code> entry when consistent.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>collection</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[bool, List[Tuple[bool, str]]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_discrete_events">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_discrete_events</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_discrete_events"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_discrete_events" title="Link to this definition">¶</a></dt>
+<dd><p>Check event time shape, ordering, bounds, and label count.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_for_publication">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_for_publication</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_for_publication"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_for_publication" title="Link to this definition">¶</a></dt>
+<dd><p>Validate a collection for storage/publication as a coherent case study.</p>
+<p>This is hybrax.format’s own concern (is this collection well-formed and
+internally coherent), distinct from hybrax.train’s training-readiness
+concern (<code class="docutils literal notranslate"><span class="pre">hybrax.train.validate.validate_for_training</span></code>). Runs
+<a class="reference internal" href="#hybrax.format.validate.validate_process" title="hybrax.format.validate.validate_process"><code class="xref py py-func docutils literal notranslate"><span class="pre">validate_process()</span></code></a> for every process, then
+<a class="reference internal" href="#hybrax.format.validate.validate_cross_process_consistency" title="hybrax.format.validate.validate_cross_process_consistency"><code class="xref py py-func docutils literal notranslate"><span class="pre">validate_cross_process_consistency()</span></code></a> and
+<a class="reference internal" href="#hybrax.format.validate.validate_augmented_parent_refs" title="hybrax.format.validate.validate_augmented_parent_refs"><code class="xref py py-func docutils literal notranslate"><span class="pre">validate_augmented_parent_refs()</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>collection</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>) – <code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcessCollection</span></code> object to validate.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(all_valid,</span> <span class="pre">report)</span></code> where <code class="docutils literal notranslate"><span class="pre">all_valid</span></code> is <code class="docutils literal notranslate"><span class="pre">True</span></code> only
+when every per-process validation passes <em>and</em> the cross-process
+structure is consistent, and <code class="docutils literal notranslate"><span class="pre">report</span></code> is a dict mapping each
+process name to its list of <code class="docutils literal notranslate"><span class="pre">(check_ok,</span> <span class="pre">message)</span></code> results.
+Cross-process consistency results are stored under the key
+<code class="docutils literal notranslate"><span class="pre">&quot;__consistency__&quot;</span></code>, augmented-parent findings under the key
+<code class="docutils literal notranslate"><span class="pre">&quot;__augmented__&quot;</span></code>. Both are always non-empty.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">collection</span></code> is not a <code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcessCollection</span></code>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[bool, Dict[str, List[Tuple[bool, str]]]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_initial_state_alignment">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_initial_state_alignment</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_initial_state_alignment"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_initial_state_alignment" title="Link to this definition">¶</a></dt>
+<dd><p>Every dynamic reactor-medium component and process variable must have a
+measurement at <code class="docutils literal notranslate"><span class="pre">process.time_axis.start</span></code>, matching where
+<code class="docutils literal notranslate"><span class="pre">volume.initial_volume</span></code> is anchored. Otherwise the ODE’s initial state
+and initial volume come from different points in time.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_measurement_sampling_alignment">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_measurement_sampling_alignment</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rel_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0001</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_measurement_sampling_alignment"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_measurement_sampling_alignment" title="Link to this definition">¶</a></dt>
+<dd><p>Check that reactor medium measurement times are not slightly offset from
+sampling times.</p>
+<p>When a concentration measurement is taken just <em>after</em> a sampling event
+(e.g. 0.0003 h later), it’s ambiguous which side of the (discontinuous)
+event it belongs to. The accumulated dilution factor (ADF) in the
+pseudobatch transform may use the wrong reactor volume, corrupting the
+normalisation and downstream spline calculations.</p>
+<p>This function flags every measurement time point that is close to (but not
+exactly at) a sampling time point, where “close” means within
+<code class="docutils literal notranslate"><span class="pre">rel_threshold</span></code> of the total process length.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>) – BioProcess object to validate.</p></li>
+<li><p><strong>rel_threshold</strong> (<em>float</em>) – Maximum relative deviation (fraction of process length)
+that is considered “suspiciously close”.  Default is <code class="docutils literal notranslate"><span class="pre">1e-4</span></code>
+(0.01 %).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">message)</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_outflow_retention">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_outflow_retention</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_outflow_retention"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_outflow_retention" title="Link to this definition">¶</a></dt>
+<dd><p>For every Outflow’s <code class="docutils literal notranslate"><span class="pre">retention</span></code>, every key must be a declared
+reactor-medium component name, every value must satisfy
+<code class="docutils literal notranslate"><span class="pre">0.0</span> <span class="pre">&lt;=</span> <span class="pre">sigma</span> <span class="pre">&lt;=</span> <span class="pre">1.0</span></code>, and a non-empty <code class="docutils literal notranslate"><span class="pre">retention</span></code> is only allowed
+on a continuous Outflow. The RHS mechanistic model only ever consults
+retention for continuous flows (see <code class="docutils literal notranslate"><span class="pre">_build_retention</span></code> in
+<code class="docutils literal notranslate"><span class="pre">mechanistic.py</span></code>), so retention set on a discrete Outflow would
+otherwise be silently ignored rather than doing anything.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>) – BioProcess object to validate.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">message)</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_process">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_process</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_process"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_process" title="Link to this definition">¶</a></dt>
+<dd><p>Run all available validation checks on a single BioProcess.</p>
+<p>Checks performed, in order:
+- Discrete-event time shape, ordering, bounds, and label count.
+- TimeSeries shape and ordering for every reactor-medium component,</p>
+<blockquote>
+<div><p>process variable, volume change, and measured total volume.</p>
+</div></blockquote>
+<ul class="simple">
+<li><p>The process time axis starts no later than it ends.</p></li>
+<li><p>Every timestamp falls within the process time-axis bounds.</p></li>
+<li><p>Every volume change uses the process volume unit.</p></li>
+<li><p>Sign consistency for every volume change.</p></li>
+<li><p>State-variable / feed-medium coverage for positive volume changes.</p></li>
+<li><p>Outflow <code class="docutils literal notranslate"><span class="pre">retention</span></code> keys/values (<a class="reference internal" href="#hybrax.format.validate.validate_outflow_retention" title="hybrax.format.validate.validate_outflow_retention"><code class="xref py py-func docutils literal notranslate"><span class="pre">validate_outflow_retention()</span></code></a>).</p></li>
+<li><p>Presence of a <code class="docutils literal notranslate"><span class="pre">biomass</span></code> component in the reactor medium.</p></li>
+<li><p>Every dynamic state has a measurement at <code class="docutils literal notranslate"><span class="pre">time_axis.start</span></code>, matching
+where <code class="docutils literal notranslate"><span class="pre">volume.initial_volume</span></code> is anchored.</p></li>
+<li><p>Measurement/sampling timestamp alignment.</p></li>
+<li><p>Bounds tuple sanity.</p></li>
+<li><p>Measured data falls within its own declared <code class="docutils literal notranslate"><span class="pre">Bounds</span></code>.</p></li>
+<li><p>Biological ODE structure.</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>) – BioProcess object to validate.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(all_valid,</span> <span class="pre">results)</span></code> where <code class="docutils literal notranslate"><span class="pre">all_valid</span></code> is <code class="docutils literal notranslate"><span class="pre">True</span></code> only
+when every individual check passes and <code class="docutils literal notranslate"><span class="pre">results</span></code> is a list of
+<code class="docutils literal notranslate"><span class="pre">(check_ok,</span> <span class="pre">message)</span></code> pairs, one per check.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">process</span></code> is not a <code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcess</span></code> instance.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[bool, List[Tuple[bool, str]]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_time_axis">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_time_axis</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_time_axis"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_time_axis" title="Link to this definition">¶</a></dt>
+<dd><p>Check that the process time axis starts no later than it ends.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_timeseries_shape">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_timeseries_shape</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">allow_empty</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_timeseries_shape"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_timeseries_shape" title="Link to this definition">¶</a></dt>
+<dd><p>Check that a TimeSeries has consistent shapes and ordered times.</p>
+<p>Verifies:
+- <code class="docutils literal notranslate"><span class="pre">times</span></code> and <code class="docutils literal notranslate"><span class="pre">values</span></code> are 1-D arrays.
+- Both arrays have the same length.
+- <code class="docutils literal notranslate"><span class="pre">times</span></code> are nonempty unless <code class="docutils literal notranslate"><span class="pre">allow_empty</span></code> is true.
+- <code class="docutils literal notranslate"><span class="pre">times</span></code> are strictly monotonically increasing (no duplicates).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ts</strong> (<em>hybrax.format.dataclasses.TimeSeries</em>) – TimeSeries object to validate.</p></li>
+<li><p><strong>name</strong> (<em>str</em>) – Optional label used in the message (e.g. the variable name).</p></li>
+<li><p><strong>allow_empty</strong> (<em>bool</em>) – Whether matching empty arrays represent a valid event sequence.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">message)</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_timestamp_bounds">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_timestamp_bounds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_timestamp_bounds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_timestamp_bounds" title="Link to this definition">¶</a></dt>
+<dd><p>Check timestamps against valid inclusive time-axis bounds.</p>
+<p>Skip this policy-dependent check when the time axis itself is inverted.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_volume_change_sign">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_volume_change_sign</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">volume_change</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_volume_change_sign"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_volume_change_sign" title="Link to this definition">¶</a></dt>
+<dd><p>Verify that a volume change has correct sign for its type.</p>
+<p>For a <code class="docutils literal notranslate"><span class="pre">Inflow</span></code> all values must be ≥ 0.
+For a <code class="docutils literal notranslate"><span class="pre">Outflow</span></code> all values must be ≤ 0.
+If the concrete type is unknown, fall back to verifying that the change is
+purely positive or purely negative (never mixed).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>volume_change</strong> – Inflow or Outflow object.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">message)</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_volume_change_states">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_volume_change_states</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_volume_change_states"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_volume_change_states" title="Link to this definition">¶</a></dt>
+<dd><p>For every <em>positive</em> volume change, verify that explicitly declared feed
+components corresponding to dynamic reactor states use the same unit
+string. Omitted reactor components are valid and mean zero concentration.</p>
+<p>A “state variable” is a reactor-medium component whose concentration is
+a TimeSeries (i.e. it is measured dynamically over time), as opposed to a
+StaticVariable.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>) – BioProcess object to validate.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">message)</span></code> where <code class="docutils literal notranslate"><span class="pre">is_valid</span></code> is <code class="docutils literal notranslate"><span class="pre">True</span></code> when
+every declared dynamic feed component uses the matching unit string.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_volume_consistency">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_volume_consistency</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">final_volume</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_volume_consistency"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_volume_consistency" title="Link to this definition">¶</a></dt>
+<dd><p>Validate that volume changes sum to expected final volume.</p>
+<p>This function checks whether the sum of all volume changes (feeds, sampling, etc.)
+is consistent with the expected final volume. It handles both continuous
+(cumulative time series) and discrete volume changes.</p>
+<p>Note: as these values may be on different time-scale and this check is
+supposed to be run _before_ any modeling or spline interpolation happens,
+here only the last time points are considered.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>) – BioProcess object whose volume changes are validated.</p></li>
+<li><p><strong>final_volume</strong> (<em>Optional</em><em>[</em><em>float</em><em>]</em>) – Expected final volume in the process’s volume unit.  When
+provided the function checks that the sum of all volume changes plus
+<code class="docutils literal notranslate"><span class="pre">process.volume.initial_volume</span></code> is within 5 % of this value.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">is_valid</span></code> is <code class="docutils literal notranslate"><span class="pre">True</span></code> when the relative deviation between the
+calculated and expected final volume is ≤ 5 %.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">message</span></code> is a human-readable summary of the volume balance.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">total_change</span></code> is the net volume change (sum of all individual
+volume changes, in the process’s volume unit).</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">message,</span> <span class="pre">total_change)</span></code> where</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_volume_units">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_volume_units</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_volume_units"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_volume_units" title="Link to this definition">¶</a></dt>
+<dd><p>Require every volume change to use the process volume unit.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+</section>
+
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          <a class="next-page" href="../../train/index.html">
+              <div class="page-info">
+                <div class="context">
+                  <span>Next</span>
+                </div>
+                <div class="title">hybrax.train</div>
+              </div>
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+            </a>
+          <a class="prev-page" href="../time_series/timeseries/index.html">
+              <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
+              <div class="page-info">
+                <div class="context">
+                  <span>Previous</span>
+                </div>
+                
+                <div class="title">hybrax.format.time_series.timeseries</div>
+                
+              </div>
+            </a>
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Bioprocess Modeling Collective
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer">
+      
+      
+      <div class="toc-sticky toc-scroll">
+        <div class="toc-title-container">
+          <span class="toc-title">
+            On this page
+          </span>
+        </div>
+        <div class="toc-tree-container">
+          <div class="toc-tree">
+            <ul>
+<li><a class="reference internal" href="#">hybrax.format.validate</a><ul>
+<li><a class="reference internal" href="#functions">Functions</a></li>
+<li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_augmented_parent_refs"><code class="docutils literal notranslate"><span class="pre">validate_augmented_parent_refs()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_biological_ode"><code class="docutils literal notranslate"><span class="pre">validate_biological_ode()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_biological_ode_equivalence"><code class="docutils literal notranslate"><span class="pre">validate_biological_ode_equivalence()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_biomass_in_reactor_medium"><code class="docutils literal notranslate"><span class="pre">validate_biomass_in_reactor_medium()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_bounds"><code class="docutils literal notranslate"><span class="pre">validate_bounds()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_bounds_against_data"><code class="docutils literal notranslate"><span class="pre">validate_bounds_against_data()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_cross_process_consistency"><code class="docutils literal notranslate"><span class="pre">validate_cross_process_consistency()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_discrete_events"><code class="docutils literal notranslate"><span class="pre">validate_discrete_events()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_for_publication"><code class="docutils literal notranslate"><span class="pre">validate_for_publication()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_initial_state_alignment"><code class="docutils literal notranslate"><span class="pre">validate_initial_state_alignment()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_measurement_sampling_alignment"><code class="docutils literal notranslate"><span class="pre">validate_measurement_sampling_alignment()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_outflow_retention"><code class="docutils literal notranslate"><span class="pre">validate_outflow_retention()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_process"><code class="docutils literal notranslate"><span class="pre">validate_process()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_time_axis"><code class="docutils literal notranslate"><span class="pre">validate_time_axis()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_timeseries_shape"><code class="docutils literal notranslate"><span class="pre">validate_timeseries_shape()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_timestamp_bounds"><code class="docutils literal notranslate"><span class="pre">validate_timestamp_bounds()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_volume_change_sign"><code class="docutils literal notranslate"><span class="pre">validate_volume_change_sign()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_volume_change_states"><code class="docutils literal notranslate"><span class="pre">validate_volume_change_states()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_volume_consistency"><code class="docutils literal notranslate"><span class="pre">validate_volume_consistency()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_volume_units"><code class="docutils literal notranslate"><span class="pre">validate_volume_units()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+          </div>
+        </div>
+      </div>
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../../_static/documentation_options.js?v=04266cf0"></script>
+    <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script src="../../../../_static/custom.js?v=fec45a96"></script>
+    </body>
+</html>

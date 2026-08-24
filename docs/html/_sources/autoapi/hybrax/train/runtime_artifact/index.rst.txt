@@ -1,0 +1,190 @@
+hybrax.train.runtime_artifact
+=============================
+
+.. py:module:: hybrax.train.runtime_artifact
+
+.. autoapi-nested-parse::
+
+   Strict runtime artifact format.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.runtime_artifact.FORMAT_VERSION
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.runtime_artifact.RhsNames
+   hybrax.train.runtime_artifact.RuntimeArtifact
+   hybrax.train.runtime_artifact.RuntimeArtifactFold
+   hybrax.train.runtime_artifact.RuntimeArtifactMetadata
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.runtime_artifact.load_runtime_artifact
+   hybrax.train.runtime_artifact.read_runtime_artifact_metadata
+   hybrax.train.runtime_artifact.write_runtime_artifact
+
+
+Module Contents
+---------------
+
+.. py:class:: RhsNames
+
+   Semantic RHS axes: enough to validate array shapes, never the equations.
+
+   The equations come back from hybrax.format's ``build_rhs_ode()`` on a
+   training parent, so no biological expression is ever serialized.
+
+
+   .. py:method:: from_rhs_ode(rhs_ode)
+      :classmethod:
+
+
+      Extract every :class:`RhsNames` field from an ``RhsOde`` by name.
+
+
+
+   .. py:attribute:: name_controlled_Inflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_controlled_Outflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_controlled_PVs
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_modeled_Inflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_modeled_Outflows
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_modeled_PVs
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_modeled_RMCs
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_modeled_algebraic
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: name_modeled_rates
+      :type:  tuple[str, ...]
+
+
+.. py:class:: RuntimeArtifact
+
+   One fold's loaded runtime inputs.
+
+   ``training_parent_collection`` is already filtered to the parents represented
+   by ``fold.train``; ``augmentation_parents`` is the canonical full mapping, kept
+   so consumers can re-derive that selection independently instead of trusting
+   the filtered collection's own keys.
+
+
+   .. py:attribute:: augmentation_parents
+      :type:  tuple[str | None, ...]
+
+
+   .. py:attribute:: fold
+      :type:  RuntimeArtifactFold
+
+
+   .. py:attribute:: identity
+      :type:  str
+
+
+   .. py:attribute:: scales
+      :type:  hybrax.train.model_api.EstimatedScales
+
+
+   .. py:attribute:: training_data
+      :type:  hybrax.train.training_data.TrainingDataStore
+
+
+   .. py:attribute:: training_parent_collection
+      :type:  hybrax.format.dataclasses.BioProcessCollection
+
+
+.. py:class:: RuntimeArtifactFold
+
+   One LOO fold's identity: its index, test/train process sets, slug, and seed.
+
+
+   .. py:attribute:: idx
+      :type:  int
+
+
+   .. py:attribute:: seed
+      :type:  int
+
+
+   .. py:attribute:: slug
+      :type:  str
+
+
+   .. py:attribute:: test
+      :type:  tuple[str, ...]
+
+
+   .. py:attribute:: train
+      :type:  tuple[str, ...]
+
+
+.. py:class:: RuntimeArtifactMetadata
+
+   Validated manifest data available without reading numeric arrays.
+
+
+   .. py:attribute:: folds
+      :type:  tuple[RuntimeArtifactFold, ...]
+
+
+   .. py:attribute:: identity
+      :type:  str
+
+
+   .. py:attribute:: identity_inputs
+      :type:  Mapping[str, str]
+
+
+.. py:function:: load_runtime_artifact(path, *, fold_id)
+
+   Load one fold; unselected fold scale files are never opened or checksummed.
+
+
+.. py:function:: read_runtime_artifact_metadata(path)
+
+   Validate artifact declarations without opening any numeric array file.
+
+
+.. py:function:: write_runtime_artifact(path, *, training_data, parent_collection, augmentation_parents, folds, rhs_names, identity_inputs = None)
+
+   Atomically write shared runtime data and independently loadable scales.
+
+
+.. py:data:: FORMAT_VERSION
+   :value: 4
+
+

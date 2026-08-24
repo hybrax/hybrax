@@ -1,0 +1,1206 @@
+hybrax.train.model_api
+======================
+
+.. py:module:: hybrax.train.model_api
+
+.. autoapi-nested-parse::
+
+   The user-facing contract between a custom model and the training harness.
+
+   This module provides:
+
+   - ``trainable_field`` / ``frozen_field`` / ``partition_trainable`` — field-metadata
+     tags that mark which array leaves of a user module receive optimizer updates.
+   - ``Scaler`` / ``LinearScaler`` / ``AffineScaler`` — RAW (physical) <-> SCL
+     (solver) unit transforms, one per semantic axis of the state/control vectors.
+   - ``ReactionInputs`` / ``ReactionOutputs`` / ``EstimatedScales`` /
+     ``UserReactionModule`` — the reaction-model contract: subclass
+     ``UserReactionModule``, implement ``__call__``, and the ``scale_*``/``unscale_*``
+     delegates handle every RAW/SCL conversion the ODE RHS needs.
+   - ``LossInputs`` / ``LossOutputs`` / ``UserLossModule`` — the loss contract:
+     subclass ``UserLossModule`` and implement ``__call__`` to turn one sample's
+     predictions and measurements into named loss terms.
+
+   Both ``UserReactionModule`` and ``UserLossModule`` are abstract base classes:
+   their ``__call__`` (and, for the reaction module, every ``scale_*``/``unscale_*``
+   helper) raise ``NotImplementedError`` until a subclass provides them. The
+   training harness (``harness.py``, ``trainer.py``) drives instances of these
+   through the shared ODE solve; this module defines the contract, not the solve.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.model_api.TRAINABLE_METADATA_KEY
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.model_api.AffineScaler
+   hybrax.train.model_api.EstimatedScales
+   hybrax.train.model_api.LinearScaler
+   hybrax.train.model_api.LossInputs
+   hybrax.train.model_api.LossOutputs
+   hybrax.train.model_api.ReactionInputs
+   hybrax.train.model_api.ReactionOutputs
+   hybrax.train.model_api.Scaler
+   hybrax.train.model_api.UserLossModule
+   hybrax.train.model_api.UserReactionModule
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.model_api.frozen_field
+   hybrax.train.model_api.partition_trainable
+   hybrax.train.model_api.trainable_field
+
+
+Module Contents
+---------------
+
+.. py:class:: AffineScaler(scale, offset)
+
+   Bases: :py:obj:`Scaler`
+
+
+   Affine scaler: ``SCL = (RAW - b) / s``. Opt-in via the hook return value.
+
+   Value ops subtract the offset (``RAW / scaler`` → ``(RAW - b)/s``;
+   ``SCL * scaler`` → ``SCL * s + b``); derivative ops are offset-free
+   (``/s`` and ``*s``), because ``d((RAW-b)/s)/dt = (dRAW/dt)/s``. This
+   divergence is the whole point of the explicit derivative ops — a value
+   ``/`` applied to a rate would silently inject ``-b/s`` into the ODE RHS.
+
+   The default path never constructs this; a user opts in by returning an
+   ``AffineScaler`` for one axis from ``estimate_all_scales``. Offsets are
+   meaningful only on VALUE axes — the harness rejects a non-zero offset on
+   rate axes. Closed-over concrete zero offsets retain
+   ``LinearScaler`` bit identity through reverse-mode training. A genuinely
+   dynamic traced offset uses runtime selection: values retain signed-zero
+   identity, but reverse-mode signed-zero identity is not guaranteed.
+
+   A bare ``AffineScaler.astype`` staged inside a trace uses the dynamic
+   fallback. Composed zero-offset state scalers instead collapse to
+   ``LinearScaler`` before casting, preserving the solver's concrete
+   offset-free branch without cached public state.
+
+   A composed **non-zero** offset does take that dynamic fallback, and the
+   reason is not obvious: ``_compose_scalers`` reads the predicate from
+   concrete child leaves, but the ``AffineScaler`` it returns holds the
+   *concatenated* arrays, and ``jnp.concatenate`` stages inside a trace even
+   when every child is a concrete closed-over constant. The composed scaler's
+   ops therefore re-derive the predicate from a tracer and select at runtime.
+   Measured over a real ``solve_physical_states`` with a non-zero offset and
+   the module closed over: 7 of 10 composed value ops select rather than
+   branch, at both float32 and float64. That is numerically correct and there
+   is no bit-identity claim for a non-zero offset, so it is accepted rather
+   than worked around — carrying the predicate across would reintroduce the
+   public cached flag that ``eqx.tree_at`` can stale. Note it costs extra
+   selects on closed-over forward paths (export, inference). The training path
+   is unaffected in the sense that it already selects: there the module is a
+   differentiated argument, so the offset is a genuine tracer either way.
+
+
+   .. py:method:: astype(dtype)
+
+      Return an :class:`AffineScaler` with ``scale``/``offset`` cast to ``dtype``.
+
+
+
+   .. py:method:: scale_derivative(RAW_rate)
+
+      RAW rate -> SCL rate: offset-free, ``RAW_rate / scale``.
+
+
+
+   .. py:method:: unscale_derivative(SCL_rate)
+
+      SCL rate -> RAW rate: offset-free, ``SCL_rate * scale``.
+
+
+
+   .. py:attribute:: offset
+      :type:  jax.Array
+
+
+   .. py:attribute:: scale
+      :type:  jax.Array
+
+
+   .. py:property:: shape
+      :type: tuple[int, ...]
+
+
+      Array shape of ``scale``.
+
+
+.. py:class:: EstimatedScales
+
+   Return shape for the ``estimate_all_scales`` user hook.
+
+   The harness unpacks these into ``build_reaction_module`` kwargs and the
+   constructed module stores them as frozen fields. Together they cover every
+   semantic axis the module / wrapper / trainer needs to scale.
+
+   Fields accept a bare ``jax.Array`` (promoted to ``LinearScaler`` by the
+   harness — the default, bit-identical to pure division) **or** a ``Scaler``
+   (e.g. ``AffineScaler`` to opt into affine scaling for one axis). Hooks keep
+   returning arrays for zero-edit compatibility; a hook opts in by returning a
+   ``Scaler`` for the axis it wants to transform.
+
+
+   .. py:attribute:: SCALE_V_in_cumulative
+      :type:  jax.Array | Scaler
+
+
+   .. py:attribute:: SCALE_controlled_Inflows_Cin
+      :type:  jax.Array | Scaler
+
+
+   .. py:attribute:: SCALE_controlled_Inflows_cumulative
+      :type:  jax.Array | Scaler
+
+
+   .. py:attribute:: SCALE_controlled_Inflows_rates
+      :type:  jax.Array | Scaler
+
+
+   .. py:attribute:: SCALE_controlled_Outflows_cumulative
+      :type:  jax.Array | Scaler
+
+
+   .. py:attribute:: SCALE_controlled_Outflows_rates
+      :type:  jax.Array | Scaler
+
+
+   .. py:attribute:: SCALE_controlled_PVs
+      :type:  jax.Array | Scaler
+
+
+   .. py:attribute:: SCALE_modeled_BiologicalOde_rates
+      :type:  jax.Array | Scaler
+
+
+   .. py:attribute:: SCALE_modeled_Inflows_Cin
+      :type:  jax.Array | Scaler
+
+
+   .. py:attribute:: SCALE_modeled_Inflows_cumulative
+      :type:  jax.Array | Scaler
+
+
+   .. py:attribute:: SCALE_modeled_Inflows_rates
+      :type:  jax.Array | Scaler
+
+
+   .. py:attribute:: SCALE_modeled_Outflows_cumulative
+      :type:  jax.Array | Scaler
+
+
+   .. py:attribute:: SCALE_modeled_Outflows_rates
+      :type:  jax.Array | Scaler
+
+
+   .. py:attribute:: SCALE_modeled_PVs
+      :type:  jax.Array | Scaler
+
+
+   .. py:attribute:: SCALE_modeled_RMCs
+      :type:  jax.Array | Scaler
+
+
+.. py:class:: LinearScaler(scale)
+
+   Bases: :py:obj:`Scaler`
+
+
+   Pure-division scaler: ``SCL = RAW / s``. The default.
+
+   Value (``__rtruediv__`` / ``__rmul__``) and derivative ops are all ``/s`` or
+   ``*s``, so this is bit-identical to the pre-scaler ``RAW / SCALE`` /
+   ``SCL * SCALE`` by construction. The underlying array (``.scale``) is
+   stored verbatim — no dtype normalisation or unification — so
+   ``jnp.concatenate`` promotion over composed state axes is reproduced
+   exactly (a zero-width float64 axis still promotes the concat to float64).
+
+
+   .. py:method:: astype(dtype)
+
+      Return a :class:`LinearScaler` with ``scale`` cast to ``dtype``.
+
+
+
+   .. py:method:: scale_derivative(RAW_rate)
+
+      RAW rate -> SCL rate: pure division, ``RAW_rate / scale``.
+
+
+
+   .. py:method:: unscale_derivative(SCL_rate)
+
+      SCL rate -> RAW rate: pure multiplication, ``SCL_rate * scale``.
+
+
+
+   .. py:property:: offset
+      :type: jax.Array
+
+
+      Always zero, matching :class:`AffineScaler`'s attribute for composition.
+
+
+   .. py:attribute:: scale
+      :type:  jax.Array
+
+
+   .. py:property:: shape
+      :type: tuple[int, ...]
+
+
+      Array shape of ``scale``.
+
+
+.. py:class:: LossInputs
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Everything a loss term needs for one sample, on the measurement grid.
+
+   Built once per sample by the trainer after the shared ODE solve. Predicted
+   trajectories are provided in both SCL and RAW space (scaling is a cheap
+   elementwise broadcast over the leading time axis); the loss module picks
+   whichever space it needs.
+
+   Scales are NOT duplicated here — they live on ``reaction_module`` (the
+   single source of truth), reachable via ``inputs.reaction_module.SCALE_*``
+   or its ``scale_*`` / ``unscale_*`` helpers.
+
+   The masks handle sparse, unaligned measurements (species sampled on
+   different time grids, padded to a common length per batch):
+   - ``mask_measured`` ``(n_meas, n_target)``: per-cell validity. True iff the
+     ``(timepoint, species)`` pair is a real measurement; False for padding
+     rows and for species not sampled at that timestamp.
+   - ``mask_measured_any`` ``(n_meas,)``: ``any(mask_measured, axis=1)`` cast to
+     float — per-row "is this timestep real". Multiply trajectory-wide
+     penalties (e.g. bounds hinges) by this.
+   - ``n_measured``: the unpadded row count for this sample.
+
+   Failure handling: if the ODE solve bailed partway (a stiff segment hit the
+   step cap), every point past the failure time is dropped BEFORE this struct is
+   built — ``mask_measured`` / ``mask_measured_any`` are already zeroed on those
+   rows, and ``dense_valid_time`` (below) marks the valid dense rows. All predicted
+   trajectories here (measurement AND dense) are guaranteed finite: post-failure
+   rows carry a finite fallback, never ``inf``/``nan``. So the ``penalty * mask``
+   idiom is safe (no ``0 * inf``); just remember to gate DENSE penalties by
+   ``dense_valid_time`` (the dense grid has no other failure mask).
+
+
+   .. py:attribute:: RAW_V
+      :type:  jax.Array
+
+
+   .. py:attribute:: RAW_V_unclamped
+      :type:  jax.Array
+
+
+   .. py:attribute:: RAW_modeled_BiologicalOde_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: RAW_modeled_Inflows_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: RAW_modeled_Outflows_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: RAW_states
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_V
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_modeled_BiologicalOde_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_modeled_Inflows_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_modeled_Outflows_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_states
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_target_measured
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_target_pred
+      :type:  jax.Array
+
+
+   .. py:attribute:: auxiliary
+      :type:  dict[str, jax.Array]
+
+
+   .. py:attribute:: dense_RAW_V
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: dense_RAW_V_unclamped
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: dense_RAW_modeled_BiologicalOde_rates
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: dense_RAW_modeled_Inflows_rates
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: dense_RAW_modeled_Outflows_rates
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: dense_RAW_states
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: dense_SCL_V
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: dense_SCL_modeled_BiologicalOde_rates
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: dense_SCL_modeled_Inflows_rates
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: dense_SCL_modeled_Outflows_rates
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: dense_SCL_states
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: dense_auxiliary
+      :type:  dict[str, jax.Array] | None
+      :value: None
+
+
+
+   .. py:attribute:: dense_t
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: dense_valid_time
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: jump_ts
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: mask_measured
+      :type:  jax.Array
+
+
+   .. py:attribute:: mask_measured_any
+      :type:  jax.Array
+
+
+   .. py:attribute:: n_measured
+      :type:  jax.Array
+
+
+   .. py:attribute:: reaction_module
+      :type:  UserReactionModule
+
+
+   .. py:attribute:: step
+      :type:  jax.Array
+
+
+   .. py:attribute:: t_measured
+      :type:  jax.Array
+
+
+.. py:class:: LossOutputs
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Named loss scalars. Plot/log panel names = dict keys.
+
+   Total loss for backprop = ``mean(named_losses.values())`` (the harness
+   stacks the values in ``loss_names`` order and takes the mean). Mean keeps
+   gradients in the same range as hybrax.train's historical default, so a tuned
+   ``grad_clip_norm`` keeps behaving the same as the term count grows. The set
+   of keys is fixed per run and declared up front via
+   ``UserLossModule.loss_names``; ``__call__`` must return exactly those keys
+   in that order.
+
+
+   .. py:attribute:: named_losses
+      :type:  dict[str, jax.Array]
+
+
+.. py:class:: ReactionInputs
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   All inputs to a UserReactionModule call, one per semantic axis.
+
+   Built by HybridOdeWrapper at each RHS evaluation. Modeled RMC inputs remain
+   unclipped so gradient flow survives transient negative excursions near
+   depletion. Modeled and controlled cumulative-volume and flow-rate axes are
+   split into Inflows and Outflows. Inflow-composition matrices are scaled;
+   Outflow-retention matrices remain raw dimensionless fractions.
+
+
+   .. py:attribute:: RAW_controlled_Outflows_retention
+      :type:  jax.Array
+
+
+   .. py:attribute:: RAW_modeled_Outflows_retention
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_controlled_Inflows_Cin
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_controlled_Inflows_cumulative
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_controlled_Inflows_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_controlled_Outflows_cumulative
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_controlled_Outflows_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_controlled_PVs
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_latent
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_modeled_Inflows_Cin
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_modeled_Inflows_cumulative
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_modeled_Outflows_cumulative
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_modeled_PVs
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_modeled_RMCs
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_modeled_V
+      :type:  jax.Array
+
+
+.. py:class:: ReactionOutputs
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Structured return value from a UserReactionModule.__call__.
+
+   Rate fields are in SCALED space — the module divides its physical
+   output by the matching SCALE_* axis (typically via ``self.scale_*`` helpers)
+   before returning. The wrapper then unscales these on the way into the
+   physical RhsOde mass balance.
+
+   Attributes
+   ----------
+   SCL_modeled_BiologicalOde_rates:
+       Rates emitted by the BiologicalOde block, aligned with
+       ``rhs_ode.name_modeled_rates``. Not 1:1 with RMCs — algebraic rates
+       (e.g. ``q_X_active`` in TUB) live here without a corresponding RMC.
+   SCL_modeled_Inflows_rates:
+       Non-negative modeled Inflow rates aligned with
+       ``rhs_ode.name_modeled_Inflows``.
+   SCL_modeled_Outflows_rates:
+       Non-positive modeled Outflow rates aligned with
+       ``rhs_ode.name_modeled_Outflows``.
+   SCL_latent_derivative:
+       Continuous latent-state derivative, aligned with ``SCL_latent``.
+   auxiliary:
+       Optional model-defined observables that follow the solver-time save
+       path. ``None`` or ``dict[str, array]`` with scalar or 1D-array leaves
+       and stable keys across calls.
+
+
+   .. py:attribute:: SCL_latent_derivative
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_modeled_BiologicalOde_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_modeled_Inflows_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_modeled_Outflows_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: auxiliary
+      :type:  dict[str, jax.Array] | None
+      :value: None
+
+
+
+.. py:class:: Scaler
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   RAW <-> SCL transform for one semantic axis. Frozen, never trained.
+
+   A scaler encodes the reparametrisation between RAW physical space and the
+   SCL space the ODE solver integrates in. The default and overwhelmingly
+   common case is pure division (``LinearScaler``); ``AffineScaler`` adds an
+   offset (``SCL = (RAW - b) / s``) as an opt-in via the ``estimate_all_scales``
+   hook return value.
+
+   Two operation kinds are named explicitly because they diverge once an
+   offset exists. **Value** ops (``RAW / scaler``, ``SCL * scaler``) map a
+   quantity and its time-derivative identically under pure division, but under
+   an affine transform the value subtracts the offset and the derivative does
+   not (``d((RAW-b)/s)/dt = (dRAW/dt)/s``). Subtracting the offset from a
+   derivative is a silent, green-suite ODE-RHS corruption, so the derivative
+   ops are separate and must be called by name at every derivative site.
+
+   Value ops are exposed via the dunders ``__rtruediv__`` (``RAW / scaler``
+   -> SCL) and ``__rmul__`` (``SCL * scaler`` -> RAW); there is deliberately
+   no ``__truediv__`` / ``__mul__``, so ``scaler / x`` and ``scaler * x`` raise
+   ``TypeError`` loudly. Derivative ops (:meth:`scale_derivative` /
+   :meth:`unscale_derivative`) are offset-free and named, so a derivative site
+   cannot accidentally pick up a value transform through ``/`` or ``*`` — it
+   must call the method by name. A scaler is **not** silently array-coercible:
+   its rejecting ``__array__`` and NumPy dispatch guards make
+   ``jnp.asarray(scaler)`` / ``np.asarray(scaler)`` raise, so every coercion
+   site is a loud ``TypeError`` that must become an explicit ``.scale`` /
+   ``.astype`` access (the one library coercion site is ``physical_solve.py``).
+
+
+   .. py:method:: astype(dtype)
+      :abstractmethod:
+
+
+      Return a scaler with the underlying arrays cast to ``dtype``.
+
+
+
+   .. py:method:: scale_derivative(RAW_rate)
+      :abstractmethod:
+
+
+      RAW rate -> SCL rate (offset-free; ``d((RAW-b)/s)/dt = (dRAW/dt)/s``).
+
+
+
+   .. py:method:: scale_value(RAW)
+
+      RAW -> SCL for a value without reversed-operator dispatch.
+
+
+
+   .. py:method:: unscale_derivative(SCL_rate)
+      :abstractmethod:
+
+
+      SCL rate -> RAW rate (offset-free).
+
+
+
+   .. py:method:: unscale_value(SCL)
+
+      SCL -> RAW for a value without reversed-operator dispatch.
+
+
+
+   .. py:attribute:: scale
+      :type:  jax.Array
+
+
+   .. py:property:: shape
+      :type: tuple[int, ...]
+
+      :abstractmethod:
+
+
+      Array shape of one element on this axis (NOT a scalar ``width``).
+
+      Axes are not all 1-D: ``V_in_cumulative`` is scalar ``()``, the two
+      ``*_Cin`` axes are 2-D ``(n_Inflows, n_RMCs)``, and several axes are
+      legitimately zero-width.
+
+
+.. py:class:: UserLossModule
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Base for user-defined loss modules. Mirrors ``UserReactionModule``.
+
+   Subclasses declare any trainable / frozen state via ``trainable_field()`` /
+   ``frozen_field()`` (e.g. Kendall uncertainty weights), exactly like a
+   reaction module. They are optimized alongside the reaction module because
+   the harness partitions the whole wrapper by field tags.
+
+
+   .. py:property:: dense_grid_n
+      :type: int | None
+
+
+      Optional dense-grid opt-in.
+
+      Return an int N to ask the trainer to solve once on the union of the
+      measurement times and ``linspace(t_start, t_end, N)``; the dense view
+      is then populated on :class:`LossInputs` as ``dense_*`` fields. Return
+      ``None`` (default) to stay on the measurement-grid-only path.
+
+      A dense time is NOT a segment boundary — ``physical_solve`` splits segments
+      only at bolus/sample events and reads the grid off ``SaveAt(ts=...)`` inside
+      each segment, which is interpolation and costs no solver steps. So a finer
+      dense grid does not subdivide the integration, does not change ``fail_time``,
+      and does not change which samples bail. (It used to do all three: on a
+      240 h / 11-measurement / 10-sample-event process the solve went from 10
+      segments / 38 ODE steps at ``dense_grid_n=None`` to 108 / 229 at 100.)
+
+      It is not free, though: each dense point still costs one interpolant
+      evaluation per segment it is windowed into, and the ``dense_*`` views it
+      populates are real arrays in the loss.
+
+
+   .. py:property:: loss_names
+      :type: tuple[str, ...]
+
+      :abstractmethod:
+
+
+      Stable ordered term/panel names. MUST equal ``named_losses`` keys.
+
+
+.. py:class:: UserReactionModule(**kwargs)
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Base for user-defined reaction modules.
+
+   The module is the single source of truth for every ``SCALE_*`` vector in
+   hybrax.train. The wrapper queries scales via ``self.reaction_module.SCALE_*``;
+   the trainer reads ``SCALE_state`` to convert measurements to SCL space.
+
+   Subclasses inherit the scale fields below — they do NOT redeclare them;
+   instead they pass values to ``super().__init__(**scale_kwargs)``. Each
+   ``SCALE_*`` field holds a :class:`Scaler` (frozen, never trained); the
+   harness promotes bare arrays from the ``estimate_all_scales`` hook to
+   :class:`LinearScaler` so the default path is pure division.
+
+   Most ``scale_*`` / ``unscale_*`` helpers below operate on VALUES. The three
+   ``*_rates`` helper pairs use derivative semantics. Under pure division
+   (``LinearScaler``) a value and its time-derivative scale identically, but
+   that interchangeability is NOT general: under an affine transform the
+   derivative must NOT subtract the offset (``d((RAW-b)/s)/dt = (dRAW/dt)/s``).
+   ``wrapper.py`` unscales the reaction module's latent derivative;
+   ``physical_solve.py`` then scales the full RAW ODE derivative.
+
+
+   .. py:method:: initial_latent(RAW_phys_y0)
+
+      Initial RAW latent state appended to the physical initial state.
+
+
+
+   .. py:method:: observe(states)
+
+      Optional post-hoc observation map; default identity on physical state.
+
+
+
+   .. py:method:: scale_V_in_cumulative(RAW_V_in_cumulative)
+
+      RAW -> SCL for cumulative volume added by every Inflow.
+
+
+
+   .. py:method:: scale_controlled_Inflows_Cin(RAW_controlled_Inflows_Cin)
+
+      RAW -> SCL for controlled Inflow feed concentrations.
+
+
+
+   .. py:method:: scale_controlled_Inflows_cumulative(RAW_controlled_Inflows_cumulative)
+
+      RAW -> SCL for cumulative controlled Inflow volume.
+
+
+
+   .. py:method:: scale_controlled_Inflows_rates(RAW_controlled_Inflows_rates)
+
+      RAW -> SCL for controlled Inflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: scale_controlled_Outflows_cumulative(RAW_controlled_Outflows_cumulative)
+
+      RAW -> SCL for cumulative controlled Outflow volume.
+
+
+
+   .. py:method:: scale_controlled_Outflows_rates(RAW_controlled_Outflows_rates)
+
+      RAW -> SCL for controlled Outflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: scale_controlled_PVs(RAW_controlled_PVs)
+
+      RAW -> SCL for controlled process variables.
+
+
+
+   .. py:method:: scale_latent(RAW_latent)
+
+      RAW -> SCL for the latent state, via ``SCALE_latent``.
+
+
+
+   .. py:method:: scale_modeled_BiologicalOde_rates(RAW_modeled_BiologicalOde_rates)
+
+      RAW -> SCL for modeled ``biological_ode`` rates (offset-free derivative op).
+
+
+
+   .. py:method:: scale_modeled_Inflows_Cin(RAW_modeled_Inflows_Cin)
+
+      RAW -> SCL for modeled Inflow feed concentrations.
+
+
+
+   .. py:method:: scale_modeled_Inflows_cumulative(RAW_modeled_Inflows_cumulative)
+
+      RAW -> SCL for cumulative modeled Inflow volume.
+
+
+
+   .. py:method:: scale_modeled_Inflows_rates(RAW_modeled_Inflows_rates)
+
+      RAW -> SCL for modeled Inflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: scale_modeled_Outflows_cumulative(RAW_modeled_Outflows_cumulative)
+
+      RAW -> SCL for cumulative modeled Outflow volume.
+
+
+
+   .. py:method:: scale_modeled_Outflows_rates(RAW_modeled_Outflows_rates)
+
+      RAW -> SCL for modeled Outflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: scale_modeled_PVs(RAW_modeled_PVs)
+
+      RAW -> SCL for modeled process variables.
+
+
+
+   .. py:method:: scale_modeled_RMCs(RAW_modeled_RMCs)
+
+      RAW -> SCL for modeled reactor-medium components.
+
+
+
+   .. py:method:: scale_modeled_V(RAW_modeled_V)
+
+      RAW -> SCL for the modeled reactor volume.
+
+
+
+   .. py:method:: scale_state(RAW_state)
+
+      RAW -> SCL for the full integrated state, via ``SCALE_state``.
+
+
+
+   .. py:method:: unscale_V_in_cumulative(SCL_V_in_cumulative)
+
+      SCL -> RAW for cumulative volume added by every Inflow.
+
+
+
+   .. py:method:: unscale_controlled_Inflows_Cin(SCL_controlled_Inflows_Cin)
+
+      SCL -> RAW for controlled Inflow feed concentrations.
+
+
+
+   .. py:method:: unscale_controlled_Inflows_cumulative(SCL_controlled_Inflows_cumulative)
+
+      SCL -> RAW for cumulative controlled Inflow volume.
+
+
+
+   .. py:method:: unscale_controlled_Inflows_rates(SCL_controlled_Inflows_rates)
+
+      SCL -> RAW for controlled Inflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: unscale_controlled_Outflows_cumulative(SCL_controlled_Outflows_cumulative)
+
+      SCL -> RAW for cumulative controlled Outflow volume.
+
+
+
+   .. py:method:: unscale_controlled_Outflows_rates(SCL_controlled_Outflows_rates)
+
+      SCL -> RAW for controlled Outflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: unscale_controlled_PVs(SCL_controlled_PVs)
+
+      SCL -> RAW for controlled process variables.
+
+
+
+   .. py:method:: unscale_latent(SCL_latent)
+
+      SCL -> RAW for the latent state, via ``SCALE_latent``.
+
+
+
+   .. py:method:: unscale_modeled_BiologicalOde_rates(SCL_modeled_BiologicalOde_rates)
+
+      SCL -> RAW for modeled ``biological_ode`` rates (offset-free derivative op).
+
+
+
+   .. py:method:: unscale_modeled_Inflows_Cin(SCL_modeled_Inflows_Cin)
+
+      SCL -> RAW for modeled Inflow feed concentrations.
+
+
+
+   .. py:method:: unscale_modeled_Inflows_cumulative(SCL_modeled_Inflows_cumulative)
+
+      SCL -> RAW for cumulative modeled Inflow volume.
+
+
+
+   .. py:method:: unscale_modeled_Inflows_rates(SCL_modeled_Inflows_rates)
+
+      SCL -> RAW for modeled Inflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: unscale_modeled_Outflows_cumulative(SCL_modeled_Outflows_cumulative)
+
+      SCL -> RAW for cumulative modeled Outflow volume.
+
+
+
+   .. py:method:: unscale_modeled_Outflows_rates(SCL_modeled_Outflows_rates)
+
+      SCL -> RAW for modeled Outflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: unscale_modeled_PVs(SCL_modeled_PVs)
+
+      SCL -> RAW for modeled process variables.
+
+
+
+   .. py:method:: unscale_modeled_RMCs(SCL_modeled_RMCs)
+
+      SCL -> RAW for modeled reactor-medium components.
+
+
+
+   .. py:method:: unscale_modeled_V(SCL_modeled_V)
+
+      SCL -> RAW for the modeled reactor volume.
+
+
+
+   .. py:method:: unscale_state(SCL_state)
+
+      SCL -> RAW for the full integrated state, via ``SCALE_state``.
+
+
+
+   .. py:attribute:: SCALE_V_in_cumulative
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_controlled_Inflows_Cin
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_controlled_Inflows_cumulative
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_controlled_Inflows_rates
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_controlled_Outflows_cumulative
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_controlled_Outflows_rates
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_controlled_PVs
+      :type:  Scaler
+
+
+   .. py:property:: SCALE_integrated_state
+      :type: Scaler
+
+
+      State scaler used by the ODE solver, incl. trailing latent state.
+
+
+   .. py:attribute:: SCALE_latent
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_BiologicalOde_rates
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_Inflows_Cin
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_Inflows_cumulative
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_Inflows_rates
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_Outflows_cumulative
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_Outflows_rates
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_PVs
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_RMCs
+      :type:  Scaler
+
+
+   .. py:property:: SCALE_modeled_V
+      :type: Scaler
+
+
+      Real-volume scale shares the V_in_cumulative scale (same units, L).
+
+
+   .. py:property:: SCALE_state
+      :type: Scaler
+
+
+      Composed state scaler.
+
+      Layout: ``[modeled_RMCs | modeled_PVs | V | modeled_Inflows_cumulative |
+      modeled_Outflows_cumulative]``.
+      Zero-width parts (e.g. an empty PV axis) are preserved in the concat to
+      reproduce ``jnp.concatenate`` dtype promotion exactly — do NOT filter.
+
+
+   .. py:property:: latent_observables
+      :type: tuple[str, ...]
+
+
+      Names of observables that require live latent state during the solve.
+
+
+   .. py:property:: n_controlled_Inflows
+      :type: int
+
+
+      Number of continuous controlled Inflows.
+
+
+   .. py:property:: n_controlled_Outflows
+      :type: int
+
+
+      Number of continuous controlled Outflows.
+
+
+   .. py:property:: n_controlled_PVs
+      :type: int
+
+
+      Number of controlled process-variable signals.
+
+
+   .. py:property:: n_latent
+      :type: int
+
+
+      Number of integrated latent-state dimensions.
+
+
+   .. py:property:: n_modeled_BiologicalOde_rates
+      :type: int
+
+
+      Number of rates emitted by the BiologicalOde block.
+
+
+   .. py:property:: n_modeled_Inflows
+      :type: int
+
+
+      Number of modeled Inflows.
+
+
+   .. py:property:: n_modeled_Outflows
+      :type: int
+
+
+      Number of modeled Outflows.
+
+
+   .. py:property:: n_modeled_PVs
+      :type: int
+
+
+      Number of modeled (uncontrolled, dynamic) process variables.
+
+
+   .. py:property:: n_modeled_RMCs
+      :type: int
+
+
+      Number of modeled RMCs (species).
+
+
+.. py:function:: frozen_field(**kwargs)
+
+   eqx.field whose leaves are masked out of optimizer updates.
+
+
+.. py:function:: partition_trainable(module)
+
+   Return (trainable, static) pytrees from field metadata.
+
+   Array leaves under ``trainable_field()`` are trainable; everything else
+   (including untagged array leaves) is static. Trainability is declared
+   solely through field tags — there is no per-module custom override.
+   Advanced sub-field control (e.g. freezing some MLP layers) belongs in the
+   ``build_optimizer`` hook via ``optax.masked`` / ``optax.multi_transform``.
+
+   Works on any ``eqx.Module``, including the whole ``HybridOdeWrapper``: the
+   tag-inheritance rule (first explicit tag on the path wins) means untagged
+   container fields let their children's tags through, so the wrapper's
+   ``reaction_module`` and ``loss_module`` contribute exactly their own
+   ``trainable_field()`` leaves and every other leaf stays frozen.
+
+
+.. py:function:: trainable_field(**kwargs)
+
+   eqx.field whose array leaves are included in optimizer updates.
+
+   An explicit tag on a parent field overrides every descendant's own tag.
+   Untagged array leaves default to frozen.
+
+
+.. py:data:: TRAINABLE_METADATA_KEY
+   :value: 'hybrax_train_trainable'
+
+

@@ -1,0 +1,25 @@
+hybrax.format.time_series
+=========================
+
+.. py:module:: hybrax.format.time_series
+
+.. autoapi-nested-parse::
+
+   hybrax.format.time_series package scaffolding.
+
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/hybrax/format/time_series/constants/index
+   /autoapi/hybrax/format/time_series/grid_utils/index
+   /autoapi/hybrax/format/time_series/io/index
+   /autoapi/hybrax/format/time_series/ppoly/index
+   /autoapi/hybrax/format/time_series/spline_ops/index
+   /autoapi/hybrax/format/time_series/timeseries/index
+
+

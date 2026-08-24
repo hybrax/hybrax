@@ -1,0 +1,28 @@
+hybrax.format
+=============
+
+.. py:module:: hybrax.format
+
+.. autoapi-nested-parse::
+
+   Bioprocess benchmarking data structures and utilities.
+
+
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 1
+
+   /autoapi/hybrax/format/dataclasses/index
+   /autoapi/hybrax/format/inspect/index
+   /autoapi/hybrax/format/json_io/index
+   /autoapi/hybrax/format/mechanistic/index
+   /autoapi/hybrax/format/serialization/index
+   /autoapi/hybrax/format/simulation/index
+   /autoapi/hybrax/format/splines/index
+   /autoapi/hybrax/format/time_series/index
+   /autoapi/hybrax/format/validate/index
+
+

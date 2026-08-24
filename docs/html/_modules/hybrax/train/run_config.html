@@ -1,0 +1,1194 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html">
+        <link rel="prefetch" href="../../../_static/hybrax_logo.png" as="image">
+
+    <link rel="shortcut icon" href="../../../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>hybrax.train.run_config - Bioprocess Modeling with Hybrax</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=98a1085a" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #eeffcc;
+  --color-code-foreground: black;
+  --color-brand-primary: #2563eb;
+  --color-brand-content: #2563eb;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">Bioprocess Modeling with Hybrax</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../../_static/hybrax_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">Hybrax Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/why.html">Why this exists</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/concepts.html">Concepts and Vocabulary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/find.html">Which page do I need?</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/01_your_first_dataset.html">1. Import your Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/02_look_at_it.html">2. View your Dataset</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/03_train.html">3. Train a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/04_your_first_custom_py.html">4. Custom Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/05_predict.html">5. Predict Processes</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.format guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/data_model.html">The Data Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/load_and_save.html">Loading and saving</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/validate_and_inspect.html">Validating and inspecting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/volume_feeds_events.html">Volume, feeds and events</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/time_series_and_splines.html">Time series and splines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/limits_and_gotchas.html">Limits and gotchas</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/further_reading.html">Further reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/config.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/hooks_cheatsheet.html">Customization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/prepare.html">Prepare</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/train.html">Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/reaction_module.html">The Reaction Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/loss_module.html">The Loss Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/scaling.html">Scaling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/forward.html">Forward</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/loo.html">Cross-Validation (LOO)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/save_load_predict.html">The Python API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/further_reading.html">Further Reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/freezing.html">Freezing parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/augmentation.html">Augmentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">A Gaussian-process model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">A KAN model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed.html">OptFed</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/modeled_pv.html">A modeled process variable</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../troubleshooting/errors.html">Errors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../troubleshooting/silent_failures.html">Silent failures</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Under the hood</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../under_the_hood/design_rationale.html">Design Rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributors.html">Contributors</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/hybrax/format/index.html">hybrax.format</a><input aria-label="Toggle navigation of hybrax.format" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/dataclasses/index.html">hybrax.format.dataclasses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/index.html">hybrax.format.time_series</a><input aria-label="Toggle navigation of hybrax.format.time_series" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/constants/index.html">hybrax.format.time_series.constants</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/grid_utils/index.html">hybrax.format.time_series.grid_utils</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/io/index.html">hybrax.format.time_series.io</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/ppoly/index.html">hybrax.format.time_series.ppoly</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/spline_ops/index.html">hybrax.format.time_series.spline_ops</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/timeseries/index.html">hybrax.format.time_series.timeseries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/validate/index.html">hybrax.format.validate</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/hybrax/train/index.html">hybrax.train</a><input aria-label="Toggle navigation of hybrax.train" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/augmentation/index.html">hybrax.train.augmentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/augmentation_plot/index.html">hybrax.train.augmentation_plot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/bounds_loss/index.html">hybrax.train.bounds_loss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/checkpointing/index.html">hybrax.train.checkpointing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/cli/index.html">hybrax.train.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/forward_plotting/index.html">hybrax.train.forward_plotting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/harness/index.html">hybrax.train.harness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/inspect/index.html">hybrax.train.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/logging/index.html">hybrax.train.logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/loo/index.html">hybrax.train.loo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/loo_metrics/index.html">hybrax.train.loo_metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_context/index.html">hybrax.train.runtime_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/serialization/index.html">hybrax.train.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/trainer/index.html">hybrax.train.trainer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for hybrax.train.run_config</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Typed, validated run configuration for ``prepare``/``train``/``loo``/``forward``.</span>
+
+<span class="sd">``RunConfig`` (via :func:`load_run_config` and its per-command wrappers) is</span>
+<span class="sd">the config for ``prepare``/``train``/``loo``; ``ForwardRunConfig`` (via</span>
+<span class="sd">:func:`load_forward_config`) is the separate, simpler config for ``forward``.</span>
+<span class="sd">Every section is its own pydantic model — see each class's own docstring for</span>
+<span class="sd">its fields.</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">hashlib</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">types</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModuleType</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Literal</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">field_validator</span><span class="p">,</span> <span class="n">model_validator</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.json_io</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.train.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_custom_module</span>
+
+<span class="n">_FROZEN</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">extra</span><span class="o">=</span><span class="s2">"forbid"</span><span class="p">,</span> <span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">_ALLOWED_TOP_LEVEL</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"data"</span><span class="p">,</span>
+    <span class="s2">"custom_py"</span><span class="p">,</span>
+    <span class="s2">"train"</span><span class="p">,</span>
+    <span class="s2">"solver"</span><span class="p">,</span>
+    <span class="s2">"checkpoint"</span><span class="p">,</span>
+    <span class="s2">"output"</span><span class="p">,</span>
+    <span class="s2">"logging"</span><span class="p">,</span>
+    <span class="s2">"prepare"</span><span class="p">,</span>
+    <span class="s2">"custom"</span><span class="p">,</span>
+    <span class="s2">"loo"</span><span class="p">,</span>
+<span class="p">}</span>
+<span class="n">_TRAIN_SECTIONS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"data"</span><span class="p">,</span>
+    <span class="s2">"train"</span><span class="p">,</span>
+    <span class="s2">"solver"</span><span class="p">,</span>
+    <span class="s2">"checkpoint"</span><span class="p">,</span>
+    <span class="s2">"output"</span><span class="p">,</span>
+    <span class="s2">"logging"</span><span class="p">,</span>
+    <span class="s2">"custom_py"</span><span class="p">,</span>
+    <span class="s2">"custom"</span><span class="p">,</span>
+<span class="p">}</span>
+<span class="n">_COMMAND_SECTIONS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"prepare"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"prepare"</span><span class="p">,</span> <span class="s2">"custom_py"</span><span class="p">,</span> <span class="s2">"custom"</span><span class="p">},</span>
+    <span class="s2">"train"</span><span class="p">:</span> <span class="n">_TRAIN_SECTIONS</span><span class="p">,</span>
+    <span class="c1"># loo reuses every train section (each fold is a train run) plus its own</span>
+    <span class="c1"># `loo` block (holdout sets + fold-level parallelism).</span>
+    <span class="s2">"loo"</span><span class="p">:</span> <span class="n">_TRAIN_SECTIONS</span> <span class="o">|</span> <span class="p">{</span><span class="s2">"loo"</span><span class="p">},</span>
+<span class="p">}</span>
+<span class="n">_Command</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"prepare"</span><span class="p">,</span> <span class="s2">"train"</span><span class="p">,</span> <span class="s2">"loo"</span><span class="p">]</span>
+<span class="n">InitialValueSource</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"measured"</span><span class="p">,</span> <span class="s2">"spline"</span><span class="p">,</span> <span class="s2">"augmented"</span><span class="p">]</span>
+<span class="n">PredictionScope</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"none"</span><span class="p">,</span> <span class="s2">"parents"</span><span class="p">,</span> <span class="s2">"all"</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="ConfigBase">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.ConfigBase">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ConfigBase</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Shared pydantic base for every config section.</span>
+
+<span class="sd">    ``model_config`` forbids unknown keys (``extra="forbid"``), so a typo like</span>
+<span class="sd">    ``"epocs": 300`` is a hard validation error rather than being silently</span>
+<span class="sd">    dropped — the single most useful piece of the config system's strictness.</span>
+<span class="sd">    It also freezes every instance (``frozen=True``): a config object handed</span>
+<span class="sd">    to a hook is never mutated out from under the caller, and changing a</span>
+<span class="sd">    field means ``model_copy(update=...)``. Carries no fields of its own.</span>
+<span class="sd">    """</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">_FROZEN</span></div>
+
+
+
+<div class="viewcode-block" id="DataConfig">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.DataConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DataConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Where a training/loo run reads its prepared dataset from.</span>
+
+<span class="sd">    ``prepared`` (required) points at the prepared-data artifact — either the</span>
+<span class="sd">    directory ``hybrax prepare`` wrote, or a ``prepared.json``/</span>
+<span class="sd">    ``prepared.json.gz`` file directly (see :func:`resolve_prepared_path`);</span>
+<span class="sd">    resolved relative to the config file's directory like every other path</span>
+<span class="sd">    here. ``processes`` (optional) restricts training/evaluation to this</span>
+<span class="sd">    subset of process names; omitted means every process in the prepared</span>
+<span class="sd">    dataset. ``targets`` (optional) restricts the training targets to this</span>
+<span class="sd">    explicit list of measured-quantity names, overriding automatic derivation</span>
+<span class="sd">    from ``target_source``. ``target_source`` decides *which* measurements</span>
+<span class="sd">    the loss is computed against: ``"reactor_components"`` (medium components</span>
+<span class="sd">    only), ``"process_variables"`` (process variables only), ``"combined"``</span>
+<span class="sd">    (both), or ``"auto"`` (default; decide from what the dataset actually</span>
+<span class="sd">    has). Set it explicitly once you have modeled process variables —</span>
+<span class="sd">    ``"auto"`` is a convenience, not a decision you want made implicitly on a</span>
+<span class="sd">    dataset you care about.</span>
+<span class="sd">    """</span>
+
+    <span class="n">prepared</span><span class="p">:</span> <span class="n">Path</span>
+    <span class="n">processes</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">targets</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">target_source</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span>
+        <span class="s2">"process_variables"</span><span class="p">,</span>
+        <span class="s2">"reactor_components"</span><span class="p">,</span>
+        <span class="s2">"combined"</span><span class="p">,</span>
+        <span class="s2">"auto"</span><span class="p">,</span>
+    <span class="p">]</span> <span class="o">=</span> <span class="s2">"auto"</span></div>
+
+
+
+<div class="viewcode-block" id="TrainConfig">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.TrainConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">TrainConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Optimizer, batching, and device settings for one training run.</span>
+
+<span class="sd">    ``epochs`` (default 5) is how many passes over the selected process set</span>
+<span class="sd">    to run; ``--epochs`` on the CLI overrides this, since it is the one knob</span>
+<span class="sd">    meant to change constantly while iterating. ``seed`` is the base random</span>
+<span class="sd">    seed, handed to the ``build_reaction_module``/``build_loss_module`` hooks</span>
+<span class="sd">    for parameter initialization and, unless ``batch_seed`` is set, to the</span>
+<span class="sd">    batch-shuffling RNG too. ``optimizer`` selects the optax base transform</span>
+<span class="sd">    (``"adam"`` or ``"sgd"``); ``learning_rate`` is its base rate (a custom</span>
+<span class="sd">    ``build_learning_rate`` hook can turn it into a schedule instead of a</span>
+<span class="sd">    constant). ``grad_clip_norm`` (default 1000, effectively off) clips the</span>
+<span class="sd">    raw, pre-optimizer gradient by global norm before every update — check</span>
+<span class="sd">    ``grad_norm_curve.png``, which plots the pre-clip norm, to pick a real</span>
+<span class="sd">    value once scales are right. ``batch_size`` (default ``None``) is how</span>
+<span class="sd">    many processes make up one batch; ``None`` means full-batch. ``shuffle``</span>
+<span class="sd">    (default ``True``) reshuffles the process order every epoch;</span>
+<span class="sd">    ``batch_seed`` (optional) seeds that shuffling independently of ``seed``.</span>
+<span class="sd">    ``devices`` (default ``1``) is how many CPU devices to shard the batch</span>
+<span class="sd">    across; ``"max"`` resolves to ``min(n_processes, n_cpus)`` — never every</span>
+<span class="sd">    core, since idle surplus devices can deadlock the ``pmap`` all-reduce —</span>
+<span class="sd">    and the ``HYBRAX_TRAIN_DEVICES`` environment variable always overrides</span>
+<span class="sd">    it. ``allow_stateful_models`` (default ``False``) is the required opt-in</span>
+<span class="sd">    for reaction modules with a nonzero latent state: training raises before</span>
+<span class="sd">    it starts without it, because a latent state changes what the model</span>
+<span class="sd">    *is*, not just its size.</span>
+<span class="sd">    """</span>
+
+    <span class="n">epochs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">optimizer</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"adam"</span><span class="p">,</span> <span class="s2">"sgd"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"adam"</span>
+    <span class="n">learning_rate</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="mf">1e-3</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">grad_clip_norm</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="mf">1000.0</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">shuffle</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">batch_seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">devices</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"max"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">allow_stateful_models</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+
+<div class="viewcode-block" id="SolverConfig">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.SolverConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SolverConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""diffrax ODE solver settings for every forward and backward solve.</span>
+
+<span class="sd">    ``max_steps`` (default 2048) is the step budget for the whole solve — the</span>
+<span class="sd">    first knob to raise when solves start bailing out (a bail is not fatal;</span>
+<span class="sd">    points after it are just masked out of the loss, but a run where most</span>
+<span class="sd">    samples bail is fitting almost nothing). ``rtol``/``atol`` (defaults</span>
+<span class="sd">    ``1e-5``/``1e-7``) are diffrax's adaptive-step relative/absolute</span>
+<span class="sd">    tolerances. ``jump_ts`` (default ``True``) tells the step-size</span>
+<span class="sd">    controller about the process's own known vector-field discontinuity</span>
+<span class="sd">    times (from ``BioProcess.discrete_events``, e.g. discrete control</span>
+<span class="sd">    steps), so it anticipates them instead of discovering them by trial and</span>
+<span class="sd">    error; turning it off makes the controller behave like a plain</span>
+<span class="sd">    ``PIDController(rtol, atol)``. This is independent of bolus/sample state</span>
+<span class="sd">    jumps, which are always applied through a separate event mechanism</span>
+<span class="sd">    regardless of this flag.</span>
+<span class="sd">    """</span>
+
+    <span class="n">max_steps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="mi">2048</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">rtol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="mf">1e-5</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">atol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="mf">1e-7</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">jump_ts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+
+<div class="viewcode-block" id="CheckpointConfig">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.CheckpointConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CheckpointConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Checkpoint cadence for ``train`` and ``loo``.</span>
+
+<span class="sd">    ``every`` (optional, in epochs) is how often a full, self-contained</span>
+<span class="sd">    checkpoint is written (parameters, optimizer state, config,</span>
+<span class="sd">    ``custom.py``, and the prepared data, plus re-exported predictions per</span>
+<span class="sd">    ``output.predictions``). ``None`` (default) selects an automatic</span>
+<span class="sd">    cadence: at least every 5 epochs, at most 20 checkpoints over the whole</span>
+<span class="sd">    run. ``0`` disables periodic checkpointing, but the final checkpoint at</span>
+<span class="sd">    the end of training is always written regardless. Must be finite.</span>
+<span class="sd">    Checkpointing re-exports predictions and re-writes the bundled data, so</span>
+<span class="sd">    on a fast run it can dominate the wall clock — set it coarse enough</span>
+<span class="sd">    that it is not the bottleneck.</span>
+<span class="sd">    """</span>
+
+    <span class="n">every</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">"every"</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_validate_every</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">math</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"checkpoint.every must be finite"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+
+<div class="viewcode-block" id="OutputConfig">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.OutputConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">OutputConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Where a ``train``/``loo`` run writes its output, and what it exports.</span>
+
+<span class="sd">    ``dir`` (default ``"output"``) is the run directory everything lands in</span>
+<span class="sd">    — config, logs, checkpoints, ``losses.csv``, and (if requested)</span>
+<span class="sd">    predictions — resolved relative to the config file's directory unless</span>
+<span class="sd">    overridden by ``--output-dir``. ``predictions`` (default ``"none"``)</span>
+<span class="sd">    controls whether a dense ``predictions.csv`` is exported: ``"none"``</span>
+<span class="sd">    writes nothing, ``"parents"`` writes every evaluated non-augmented</span>
+<span class="sd">    process, and ``"all"`` also includes synthetic augmentation children.</span>
+<span class="sd">    """</span>
+
+    <span class="nb">dir</span><span class="p">:</span> <span class="n">Path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">"output"</span><span class="p">)</span>
+    <span class="n">predictions</span><span class="p">:</span> <span class="n">PredictionScope</span> <span class="o">=</span> <span class="s2">"none"</span></div>
+
+
+
+<div class="viewcode-block" id="LoggingConfig">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.LoggingConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LoggingConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Console output formatting for ``train`` and ``loo``.</span>
+
+<span class="sd">    ``decimals`` (default 4) is the number of decimal places used when</span>
+<span class="sd">    formatting loss and gradient-norm values in the interactive console log.</span>
+<span class="sd">    It does not affect ``metrics.csv``/``metrics.jsonl``, which always</span>
+<span class="sd">    record full precision regardless of this setting.</span>
+<span class="sd">    """</span>
+
+    <span class="n">decimals</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="AugmentationConfig">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.AugmentationConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">AugmentationConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Synthetic sibling-process generation for ``prepare.augmentation``.</span>
+
+<span class="sd">    Generates ``n_children_per_process`` synthetic children per real</span>
+<span class="sd">    (parent) process. ``seed`` seeds the augmentation RNG independently of</span>
+<span class="sd">    ``train.seed``. ``n_time_points`` (&gt;= 2) is how many points each child</span>
+<span class="sd">    is resampled onto, from the parent's fitted spline.</span>
+<span class="sd">    ``min_spacing_fraction`` (default 0.1, in ``(0, 1]``) sets a floor on</span>
+<span class="sd">    the spacing between consecutive points in that resampled grid, as a</span>
+<span class="sd">    fraction of the uniform spacing; the remaining duration is distributed</span>
+<span class="sd">    as random jitter between the interior points, and ``1.0`` forces</span>
+<span class="sd">    exactly uniform spacing. ``noise_std`` (required, non-empty) maps a</span>
+<span class="sd">    modeled state name to the standard deviation of the Gaussian noise</span>
+<span class="sd">    added to its resampled trajectory; only states named here are</span>
+<span class="sd">    perturbed, every other state is copied through unchanged, and every</span>
+<span class="sd">    name must be a modeled (not controlled) state with a fitted spline.</span>
+<span class="sd">    ``initial_value_source`` (default ``"measured"``) decides how each</span>
+<span class="sd">    noised state's t=0 value is set: ``"measured"`` pins it to the parent's</span>
+<span class="sd">    actual t=0 measurement (raising if there is none), ``"spline"`` pins it</span>
+<span class="sd">    to the parent's fitted spline value at t=0, and ``"augmented"`` leaves</span>
+<span class="sd">    it noised like every other point; it can be one value applied to every</span>
+<span class="sd">    state in ``noise_std``, or a per-state dict whose keys must exactly</span>
+<span class="sd">    match ``noise_std``'s.</span>
+<span class="sd">    """</span>
+
+    <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">n_children_per_process</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">n_time_points</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">ge</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">min_spacing_fraction</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">le</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">noise_std</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">initial_value_source</span><span class="p">:</span> <span class="n">InitialValueSource</span> <span class="o">|</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">InitialValueSource</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">"measured"</span>
+    <span class="p">)</span>
+
+    <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">"noise_std"</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_validate_noise_std</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]:</span>
+        <span class="n">invalid</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">name</span>
+            <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">noise_std</span> <span class="ow">in</span> <span class="n">value</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">math</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">noise_std</span><span class="p">)</span> <span class="ow">or</span> <span class="n">noise_std</span> <span class="o">&lt;</span> <span class="mf">0.0</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="n">invalid</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"noise_std values must be finite and nonnegative: "</span> <span class="o">+</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">invalid</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="n">value</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_validate_initial_value_source</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AugmentationConfig</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">initial_value_source</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span>
+        <span class="n">configured</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">noise_std</span><span class="p">)</span>
+        <span class="n">specified</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">initial_value_source</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">configured</span> <span class="o">!=</span> <span class="n">specified</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"initial_value_source keys must match noise_std; "</span>
+                <span class="sa">f</span><span class="s2">"missing=</span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">configured</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">specified</span><span class="p">)</span><span class="si">}</span><span class="s2">, "</span>
+                <span class="sa">f</span><span class="s2">"unexpected=</span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">specified</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">configured</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+
+<div class="viewcode-block" id="PrepareConfig">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.PrepareConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PrepareConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Dataset-preparation settings: the ``prepare`` command's own config section.</span>
+
+<span class="sd">    ``raw_input`` (required) is a ``BioProcessCollection``, as a file or</span>
+<span class="sd">    directory. ``augmentation`` (optional) generates synthetic sibling</span>
+<span class="sd">    processes; see :class:`AugmentationConfig`. ``strict_format_validation``</span>
+<span class="sd">    (default ``False``) decides whether ``hybrax.format`` validation</span>
+<span class="sd">    failures stop the run or are reported and tolerated — set it ``True``</span>
+<span class="sd">    for a dataset you intend to publish. ``required_control_names``</span>
+<span class="sd">    (default empty) fails prepare early if a named control is missing: a</span>
+<span class="sd">    flat tuple applies the same requirement to every process, a dict maps</span>
+<span class="sd">    process name to its own required list. ``require_consistent_controls``</span>
+<span class="sd">    (default ``True``) additionally requires every process to classify its</span>
+<span class="sd">    controls into the same inflow/outflow/process-variable layout; disable</span>
+<span class="sd">    it to allow processes with heterogeneous control layouts in the same</span>
+<span class="sd">    prepare run. ``process_rename_map`` (default empty) renames processes</span>
+<span class="sd">    by key, applied by the default ``transform_process_collection`` hook —</span>
+<span class="sd">    a custom hook of that name in ``custom.py`` overrides this default</span>
+<span class="sd">    entirely. ``diagnostics`` (default ``True``) emits per-process control</span>
+<span class="sd">    diagnostic plots (raw data vs. the stored control spline) into</span>
+<span class="sd">    ``&lt;output-dir&gt;/prepare_diagnostics/`` at the end of prepare.</span>
+<span class="sd">    """</span>
+
+    <span class="n">raw_input</span><span class="p">:</span> <span class="n">Path</span>
+    <span class="n">augmentation</span><span class="p">:</span> <span class="n">AugmentationConfig</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">strict_format_validation</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">required_control_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]</span> <span class="o">=</span> <span class="p">()</span>
+    <span class="n">require_consistent_controls</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">process_rename_map</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">diagnostics</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+
+<div class="viewcode-block" id="HoldoutSet">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.HoldoutSet">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">HoldoutSet</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""One LOO fold.</span>
+
+<span class="sd">    ``test`` is the held-out process set; ``train`` (optional) pins the exact</span>
+<span class="sd">    processes to train on. ``train=None`` means "every process not in ``test``"</span>
+<span class="sd">    (augmentation-corrected: holding out any member of an augmentation group</span>
+<span class="sd">    excludes the whole group — parent + all children — from train; see</span>
+<span class="sd">    :func:`hybrax.train.loo.resolve_folds`). ``name`` (optional) labels the fold's</span>
+<span class="sd">    output directory and summary row; without it the directory is derived from</span>
+<span class="sd">    the test process names.</span>
+<span class="sd">    """</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">test</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">train</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="LooConfig">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.LooConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LooConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Leave-one/some-process-out cross-validation settings.</span>
+
+<span class="sd">    ``per_fold_holdout_sets=None`` runs classic leave-one-out: one fold per</span>
+<span class="sd">    parent process group. ``parallel_folds`` is how many folds train at once</span>
+<span class="sd">    (each fold is its own subprocess, because the JAX CPU device count is fixed</span>
+<span class="sd">    per process). ``devices_per_fold`` can set each fold's JAX CPU device</span>
+<span class="sd">    count; otherwise the available JAX CPU device budget is split across</span>
+<span class="sd">    concurrent folds so that ``parallel_folds * devices_per_fold &lt;= n_cpu``.</span>
+<span class="sd">    Set these from what your RAM can hold — there is deliberately no automatic</span>
+<span class="sd">    RAM sizing.</span>
+<span class="sd">    """</span>
+
+    <span class="n">per_fold_holdout_sets</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">HoldoutSet</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">parallel_folds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">devices_per_fold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">"parallel_folds"</span><span class="p">,</span> <span class="s2">"devices_per_fold"</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"before"</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_reject_bool</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"loo parallel/device counts must be int &gt;= 1"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">value</span></div>
+
+
+
+<div class="viewcode-block" id="RunConfig">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.RunConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RunConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Top-level config object: assembles every ``prepare``/``train``/``loo``</span>
+<span class="sd">    section (``data``, ``custom_py``, ``train``, ``solver``, ``checkpoint``,</span>
+<span class="sd">    ``output``, ``logging``, ``prepare``, ``custom``, ``loo``) — see each</span>
+<span class="sd">    section's own docstring for its fields. A given command only reads and</span>
+<span class="sd">    validates the sections it actually uses.</span>
+<span class="sd">    """</span>
+
+    <span class="n">data</span><span class="p">:</span> <span class="n">DataConfig</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">custom_py</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">train</span><span class="p">:</span> <span class="n">TrainConfig</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">TrainConfig</span><span class="p">)</span>
+    <span class="n">solver</span><span class="p">:</span> <span class="n">SolverConfig</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">SolverConfig</span><span class="p">)</span>
+    <span class="n">checkpoint</span><span class="p">:</span> <span class="n">CheckpointConfig</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">CheckpointConfig</span><span class="p">)</span>
+    <span class="n">output</span><span class="p">:</span> <span class="n">OutputConfig</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">OutputConfig</span><span class="p">)</span>
+    <span class="n">logging</span><span class="p">:</span> <span class="n">LoggingConfig</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">LoggingConfig</span><span class="p">)</span>
+    <span class="n">prepare</span><span class="p">:</span> <span class="n">PrepareConfig</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">custom</span><span class="p">:</span> <span class="n">Any</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">loo</span><span class="p">:</span> <span class="n">LooConfig</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="DefaultCustomConfig">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.DefaultCustomConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DefaultCustomConfig</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Permissive fallback wrapper for the top-level ``custom`` config block.</span>
+
+<span class="sd">    Used automatically when ``custom.py`` does not define</span>
+<span class="sd">    ``get_custom_config``: every key under ``custom`` in the config JSON is</span>
+<span class="sd">    accepted as-is (``extra="allow"``) rather than validated against a</span>
+<span class="sd">    schema, so hook code reads it via attribute access</span>
+<span class="sd">    (``config.custom.hidden_width``) with no fields declared here. Instances</span>
+<span class="sd">    are frozen. ``ser_json_inf_nan="constants"`` lets a custom field holding</span>
+<span class="sd">    ``inf``/``-inf``/``nan`` round-trip through ``config.json`` instead of</span>
+<span class="sd">    silently becoming ``null``.</span>
+<span class="sd">    """</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">extra</span><span class="o">=</span><span class="s2">"allow"</span><span class="p">,</span> <span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">ser_json_inf_nan</span><span class="o">=</span><span class="s2">"constants"</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># --- forward config: a list of self-contained model dirs + optional data override ---</span>
+<div class="viewcode-block" id="ForwardDataConfig">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.ForwardDataConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ForwardDataConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Where a ``forward`` run reads its dataset from, and how it differs</span>
+<span class="sd">    from training's ``DataConfig``.</span>
+
+<span class="sd">    ``prepared`` (optional, unlike training's required</span>
+<span class="sd">    ``DataConfig.prepared``) overrides which prepared dataset to evaluate</span>
+<span class="sd">    against; with a single model, the prepared data bundled inside that</span>
+<span class="sd">    model's own run/checkpoint directory is used automatically, so this is</span>
+<span class="sd">    required only when averaging more than one model or predicting on data</span>
+<span class="sd">    different from what the model was trained on. ``processes`` (optional)</span>
+<span class="sd">    restricts evaluation to this subset of process names.</span>
+<span class="sd">    """</span>
+
+    <span class="n">prepared</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">processes</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="ModelRef">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.ModelRef">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ModelRef</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""One ``models`` entry: a self-contained run/checkpoint dir. ``name`` defaults</span>
+<span class="sd">    to the basename of the bundle's ``config.output.dir`` (resolved later)."""</span>
+
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">path</span><span class="p">:</span> <span class="n">Path</span></div>
+
+
+
+<div class="viewcode-block" id="ForwardOutputConfig">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.ForwardOutputConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ForwardOutputConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Output settings for ``forward``.</span>
+
+<span class="sd">    ``dir`` (optional) is the parent directory forward writes into —</span>
+<span class="sd">    everything lands under one ``forward-results/`` subdirectory inside it;</span>
+<span class="sd">    defaults to ``&lt;first model&gt;/forward``. ``predictions`` (default</span>
+<span class="sd">    ``"none"``) mirrors ``OutputConfig.predictions`` and controls whether</span>
+<span class="sd">    ``forward-results/predictions.csv`` is written. ``plots`` (default</span>
+<span class="sd">    ``False``) additionally renders one figure per process into</span>
+<span class="sd">    ``forward-results/plots/&lt;process&gt;.png``, best-effort (a rendering</span>
+<span class="sd">    failure is logged, not raised); it requires ``predictions`` to be</span>
+<span class="sd">    ``"parents"`` or ``"all"`` — a validator rejects ``plots=True`` with</span>
+<span class="sd">    ``predictions="none"``.</span>
+<span class="sd">    """</span>
+
+    <span class="nb">dir</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">predictions</span><span class="p">:</span> <span class="n">PredictionScope</span> <span class="o">=</span> <span class="s2">"none"</span>
+    <span class="n">plots</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_plots_require_predictions</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">plots</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">predictions</span> <span class="o">==</span> <span class="s2">"none"</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"output.plots requires output.predictions to be parents or all"</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+
+<div class="viewcode-block" id="ForwardRunConfig">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.ForwardRunConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ForwardRunConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Top-level config for ``forward``: the models to evaluate, an optional</span>
+<span class="sd">    data override, and output settings.</span>
+
+<span class="sd">    ``models`` (required, non-empty) is the list of self-contained run or</span>
+<span class="sd">    checkpoint directories to evaluate — more than one turns the run into</span>
+<span class="sd">    an ensemble (mean predictions plus a standard-deviation export); see</span>
+<span class="sd">    :class:`ModelRef`. A bare path string in the list is coerced into</span>
+<span class="sd">    ``{"path": ...}`` before validation, so the minimal</span>
+<span class="sd">    ``{"models": ["run"]}`` works directly. ``data`` (optional); see</span>
+<span class="sd">    :class:`ForwardDataConfig`. ``output`` defaults to every field at its</span>
+<span class="sd">    own default; see :class:`ForwardOutputConfig`.</span>
+<span class="sd">    """</span>
+
+    <span class="n">models</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ModelRef</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">data</span><span class="p">:</span> <span class="n">ForwardDataConfig</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">output</span><span class="p">:</span> <span class="n">ForwardOutputConfig</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">ForwardOutputConfig</span><span class="p">)</span>
+
+    <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">"models"</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"before"</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_coerce_models</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+        <span class="c1"># accept bare path strings or {name, path} objects, interchangeably</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">value</span>
+        <span class="k">return</span> <span class="p">[{</span><span class="s2">"path"</span><span class="p">:</span> <span class="n">m</span><span class="p">}</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">m</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">))</span> <span class="k">else</span> <span class="n">m</span> <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">value</span><span class="p">]</span></div>
+
+
+
+<div class="viewcode-block" id="load_forward_config">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.load_forward_config">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_forward_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ForwardRunConfig</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Load + validate a forward_config.json, resolving model paths and the</span>
+<span class="sd">    optional ``data.prepared`` relative to the config file's directory."""</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">config_path</span><span class="p">)</span>
+    <span class="n">raw</span> <span class="o">=</span> <span class="n">_read_raw_config</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">base_dir</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="n">cfg</span> <span class="o">=</span> <span class="n">ForwardRunConfig</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+    <span class="n">updates</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">"models"</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">(</span>
+            <span class="n">m</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="p">{</span><span class="s2">"path"</span><span class="p">:</span> <span class="n">_resolve_path</span><span class="p">(</span><span class="n">m</span><span class="o">.</span><span class="n">path</span><span class="p">,</span> <span class="n">base_dir</span><span class="o">=</span><span class="n">base_dir</span><span class="p">)})</span>
+            <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">cfg</span><span class="o">.</span><span class="n">models</span>
+        <span class="p">)</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">cfg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">prepared</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">updates</span><span class="p">[</span><span class="s2">"data"</span><span class="p">]</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span>
+            <span class="n">update</span><span class="o">=</span><span class="p">{</span>
+                <span class="s2">"prepared"</span><span class="p">:</span> <span class="n">resolve_prepared_path</span><span class="p">(</span>
+                    <span class="n">_resolve_path</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">prepared</span><span class="p">,</span> <span class="n">base_dir</span><span class="o">=</span><span class="n">base_dir</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+    <span class="n">output_updates</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">dir</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">output_updates</span><span class="p">[</span><span class="s2">"dir"</span><span class="p">]</span> <span class="o">=</span> <span class="n">_resolve_path</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">dir</span><span class="p">,</span> <span class="n">base_dir</span><span class="o">=</span><span class="n">base_dir</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">output_updates</span><span class="p">:</span>
+        <span class="n">updates</span><span class="p">[</span><span class="s2">"output"</span><span class="p">]</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="n">output_updates</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cfg</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="n">updates</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="LoadedRunConfig">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.LoadedRunConfig">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">LoadedRunConfig</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""A validated :class:`RunConfig` plus its loaded ``custom.py`` (if any)."""</span>
+
+    <span class="n">config</span><span class="p">:</span> <span class="n">RunConfig</span>
+    <span class="n">custom_module</span><span class="p">:</span> <span class="n">ModuleType</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">custom_py_sha256</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="load_prepare_config">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.load_prepare_config">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_prepare_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LoadedRunConfig</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Load and validate a config for the ``prepare`` command; see :func:`load_run_config`."""</span>
+    <span class="k">return</span> <span class="n">load_run_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="s2">"prepare"</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="load_train_config">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.load_train_config">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_train_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LoadedRunConfig</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Load and validate a config for the ``train`` command; see :func:`load_run_config`."""</span>
+    <span class="k">return</span> <span class="n">load_run_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="s2">"train"</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="load_loo_config">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.load_loo_config">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_loo_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LoadedRunConfig</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Load and validate a config for the ``loo`` command; see :func:`load_run_config`."""</span>
+    <span class="k">return</span> <span class="n">load_run_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="s2">"loo"</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="load_run_config">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.load_run_config">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">load_run_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">command</span><span class="p">:</span> <span class="n">_Command</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LoadedRunConfig</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Load, validate, and resolve a run config JSON for one command.</span>
+
+<span class="sd">    Restricts the raw JSON to the sections ``command`` actually uses, validates</span>
+<span class="sd">    it against :class:`RunConfig`, resolves every path (``custom_py``,</span>
+<span class="sd">    ``data.prepared``, ``prepare.raw_input``, ``output.dir``) relative to the</span>
+<span class="sd">    config file's directory, loads ``custom_py`` if set, and resolves the</span>
+<span class="sd">    ``custom`` section through its hook (or :class:`DefaultCustomConfig`).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        config_path: Path to the run config JSON file.</span>
+<span class="sd">        command: Which command is loading the config; determines which</span>
+<span class="sd">            top-level sections are read and which are required.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        The resolved config, loaded custom module (if any), and its SHA-256.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If the JSON has an unknown top-level key, or a section</span>
+<span class="sd">            required by ``command`` is missing.</span>
+<span class="sd">    """</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">config_path</span><span class="p">)</span>
+    <span class="n">raw</span> <span class="o">=</span> <span class="n">_read_raw_config</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">raw_custom</span> <span class="o">=</span> <span class="n">raw</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"custom"</span><span class="p">)</span>
+    <span class="n">_validate_top_level</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span>
+    <span class="n">_validate_raw_custom</span><span class="p">(</span><span class="n">raw_custom</span><span class="p">)</span>
+
+    <span class="n">base_dir</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="n">view</span> <span class="o">=</span> <span class="n">_command_view</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="n">command</span><span class="p">)</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">RunConfig</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">view</span><span class="p">)</span>
+    <span class="n">_validate_required_sections</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="n">command</span><span class="p">)</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">_resolve_config_paths</span><span class="p">(</span>
+        <span class="n">config</span><span class="p">,</span>
+        <span class="n">base_dir</span><span class="o">=</span><span class="n">base_dir</span><span class="p">,</span>
+        <span class="n">resolve_output_symlinks</span><span class="o">=</span><span class="n">command</span> <span class="o">!=</span> <span class="s2">"loo"</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">custom_module</span><span class="p">,</span> <span class="n">custom_py_sha256</span> <span class="o">=</span> <span class="n">_load_custom_module_and_hash</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">custom_py</span><span class="p">)</span>
+    <span class="n">resolved_custom</span> <span class="o">=</span> <span class="n">_resolve_custom</span><span class="p">(</span><span class="n">raw_custom</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">custom_module</span><span class="p">)</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="p">{</span><span class="s2">"custom"</span><span class="p">:</span> <span class="n">resolved_custom</span><span class="p">})</span>
+    <span class="k">return</span> <span class="n">LoadedRunConfig</span><span class="p">(</span>
+        <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">,</span>
+        <span class="n">custom_module</span><span class="o">=</span><span class="n">custom_module</span><span class="p">,</span>
+        <span class="n">custom_py_sha256</span><span class="o">=</span><span class="n">custom_py_sha256</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_read_raw_config</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">raw</span> <span class="o">=</span> <span class="n">load_json</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"run config must be a JSON object"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">raw</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_top_level</span><span class="p">(</span><span class="n">raw</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">unknown</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">raw</span><span class="p">)</span> <span class="o">-</span> <span class="n">_ALLOWED_TOP_LEVEL</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
+        <span class="n">keys</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">unknown</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"unknown top-level config key(s): </span><span class="si">{</span><span class="n">keys</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_raw_custom</span><span class="p">(</span><span class="n">raw_custom</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">raw_custom</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">raw_custom</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"config custom section must be a JSON object or null"</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_command_view</span><span class="p">(</span>
+    <span class="n">raw</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">command</span><span class="p">:</span> <span class="n">_Command</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+    <span class="n">sections</span> <span class="o">=</span> <span class="n">_COMMAND_SECTIONS</span><span class="p">[</span><span class="n">command</span><span class="p">]</span>
+    <span class="n">view</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">value</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">raw</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">sections</span><span class="p">}</span>
+    <span class="n">view</span><span class="p">[</span><span class="s2">"custom"</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">view</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_config_paths</span><span class="p">(</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">RunConfig</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">base_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">resolve_output_symlinks</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RunConfig</span><span class="p">:</span>
+    <span class="n">updates</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">updates</span><span class="p">[</span><span class="s2">"custom_py"</span><span class="p">]</span> <span class="o">=</span> <span class="n">_resolve_path</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">custom_py</span><span class="p">,</span> <span class="n">base_dir</span><span class="o">=</span><span class="n">base_dir</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">updates</span><span class="p">[</span><span class="s2">"data"</span><span class="p">]</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span>
+            <span class="n">update</span><span class="o">=</span><span class="p">{</span>
+                <span class="s2">"prepared"</span><span class="p">:</span> <span class="n">resolve_prepared_path</span><span class="p">(</span>
+                    <span class="n">_resolve_path</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">prepared</span><span class="p">,</span> <span class="n">base_dir</span><span class="o">=</span><span class="n">base_dir</span><span class="p">)</span>
+                <span class="p">)</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">prepare</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">updates</span><span class="p">[</span><span class="s2">"prepare"</span><span class="p">]</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">prepare</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span>
+            <span class="n">update</span><span class="o">=</span><span class="p">{</span>
+                <span class="s2">"raw_input"</span><span class="p">:</span> <span class="n">_resolve_path</span><span class="p">(</span>
+                    <span class="n">config</span><span class="o">.</span><span class="n">prepare</span><span class="o">.</span><span class="n">raw_input</span><span class="p">,</span>
+                    <span class="n">base_dir</span><span class="o">=</span><span class="n">base_dir</span><span class="p">,</span>
+                <span class="p">)</span>
+            <span class="p">}</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">resolve_output_symlinks</span><span class="p">:</span>
+        <span class="n">output_dir</span> <span class="o">=</span> <span class="n">_resolve_path</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">dir</span><span class="p">,</span> <span class="n">base_dir</span><span class="o">=</span><span class="n">base_dir</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">output_dir</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">dir</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">output_dir</span><span class="o">.</span><span class="n">is_absolute</span><span class="p">():</span>
+            <span class="n">output_dir</span> <span class="o">=</span> <span class="n">base_dir</span> <span class="o">/</span> <span class="n">output_dir</span>
+        <span class="n">output_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">output_dir</span><span class="p">))</span>
+    <span class="n">updates</span><span class="p">[</span><span class="s2">"output"</span><span class="p">]</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="p">{</span><span class="s2">"dir"</span><span class="p">:</span> <span class="n">output_dir</span><span class="p">})</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">updates</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">config</span>
+    <span class="k">return</span> <span class="n">config</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="n">updates</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_path</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">base_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">is_absolute</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">path</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">base_dir</span> <span class="o">/</span> <span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+
+
+<div class="viewcode-block" id="resolve_prepared_path">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.resolve_prepared_path">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">resolve_prepared_path</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Resolve a prepared-data reference to the prepared.json file.</span>
+
+<span class="sd">    ``hybrax prepare`` writes its output into a directory</span>
+<span class="sd">    (``&lt;dir&gt;/prepared.json``). Accept either that directory (resolve the bundled</span>
+<span class="sd">    ``prepared.json[.gz]`` inside) or a plain prepared.json file, so ``train`` /</span>
+<span class="sd">    ``forward`` / ``loo`` can point at the prepare output-dir directly.</span>
+<span class="sd">    """</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">path</span><span class="o">.</span><span class="n">is_dir</span><span class="p">():</span>
+        <span class="n">gz</span> <span class="o">=</span> <span class="n">path</span> <span class="o">/</span> <span class="s2">"prepared.json.gz"</span>
+        <span class="k">return</span> <span class="n">gz</span> <span class="k">if</span> <span class="n">gz</span><span class="o">.</span><span class="n">is_file</span><span class="p">()</span> <span class="k">else</span> <span class="n">path</span> <span class="o">/</span> <span class="s2">"prepared.json"</span>
+    <span class="k">return</span> <span class="n">path</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_required_sections</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">RunConfig</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">command</span><span class="p">:</span> <span class="n">_Command</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">command</span> <span class="o">==</span> <span class="s2">"prepare"</span> <span class="ow">and</span> <span class="n">config</span><span class="o">.</span><span class="n">prepare</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"prepare command requires a prepare config section"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">command</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"train"</span><span class="p">,</span> <span class="s2">"loo"</span><span class="p">)</span> <span class="ow">and</span> <span class="n">config</span><span class="o">.</span><span class="n">data</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">command</span><span class="si">}</span><span class="s2"> command requires a data config section"</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_load_custom_module_and_hash</span><span class="p">(</span>
+    <span class="n">custom_py</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ModuleType</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="n">custom_py</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+    <span class="n">custom_bytes</span> <span class="o">=</span> <span class="n">custom_py</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">()</span>
+    <span class="n">custom_module</span> <span class="o">=</span> <span class="n">load_custom_module</span><span class="p">(</span><span class="n">custom_py</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">custom_module</span><span class="p">,</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">sha256</span><span class="p">(</span><span class="n">custom_bytes</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_custom</span><span class="p">(</span>
+    <span class="n">raw_custom</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">RunConfig</span><span class="p">,</span>
+    <span class="n">custom_module</span><span class="p">:</span> <span class="n">ModuleType</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">custom_module</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">custom_module</span><span class="p">,</span> <span class="s2">"get_custom_config"</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">custom_module</span><span class="o">.</span><span class="n">get_custom_config</span><span class="p">(</span><span class="n">raw_custom</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">raw_custom</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">DefaultCustomConfig</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">raw_custom</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="reresolve_custom">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.reresolve_custom">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">reresolve_custom</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">RunConfig</span><span class="p">,</span> <span class="n">custom_module</span><span class="p">:</span> <span class="n">ModuleType</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RunConfig</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Re-resolve ``config.custom`` (a raw dict loaded from a run's config.json)</span>
+<span class="sd">    into the typed object the custom hooks expect.</span>
+
+<span class="sd">    A fresh run wraps the raw ``custom`` section via ``get_custom_config`` (or</span>
+<span class="sd">    ``DefaultCustomConfig``) so hooks can use attribute access</span>
+<span class="sd">    (``config.custom.target_loss_weights``). When a run is reconstructed from</span>
+<span class="sd">    config.json (resume / model_load / forward), ``custom`` comes back as a plain</span>
+<span class="sd">    dict; this restores the same typed wrapper so reconstruction matches a fresh</span>
+<span class="sd">    run. No-op if ``custom`` is already resolved (not a dict) or absent.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">custom</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">config</span>
+    <span class="n">resolved</span> <span class="o">=</span> <span class="n">_resolve_custom</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">custom</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">custom_module</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">config</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="p">{</span><span class="s2">"custom"</span><span class="p">:</span> <span class="n">resolved</span><span class="p">})</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Bioprocess Modeling Collective
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=04266cf0"></script>
+    <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script src="../../../_static/custom.js?v=fec45a96"></script>
+    </body>
+</html>

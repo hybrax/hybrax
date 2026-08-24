@@ -1,0 +1,1479 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html">
+        <link rel="prefetch" href="../../../_static/hybrax_logo.png" as="image">
+
+    <link rel="shortcut icon" href="../../../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>hybrax.format.mechanistic - Bioprocess Modeling with Hybrax</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=98a1085a" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #eeffcc;
+  --color-code-foreground: black;
+  --color-brand-primary: #2563eb;
+  --color-brand-content: #2563eb;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">Bioprocess Modeling with Hybrax</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../../_static/hybrax_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">Hybrax Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/why.html">Why this exists</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/concepts.html">Concepts and Vocabulary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/find.html">Which page do I need?</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/01_your_first_dataset.html">1. Import your Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/02_look_at_it.html">2. View your Dataset</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/03_train.html">3. Train a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/04_your_first_custom_py.html">4. Custom Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/05_predict.html">5. Predict Processes</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.format guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/data_model.html">The Data Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/load_and_save.html">Loading and saving</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/validate_and_inspect.html">Validating and inspecting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/volume_feeds_events.html">Volume, feeds and events</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/time_series_and_splines.html">Time series and splines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/limits_and_gotchas.html">Limits and gotchas</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/further_reading.html">Further reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/config.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/hooks_cheatsheet.html">Customization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/prepare.html">Prepare</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/train.html">Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/reaction_module.html">The Reaction Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/loss_module.html">The Loss Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/scaling.html">Scaling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/forward.html">Forward</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/loo.html">Cross-Validation (LOO)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/save_load_predict.html">The Python API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/further_reading.html">Further Reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/freezing.html">Freezing parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/augmentation.html">Augmentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">A Gaussian-process model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">A KAN model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed.html">OptFed</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/modeled_pv.html">A modeled process variable</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../troubleshooting/errors.html">Errors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../troubleshooting/silent_failures.html">Silent failures</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Under the hood</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../under_the_hood/design_rationale.html">Design Rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributors.html">Contributors</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/hybrax/format/index.html">hybrax.format</a><input aria-label="Toggle navigation of hybrax.format" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/dataclasses/index.html">hybrax.format.dataclasses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/index.html">hybrax.format.time_series</a><input aria-label="Toggle navigation of hybrax.format.time_series" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/constants/index.html">hybrax.format.time_series.constants</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/grid_utils/index.html">hybrax.format.time_series.grid_utils</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/io/index.html">hybrax.format.time_series.io</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/ppoly/index.html">hybrax.format.time_series.ppoly</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/spline_ops/index.html">hybrax.format.time_series.spline_ops</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/timeseries/index.html">hybrax.format.time_series.timeseries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/validate/index.html">hybrax.format.validate</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/hybrax/train/index.html">hybrax.train</a><input aria-label="Toggle navigation of hybrax.train" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/augmentation/index.html">hybrax.train.augmentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/augmentation_plot/index.html">hybrax.train.augmentation_plot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/bounds_loss/index.html">hybrax.train.bounds_loss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/checkpointing/index.html">hybrax.train.checkpointing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/cli/index.html">hybrax.train.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/forward_plotting/index.html">hybrax.train.forward_plotting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/harness/index.html">hybrax.train.harness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/inspect/index.html">hybrax.train.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/logging/index.html">hybrax.train.logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/loo/index.html">hybrax.train.loo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/loo_metrics/index.html">hybrax.train.loo_metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_context/index.html">hybrax.train.runtime_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/serialization/index.html">hybrax.train.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/trainer/index.html">hybrax.train.trainer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for hybrax.format.mechanistic</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Mechanistic API for hybrax.format.</span>
+
+<span class="sd">JAX/Equinox-compatible modules for building continuous-time control functions</span>
+<span class="sd">and ODE right-hand sides directly from a :class:`~hybrax.format.BioProcess`. All</span>
+<span class="sd">modules are fully JAX-jittable via ``equinox.filter_jit``.</span>
+
+<span class="sd">Public API: :func:`get_process_ordering`, :func:`get_control_splines`,</span>
+<span class="sd">:func:`build_rhs_ode`, :func:`extract_discrete_events`,</span>
+<span class="sd">:func:`build_state_splines`, :func:`build_algebraic_func`. See each</span>
+<span class="sd">function's own docstring for its call signature and output layout.</span>
+
+<span class="sd">Forward integration of the process lives in ``hybrax.train``; this module does</span>
+<span class="sd">not integrate. Rate inversion (recovering rate values from state splines)</span>
+<span class="sd">is not implemented.</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">BioProcess</span><span class="p">,</span>
+    <span class="n">Inflow</span><span class="p">,</span>
+    <span class="n">Outflow</span><span class="p">,</span>
+    <span class="n">ProcessOrdering</span><span class="p">,</span>
+    <span class="n">StaticVariable</span><span class="p">,</span>
+    <span class="n">TimeSeries</span><span class="p">,</span>
+    <span class="n">_check_outflow_retention</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.splines</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">_MIN_REACTOR_VOLUME</span><span class="p">,</span>
+    <span class="n">build_backtransform_spline</span><span class="p">,</span>
+    <span class="n">make_cubic_ppoly</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.time_series</span><span class="w"> </span><span class="kn">import</span> <span class="n">PPoly</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Spline helpers</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_require_reactor_volume_above_threshold</span><span class="p">(</span>
+    <span class="n">volume</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">context</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">V_min</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">=</span> <span class="n">_MIN_REACTOR_VOLUME</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Fail when reactor volume reaches its minimum valid value."""</span>
+    <span class="n">volume_arr</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">volume</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">eqx</span><span class="o">.</span><span class="n">error_if</span><span class="p">(</span>
+        <span class="n">volume_arr</span><span class="p">,</span>
+        <span class="n">jnp</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">volume_arr</span> <span class="o">&lt;=</span> <span class="n">V_min</span><span class="p">),</span>
+        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">context</span><span class="si">}</span><span class="s2"> reached minimum reactor volume."</span><span class="p">,</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_timeseries_to_ppoly</span><span class="p">(</span><span class="n">series</span><span class="p">:</span> <span class="n">TimeSeries</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PPoly</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Return a hybrax.format PPoly for a TimeSeries carrier.</span>
+
+<span class="sd">    When the carrier already stores spline state, return that PPoly directly</span>
+<span class="sd">    (no copy, no refit) so mechanistic consumers use the same canonical</span>
+<span class="sd">    representation that was fit/serialized. Fall back to a cubic refit only</span>
+<span class="sd">    for sample-only series without spline coefficients.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">series</span><span class="o">.</span><span class="n">poly</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">series</span><span class="o">.</span><span class="n">poly</span>
+    <span class="k">if</span> <span class="n">series</span><span class="o">.</span><span class="n">times</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">series</span><span class="o">.</span><span class="n">values</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">make_cubic_ppoly</span><span class="p">(</span>
+            <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">series</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">),</span>
+            <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">series</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"TimeSeries must provide spline state or discrete samples."</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_value_to_ppoly</span><span class="p">(</span>
+    <span class="n">value</span><span class="p">:</span> <span class="n">TimeSeries</span> <span class="o">|</span> <span class="n">StaticVariable</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">t_start</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">t_end</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PPoly</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Return a hybrax.format PPoly for a dynamic or static state carrier."""</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">TimeSeries</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">_timeseries_to_ppoly</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="n">v</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">PPoly</span><span class="p">(</span>
+        <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">t_start</span><span class="p">,</span> <span class="n">t_end</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">),</span>
+        <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">v</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">),</span>
+    <span class="p">)</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Reactor mass balance: feed inflow + sample outflow + dilution</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_apply_feed_dilution</span><span class="p">(</span>
+    <span class="n">c_RMCs</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">V</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">u_controlled_Inflows</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">u_controlled_Outflows</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">f_modeled_Inflows</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">f_modeled_Outflows</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">Cin_controlled_Inflows</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">Cin_modeled_Inflows</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">retention_controlled_Outflows</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">retention_modeled_Outflows</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">n_RMCs</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">V_min</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">=</span> <span class="n">_MIN_REACTOR_VOLUME</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Reactor-component mass balance from feed/sample flows + ``dV/dt``.</span>
+
+<span class="sd">    Convention: every flow-rate vector carries the storage sign of its</span>
+<span class="sd">    underlying volume change. Inflow values are stored as cumulative volumes</span>
+<span class="sd">    with ``values &gt;= 0``, so ``u_controlled_Inflows`` and ``f_modeled_Inflows``</span>
+<span class="sd">    are non-negative. Outflow values are stored as ``values &lt;= 0``, so</span>
+<span class="sd">    ``u_controlled_Outflows`` and ``f_modeled_Outflows`` are non-positive.</span>
+
+<span class="sd">    Standard well-mixed reactor mass balance: a species leaving with an</span>
+<span class="sd">    outflow at the reactor's own bulk concentration does not, by itself,</span>
+<span class="sd">    change that concentration. Only feeding (which adds material at a</span>
+<span class="sd">    *different* concentration, ``Cin``) does. So an unretained outflow</span>
+<span class="sd">    (retention sigma=0, the default) contributes no dilution term of its</span>
+<span class="sd">    own; it only shrinks ``V``, which concentrates whatever is left. Each</span>
+<span class="sd">    Outflow's per-component ``retention`` (sigma in [0, 1]) inverts this:</span>
+<span class="sd">    the retained fraction of a component does *not* leave with the flow,</span>
+<span class="sd">    so as volume drops around it, its concentration rises. Sigma=1 means</span>
+<span class="sd">    that component is fully retained (e.g. cells in perfusion; solutes in</span>
+<span class="sd">    evaporation) and concentrates exactly in step with the volume loss.</span>
+
+<span class="sd">    - Inflows contribute dilution (``-q/V·c``) **and** species addition</span>
+<span class="sd">      (``q·Cin/V``); they push ``dV`` upward.</span>
+<span class="sd">    - Outflows contribute a dilution term only through what they *retain*</span>
+<span class="sd">      (``+retained_q/V·c``); an outflow with sigma=0 everywhere has no</span>
+<span class="sd">      effect on ``dilution`` at all. They push ``dV`` downward regardless</span>
+<span class="sd">      of retention: retention changes what leaves with the flow, not how</span>
+<span class="sd">      much volume the flow removes.</span>
+<span class="sd">    """</span>
+    <span class="n">V</span> <span class="o">=</span> <span class="n">_require_reactor_volume_above_threshold</span><span class="p">(</span><span class="n">V</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="s2">"ODE state"</span><span class="p">,</span> <span class="n">V_min</span><span class="o">=</span><span class="n">V_min</span><span class="p">)</span>
+
+    <span class="n">total_in</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">u_controlled_Inflows</span><span class="p">)</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">f_modeled_Inflows</span><span class="p">)</span>  <span class="c1"># &gt;= 0</span>
+    <span class="n">total_out</span> <span class="o">=</span> <span class="o">-</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">u_controlled_Outflows</span><span class="p">)</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">f_modeled_Outflows</span><span class="p">))</span>  <span class="c1"># &gt;= 0</span>
+    <span class="n">dV</span> <span class="o">=</span> <span class="n">total_in</span> <span class="o">-</span> <span class="n">total_out</span>
+
+    <span class="n">retained_out_per_rmc</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span>
+        <span class="n">retention_controlled_Outflows</span> <span class="o">*</span> <span class="p">(</span><span class="o">-</span><span class="n">u_controlled_Outflows</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span>
+    <span class="p">)</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">retention_modeled_Outflows</span> <span class="o">*</span> <span class="p">(</span><span class="o">-</span><span class="n">f_modeled_Outflows</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="n">dilution</span> <span class="o">=</span> <span class="o">-</span><span class="p">(</span><span class="n">total_in</span> <span class="o">-</span> <span class="n">retained_out_per_rmc</span><span class="p">)</span> <span class="o">*</span> <span class="n">c_RMCs</span> <span class="o">/</span> <span class="n">V</span>
+
+    <span class="n">addition</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_RMCs</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">Cin_controlled_Inflows</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">addition</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">addition</span>
+            <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">u_controlled_Inflows</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">Cin_controlled_Inflows</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="o">/</span> <span class="n">V</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">Cin_modeled_Inflows</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">addition</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">addition</span>
+            <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">f_modeled_Inflows</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">Cin_modeled_Inflows</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">/</span> <span class="n">V</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">dilution</span> <span class="o">+</span> <span class="n">addition</span><span class="p">,</span> <span class="n">dV</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Sympy helpers used by the RhsOde builder</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_lambdify_with_array_arg</span><span class="p">(</span><span class="n">expr</span><span class="p">,</span> <span class="n">ordered_names</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Return ``f(args)`` that evaluates *expr* with the symbol values</span>
+<span class="sd">    supplied as a flat 1-D array indexed by *ordered_names*.</span>
+
+<span class="sd">    Uses a small Python wrapper around :func:`sympy.lambdify` so each call</span>
+<span class="sd">    site passes a single array (whose contents we build by concatenation)</span>
+<span class="sd">    rather than unpacking it positionally: `*array` does not work under</span>
+<span class="sd">    ``jax.jit`` when the array is traced.</span>
+<span class="sd">    """</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">sympy</span>
+
+    <span class="n">syms</span> <span class="o">=</span> <span class="p">[</span><span class="n">sympy</span><span class="o">.</span><span class="n">Symbol</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">ordered_names</span><span class="p">]</span>
+    <span class="n">fn_raw</span> <span class="o">=</span> <span class="n">sympy</span><span class="o">.</span><span class="n">lambdify</span><span class="p">(</span><span class="n">syms</span><span class="p">,</span> <span class="n">expr</span><span class="p">,</span> <span class="n">modules</span><span class="o">=</span><span class="s2">"jax"</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ordered_names</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">fn</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">fn_raw</span><span class="p">(</span><span class="o">*</span><span class="p">[</span><span class="n">args</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)])</span>
+
+    <span class="k">return</span> <span class="n">fn</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_topo_sort_algebraic</span><span class="p">(</span><span class="n">algebraic_exprs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Topologically sort algebraic names by mutual dependencies. Assumes</span>
+<span class="sd">    expressions have already been parsed (sympy)."""</span>
+    <span class="n">algebraic_names</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">algebraic_exprs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+    <span class="n">deps</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">name</span><span class="p">:</span> <span class="p">{</span><span class="nb">str</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">expr</span><span class="o">.</span><span class="n">free_symbols</span><span class="p">}</span> <span class="o">&amp;</span> <span class="n">algebraic_names</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">expr</span> <span class="ow">in</span> <span class="n">algebraic_exprs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+    <span class="p">}</span>
+    <span class="n">order</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">remaining</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">algebraic_names</span><span class="p">)</span>
+    <span class="k">while</span> <span class="n">remaining</span><span class="p">:</span>
+        <span class="n">ready</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">remaining</span> <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">deps</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="o">&amp;</span> <span class="n">remaining</span><span class="p">))</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ready</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"Cyclic algebraic dependencies detected during topo-sort: "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">remaining</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span>
+        <span class="n">order</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">ready</span><span class="p">)</span>
+        <span class="n">remaining</span> <span class="o">-=</span> <span class="nb">set</span><span class="p">(</span><span class="n">ready</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">order</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_parse_biological_ode_expressions</span><span class="p">(</span>
+    <span class="n">bo</span><span class="p">,</span>
+    <span class="n">allowed_names</span><span class="p">:</span> <span class="nb">set</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""Sympify ``BiologicalOde.algebraic`` and ``derivatives`` strings.</span>
+
+<span class="sd">    Returns ``(algebraic_exprs, derivative_exprs)`` keyed by name. Raises</span>
+<span class="sd">    ``ValueError`` on parse failure.</span>
+<span class="sd">    """</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">sympy</span>
+
+    <span class="n">symbol_table</span> <span class="o">=</span> <span class="p">{</span><span class="n">n</span><span class="p">:</span> <span class="n">sympy</span><span class="o">.</span><span class="n">Symbol</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">allowed_names</span><span class="p">}</span>
+
+    <span class="n">algebraic_exprs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">expr_str</span> <span class="ow">in</span> <span class="n">bo</span><span class="o">.</span><span class="n">algebraic</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">algebraic_exprs</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">sympy</span><span class="o">.</span><span class="n">sympify</span><span class="p">(</span><span class="n">expr_str</span><span class="p">,</span> <span class="nb">locals</span><span class="o">=</span><span class="n">symbol_table</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"biological_ode.algebraic[</span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2">] failed to parse: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+
+    <span class="n">derivative_exprs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">expr_str</span> <span class="ow">in</span> <span class="n">bo</span><span class="o">.</span><span class="n">derivatives</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">derivative_exprs</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">sympy</span><span class="o">.</span><span class="n">sympify</span><span class="p">(</span><span class="n">expr_str</span><span class="p">,</span> <span class="nb">locals</span><span class="o">=</span><span class="n">symbol_table</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"biological_ode.derivatives[</span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2">] failed to parse: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+
+    <span class="k">return</span> <span class="n">algebraic_exprs</span><span class="p">,</span> <span class="n">derivative_exprs</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># ProcessOrdering factory</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="get_process_ordering">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.get_process_ordering">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_process_ordering</span><span class="p">(</span><span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessOrdering</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Build the canonical :class:`ProcessOrdering` for a process.</span>
+
+<span class="sd">    All other mechanistic factories (``get_control_splines``,</span>
+<span class="sd">    ``build_rhs_ode``, ``extract_discrete_events``, ``build_state_splines``)</span>
+<span class="sd">    consume this object so every state/control/rate vector has the same</span>
+<span class="sd">    layout.</span>
+
+<span class="sd">    Validations performed here:</span>
+
+<span class="sd">    - Every continuous ``Inflow`` must define ``feed_medium`` and</span>
+<span class="sd">      every component in that medium must exist in</span>
+<span class="sd">      ``reactor_medium.components``.</span>
+<span class="sd">    - Every ``Outflow.retention`` key must name a reactor component, every</span>
+<span class="sd">      value must be in ``[0, 1]``, and discrete Outflows cannot set retention.</span>
+<span class="sd">    - Every non-controlled ``ProcessVariable`` must have a ``TimeSeries``</span>
+<span class="sd">      value carrier (static PVs must be ``is_controlled=True``).</span>
+<span class="sd">    - The ``BiologicalOde.algebraic`` graph must be acyclic.</span>
+<span class="sd">    - All names across every group must be unique (no shared names between</span>
+<span class="sd">      states, rates, algebraic, controlled PVs, Inflows, Outflows).</span>
+<span class="sd">    """</span>
+    <span class="c1"># ---- Reactor components (RMCs), alphabetical</span>
+    <span class="n">name_modeled_RMCs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
+
+    <span class="c1"># ---- Process variables: partition into controlled vs modeled, alphabetical</span>
+    <span class="n">name_modeled_PVs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
+        <span class="nb">sorted</span><span class="p">(</span><span class="n">n</span> <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">pv</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">pv</span><span class="o">.</span><span class="n">is_controlled</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">name_controlled_PVs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
+        <span class="nb">sorted</span><span class="p">(</span><span class="n">n</span> <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">pv</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">pv</span><span class="o">.</span><span class="n">is_controlled</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Static PVs must be is_controlled=True; modeled PVs must carry a TimeSeries.</span>
+    <span class="k">for</span> <span class="n">pv_name</span> <span class="ow">in</span> <span class="n">name_modeled_PVs</span><span class="p">:</span>
+        <span class="n">pv</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="p">[</span><span class="n">pv_name</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">pv</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">StaticVariable</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"Process variable </span><span class="si">{</span><span class="n">pv_name</span><span class="si">!r}</span><span class="s2"> has StaticVariable values but "</span>
+                <span class="s2">"is_controlled=False. Static (non-time-varying) process "</span>
+                <span class="s2">"variables must be flagged is_controlled=True so they live "</span>
+                <span class="s2">"in name_controlled_PVs, not name_modeled_PVs."</span>
+            <span class="p">)</span>
+
+    <span class="c1"># ---- Volume changes: Inflow/Outflow × controlled/modeled, alphabetical</span>
+    <span class="n">name_modeled_Inflows</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
+        <span class="nb">sorted</span><span class="p">(</span>
+            <span class="n">n</span>
+            <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">vc</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">volume_changes</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="k">if</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">vc</span><span class="p">,</span> <span class="n">Inflow</span><span class="p">)</span> <span class="ow">and</span> <span class="n">vc</span><span class="o">.</span><span class="n">is_continuous</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">vc</span><span class="o">.</span><span class="n">is_controlled</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">name_controlled_Inflows</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
+        <span class="nb">sorted</span><span class="p">(</span>
+            <span class="n">n</span>
+            <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">vc</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">volume_changes</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">vc</span><span class="p">,</span> <span class="n">Inflow</span><span class="p">)</span> <span class="ow">and</span> <span class="n">vc</span><span class="o">.</span><span class="n">is_continuous</span> <span class="ow">and</span> <span class="n">vc</span><span class="o">.</span><span class="n">is_controlled</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">name_modeled_Outflows</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
+        <span class="nb">sorted</span><span class="p">(</span>
+            <span class="n">n</span>
+            <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">vc</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">volume_changes</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="k">if</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">vc</span><span class="p">,</span> <span class="n">Outflow</span><span class="p">)</span> <span class="ow">and</span> <span class="n">vc</span><span class="o">.</span><span class="n">is_continuous</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">vc</span><span class="o">.</span><span class="n">is_controlled</span><span class="p">)</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">name_controlled_Outflows</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
+        <span class="nb">sorted</span><span class="p">(</span>
+            <span class="n">n</span>
+            <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">vc</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">volume_changes</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">vc</span><span class="p">,</span> <span class="n">Outflow</span><span class="p">)</span> <span class="ow">and</span> <span class="n">vc</span><span class="o">.</span><span class="n">is_continuous</span> <span class="ow">and</span> <span class="n">vc</span><span class="o">.</span><span class="n">is_controlled</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Inflow feed-medium validation (across modeled and controlled)</span>
+    <span class="n">rmc_set</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">name_modeled_RMCs</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">vc_name</span> <span class="ow">in</span> <span class="n">name_modeled_Inflows</span> <span class="o">+</span> <span class="n">name_controlled_Inflows</span><span class="p">:</span>
+        <span class="n">vc</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">volume_changes</span><span class="p">[</span><span class="n">vc_name</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">vc</span><span class="o">.</span><span class="n">feed_medium</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Inflow </span><span class="si">{</span><span class="n">vc_name</span><span class="si">!r}</span><span class="s2"> has no feed_medium defined."</span><span class="p">)</span>
+        <span class="n">unknown</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">vc</span><span class="o">.</span><span class="n">feed_medium</span><span class="o">.</span><span class="n">components</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">if</span> <span class="n">c</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">rmc_set</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"Inflow </span><span class="si">{</span><span class="n">vc_name</span><span class="si">!r}</span><span class="s2"> references unknown reactor "</span>
+                <span class="sa">f</span><span class="s2">"component(s) in its feed_medium: </span><span class="si">{</span><span class="n">unknown</span><span class="si">}</span><span class="s2">. All feed "</span>
+                <span class="s2">"components must exist in process.reactor_medium.components."</span>
+            <span class="p">)</span>
+
+    <span class="c1"># Validate retention here because mechanistic factories must not silently</span>
+    <span class="c1"># turn invalid component names into zero-retention rows. BioProcess is a</span>
+    <span class="c1"># mutable dataclass, so __post_init__ having already checked this once</span>
+    <span class="c1"># does not guarantee it still holds.</span>
+    <span class="n">retention_errors</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">error</span>
+        <span class="k">for</span> <span class="n">vc_name</span><span class="p">,</span> <span class="n">vc</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">volume_changes</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">vc</span><span class="p">,</span> <span class="n">Outflow</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">error</span> <span class="ow">in</span> <span class="n">_check_outflow_retention</span><span class="p">(</span><span class="n">vc_name</span><span class="p">,</span> <span class="n">vc</span><span class="p">,</span> <span class="n">rmc_set</span><span class="p">)</span>
+    <span class="p">]</span>
+    <span class="k">if</span> <span class="n">retention_errors</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">retention_errors</span><span class="p">))</span>
+
+    <span class="c1"># ---- Biological ODE: rates (insertion order) and algebraic (topo-sorted)</span>
+    <span class="n">bo</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span>
+    <span class="k">if</span> <span class="n">bo</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">name_modeled_rates</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+        <span class="n">name_modeled_algebraic</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">name_modeled_rates</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">bo</span><span class="o">.</span><span class="n">rates</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="c1"># Need parsed algebraic expressions for topo-sort. Build a minimal</span>
+        <span class="c1"># allowed-symbol set that lets sympify recognise every name. The</span>
+        <span class="c1"># full validation is done by validate_biological_ode.</span>
+        <span class="n">allowed</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="nb">set</span><span class="p">(</span><span class="n">name_modeled_RMCs</span><span class="p">)</span>
+            <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">name_modeled_PVs</span><span class="p">)</span>
+            <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">name_controlled_PVs</span><span class="p">)</span>
+            <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">bo</span><span class="o">.</span><span class="n">algebraic</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+            <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">name_modeled_rates</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">algebraic_exprs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">_parse_biological_ode_expressions</span><span class="p">(</span><span class="n">bo</span><span class="p">,</span> <span class="n">allowed</span><span class="p">)</span>
+        <span class="n">name_modeled_algebraic</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">_topo_sort_algebraic</span><span class="p">(</span><span class="n">algebraic_exprs</span><span class="p">))</span>
+
+    <span class="c1"># ---- Cross-group name-collision check</span>
+    <span class="n">groups</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">"name_modeled_RMCs"</span><span class="p">:</span> <span class="n">name_modeled_RMCs</span><span class="p">,</span>
+        <span class="s2">"name_modeled_PVs"</span><span class="p">:</span> <span class="n">name_modeled_PVs</span><span class="p">,</span>
+        <span class="s2">"name_controlled_PVs"</span><span class="p">:</span> <span class="n">name_controlled_PVs</span><span class="p">,</span>
+        <span class="s2">"name_modeled_Inflows"</span><span class="p">:</span> <span class="n">name_modeled_Inflows</span><span class="p">,</span>
+        <span class="s2">"name_controlled_Inflows"</span><span class="p">:</span> <span class="n">name_controlled_Inflows</span><span class="p">,</span>
+        <span class="s2">"name_modeled_Outflows"</span><span class="p">:</span> <span class="n">name_modeled_Outflows</span><span class="p">,</span>
+        <span class="s2">"name_controlled_Outflows"</span><span class="p">:</span> <span class="n">name_controlled_Outflows</span><span class="p">,</span>
+        <span class="s2">"name_modeled_rates"</span><span class="p">:</span> <span class="n">name_modeled_rates</span><span class="p">,</span>
+        <span class="s2">"name_modeled_algebraic"</span><span class="p">:</span> <span class="n">name_modeled_algebraic</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="n">seen</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">duplicates</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">group_name</span><span class="p">,</span> <span class="n">names</span> <span class="ow">in</span> <span class="n">groups</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">names</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
+                <span class="n">duplicates</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">n</span><span class="si">!r}</span><span class="s2"> appears in both </span><span class="si">{</span><span class="n">seen</span><span class="p">[</span><span class="n">n</span><span class="p">]</span><span class="si">}</span><span class="s2"> and </span><span class="si">{</span><span class="n">group_name</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">seen</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="o">=</span> <span class="n">group_name</span>
+    <span class="k">if</span> <span class="n">duplicates</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"Name collisions across ProcessOrdering groups:</span><span class="se">\n</span><span class="s2">  - "</span>
+            <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">  - "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">duplicates</span><span class="p">)</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ProcessOrdering</span><span class="p">(</span>
+        <span class="n">name_modeled_rates</span><span class="o">=</span><span class="n">name_modeled_rates</span><span class="p">,</span>
+        <span class="n">name_modeled_algebraic</span><span class="o">=</span><span class="n">name_modeled_algebraic</span><span class="p">,</span>
+        <span class="n">name_modeled_RMCs</span><span class="o">=</span><span class="n">name_modeled_RMCs</span><span class="p">,</span>
+        <span class="n">name_modeled_PVs</span><span class="o">=</span><span class="n">name_modeled_PVs</span><span class="p">,</span>
+        <span class="n">name_modeled_Inflows</span><span class="o">=</span><span class="n">name_modeled_Inflows</span><span class="p">,</span>
+        <span class="n">name_modeled_Outflows</span><span class="o">=</span><span class="n">name_modeled_Outflows</span><span class="p">,</span>
+        <span class="n">name_controlled_PVs</span><span class="o">=</span><span class="n">name_controlled_PVs</span><span class="p">,</span>
+        <span class="n">name_controlled_Inflows</span><span class="o">=</span><span class="n">name_controlled_Inflows</span><span class="p">,</span>
+        <span class="n">name_controlled_Outflows</span><span class="o">=</span><span class="n">name_controlled_Outflows</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># ControlSplines module</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="ControlSplines">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.ControlSplines">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ControlSplines</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""JAX/Equinox module that evaluates all controlled signals at time *t*.</span>
+
+<span class="sd">    Created by :func:`get_control_splines`.</span>
+
+<span class="sd">    Output layout of ``__call__(t)``::</span>
+
+<span class="sd">        u = [Inflow_flow_rates... | Outflow_flow_rates... | PV_values...]</span>
+
+<span class="sd">    The first ``len(name_controlled_Inflows) + len(name_controlled_Outflows)``</span>
+<span class="sd">    entries are spline derivatives (flow rates carrying the storage sign of</span>
+<span class="sd">    the underlying cumulative-volume series). The remaining entries are</span>
+<span class="sd">    direct PV values.</span>
+<span class="sd">    """</span>
+
+    <span class="n">name_controlled_Inflows</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">name_controlled_Outflows</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">name_controlled_PVs</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="c1"># Original control PPolys in canonical [Inflow | Outflow | PV] order.</span>
+    <span class="n">_splines</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">PPoly</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Evaluate all controlled signals at ``t``; see the class docstring for layout."""</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_splines</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">shape</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">+</span> <span class="p">(</span><span class="mi">0</span><span class="p">,))</span>
+        <span class="n">n_flows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Outflows</span><span class="p">)</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">spline</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">nu</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="k">if</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">n_flows</span> <span class="k">else</span> <span class="n">spline</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">spline</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_splines</span><span class="p">)</span>
+        <span class="p">]</span>
+        <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="get_control_splines">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.get_control_splines">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_control_splines</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
+    <span class="n">ordering</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ProcessOrdering</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ControlSplines</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Build a :class:`ControlSplines` module for *process*.</span>
+
+<span class="sd">    Block layout (Inflows → Outflows → PVs) is enforced by the canonical ordering</span>
+<span class="sd">    in :class:`ProcessOrdering`.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">ordering</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ordering</span> <span class="o">=</span> <span class="n">get_process_ordering</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
+
+    <span class="n">t_start</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">start</span><span class="p">)</span>
+    <span class="n">t_end</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">end</span><span class="p">)</span>
+    <span class="n">splines</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">PPoly</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">vc_name</span> <span class="ow">in</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">:</span>
+        <span class="n">vc</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">volume_changes</span><span class="p">[</span><span class="n">vc_name</span><span class="p">]</span>
+        <span class="n">splines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_timeseries_to_ppoly</span><span class="p">(</span><span class="n">vc</span><span class="o">.</span><span class="n">values</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">vc_name</span> <span class="ow">in</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_controlled_Outflows</span><span class="p">:</span>
+        <span class="n">vc</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">volume_changes</span><span class="p">[</span><span class="n">vc_name</span><span class="p">]</span>
+        <span class="n">splines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_timeseries_to_ppoly</span><span class="p">(</span><span class="n">vc</span><span class="o">.</span><span class="n">values</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">pv_name</span> <span class="ow">in</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_controlled_PVs</span><span class="p">:</span>
+        <span class="n">pv</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="p">[</span><span class="n">pv_name</span><span class="p">]</span>
+        <span class="n">splines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_value_to_ppoly</span><span class="p">(</span><span class="n">pv</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">t_start</span><span class="o">=</span><span class="n">t_start</span><span class="p">,</span> <span class="n">t_end</span><span class="o">=</span><span class="n">t_end</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">ControlSplines</span><span class="p">(</span>
+        <span class="n">name_controlled_Inflows</span><span class="o">=</span><span class="n">ordering</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">,</span>
+        <span class="n">name_controlled_Outflows</span><span class="o">=</span><span class="n">ordering</span><span class="o">.</span><span class="n">name_controlled_Outflows</span><span class="p">,</span>
+        <span class="n">name_controlled_PVs</span><span class="o">=</span><span class="n">ordering</span><span class="o">.</span><span class="n">name_controlled_PVs</span><span class="p">,</span>
+        <span class="n">_splines</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">splines</span><span class="p">),</span>
+    <span class="p">)</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Cin matrix builder</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_cin</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
+    <span class="n">vc_names</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">name_modeled_RMCs</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Build a ``(len(vc_names), len(RMCs))`` feed-composition matrix.</span>
+
+<span class="sd">    Each row is the static feed concentration of every reactor component in</span>
+<span class="sd">    the corresponding ``Inflow.feed_medium``. Components omitted from the</span>
+<span class="sd">    sparse feed mapping remain zero in the preinitialized row.</span>
+<span class="sd">    """</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">cell</span><span class="p">(</span><span class="n">vc</span><span class="p">:</span> <span class="n">Inflow</span><span class="p">,</span> <span class="n">vc_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">sp_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">vc</span><span class="o">.</span><span class="n">feed_medium</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">sp_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">vc</span><span class="o">.</span><span class="n">feed_medium</span><span class="o">.</span><span class="n">components</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="n">conc</span> <span class="o">=</span> <span class="n">vc</span><span class="o">.</span><span class="n">feed_medium</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="n">sp_name</span><span class="p">]</span><span class="o">.</span><span class="n">concentration</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">conc</span><span class="p">,</span> <span class="n">StaticVariable</span><span class="p">):</span>
+            <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">conc</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span>
+            <span class="s2">"TimeSeries feed concentrations are not yet supported. "</span>
+            <span class="sa">f</span><span class="s2">"Found TimeSeries for species </span><span class="si">{</span><span class="n">sp_name</span><span class="si">!r}</span><span class="s2"> in feed "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">vc</span><span class="o">.</span><span class="n">feed_medium</span><span class="o">.</span><span class="n">name</span><span class="si">!r}</span><span class="s2"> of volume change </span><span class="si">{</span><span class="n">vc_name</span><span class="si">!r}</span><span class="s2">."</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">_build_vc_matrix</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">vc_names</span><span class="p">,</span> <span class="n">name_modeled_RMCs</span><span class="p">,</span> <span class="n">Inflow</span><span class="p">,</span> <span class="n">cell</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_retention</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
+    <span class="n">vc_names</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">name_modeled_RMCs</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Build a ``(len(vc_names), len(RMCs))`` retention matrix.</span>
+
+<span class="sd">    Each row is the per-component retention fraction (sigma in [0, 1]) of</span>
+<span class="sd">    the corresponding ``Outflow.retention``. Unlike ``_build_cin``,</span>
+<span class="sd">    a missing entry here is deliberately left at 0 (not an error). An</span>
+<span class="sd">    empty/partial ``retention`` is the ordinary, correct state for</span>
+<span class="sd">    the overwhelming majority of processes (no perfusion/evaporation</span>
+<span class="sd">    modeling), not a data gap standing in for something unknown.</span>
+<span class="sd">    """</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">cell</span><span class="p">(</span><span class="n">vc</span><span class="p">:</span> <span class="n">Outflow</span><span class="p">,</span> <span class="n">vc_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">sp_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+        <span class="k">if</span> <span class="n">sp_name</span> <span class="ow">in</span> <span class="n">vc</span><span class="o">.</span><span class="n">retention</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">vc</span><span class="o">.</span><span class="n">retention</span><span class="p">[</span><span class="n">sp_name</span><span class="p">])</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">_build_vc_matrix</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">vc_names</span><span class="p">,</span> <span class="n">name_modeled_RMCs</span><span class="p">,</span> <span class="n">Outflow</span><span class="p">,</span> <span class="n">cell</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_vc_matrix</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
+    <span class="n">vc_names</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">name_modeled_RMCs</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">vc_type</span><span class="p">:</span> <span class="nb">type</span><span class="p">,</span>
+    <span class="n">cell_value</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">Any</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Shared ``(len(vc_names), len(RMCs))`` matrix builder.</span>
+
+<span class="sd">    For each ``vc_name`` whose volume change is an instance of ``vc_type``,</span>
+<span class="sd">    fills row ``k`` with ``cell_value(vc, vc_name, sp_name)`` for every RMC</span>
+<span class="sd">    column where it returns a value; other cells stay 0. Used by</span>
+<span class="sd">    ``_build_cin``/``_build_retention``, which differ only in per-cell</span>
+<span class="sd">    extraction semantics (see their docstrings for why a missing entry means</span>
+<span class="sd">    different things in each).</span>
+<span class="sd">    """</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">vc_names</span><span class="p">)</span>
+    <span class="n">n_RMCs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">name_modeled_RMCs</span><span class="p">)</span>
+    <span class="n">matrix</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">n_RMCs</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">vc_name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">vc_names</span><span class="p">):</span>
+        <span class="n">vc</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">volume_changes</span><span class="p">[</span><span class="n">vc_name</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">vc</span><span class="p">,</span> <span class="n">vc_type</span><span class="p">):</span>
+            <span class="k">continue</span>
+        <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">sp_name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">name_modeled_RMCs</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">cell_value</span><span class="p">(</span><span class="n">vc</span><span class="p">,</span> <span class="n">vc_name</span><span class="p">,</span> <span class="n">sp_name</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">matrix</span> <span class="o">=</span> <span class="n">matrix</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">matrix</span>
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># RhsOde module</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="RhsOde">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.RhsOde">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RhsOde</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""JAX/Equinox module that evaluates the biological RHS for a process.</span>
+
+<span class="sd">    Built by :func:`build_rhs_ode` from ``process.biological_ode``</span>
+<span class="sd">    (auto-generated in :meth:`BioProcess.__post_init__` when not</span>
+<span class="sd">    user-supplied). The biological ``dc/dt`` per state comes from</span>
+<span class="sd">    user-written expression strings; hybrax.format adds the physical</span>
+<span class="sd">    contributions (feed, dilution, dV) on top.</span>
+
+<span class="sd">    Call signature::</span>
+
+<span class="sd">        dc_dt = rhs_ode(c, rates, u, f_modeled_Inflows, f_modeled_Outflows)</span>
+
+<span class="sd">    where:</span>
+
+<span class="sd">    - ``c = [name_modeled_RMCs... | name_modeled_PVs... | V]``.</span>
+<span class="sd">    - ``rates`` aligns with :attr:`name_modeled_rates`.</span>
+<span class="sd">    - ``u`` is the full control vector (output of ``ControlSplines``):</span>
+<span class="sd">      ``[Inflow_flows | Outflow_flows | PV_values]``.</span>
+<span class="sd">    - ``f_modeled_Inflows`` are uncontrolled Inflow flow rates aligned with</span>
+<span class="sd">      :attr:`name_modeled_Inflows` (non-negative).</span>
+<span class="sd">    - ``f_modeled_Outflows`` are uncontrolled Outflow flow rates aligned with</span>
+<span class="sd">      :attr:`name_modeled_Outflows` (non-positive, signed).</span>
+
+<span class="sd">    Returns ``dc/dt`` of shape ``(len(RMCs) + len(PVs) + 1,)``.</span>
+<span class="sd">    """</span>
+
+    <span class="c1"># --- Names (deterministic ordering)</span>
+    <span class="n">name_modeled_rates</span><span class="p">:</span> <span class="nb">tuple</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">name_modeled_algebraic</span><span class="p">:</span> <span class="nb">tuple</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">name_modeled_RMCs</span><span class="p">:</span> <span class="nb">tuple</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">name_modeled_PVs</span><span class="p">:</span> <span class="nb">tuple</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">name_modeled_Inflows</span><span class="p">:</span> <span class="nb">tuple</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">name_modeled_Outflows</span><span class="p">:</span> <span class="nb">tuple</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">name_controlled_PVs</span><span class="p">:</span> <span class="nb">tuple</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">name_controlled_Inflows</span><span class="p">:</span> <span class="nb">tuple</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">name_controlled_Outflows</span><span class="p">:</span> <span class="nb">tuple</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># --- Compiled callables</span>
+    <span class="n">algebraic_funcs</span><span class="p">:</span> <span class="nb">tuple</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">derivative_funcs</span><span class="p">:</span> <span class="nb">tuple</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># --- Feed compositions</span>
+    <span class="n">Cin_controlled_Inflows</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span>
+    <span class="n">Cin_modeled_Inflows</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span>
+
+    <span class="c1"># --- Outflow component retention (sigma in [0, 1], default 0)</span>
+    <span class="n">retention_controlled_Outflows</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span>
+    <span class="n">retention_modeled_Outflows</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">c</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+        <span class="n">rates</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+        <span class="n">u</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+        <span class="n">f_modeled_Inflows</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+        <span class="n">f_modeled_Outflows</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+        <span class="n">V_min</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">=</span> <span class="n">_MIN_REACTOR_VOLUME</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Evaluate ``dc/dt``; see the class docstring for the call signature."""</span>
+        <span class="n">n_RMCs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">)</span>
+        <span class="n">n_PVs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_modeled_PVs</span><span class="p">)</span>
+        <span class="n">n_inflow_ctrl</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">)</span>
+        <span class="n">n_outflow_ctrl</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Outflows</span><span class="p">)</span>
+
+        <span class="c1"># Unpack state</span>
+        <span class="n">c_RMCs</span> <span class="o">=</span> <span class="n">c</span><span class="p">[:</span><span class="n">n_RMCs</span><span class="p">]</span>
+        <span class="n">c_PVs</span> <span class="o">=</span> <span class="n">c</span><span class="p">[</span><span class="n">n_RMCs</span> <span class="p">:</span> <span class="n">n_RMCs</span> <span class="o">+</span> <span class="n">n_PVs</span><span class="p">]</span>
+        <span class="n">V</span> <span class="o">=</span> <span class="n">c</span><span class="p">[</span><span class="n">n_RMCs</span> <span class="o">+</span> <span class="n">n_PVs</span><span class="p">]</span>
+
+        <span class="c1"># Unpack control vector (Inflow flows | Outflow flows | PV values)</span>
+        <span class="n">u_controlled_Inflows</span> <span class="o">=</span> <span class="n">u</span><span class="p">[:</span><span class="n">n_inflow_ctrl</span><span class="p">]</span>
+        <span class="n">u_controlled_Outflows</span> <span class="o">=</span> <span class="n">u</span><span class="p">[</span><span class="n">n_inflow_ctrl</span> <span class="p">:</span> <span class="n">n_inflow_ctrl</span> <span class="o">+</span> <span class="n">n_outflow_ctrl</span><span class="p">]</span>
+        <span class="n">ctrl_PVs</span> <span class="o">=</span> <span class="n">u</span><span class="p">[</span><span class="n">n_inflow_ctrl</span> <span class="o">+</span> <span class="n">n_outflow_ctrl</span> <span class="p">:]</span>
+
+        <span class="n">state_and_ctrl</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">c_RMCs</span><span class="p">,</span> <span class="n">c_PVs</span><span class="p">,</span> <span class="n">ctrl_PVs</span><span class="p">])</span>
+
+        <span class="c1"># 1. Algebraic variables in topo order</span>
+        <span class="n">n_algebraic</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_modeled_algebraic</span><span class="p">)</span>
+        <span class="n">algebraic_arr</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_algebraic</span><span class="p">)</span> <span class="k">if</span> <span class="n">n_algebraic</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">fn</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algebraic_funcs</span><span class="p">):</span>
+            <span class="n">args</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">state_and_ctrl</span><span class="p">,</span> <span class="n">algebraic_arr</span><span class="p">,</span> <span class="n">rates</span><span class="p">])</span>
+            <span class="n">algebraic_arr</span> <span class="o">=</span> <span class="n">algebraic_arr</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">fn</span><span class="p">(</span><span class="n">args</span><span class="p">))</span>
+
+        <span class="c1"># 2. Biological derivatives per dynamic state</span>
+        <span class="n">full_args</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">state_and_ctrl</span><span class="p">,</span> <span class="n">algebraic_arr</span><span class="p">,</span> <span class="n">rates</span><span class="p">])</span>
+        <span class="n">biol_dc_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">fn</span><span class="p">(</span><span class="n">full_args</span><span class="p">)</span> <span class="k">for</span> <span class="n">fn</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">derivative_funcs</span><span class="p">]</span>
+        <span class="n">biol_dc</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">biol_dc_list</span><span class="p">)</span> <span class="k">if</span> <span class="n">biol_dc_list</span> <span class="k">else</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="c1"># 3. Physical contributions on RMC states (PV states are biological-only).</span>
+        <span class="n">feed_term</span><span class="p">,</span> <span class="n">dV</span> <span class="o">=</span> <span class="n">_apply_feed_dilution</span><span class="p">(</span>
+            <span class="n">c_RMCs</span><span class="p">,</span>
+            <span class="n">V</span><span class="p">,</span>
+            <span class="n">u_controlled_Inflows</span><span class="p">,</span>
+            <span class="n">u_controlled_Outflows</span><span class="p">,</span>
+            <span class="n">f_modeled_Inflows</span><span class="p">,</span>
+            <span class="n">f_modeled_Outflows</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">retention_controlled_Outflows</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">retention_modeled_Outflows</span><span class="p">,</span>
+            <span class="n">n_RMCs</span><span class="p">,</span>
+            <span class="n">V_min</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">dc_RMCs</span> <span class="o">=</span> <span class="n">biol_dc</span><span class="p">[:</span><span class="n">n_RMCs</span><span class="p">]</span> <span class="o">+</span> <span class="n">feed_term</span>
+        <span class="n">dc_PVs</span> <span class="o">=</span> <span class="n">biol_dc</span><span class="p">[</span><span class="n">n_RMCs</span> <span class="p">:</span> <span class="n">n_RMCs</span> <span class="o">+</span> <span class="n">n_PVs</span><span class="p">]</span> <span class="k">if</span> <span class="n">n_PVs</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">dc_RMCs</span><span class="p">,</span> <span class="n">dc_PVs</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">dV</span><span class="p">])])</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># RhsOde builder</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="build_rhs_ode">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.build_rhs_ode">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_rhs_ode</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
+    <span class="n">ordering</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ProcessOrdering</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhsOde</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Build a :class:`RhsOde` from a process whose ``biological_ode`` is</span>
+<span class="sd">    set (auto-generated in :meth:`BioProcess.__post_init__` when not</span>
+<span class="sd">    user-supplied). Raises ``ValueError`` if the block is missing or</span>
+<span class="sd">    fails validation.</span>
+<span class="sd">    """</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">sympy</span>
+
+    <span class="n">bo</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span>
+    <span class="k">if</span> <span class="n">bo</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"build_rhs_ode requires process.biological_ode to be set."</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">ordering</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">ordering</span> <span class="o">=</span> <span class="n">get_process_ordering</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
+
+    <span class="c1"># Canonical args order: every lambdified expression consumes a single</span>
+    <span class="c1"># flat array indexed in this exact order. Must match the concatenation</span>
+    <span class="c1"># order in RhsOde.__call__.</span>
+    <span class="n">args_order</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_RMCs</span>
+        <span class="o">+</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_PVs</span>
+        <span class="o">+</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_controlled_PVs</span>
+        <span class="o">+</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_algebraic</span>
+        <span class="o">+</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_rates</span>
+    <span class="p">)</span>
+
+    <span class="n">allowed_names</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">args_order</span><span class="p">)</span>
+    <span class="n">algebraic_exprs</span><span class="p">,</span> <span class="n">derivative_exprs</span> <span class="o">=</span> <span class="n">_parse_biological_ode_expressions</span><span class="p">(</span>
+        <span class="n">bo</span><span class="p">,</span> <span class="n">allowed_names</span>
+    <span class="p">)</span>
+
+    <span class="n">algebraic_funcs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
+        <span class="n">_lambdify_with_array_arg</span><span class="p">(</span><span class="n">algebraic_exprs</span><span class="p">[</span><span class="n">n</span><span class="p">],</span> <span class="n">args_order</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_algebraic</span>
+    <span class="p">)</span>
+
+    <span class="n">state_names</span> <span class="o">=</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_RMCs</span> <span class="o">+</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_PVs</span>
+    <span class="n">zero_expr</span> <span class="o">=</span> <span class="n">sympy</span><span class="o">.</span><span class="n">Integer</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">derivative_funcs</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span>
+        <span class="n">_lambdify_with_array_arg</span><span class="p">(</span><span class="n">derivative_exprs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">zero_expr</span><span class="p">),</span> <span class="n">args_order</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">state_names</span>
+    <span class="p">)</span>
+
+    <span class="n">Cin_controlled_Inflows</span> <span class="o">=</span> <span class="n">_build_cin</span><span class="p">(</span>
+        <span class="n">process</span><span class="p">,</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">,</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_RMCs</span>
+    <span class="p">)</span>
+    <span class="n">Cin_modeled_Inflows</span> <span class="o">=</span> <span class="n">_build_cin</span><span class="p">(</span>
+        <span class="n">process</span><span class="p">,</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_Inflows</span><span class="p">,</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_RMCs</span>
+    <span class="p">)</span>
+    <span class="n">retention_controlled_Outflows</span> <span class="o">=</span> <span class="n">_build_retention</span><span class="p">(</span>
+        <span class="n">process</span><span class="p">,</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_controlled_Outflows</span><span class="p">,</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_RMCs</span>
+    <span class="p">)</span>
+    <span class="n">retention_modeled_Outflows</span> <span class="o">=</span> <span class="n">_build_retention</span><span class="p">(</span>
+        <span class="n">process</span><span class="p">,</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_Outflows</span><span class="p">,</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_RMCs</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">RhsOde</span><span class="p">(</span>
+        <span class="n">name_modeled_rates</span><span class="o">=</span><span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_rates</span><span class="p">,</span>
+        <span class="n">name_modeled_algebraic</span><span class="o">=</span><span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_algebraic</span><span class="p">,</span>
+        <span class="n">name_modeled_RMCs</span><span class="o">=</span><span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">,</span>
+        <span class="n">name_modeled_PVs</span><span class="o">=</span><span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_PVs</span><span class="p">,</span>
+        <span class="n">name_modeled_Inflows</span><span class="o">=</span><span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_Inflows</span><span class="p">,</span>
+        <span class="n">name_modeled_Outflows</span><span class="o">=</span><span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_Outflows</span><span class="p">,</span>
+        <span class="n">name_controlled_PVs</span><span class="o">=</span><span class="n">ordering</span><span class="o">.</span><span class="n">name_controlled_PVs</span><span class="p">,</span>
+        <span class="n">name_controlled_Inflows</span><span class="o">=</span><span class="n">ordering</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">,</span>
+        <span class="n">name_controlled_Outflows</span><span class="o">=</span><span class="n">ordering</span><span class="o">.</span><span class="n">name_controlled_Outflows</span><span class="p">,</span>
+        <span class="n">algebraic_funcs</span><span class="o">=</span><span class="n">algebraic_funcs</span><span class="p">,</span>
+        <span class="n">derivative_funcs</span><span class="o">=</span><span class="n">derivative_funcs</span><span class="p">,</span>
+        <span class="n">Cin_controlled_Inflows</span><span class="o">=</span><span class="n">Cin_controlled_Inflows</span><span class="p">,</span>
+        <span class="n">Cin_modeled_Inflows</span><span class="o">=</span><span class="n">Cin_modeled_Inflows</span><span class="p">,</span>
+        <span class="n">retention_controlled_Outflows</span><span class="o">=</span><span class="n">retention_controlled_Outflows</span><span class="p">,</span>
+        <span class="n">retention_modeled_Outflows</span><span class="o">=</span><span class="n">retention_modeled_Outflows</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Algebraic-variable inspector</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="build_algebraic_func">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.build_algebraic_func">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_algebraic_func</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
+    <span class="n">ordering</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ProcessOrdering</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""Build a callable that evaluates the ``biological_ode.algebraic``</span>
+<span class="sd">    quantities from concrete ``(state_values, ctrl_pv_values, rates)``</span>
+<span class="sd">    arrays.</span>
+
+<span class="sd">    ``state_values`` is the non-volume state in canonical order</span>
+<span class="sd">    (``name_modeled_RMCs`` followed by ``name_modeled_PVs``);</span>
+<span class="sd">    ``ctrl_pv_values`` aligns with ``name_controlled_PVs``; ``rates``</span>
+<span class="sd">    aligns with ``name_modeled_rates``.</span>
+
+<span class="sd">    Returns ``{name: scalar}`` keyed by ``name_modeled_algebraic`` (topo</span>
+<span class="sd">    order). Useful for plotting / loss computation.</span>
+<span class="sd">    """</span>
+    <span class="n">bo</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span>
+    <span class="k">if</span> <span class="n">bo</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"build_algebraic_func requires process.biological_ode to be set."</span>
+        <span class="p">)</span>
+    <span class="n">rhs_ode</span> <span class="o">=</span> <span class="n">build_rhs_ode</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">ordering</span><span class="o">=</span><span class="n">ordering</span><span class="p">)</span>
+    <span class="n">name_modeled_algebraic</span> <span class="o">=</span> <span class="n">rhs_ode</span><span class="o">.</span><span class="n">name_modeled_algebraic</span>
+    <span class="n">n_algebraic</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">name_modeled_algebraic</span><span class="p">)</span>
+    <span class="n">algebraic_funcs</span> <span class="o">=</span> <span class="n">rhs_ode</span><span class="o">.</span><span class="n">algebraic_funcs</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">algebraic_func</span><span class="p">(</span><span class="n">state_values</span><span class="p">,</span> <span class="n">ctrl_pv_values</span><span class="p">,</span> <span class="n">rates</span><span class="p">):</span>
+        <span class="n">algebraic_arr</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_algebraic</span><span class="p">)</span> <span class="k">if</span> <span class="n">n_algebraic</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">fn</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">algebraic_funcs</span><span class="p">):</span>
+            <span class="n">args</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">state_values</span><span class="p">,</span> <span class="n">ctrl_pv_values</span><span class="p">,</span> <span class="n">algebraic_arr</span><span class="p">,</span> <span class="n">rates</span><span class="p">])</span>
+            <span class="n">algebraic_arr</span> <span class="o">=</span> <span class="n">algebraic_arr</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">fn</span><span class="p">(</span><span class="n">args</span><span class="p">))</span>
+        <span class="k">return</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">algebraic_arr</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">name_modeled_algebraic</span><span class="p">)}</span>
+
+    <span class="k">return</span> <span class="n">algebraic_func</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Discrete-event extraction</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<div class="viewcode-block" id="extract_discrete_events">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.extract_discrete_events">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_discrete_events</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
+    <span class="n">ordering</span><span class="p">:</span> <span class="n">ProcessOrdering</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""Extract sampling and bolus-feed events from *process*.</span>
+
+<span class="sd">    Each event dict carries:</span>
+
+<span class="sd">    - ``t`` (float): event time</span>
+<span class="sd">    - ``kind`` (str): ``'sample'`` or ``'bolus_feed'``</span>
+<span class="sd">    - ``dV`` (float): signed volume change (positive = add, negative = remove)</span>
+<span class="sd">    - ``Cin`` (jnp.ndarray | None): feed composition aligned with</span>
+<span class="sd">      ``ordering.name_modeled_RMCs`` (None for sampling events)</span>
+<span class="sd">    - ``source`` (str): originating volume-change name</span>
+
+<span class="sd">    Events are sorted by time; sampling precedes bolus feeds at the same</span>
+<span class="sd">    timestamp. At most one sample and one bolus per timestamp.</span>
+<span class="sd">    """</span>
+    <span class="n">events</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">vc_name</span><span class="p">,</span> <span class="n">vc</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">volume_changes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">vc</span><span class="o">.</span><span class="n">is_continuous</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="n">tp</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">vc</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="n">vv</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">vc</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">t_event</span><span class="p">,</span> <span class="n">dV_event</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">tp</span><span class="p">,</span> <span class="n">vv</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">dV_event</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-15</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="k">if</span> <span class="n">dV_event</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">vc</span><span class="p">,</span> <span class="n">Inflow</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">vc</span><span class="o">.</span><span class="n">feed_medium</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                        <span class="sa">f</span><span class="s2">"Inflow </span><span class="si">{</span><span class="n">vc_name</span><span class="si">!r}</span><span class="s2"> has a positive discrete (bolus) "</span>
+                        <span class="s2">"event but no feed_medium defined. There's no "</span>
+                        <span class="s2">"reasonable way to fabricate an entire medium's "</span>
+                        <span class="s2">"identity from nothing. Define feed_medium explicitly."</span>
+                    <span class="p">)</span>
+                <span class="n">Cin_event</span> <span class="o">=</span> <span class="n">_build_cin</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="p">(</span><span class="n">vc_name</span><span class="p">,),</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">events</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="nb">dict</span><span class="p">(</span>
+                        <span class="n">t</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">t_event</span><span class="p">),</span>
+                        <span class="n">kind</span><span class="o">=</span><span class="s2">"bolus_feed"</span><span class="p">,</span>
+                        <span class="n">dV</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">dV_event</span><span class="p">),</span>
+                        <span class="n">Cin</span><span class="o">=</span><span class="n">Cin_event</span><span class="p">,</span>
+                        <span class="n">source</span><span class="o">=</span><span class="n">vc_name</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">events</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="nb">dict</span><span class="p">(</span>
+                        <span class="n">t</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">t_event</span><span class="p">),</span>
+                        <span class="n">kind</span><span class="o">=</span><span class="s2">"sample"</span><span class="p">,</span>
+                        <span class="n">dV</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">dV_event</span><span class="p">),</span>
+                        <span class="n">Cin</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                        <span class="n">source</span><span class="o">=</span><span class="n">vc_name</span><span class="p">,</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+
+    <span class="n">events</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span>
+        <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">e</span><span class="p">:</span> <span class="p">(</span>
+            <span class="n">e</span><span class="p">[</span><span class="s2">"t"</span><span class="p">],</span>
+            <span class="mi">0</span> <span class="k">if</span> <span class="n">e</span><span class="p">[</span><span class="s2">"kind"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"sample"</span> <span class="k">else</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="c1"># At a single timestamp at most one sample and one bolus.</span>
+    <span class="n">per_time_counts</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">ev</span> <span class="ow">in</span> <span class="n">events</span><span class="p">:</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">ev</span><span class="p">[</span><span class="s2">"t"</span><span class="p">])</span>
+        <span class="n">kind</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">ev</span><span class="p">[</span><span class="s2">"kind"</span><span class="p">])</span>
+        <span class="n">per_time_counts</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="p">{</span><span class="s2">"sample"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">"bolus_feed"</span><span class="p">:</span> <span class="mi">0</span><span class="p">})</span>
+        <span class="n">per_time_counts</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">kind</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+
+    <span class="n">duplicate_kinds</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">t</span><span class="p">,</span> <span class="n">counts</span> <span class="ow">in</span> <span class="n">per_time_counts</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">counts</span><span class="p">[</span><span class="s2">"sample"</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">duplicate_kinds</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">t</span><span class="p">,</span> <span class="s2">"sample"</span><span class="p">,</span> <span class="n">counts</span><span class="p">[</span><span class="s2">"sample"</span><span class="p">]))</span>
+        <span class="k">if</span> <span class="n">counts</span><span class="p">[</span><span class="s2">"bolus_feed"</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">duplicate_kinds</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">t</span><span class="p">,</span> <span class="s2">"bolus_feed"</span><span class="p">,</span> <span class="n">counts</span><span class="p">[</span><span class="s2">"bolus_feed"</span><span class="p">]))</span>
+    <span class="k">if</span> <span class="n">duplicate_kinds</span><span class="p">:</span>
+        <span class="n">details</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"t=</span><span class="si">{</span><span class="n">t</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">kind</span><span class="si">}</span><span class="s2"> x</span><span class="si">{</span><span class="n">count</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">t</span><span class="p">,</span> <span class="n">kind</span><span class="p">,</span> <span class="n">count</span> <span class="ow">in</span> <span class="n">duplicate_kinds</span>
+        <span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"At most one discrete event per kind is allowed at a given time "</span>
+            <span class="sa">f</span><span class="s2">"(allowed: one sample and one bolus). Found duplicates: </span><span class="si">{</span><span class="n">details</span><span class="si">}</span><span class="s2">."</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">events</span></div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># State splines + pseudobatch validation</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_is_pseudobatch_carrier</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Whether a TimeSeries carries lightweight pseudobatch metadata."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">TimeSeries</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">metadata</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="n">transform</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"transform"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">transform</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="n">transform</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"name"</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"pseudo_batch"</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_reject_orphan_pseudobatch_metadata</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">species_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Fail when pseudobatch metadata exists without process-level transform bundle."""</span>
+    <span class="k">if</span> <span class="n">_is_pseudobatch_carrier</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"Species </span><span class="si">{</span><span class="n">species_name</span><span class="si">!r}</span><span class="s2"> carries pseudobatch metadata but is "</span>
+            <span class="s2">"not present in process.pseudobatch_transform."</span>
+        <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_timeseries_samples_match</span><span class="p">(</span><span class="n">left</span><span class="p">:</span> <span class="n">TimeSeries</span><span class="p">,</span> <span class="n">right</span><span class="p">:</span> <span class="n">TimeSeries</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Compare TimeSeries sample anchors used by mechanistic initial states."""</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+    <span class="k">if</span> <span class="n">left</span><span class="o">.</span><span class="n">times</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">left</span><span class="o">.</span><span class="n">values</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">right</span><span class="o">.</span><span class="n">times</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">right</span><span class="o">.</span><span class="n">values</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="n">left_times</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">left</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">right_times</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">right</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">left_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">left</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">right_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">right</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">left_times</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="n">right_times</span><span class="o">.</span><span class="n">shape</span>
+        <span class="ow">and</span> <span class="n">left_values</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="n">right_values</span><span class="o">.</span><span class="n">shape</span>
+        <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">left_times</span><span class="p">,</span> <span class="n">right_times</span><span class="p">,</span> <span class="n">rtol</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">)</span>
+        <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">left_values</span><span class="p">,</span> <span class="n">right_values</span><span class="p">,</span> <span class="n">rtol</span><span class="o">=</span><span class="mf">1e-10</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">)</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_process_pseudobatch_transform</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
+    <span class="n">ordering</span><span class="p">:</span> <span class="n">ProcessOrdering</span><span class="p">,</span>
+<span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Validate the process-level pseudobatch bundle before runtime use."""</span>
+    <span class="n">transform</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="s2">"pseudobatch_transform"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">transform</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">sp_name</span> <span class="ow">in</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">:</span>
+            <span class="n">comp</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="n">sp_name</span><span class="p">]</span>
+            <span class="n">_reject_orphan_pseudobatch_metadata</span><span class="p">(</span><span class="n">comp</span><span class="o">.</span><span class="n">pseudobatch_concentration</span><span class="p">,</span> <span class="n">sp_name</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">for</span> <span class="n">sp_name</span> <span class="ow">in</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">:</span>
+        <span class="n">comp</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="n">sp_name</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">comp</span><span class="o">.</span><span class="n">pseudobatch_concentration</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">sp_name</span> <span class="ow">in</span> <span class="n">transform</span><span class="o">.</span><span class="n">feed_corrections</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">"Pseudobatch species </span><span class="si">{</span><span class="n">sp_name</span><span class="si">!r}</span><span class="s2"> has a feed_corrections "</span>
+                    <span class="s2">"entry but no pseudobatch_concentration."</span>
+                <span class="p">)</span>
+            <span class="n">_reject_orphan_pseudobatch_metadata</span><span class="p">(</span><span class="n">comp</span><span class="o">.</span><span class="n">concentration</span><span class="p">,</span> <span class="n">sp_name</span><span class="p">)</span>
+            <span class="k">continue</span>
+        <span class="k">if</span> <span class="n">sp_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">transform</span><span class="o">.</span><span class="n">feed_corrections</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"Pseudobatch species </span><span class="si">{</span><span class="n">sp_name</span><span class="si">!r}</span><span class="s2"> has pseudobatch_concentration "</span>
+                <span class="s2">"but no matching feed_corrections entry."</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">comp</span><span class="o">.</span><span class="n">pseudobatch_concentration</span><span class="p">,</span> <span class="p">(</span><span class="n">TimeSeries</span><span class="p">,</span> <span class="n">StaticVariable</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"Pseudobatch species </span><span class="si">{</span><span class="n">sp_name</span><span class="si">!r}</span><span class="s2"> pseudobatch_concentration must be "</span>
+                <span class="s2">"a TimeSeries or StaticVariable."</span>
+            <span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">species_key</span> <span class="ow">in</span> <span class="n">transform</span><span class="o">.</span><span class="n">feed_corrections</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">species_key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"Pseudobatch feed correction </span><span class="si">{</span><span class="n">species_key</span><span class="si">!r}</span><span class="s2"> is not a reactor "</span>
+                <span class="s2">"component."</span>
+            <span class="p">)</span>
+        <span class="n">comp</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="n">species_key</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">comp</span><span class="o">.</span><span class="n">pseudobatch_concentration</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"Pseudobatch feed correction </span><span class="si">{</span><span class="n">species_key</span><span class="si">!r}</span><span class="s2"> has no matching "</span>
+                <span class="s2">"pseudobatch_concentration."</span>
+            <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">transform</span>
+
+
+<div class="viewcode-block" id="build_state_splines">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.build_state_splines">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_state_splines</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
+    <span class="n">ordering</span><span class="p">:</span> <span class="n">ProcessOrdering</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Build state splines from stored TimeSeries spline state.</span>
+
+<span class="sd">    Pseudobatch-transformed reactor components (identified through the</span>
+<span class="sd">    process-level ``pseudobatch_transform`` bundle) are returned as</span>
+<span class="sd">    real-space backtransform splines. Other reactor-component and</span>
+<span class="sd">    process-variable states are converted directly from their TimeSeries</span>
+<span class="sd">    or StaticVariable carriers.</span>
+
+<span class="sd">    Returns ``{state_name: spline_callable}`` for every non-volume state</span>
+<span class="sd">    in ``ordering.name_modeled_RMCs + ordering.name_modeled_PVs``.</span>
+<span class="sd">    """</span>
+    <span class="n">state_splines</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">pseudobatch_transform</span> <span class="o">=</span> <span class="n">_validate_process_pseudobatch_transform</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">ordering</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">sp_name</span> <span class="ow">in</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">:</span>
+        <span class="n">comp</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="n">sp_name</span><span class="p">]</span>
+        <span class="n">concentration</span> <span class="o">=</span> <span class="n">comp</span><span class="o">.</span><span class="n">concentration</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">pseudobatch_transform</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="n">comp</span><span class="o">.</span><span class="n">pseudobatch_concentration</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="n">sp_name</span> <span class="ow">in</span> <span class="n">pseudobatch_transform</span><span class="o">.</span><span class="n">feed_corrections</span>
+        <span class="p">):</span>
+            <span class="n">state_splines</span><span class="p">[</span><span class="n">sp_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">build_backtransform_spline</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">sp_name</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">_reject_orphan_pseudobatch_metadata</span><span class="p">(</span><span class="n">comp</span><span class="o">.</span><span class="n">pseudobatch_concentration</span><span class="p">,</span> <span class="n">sp_name</span><span class="p">)</span>
+            <span class="n">_reject_orphan_pseudobatch_metadata</span><span class="p">(</span><span class="n">concentration</span><span class="p">,</span> <span class="n">sp_name</span><span class="p">)</span>
+            <span class="n">state_splines</span><span class="p">[</span><span class="n">sp_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">_value_to_ppoly</span><span class="p">(</span>
+                <span class="n">concentration</span><span class="p">,</span>
+                <span class="n">t_start</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">start</span><span class="p">),</span>
+                <span class="n">t_end</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">end</span><span class="p">),</span>
+            <span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">pv_name</span> <span class="ow">in</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_PVs</span><span class="p">:</span>
+        <span class="n">pv</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="p">[</span><span class="n">pv_name</span><span class="p">]</span>
+        <span class="n">state_splines</span><span class="p">[</span><span class="n">pv_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">_value_to_ppoly</span><span class="p">(</span>
+            <span class="n">pv</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+            <span class="n">t_start</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">start</span><span class="p">),</span>
+            <span class="n">t_end</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">end</span><span class="p">),</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">state_splines</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Bioprocess Modeling Collective
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=04266cf0"></script>
+    <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script src="../../../_static/custom.js?v=fec45a96"></script>
+    </body>
+</html>

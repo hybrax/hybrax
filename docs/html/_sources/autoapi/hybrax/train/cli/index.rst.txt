@@ -1,0 +1,31 @@
+hybrax.train.cli
+================
+
+.. py:module:: hybrax.train.cli
+
+.. autoapi-nested-parse::
+
+   The ``hybrax`` command line: ``prepare``, ``train``, ``forward``, and ``loo``.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.cli.main
+
+
+Module Contents
+---------------
+
+.. py:function:: main(argv = None)
+
+   Parse CLI arguments and dispatch to the selected subcommand's handler.
+
+   :param argv: Argument list to parse, or ``None`` to parse ``sys.argv``.
+
+   :returns: The process exit code returned by the dispatched handler.
+
+

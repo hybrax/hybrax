@@ -1,0 +1,288 @@
+hybrax.train.serialization
+==========================
+
+.. py:module:: hybrax.train.serialization
+
+.. autoapi-nested-parse::
+
+   All model + run-state (de)serialisation in one place.
+
+   Mirrors ``hybrax.format/serialization.py``. This module owns:
+
+   - ``save_model`` / ``load_trained_wrapper`` — **trainable-partition-only** model
+     serialisation. The frozen/derived half of the wrapper (controls store,
+     ``SCALE_*``, ``rhs_ode``, indices) is rebuilt from ``prepared.json`` +
+     ``custom.py`` at load time and is **never** read from the saved file. This
+     fixes the controls-store shape-mismatch on load and is forward-compatible
+     with trainable controls (DoE): such leaves simply ride in the trainable
+     partition.
+   - ``save_opt_state`` / ``load_opt_state`` — optimizer state twins.
+   - ``content_hash`` / ``file_hash`` — stable data integrity hashing.
+   - ``write_json`` / ``read_run_config_json`` / ``update_json`` — the run-dir
+     ``config.json``.
+   - ``reconstruct_training`` — the single model-reconstruction path shared by
+     model loading, forward, ensembles, and notebooks. It rebuilds a model from the
+     data *it* trained on, with that input's recorded ``content_hash`` verified
+     before any hook runs.
+   - ``model_load`` / ``model_reload`` — the user-facing loaders. Both return
+     ``(trained_wrapper, config)``; ``model_reload`` skips the collection and only
+     swaps trainable leaves.
+
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.serialization.logger
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.serialization.ReconstructedTraining
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.serialization.content_hash
+   hybrax.train.serialization.dumps_json
+   hybrax.train.serialization.environment_versions
+   hybrax.train.serialization.file_hash
+   hybrax.train.serialization.load_opt_state
+   hybrax.train.serialization.load_trained_wrapper
+   hybrax.train.serialization.model_load
+   hybrax.train.serialization.model_reload
+   hybrax.train.serialization.read_json
+   hybrax.train.serialization.read_run_config_json
+   hybrax.train.serialization.reconstruct_training
+   hybrax.train.serialization.resolve_forward_model_path
+   hybrax.train.serialization.resolve_model_path
+   hybrax.train.serialization.resolve_run_dir
+   hybrax.train.serialization.run_config_to_jsonable
+   hybrax.train.serialization.save_model
+   hybrax.train.serialization.save_opt_state
+   hybrax.train.serialization.update_json
+   hybrax.train.serialization.write_json
+
+
+Module Contents
+---------------
+
+.. py:class:: ReconstructedTraining
+
+   One model's training-time construction, rebuilt from its own input.
+
+   ``collection`` / ``store`` are the model's **training** data — never
+   evaluation or novel data. ``training_process_names`` is the selection the run
+   recorded; the hooks and ``template_wrapper`` were built from exactly it.
+
+
+   .. py:attribute:: collection
+      :type:  hybrax.format.dataclasses.BioProcessCollection
+
+
+   .. py:attribute:: config
+      :type:  hybrax.train.run_config.RunConfig
+
+
+   .. py:attribute:: custom_module
+      :type:  Any | None
+
+
+   .. py:attribute:: loss_module
+      :type:  hybrax.train.model_api.UserLossModule
+
+
+   .. py:attribute:: prepared_content_hash
+      :type:  str
+
+
+   .. py:attribute:: prepared_path
+      :type:  pathlib.Path
+
+
+   .. py:attribute:: reaction_module
+      :type:  hybrax.train.model_api.UserReactionModule
+
+
+   .. py:attribute:: store
+      :type:  hybrax.train.training_data.TrainingDataStore
+
+
+   .. py:attribute:: template_wrapper
+      :type:  hybrax.train.wrapper.HybridOdeWrapper
+
+
+   .. py:attribute:: training_process_names
+      :type:  tuple[str, ...]
+
+
+.. py:function:: content_hash(collection)
+
+   Stable sha256 over the collection's *science*, provenance excluded.
+
+   Hashes the canonical re-serialisation (sorted keys, normalised numbers via
+   ``NumpyEncoder``) of the deserialised collection, so JSON key-order / float
+   formatting / timestamp differences across machines and re-prepares do not
+   change it.
+
+
+.. py:function:: dumps_json(document, **kwargs)
+
+   Encode valid JSON, normalizing non-finite real scalars to null.
+
+
+.. py:function:: environment_versions()
+
+   Best-effort package versions for a run / prepare provenance block.
+
+
+.. py:function:: file_hash(path)
+
+   Exact-bytes sha256 of a file, prefixed ``sha256:``.
+
+
+.. py:function:: load_opt_state(path, *, template)
+
+   Deserialise optimizer state into an optimizer-state ``template``.
+
+
+.. py:function:: load_trained_wrapper(path, *, template)
+
+   Load trainable leaves from disk into ``template``'s structure.
+
+   The static half is taken verbatim from ``template`` (rebuilt fresh), so a
+   structurally-different controls store at save time can no longer cause a
+   shape mismatch — controls are not part of the serialised bytes.
+
+
+.. py:function:: model_load(path)
+
+   Load a trained model and the run config it was trained under.
+
+   ``path`` is a run directory, a checkpoint directory, or a ``params.eqx`` —
+   see :func:`resolve_model_path` for the ordered rule. Address a specific
+   checkpoint by its path, e.g. ``model_load(run_dir / "checkpoints" / "step_00300")``.
+
+   The run's own prepared collection is loaded — with its recorded
+   ``inputs.prepared_input.content_hash`` verified before any hook runs — to
+   rebuild the **static** half of the wrapper (``rhs_ode``, ``controls``, every
+   ``SCALE_*``, the index arrays); only the trainable leaves come from
+   ``params.eqx``. That reconstruction is the expensive part of the call — use
+   :func:`model_reload` to swap in a newer checkpoint of the *same* run without
+   paying it again.
+
+   Returns ``(trained_wrapper, config)``. ``config.solver`` carries the solver
+   settings the model was fitted under; pass it to :func:`~hybrax.train.model_predict`.
+
+
+.. py:function:: model_reload(path, trained_wrapper)
+
+   Refresh **only** the trainable leaves from ``path`` into an existing wrapper.
+
+   Returns the same ``(trained_wrapper, config)`` pair as :func:`model_load`, so
+   the two are interchangeable at the call site. Skips the prepared collection
+   entirely, which is the whole point: on a 61-process run that is ~0.03 s against
+   ~100 s, almost all of which is the ``estimate_all_scales`` hook.
+
+   .. danger::
+      The **static** half — every ``SCALE_*``, ``controls``, ``Cin``, ``rhs_ode``,
+      ``target_state_indices`` — is kept from ``trained_wrapper`` and is **not**
+      read from the checkpoint (it was never written there; see :func:`save_model`).
+      Equinox only checks that the *trainable* pytree matches, which for a typical
+      MLP head depends on layer shapes alone. So passing a wrapper that came from a
+      different run, or one built against a different collection, loads the weights
+      into a different scaled space and every prediction is silently wrong — no
+      exception, no NaN. Only use this to move between checkpoints of the **same**
+      run. When in doubt, pay for :func:`model_load`.
+
+
+.. py:function:: read_json(path)
+
+   Read and parse a JSON file; see ``hybrax.format.json_io.load_json``.
+
+
+.. py:function:: read_run_config_json(path)
+
+   Parse a run-dir ``config.json`` → (RunConfig, full document).
+
+
+.. py:function:: reconstruct_training(run_dir, config = None, document = None, *, custom_module = None, custom_py = None, training_process_names = None)
+
+   THE shared reconstruction path — model loading, forward, and ensembles.
+
+   Loads the run's **own** prepared collection, requires and verifies its
+   recorded ``inputs.prepared_input.content_hash`` *before* invoking any hook,
+   restricts the hook-visible data to the recorded training process names, and
+   rebuilds ``(reaction_module, loss_module, template_wrapper)`` exactly as
+   training did. Evaluation data plays no part here: callers that evaluate novel
+   data build a separate store for their solves.
+
+
+.. py:function:: resolve_forward_model_path(path)
+
+   Resolve permissive forward weights and their owning run directory.
+
+   Forward accepts any existing file, including current LOO fold
+   ``trained_wrapper.eqx`` files and notebook checkpoints. Direct model loading
+   uses :func:`resolve_model_path`, which deliberately accepts only files named
+   ``params.eqx``. Directory references share one weight precedence in both
+   paths.
+
+
+.. py:function:: resolve_model_path(path)
+
+   Resolve a model reference to ``(run_dir, params_path)``.
+
+   ``path`` is a run directory, a checkpoint directory, or a ``params.eqx``. A
+   directory resolves its weights in one ordered pass — ``<dir>/params.eqx``,
+   ``<dir>/model/params.eqx``, ``<dir>/checkpoints/latest/params.eqx`` — so a run
+   that has not finished (no ``model/`` yet) still loads from its latest
+   checkpoint. A file must be named ``params.eqx``: a current LOO output named
+   ``trained_wrapper.eqx`` raises instead of silently falling through to the run's
+   final weights.
+
+
+.. py:function:: resolve_run_dir(path, *, max_levels = 4)
+
+   Nearest directory at/above ``path`` that holds a ``config.json``.
+
+
+.. py:function:: run_config_to_jsonable(config)
+
+   RunConfig → JSON-native dict (Paths → str, tuples → lists).
+
+
+.. py:function:: save_model(wrapper, path)
+
+   Serialise the **trainable** leaves of a wrapper to disk.
+
+   Only the trainable partition is written; the frozen/static half (controls,
+   scales, ``rhs_ode``, indices) is reconstructed from ``prepared.json`` +
+   ``custom.py`` at load time, never deserialised.
+
+
+.. py:function:: save_opt_state(opt_state, path)
+
+   Serialise optimizer state leaf-by-leaf.
+
+
+.. py:function:: update_json(path, **fields)
+
+   Shallow-merge fields into an existing JSON object and publish it.
+
+
+.. py:function:: write_json(path, document, *, indent = 2, **kwargs)
+
+   Atomically publish a normalized JSON document.
+
+
+.. py:data:: logger
+
