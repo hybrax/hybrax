@@ -1,3 +1,5 @@
+"""Producer-side collection views handed to scale-estimation and training-parent hooks."""
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -113,8 +115,9 @@ class ProducerCollectionData:
     """Unfiltered producer-side view of one whole prepared collection.
 
     This is the broad intermediate the producer builds once. It is never handed
-    to a hook: `select_training_parents()` narrows it to the fold's represented
-    parents first, and only that narrowed `RuntimeDataContext` is hook-visible.
+    to a hook: :meth:`select_training_parents` narrows it to the fold's
+    represented parents first, and only that narrowed :class:`RuntimeDataContext`
+    is hook-visible.
     """
 
     training_data: TrainingDataStore
@@ -126,6 +129,7 @@ class ProducerCollectionData:
 
     @property
     def process_order(self) -> tuple[str, ...]:
+        """Every process (parents and augmented children), in canonical order."""
         return tuple(self.training_data.process_order)
 
     @property
@@ -139,6 +143,22 @@ class ProducerCollectionData:
         training_data: TrainingDataStore,
         collection: BioProcessCollection,
     ) -> ProducerCollectionData:
+        """Build from a prepared collection, caching every parent's raw traces.
+
+        Args:
+            training_data: Prepared training data; its ``process_order`` must
+                match ``collection``'s.
+            collection: The full prepared collection ``training_data`` was
+                built from.
+
+        Returns:
+            The producer-side view, with time bounds and raw traces cached
+            for every non-augmented parent.
+
+        Raises:
+            ValueError: If ``collection`` is empty, or its process order
+                differs from ``training_data``'s.
+        """
         process_order = tuple(training_data.process_order)
         if not process_order:
             raise ValueError("producer collection data requires a non-empty collection")
@@ -234,7 +254,7 @@ class ProducerCollectionData:
 class RuntimeDataContext:
     """One fold's training parents, as seen by the producer-side scale hook.
 
-    Every row is a unique non-augmented parent represented by `fold.train`, in
+    Every row is a unique non-augmented parent represented by ``fold.train``, in
     canonical parent order, so there is no augmentation mapping to carry.
     """
 
@@ -248,14 +268,17 @@ class RuntimeDataContext:
 
     @property
     def rhs_ode(self):
+        """The shared ``RhsOde`` of every training parent; see ``training_data.rhs_ode``."""
         return self.training_data.rhs_ode
 
     @property
     def controls_store(self):
+        """The fold's ``ControlsStore``; see ``training_data.controls_store``."""
         return self.training_data.controls_store
 
     @property
     def process_order(self) -> tuple[str, ...]:
+        """Every training parent, in canonical order."""
         return tuple(self.training_data.process_order)
 
     def control_scale_evidence(self) -> ControlScaleEvidence:
@@ -321,9 +344,11 @@ class RuntimeDataContext:
         )
 
     def time_bounds(self, process_index: int) -> tuple[float, float]:
+        """Return ``(start, end)`` for the training parent at ``process_index``."""
         return self.process_time_bounds[process_index]
 
     def initial_volume(self, process_index: int) -> float:
+        """Return the RAW measured initial reactor volume at ``process_index``."""
         rhs_ode = self.rhs_ode
         volume_index = len(rhs_ode.name_modeled_RMCs) + len(rhs_ode.name_modeled_PVs)
         return float(self.training_data.y0_measured[process_index, volume_index])
@@ -396,9 +421,20 @@ def rhs_ode_from_training_parents(
 ):
     """Build the shared RhsOde of a parent collection, rejecting disagreement.
 
-    Every parent must declare an equivalent `BiologicalOde`, so the first one's
-    `RhsOde` speaks for all of them. `empty_message` is raised verbatim when there
-    is no parent, so the diagnostic reads in the caller's terms.
+    Every parent must declare an equivalent ``BiologicalOde``, so the first
+    one's ``RhsOde`` speaks for all of them.
+
+    Args:
+        collection: Parent process collection.
+        empty_message: Raised verbatim when ``collection`` has no processes,
+            so the diagnostic reads in the caller's terms.
+
+    Returns:
+        The shared :class:`~hybrax.format.mechanistic.RhsOde`.
+
+    Raises:
+        ValueError: If ``collection`` is empty, or its parents declare
+            non-equivalent ``biological_ode`` blocks.
     """
     if not collection.processes:
         raise ValueError(empty_message)

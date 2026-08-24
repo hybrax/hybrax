@@ -1,3 +1,5 @@
+"""Extracting a process's controlled signals and discrete events as NumPy evaluators."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,6 +22,8 @@ from hybrax.format.time_series.spline_ops import rebase_to_breaks
 
 @dataclass
 class SignalSource:
+    """One controlled signal (Inflow, Outflow, or PV) as a hybrid spline/linear evaluator."""
+
     name: str
     kind: str
     times: np.ndarray
@@ -298,8 +302,10 @@ def collect_discrete_event_metadata(
     process: BioProcess,
     species_names: tuple[str, ...],
 ) -> dict[str, Any]:
-    """Collect true sample/bolus events for pseudobatch algebraic forcing.
+    """Collect sample/bolus event times, volumes, and feed compositions.
 
+    Feeds :class:`ControlsStore`'s sample/bolus event arrays for the
+    callbacks-based state-jump solve (see ``physical_solve.py``).
     hybrax.format owns event validation and species alignment. Signed Outflow deltas
     become positive removal magnitudes exactly once at this solver boundary.
     """
@@ -352,6 +358,7 @@ class ControlSourceBundle:
 
     @property
     def all_names(self) -> tuple[str, ...]:
+        """Every controlled name, in canonical Inflow/Outflow/PV order."""
         return (
             self.name_controlled_Inflows
             + self.name_controlled_Outflows
@@ -360,10 +367,22 @@ class ControlSourceBundle:
 
     @property
     def all_sources(self) -> list[SignalSource]:
+        """Every :class:`SignalSource`, in :attr:`all_names` order."""
         return [self.sources_by_name[n] for n in self.all_names]
 
 
 def select_control_sources(process: BioProcess) -> ControlSourceBundle:
+    """Build one :class:`SignalSource` per controlled Inflow, Outflow, and PV.
+
+    Args:
+        process: Process to extract controlled signals from; categorization
+            (which Inflows/Outflows/PVs are controlled) comes from
+            ``get_process_ordering(process)``.
+
+    Returns:
+        A bundle with the categorized name tuples and every source, keyed by
+        name.
+    """
     ordering = get_process_ordering(process)
     volume_changes = process.volume.volume_changes
     for name, volume_change in volume_changes.items():

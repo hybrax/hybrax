@@ -1,3 +1,5 @@
+"""Default hooks and modules used when a run's ``custom.py`` doesn't override them."""
+
 from __future__ import annotations
 
 import equinox as eqx
@@ -59,6 +61,20 @@ class DefaultStatefulReactionModule(UserReactionModule):
     outflow_head: eqx.nn.Linear | None = trainable_field()
 
     def __init__(self, *, key: jax.Array, n_latent: int, **scale_kwargs):
+        """Build the GRU cell and output heads, sized from ``scale_kwargs``.
+
+        Args:
+            key: PRNG key for weight initialization.
+            n_latent: Latent state width; sizes ``SCALE_latent`` and the GRU's
+                hidden state. Must be positive.
+            **scale_kwargs: Forwarded to :class:`UserReactionModule.__init__`;
+                must not include ``SCALE_latent`` (sized here from
+                ``n_latent``).
+
+        Raises:
+            ValueError: If ``n_latent <= 0`` or ``scale_kwargs`` includes
+                ``SCALE_latent``.
+        """
         if n_latent <= 0:
             raise ValueError("DefaultStatefulReactionModule requires n_latent > 0")
         if "SCALE_latent" in scale_kwargs:
@@ -183,6 +199,7 @@ class DefaultStatefulReactionModule(UserReactionModule):
             )
 
     def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs:
+        """One GRU step from ``inputs`` to SCL rates plus the latent derivative."""
         del t
         h = inputs.SCL_latent
         cell_input = jnp.concatenate(
@@ -237,6 +254,19 @@ class DefaultReactionModule(UserReactionModule):
         width_size: int | None = None,
         **scale_kwargs,
     ):
+        """Build the MLP, sized from the module's modeled-state/rate counts.
+
+        Args:
+            key: PRNG key for weight initialization.
+            depth: Number of hidden layers. Must be non-negative; depth
+                ``<= 3`` uses tanh/Glorot, deeper uses SiLU/He.
+            width_size: Hidden layer width, or ``None`` to derive it from the
+                input/output sizes.
+            **scale_kwargs: Forwarded to :class:`UserReactionModule.__init__`.
+
+        Raises:
+            ValueError: If ``depth < 0`` or the resolved ``width_size <= 0``.
+        """
         super().__init__(**scale_kwargs)
         n_in = self.n_modeled_RMCs + self.n_modeled_PVs
         n_out = self.n_modeled_BiologicalOde_rates
@@ -280,6 +310,7 @@ class DefaultReactionModule(UserReactionModule):
         self.model = eqx.tree_at(lambda mlp: mlp.layers, self.model, tuple(layers))
 
     def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs:
+        """MLP forward pass from SCL species/PVs to SCL biological-ode rates."""
         del t
         dtype = inputs.SCL_modeled_RMCs.dtype
         SCL_features = jnp.concatenate(
@@ -361,10 +392,12 @@ class DefaultLossModule(UserLossModule):
     target_names: tuple[str, ...] = eqx.field(static=True)
 
     def __init__(self, *, target_names):
+        """Store the measured target names each become one loss term for."""
         self.target_names = tuple(target_names)
 
     @property
     def loss_names(self) -> tuple[str, ...]:
+        """Equal to ``target_names``, one loss term per measured target."""
         return self.target_names
 
     def residual_reduction(self, residual, mask):
@@ -380,6 +413,7 @@ class DefaultLossModule(UserLossModule):
         return jnp.sum(masked, axis=0) / n_active
 
     def __call__(self, inputs: LossInputs) -> LossOutputs:
+        """Per-target masked SCL residual, reduced via :meth:`residual_reduction`."""
         residual = inputs.SCL_target_pred - jnp.where(
             inputs.mask_measured, inputs.SCL_target_measured, 0.0
         )

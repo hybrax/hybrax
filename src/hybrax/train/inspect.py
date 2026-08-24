@@ -220,8 +220,8 @@ def _reaction_schema_rows(
 ]:
     """Build the (inputs, outputs, matrix_followups) row collections.
 
-    `matrix_followups` carries (axis_name, row_names, col_names) for each
-    2-D Cin matrix so the renderer can emit indented "rows:"/"cols:"
+    ``matrix_followups`` carries ``(axis_name, row_names, col_names)`` for
+    each 2-D Cin matrix so the renderer can emit indented ``rows:``/``cols:``
     lines underneath the table row.
     """
     name_RMCs = tuple(rhs_ode.name_modeled_RMCs)

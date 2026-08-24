@@ -1,3 +1,5 @@
+"""hybrax.train's own training/prepare-readiness checks, layered on hybrax.format's."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -29,11 +31,27 @@ def validate_for_training(
 ) -> dict[str, dict[str, object]]:
     """hybrax.train's training-readiness validator.
 
-    Distinct from hybrax.format's own `validate_for_publication` (a
+    Distinct from hybrax.format's own ``validate_for_publication`` (a
     storage/publication concern), but composes the same
-    `validate_cross_process_consistency` structural check rather than
+    ``validate_cross_process_consistency`` structural check rather than
     duplicating it — training data is expected to come from one coherent
     case study by default.
+
+    Args:
+        collection: Process collection to validate.
+        strict: Raise instead of returning a report containing failures.
+        require_biological_ode: Also fail any process missing
+            ``biological_ode`` (checked after ``transform_process_collection``
+            would have added one).
+
+    Returns:
+        One report entry per process name (plus ``"__consistency__"`` for the
+        cross-process check): ``ok`` and the list of ``(passed, message)``
+        check results.
+
+    Raises:
+        ValueError: If ``strict`` is set and any process or the
+            cross-process check fails.
     """
     report: dict[str, dict[str, object]] = {}
 
@@ -110,6 +128,18 @@ def ensure_required_controls(
     available_control_names: Iterable[str],
     required_control_names: Iterable[str],
 ) -> None:
+    """Raise if any config-declared required control is missing from a process.
+
+    Args:
+        process_name: Process name, used only in the error message.
+        available_control_names: Control names the process actually has.
+        required_control_names: Control names ``prepare.required_control_names``
+            declares as required for this process.
+
+    Raises:
+        ValueError: If any name in ``required_control_names`` is not in
+            ``available_control_names``.
+    """
     available = set(available_control_names)
     missing = [name for name in required_control_names if name not in available]
     if missing:
@@ -120,6 +150,22 @@ def ensure_required_controls(
 
 
 def summarize_process_semantics(process) -> dict[str, object]:
+    """Snapshot one process's reactor/feed component structure for provenance diffing.
+
+    Used by :func:`~hybrax.train.prepare.prepare_artifact` to compare a
+    process's semantics before and after the ``transform_process_collection``
+    hook, and by :func:`ensure_prepared_training_semantics` to check the
+    prepared result.
+
+    Args:
+        process: Process to summarize.
+
+    Returns:
+        A dict with ``reactor_component_names``, ``reactor_component_details``,
+        ``has_biomass``, ``feed_component_names_by_change``,
+        ``feed_component_details_by_change``, ``feed_medium_present_by_change``,
+        ``all_feed_changes``, and ``positive_feed_changes``.
+    """
     reactor_component_details = {
         name: _serialize_reactor_component(component)
         for name, component in sorted((process.reactor_medium.components or {}).items())
@@ -178,6 +224,23 @@ def summarize_process_semantics(process) -> dict[str, object]:
 def ensure_prepared_training_semantics(
     collection: BioProcessCollection,
 ) -> dict[str, dict[str, object]]:
+    """Check every process still has reactor/biomass/feed-medium semantics after prep.
+
+    Runs after ``transform_process_collection`` and augmentation, to catch a
+    hook that silently dropped required structure (an empty
+    ``reactor_medium.components``, a missing biomass component, or a feed with
+    no ``feed_medium``/component metadata).
+
+    Args:
+        collection: Prepared collection to check.
+
+    Returns:
+        One report entry per process: ``ok``, the list of ``(passed, message)``
+        check results, and the :func:`summarize_process_semantics` snapshot.
+
+    Raises:
+        ValueError: If any process fails one of these checks.
+    """
     report: dict[str, dict[str, object]] = {}
     errors: list[str] = []
 

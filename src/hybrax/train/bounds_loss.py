@@ -1,3 +1,5 @@
+"""Optional state/rate bound-violation penalty on top of the default measurement loss."""
+
 from __future__ import annotations
 
 import math
@@ -42,6 +44,25 @@ class BoundsViolationLossModule(DefaultLossModule):
         weight,
         dense_grid_n=None,
     ):
+        """Build the bounds loss on top of the default measurement MSE.
+
+        Args:
+            target_names: Measurement target names, forwarded to
+                :class:`DefaultLossModule`.
+            bound_records: Per-axis bound declarations from
+                :func:`bound_records_from_collection`; each becomes one named
+                loss term (``lwr_bnd/<label>`` / ``upr_bnd/<label>``).
+            weight: Nonnegative scalar weight applied to every bound-violation
+                term.
+            dense_grid_n: Forwarded as :attr:`dense_grid_n`; see
+                :attr:`UserLossModule.dense_grid_n`.
+
+        Raises:
+            ValueError: If ``weight`` is not finite and nonnegative,
+                ``dense_grid_n`` is not ``None``/an integer ``>= 2``, or a
+                bound record's name collides with a target name or another
+                bound record.
+        """
         super().__init__(target_names=target_names)
         weight = float(weight)
         if not math.isfinite(weight) or weight < 0:
@@ -65,13 +86,16 @@ class BoundsViolationLossModule(DefaultLossModule):
 
     @property
     def dense_grid_n(self) -> int | None:
+        """Dense-grid opt-in set at construction; see :attr:`UserLossModule.dense_grid_n`."""
         return self._dense_grid_n
 
     @property
     def loss_names(self) -> tuple[str, ...]:
+        """Measurement target names followed by every bound record's label."""
         return self.target_names + tuple(record[0] for record in self.bound_records)
 
     def __call__(self, inputs: LossInputs) -> LossOutputs:
+        """Default measurement MSE plus one squared-hinge term per bound record."""
         named_losses = dict(super().__call__(inputs).named_losses)
         measurement_mask = inputs.mask_measured_any
         if self.dense_grid_n is None:

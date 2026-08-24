@@ -72,8 +72,8 @@ _SLUG_CHARACTERS = frozenset("+-._")
 class RhsNames:
     """Semantic RHS axes: enough to validate array shapes, never the equations.
 
-    The equations come back from hybrax.format's `build_rhs_ode()` on a training
-    parent, so no biological expression is ever serialized.
+    The equations come back from hybrax.format's ``build_rhs_ode()`` on a
+    training parent, so no biological expression is ever serialized.
     """
 
     name_modeled_rates: tuple[str, ...]
@@ -88,6 +88,7 @@ class RhsNames:
 
     @classmethod
     def from_rhs_ode(cls, rhs_ode) -> RhsNames:
+        """Extract every :class:`RhsNames` field from an ``RhsOde`` by name."""
         return cls(
             **{field.name: tuple(getattr(rhs_ode, field.name)) for field in fields(cls)}
         )
@@ -95,6 +96,8 @@ class RhsNames:
 
 @dataclass(frozen=True)
 class RuntimeArtifactFold:
+    """One LOO fold's identity: its index, test/train process sets, slug, and seed."""
+
     idx: int
     test: tuple[str, ...]
     train: tuple[str, ...]
@@ -106,8 +109,8 @@ class RuntimeArtifactFold:
 class RuntimeArtifact:
     """One fold's loaded runtime inputs.
 
-    `training_parent_collection` is already filtered to the parents represented
-    by `fold.train`; `augmentation_parents` is the canonical full mapping, kept
+    ``training_parent_collection`` is already filtered to the parents represented
+    by ``fold.train``; ``augmentation_parents`` is the canonical full mapping, kept
     so consumers can re-derive that selection independently instead of trusting
     the filtered collection's own keys.
     """
@@ -696,8 +699,8 @@ def _validate_control_partition(
 ) -> None:
     """Re-derive the control layout from the parents and reject a stored mismatch.
 
-    Loading `.npy` arrays straight into `ControlsStore` bypasses its
-    `__post_init__`, so these statics are otherwise taken on trust.
+    Loading ``.npy`` arrays straight into :class:`~hybrax.train.controls_store.ControlsStore`
+    bypasses its ``__post_init__``, so these statics are otherwise taken on trust.
     """
     partition = derive_control_partition(parent_collection)
     stored = (

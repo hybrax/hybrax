@@ -382,7 +382,9 @@ def resolve_folds(
     ``per_fold_holdout_sets is None`` → classic leave-one-out (one fold per
     parent group). Otherwise each :class:`HoldoutSet` becomes a fold:
     ``test = entry.test``; ``train = entry.train`` or everything not in ``test``.
-    Augmentation is corrected in both modes (see :func:`_apply_augmentation`).
+    Augmentation is corrected in both modes: holding out any member of an
+    augmentation group excludes the whole group from train (see
+    ``_augmentation_group_of``/``_resolve_train``).
 
     ``data_processes`` (from ``DataConfig.processes``), when given, restricts
     the process universe available to fold construction *before*
@@ -1226,7 +1228,7 @@ def _read_fold_loss_history(
 ) -> tuple[list[float], list[float], list[float], list[float]]:
     """Read per-step train and holdout loss from a fold's ``metrics.csv``.
 
-    Returns `(train_steps, train_loss, holdout_steps, holdout_loss)`. The
+    Returns ``(train_steps, train_loss, holdout_steps, holdout_loss)``. The
     holdout series is sparse -- only checkpoint steps are
     kept. Missing/unreadable files yield empty lists.
     """

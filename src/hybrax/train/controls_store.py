@@ -1,3 +1,25 @@
+"""Prepared, padded JAX control tensors, and the per-process/batch evaluators over them.
+
+This module provides:
+
+- ``ControlPartition`` / ``derive_control_partition`` — split a process's controls
+  into the direct-spline and linear-interpolant groups the solver consumes.
+- ``PerProcessControls`` — a single process's controls as JAX arrays, with
+  semantic per-axis ``eval_controlled_*`` accessors (RAW, unscaled) consumed by
+  ``HybridOdeWrapper``.
+- ``BatchControls`` — the same evaluator, indexed by batch row, for a padded
+  batch of processes trained together.
+- ``ControlsStore`` — the collection-level loader: reads every process's raw
+  control data, pads it to a common shape, and hands out ``PerProcessControls``
+  (:meth:`ControlsStore.get_controls`) or a whole ``BatchControls``
+  (:meth:`ControlsStore.gather_batch`).
+
+Sample/bolus events are not controls in this module's sense — they are state
+jumps applied by the callbacks solve (``physical_solve.py``) from the
+``*_event_*`` arrays this module also loads, via ``controls.py``'s
+``collect_discrete_event_metadata``.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -169,8 +191,8 @@ _DEFAULT_CONTINUITY_SIDE = "right"
 class ControlPartition:
     """Canonical control layout implied by a collection's own control sources.
 
-    `continuity_side` is `None` when no time-varying control constrains it, so a
-    caller comparing against a stored side can tell "undetermined" apart from a
+    ``continuity_side`` is ``None`` when no time-varying control constrains it, so
+    a caller comparing against a stored side can tell "undetermined" apart from a
     genuine disagreement.
     """
 
@@ -290,7 +312,7 @@ def derive_control_partition(collection: BioProcessCollection) -> ControlPartiti
     """Derive the canonical control layout from a collection's processes alone.
 
     Used at the runtime-artifact trust boundary, where control arrays are loaded
-    straight from disk and therefore bypass `ControlsStore.__post_init__`.
+    straight from disk and therefore bypass ``ControlsStore.__post_init__``.
     """
     process_order = tuple(collection.processes)
     return _control_partition(
@@ -380,7 +402,7 @@ def _interp_columns(
     grid: jax.Array,
     values: jax.Array,
 ) -> jax.Array:
-    """Linearly interpolate a `[n_grid, n_controls]` payload at query times."""
+    """Linearly interpolate a ``[n_grid, n_controls]`` payload at query times."""
 
     def _interp_column(column: jax.Array) -> jax.Array:
         return jnp.interp(ts, grid, column, left=column[0], right=column[-1])
@@ -506,6 +528,7 @@ class PerProcessControls(eqx.Module):
 
     @property
     def n_u(self) -> int:
+        """Total control axis count: Inflows + Outflows + PVs."""
         return (
             len(self.name_controlled_Inflows)
             + len(self.name_controlled_Outflows)
@@ -514,18 +537,22 @@ class PerProcessControls(eqx.Module):
 
     @property
     def active_linear_grid(self) -> jax.Array:
+        """``linear_grid`` sliced to its unpadded length (``grid_length``)."""
         return self.linear_grid[: self.grid_length]
 
     @property
     def active_jump_ts(self) -> jax.Array:
+        """``jump_ts`` sliced to its unpadded length (``jump_ts_length``)."""
         return self.jump_ts[: self.jump_ts_length]
 
     @property
     def active_control_values(self) -> jax.Array:
+        """``control_values`` sliced to its unpadded length (``grid_length``)."""
         return self.control_values[: self.grid_length]
 
     @property
     def active_control_derivatives(self) -> jax.Array:
+        """``control_derivatives`` sliced to its unpadded length (``grid_length``)."""
         return self.control_derivatives[: self.grid_length]
 
     def _eval_values(self, ts: float | np.ndarray | jax.Array) -> jax.Array:
@@ -596,24 +623,38 @@ class PerProcessControls(eqx.Module):
         )
 
     def eval_controlled_Inflows_cumulative(self, t_arr, states) -> jax.Array:
+        """RAW cumulative controlled Inflow volume at ``t_arr``.
+
+        Args:
+            t_arr: Query time(s), scalar or array.
+            states: Unused; a placeholder for future state-dependent controls
+                (e.g. pH feedback).
+
+        Returns:
+            RAW values for the controlled-Inflow columns only.
+        """
         n_inflows = len(self.name_controlled_Inflows)
         return self._eval_values(t_arr)[..., :n_inflows]
 
     def eval_controlled_Inflows_rates(self, t_arr, states) -> jax.Array:
+        """RAW controlled Inflow rate at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
         n_inflows = len(self.name_controlled_Inflows)
         return self._eval_derivatives(t_arr)[..., :n_inflows]
 
     def eval_controlled_Outflows_cumulative(self, t_arr, states) -> jax.Array:
+        """RAW cumulative controlled Outflow volume at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
         n_inflows = len(self.name_controlled_Inflows)
         n_outflows = len(self.name_controlled_Outflows)
         return self._eval_values(t_arr)[..., n_inflows : n_inflows + n_outflows]
 
     def eval_controlled_Outflows_rates(self, t_arr, states) -> jax.Array:
+        """RAW controlled Outflow rate at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
         n_inflows = len(self.name_controlled_Inflows)
         n_outflows = len(self.name_controlled_Outflows)
         return self._eval_derivatives(t_arr)[..., n_inflows : n_inflows + n_outflows]
 
     def eval_controlled_PVs(self, t_arr, states) -> jax.Array:
+        """RAW controlled process-variable value at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
         n_inflows = len(self.name_controlled_Inflows)
         n_outflows = len(self.name_controlled_Outflows)
         n_pvs = len(self.name_controlled_PVs)
@@ -707,14 +748,27 @@ class BatchControls(eqx.Module):
     # Semantic, non-overlapping per-axis accessors (RAW values). ``states`` is a
     # placeholder for future state-dependent controls and is currently unused.
     def eval_controlled_Inflows_cumulative(self, row_idx, t_arr, states) -> jax.Array:
+        """RAW cumulative controlled Inflow volume for batch row ``row_idx`` at ``t_arr``.
+
+        Args:
+            row_idx: Batch row index.
+            t_arr: Query time(s), scalar or array.
+            states: Unused; a placeholder for future state-dependent controls
+                (e.g. pH feedback).
+
+        Returns:
+            RAW values for the controlled-Inflow columns only.
+        """
         n_inflows = len(self.name_controlled_Inflows)
         return self._eval_values(row_idx, t_arr)[..., :n_inflows]
 
     def eval_controlled_Inflows_rates(self, row_idx, t_arr, states) -> jax.Array:
+        """RAW controlled Inflow rate for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
         n_inflows = len(self.name_controlled_Inflows)
         return self._eval_derivatives(row_idx, t_arr)[..., :n_inflows]
 
     def eval_controlled_Outflows_cumulative(self, row_idx, t_arr, states) -> jax.Array:
+        """RAW cumulative controlled Outflow volume for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
         n_inflows = len(self.name_controlled_Inflows)
         n_outflows = len(self.name_controlled_Outflows)
         return self._eval_values(row_idx, t_arr)[
@@ -722,6 +776,7 @@ class BatchControls(eqx.Module):
         ]
 
     def eval_controlled_Outflows_rates(self, row_idx, t_arr, states) -> jax.Array:
+        """RAW controlled Outflow rate for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
         n_inflows = len(self.name_controlled_Inflows)
         n_outflows = len(self.name_controlled_Outflows)
         return self._eval_derivatives(row_idx, t_arr)[
@@ -729,6 +784,7 @@ class BatchControls(eqx.Module):
         ]
 
     def eval_controlled_PVs(self, row_idx, t_arr, states) -> jax.Array:
+        """RAW controlled process-variable value for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
         n_inflows = len(self.name_controlled_Inflows)
         n_outflows = len(self.name_controlled_Outflows)
         n_pvs = len(self.name_controlled_PVs)
@@ -793,20 +849,21 @@ class ControlsStore(eqx.Module):
     def __post_init__(self) -> None:
         """Structurally validate the dispatch split on explicit construction.
 
-        `spline_indices` and `linear_indices` must be ascending `tuple`s of exact
-        `int` partitioning the canonical column range, `continuity_side` must be a
-        known value, and each dispatch payload must be as wide as the index tuple
-        addressing it. Motivating bug class: a cardinality-preserving error leaves
-        every array shape unchanged, and for single-control collections the flow
-        and PV axes are both width 1, so nothing downstream notices.
+        ``spline_indices`` and ``linear_indices`` must be ascending ``tuple``\\ s
+        of exact ``int`` partitioning the canonical column range,
+        ``continuity_side`` must be a known value, and each dispatch payload
+        must be as wide as the index tuple addressing it. Motivating bug
+        class: a cardinality-preserving error leaves every array shape
+        unchanged, and for single-control collections the flow and PV axes
+        are both width 1, so nothing downstream notices.
 
         **Structural only** — it cannot tell that a split is the one
-        `prepared.json` implies. A paired swap (moving a spline to another column
-        while adjusting the complement) and a legal-but-wrong `continuity_side` both
-        pass; either would need the split re-derived from prepared. It also runs on
-        explicit construction only: equinox rebuilds through `tree_unflatten`, so
-        JAX transforms and leaf-level deserialization bypass it and must invoke
-        this validation themselves.
+        ``prepared.json`` implies. A paired swap (moving a spline to another
+        column while adjusting the complement) and a legal-but-wrong
+        ``continuity_side`` both pass; either would need the split re-derived
+        from prepared. It also runs on explicit construction only: equinox
+        rebuilds through ``tree_unflatten``, so JAX transforms and leaf-level
+        deserialization bypass it and must invoke this validation themselves.
         """
         n_columns = (
             len(self.name_controlled_Inflows)
@@ -916,7 +973,7 @@ class ControlsStore(eqx.Module):
         cls,
         collection: BioProcessCollection,
     ) -> ControlsStore:
-        """Build a JAX-backed runtime store from a prepared `BioProcessCollection`."""
+        """Build a JAX-backed runtime store from a prepared :class:`~hybrax.format.dataclasses.BioProcessCollection`."""
         metadata = dict(collection.metadata or {})
         process_order = cls._process_order(collection, metadata, METADATA_NAMESPACE)
         train_metadata = dict(metadata.get(METADATA_NAMESPACE, {}))
@@ -1241,7 +1298,7 @@ class ControlsStore(eqx.Module):
         cls,
         prepared_json: str | Path,
     ) -> ControlsStore:
-        """Load a prepared JSON artifact and construct a `ControlsStore`."""
+        """Load a prepared JSON artifact and construct a :class:`ControlsStore`."""
         collection = load_process_collection(Path(prepared_json))
         return cls.from_collection(collection)
 

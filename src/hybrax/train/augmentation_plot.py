@@ -1,3 +1,5 @@
+"""Preview plot of augmented children against their parent's fitted spline."""
+
 from __future__ import annotations
 
 from pathlib import Path

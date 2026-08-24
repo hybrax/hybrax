@@ -1,3 +1,5 @@
+"""The ``hybrax`` command line: ``prepare``, ``train``, ``forward``, and ``loo``."""
+
 from __future__ import annotations
 
 import argparse
@@ -1259,6 +1261,14 @@ def _bundle_loo_run_dir(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse CLI arguments and dispatch to the selected subcommand's handler.
+
+    Args:
+        argv: Argument list to parse, or ``None`` to parse ``sys.argv``.
+
+    Returns:
+        The process exit code returned by the dispatched handler.
+    """
     parser = _build_parser()
     args = parser.parse_args(argv)
     handler = getattr(args, "handler")

@@ -1,3 +1,10 @@
+"""The ``prepare`` command: raw data in, a validated ``prepared.json`` artifact out.
+
+``prepare_artifact`` is the entry point; everything else in this module
+supports it (raw-collection loading, semantics-diff provenance, and the
+prepared-control-contract validation shared by every process).
+"""
+
 from __future__ import annotations
 
 import logging
@@ -224,6 +231,38 @@ def prepare_artifact(
     *,
     overwrite: bool = False,
 ) -> BioProcessCollection:
+    """Run the full ``prepare`` pipeline and write ``output_dir/prepared.json``.
+
+    Loads the raw collection at ``config.prepare.raw_input``, validates it,
+    applies the ``transform_process_collection`` hook (default: identity),
+    generates augmented children via :func:`~hybrax.train.augmentation.augment_process_collection`,
+    re-validates the result under strict training semantics, extracts and
+    validates each process's control sources, and assembles the
+    ``hybrax_train`` metadata block (provenance, semantics diffs vs. the raw
+    input, per-process control names, a stable ``content_hash``). Writes the
+    prepared collection to ``prepared.json``, a standalone
+    ``prepare_config.json`` record of the run, and (unless disabled) a
+    per-process control diagnostics plot and, if augmentation ran, an
+    augmentation preview plot.
+
+    Args:
+        loaded_config: A :func:`~hybrax.train.run_config.load_prepare_config`
+            result; ``loaded_config.config.prepare`` must be set.
+        output_dir: Directory ``prepared.json`` and the other prepare-owned
+            files are written into.
+        overwrite: Unused; the CLI is responsible for guarding an existing
+            ``prepared.json`` before calling this function.
+
+    Returns:
+        The prepared :class:`~hybrax.format.dataclasses.BioProcessCollection`
+        (the same object written to ``prepared.json``).
+
+    Raises:
+        ValueError: If ``loaded_config.config.prepare`` is unset, a
+            transform/augmentation hook produces an ambiguous rename, or the
+            prepared collection fails required-control or augmented-parent
+            validation.
+    """
     config = loaded_config.config
     custom_module = loaded_config.custom_module
     custom_hash = loaded_config.custom_py_sha256

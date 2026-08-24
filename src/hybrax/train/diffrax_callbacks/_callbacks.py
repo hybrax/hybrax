@@ -289,14 +289,17 @@ class CallbackSet(eqx.Module):
 
     @property
     def n_continuous(self) -> int:
+        """Number of continuous callbacks in the set."""
         return len(self.continuous_callbacks)
 
     @property
     def n_preset(self) -> int:
+        """Number of preset-time callbacks in the set."""
         return len(self.preset_callbacks)
 
     @property
     def n_discrete(self) -> int:
+        """Number of discrete callbacks in the set."""
         return len(self.discrete_callbacks)
 
     def _preset_sort_order(self) -> jnp.ndarray:
@@ -311,6 +314,7 @@ class CallbackSet(eqx.Module):
         return jnp.argsort(all_times)
 
     def get_all_preset_times(self) -> jnp.ndarray:
+        """Every preset callback's times, concatenated and sorted."""
         if not self.preset_callbacks:
             return jnp.array([])
         all_times = jnp.concatenate([cb.times for cb in self.preset_callbacks])

@@ -1,3 +1,5 @@
+"""``HybridOdeWrapper``: RAW physical-state ODE wrapper around a user reaction module."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -97,8 +99,6 @@ class HybridOdeWrapper(eqx.Module):
     The wrapper applies one safety clip — ``RAW_RMC_rhs = max(RAW_RMCs, 0)`` —
     only on the path into ``RhsOde``. The module receives the **unclipped** SCL
     slice so MLP gradient flow survives transient negative excursions.
-
-    Modeled PVs are not supported.
     """
 
     rhs_ode: RhsOde
@@ -136,7 +136,19 @@ class HybridOdeWrapper(eqx.Module):
         target_state_indices: jax.Array | None = None,
         loss_module: UserLossModule | None = None,
     ) -> HybridOdeWrapper:
-        """Build a wrapper from a BioProcess and per-process controls."""
+        """Build a wrapper from a BioProcess and per-process controls.
+
+        Args:
+            reaction_module: Trained/untrained reaction module; its
+                ``SCALE_*`` fields are validated against ``process``.
+            process: Process the ``RhsOde`` template is built from.
+            controls: This process's controls; see :func:`from_rhs_ode`.
+            target_state_indices: Forwarded to :func:`from_rhs_ode`.
+            loss_module: Forwarded to :func:`from_rhs_ode`.
+
+        Returns:
+            The constructed wrapper.
+        """
         return cls.from_rhs_ode(
             reaction_module=reaction_module,
             rhs_ode=build_rhs_ode(process),
@@ -160,6 +172,31 @@ class HybridOdeWrapper(eqx.Module):
         Scales are read from ``reaction_module`` (a ``UserReactionModule``
         subclass with ``SCALE_*`` fields). The constructor validates each
         ``SCALE_*`` shape against the RhsOde / controls layout.
+
+        Args:
+            reaction_module: Reaction module supplying every ``SCALE_*``
+                field and the model's ``__call__``.
+            rhs_ode: Canonical ODE structure this process's controls must
+                agree with.
+            controls: This process's controls; its categorized name tuples
+                must match ``rhs_ode``'s.
+            target_state_indices: State columns that are loss targets, or
+                ``None`` to default to ``[RMCs | PVs]`` plus the modeled
+                cumulative-flow columns (excluding ``V``).
+            loss_module: Loss module attached to the wrapper, or ``None`` for
+                a forward-only wrapper.
+
+        Returns:
+            The constructed wrapper.
+
+        Raises:
+            ValueError: If ``rhs_ode`` and ``controls`` disagree on
+                controlled-name categorization, a ``SCALE_*`` field has the
+                wrong shape, a rate-axis scaler has a non-zero offset, or a
+                stateful latent observable is not emitted via
+                ``ReactionOutputs.auxiliary``.
+            TypeError: If ``reaction_module`` is missing a required
+                ``SCALE_*`` field.
         """
         for field_name in (
             "name_controlled_Inflows",
@@ -543,7 +580,17 @@ def validate_rhs_ode_compatibility(
     candidate_name: str,
     candidate_rhs_ode: RhsOde,
 ) -> None:
-    """Validate that two RhsOde instances have compatible runtime axes."""
+    """Validate that two RhsOde instances have compatible runtime axes.
+
+    Args:
+        reference_name: Label for ``reference_rhs_ode`` in any error message.
+        reference_rhs_ode: The RhsOde every name-field axis is compared against.
+        candidate_name: Label for ``candidate_rhs_ode`` in any error message.
+        candidate_rhs_ode: The RhsOde being checked for compatibility.
+
+    Raises:
+        ValueError: If any of the two RhsOdes' name-tuple fields differ.
+    """
     name_fields = (
         "name_modeled_RMCs",
         "name_modeled_PVs",

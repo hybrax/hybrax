@@ -1,3 +1,5 @@
+"""Loading a run's ``custom.py`` and reading its config/hooks."""
+
 from __future__ import annotations
 
 import sys
@@ -8,6 +10,18 @@ from typing import Any
 
 
 def load_custom_module(custom_py: str | Path | None) -> ModuleType | None:
+    """Import ``custom_py`` as a standalone module named ``hybrax_train_user_custom``.
+
+    Args:
+        custom_py: Path to the ``custom.py`` file, or ``None``.
+
+    Returns:
+        The imported module, or ``None`` when ``custom_py`` is ``None``.
+
+    Raises:
+        FileNotFoundError: If ``custom_py`` does not exist.
+        ImportError: If a module spec cannot be built for ``custom_py``.
+    """
     if custom_py is None:
         return None
 
@@ -26,6 +40,22 @@ def load_custom_module(custom_py: str | Path | None) -> ModuleType | None:
 
 
 def resolve_config(module: ModuleType | None, config: Any | None) -> dict[str, Any]:
+    """Merge a custom module's config with an explicit override, override wins.
+
+    Reads ``module.get_config()`` if defined, else ``module.CONFIG`` if
+    defined, else starts empty; then overlays ``config`` on top.
+
+    Args:
+        module: Loaded ``custom.py`` module, or ``None`` to skip it.
+        config: Explicit config values to overlay, or ``None``.
+
+    Returns:
+        The merged config dict.
+
+    Raises:
+        TypeError: If ``module.get_config()`` returns a non-dict, non-``None``
+            value, or ``module.CONFIG`` is not a dict.
+    """
     resolved: dict[str, Any] = {}
 
     if module is not None:
@@ -47,6 +77,7 @@ def resolve_config(module: ModuleType | None, config: Any | None) -> dict[str, A
 
 
 def get_hook(module: ModuleType | None, name: str, default: Any) -> Any:
+    """Return ``module``'s attribute ``name`` if defined, else ``default``."""
     if module is None:
         return default
     return getattr(module, name, default)

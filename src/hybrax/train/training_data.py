@@ -1,3 +1,11 @@
+"""Padded JAX measurement tensors, and the per-process/batch views over them.
+
+Mirrors ``controls_store.py``'s split (``PerProcessControls`` /
+``BatchControls`` / ``ControlsStore``) for measured targets instead of
+controls: ``PerProcessTrainingData`` and ``BatchTrainingData`` are the
+evaluators, ``TrainingDataStore`` is the collection-level loader.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -472,6 +480,12 @@ class TrainingDataStore(eqx.Module):
     y0_measured: jax.Array
 
     def __check_init__(self) -> None:
+        """Equinox post-init hook: reject a store with no measured targets at all.
+
+        Raises:
+            ValueError: If both ``name_measured_RMCs`` and
+                ``name_measured_PVs`` are empty.
+        """
         # At least one of name_measured_RMCs / name_measured_PVs must be
         # populated; ``combined`` sets both. Fail-fast per CLAUDE.md principle 7.
         if not (self.name_measured_RMCs or self.name_measured_PVs):

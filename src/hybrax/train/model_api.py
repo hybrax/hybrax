@@ -1,3 +1,26 @@
+"""The user-facing contract between a custom model and the training harness.
+
+This module provides:
+
+- ``trainable_field`` / ``frozen_field`` / ``partition_trainable`` — field-metadata
+  tags that mark which array leaves of a user module receive optimizer updates.
+- ``Scaler`` / ``LinearScaler`` / ``AffineScaler`` — RAW (physical) <-> SCL
+  (solver) unit transforms, one per semantic axis of the state/control vectors.
+- ``ReactionInputs`` / ``ReactionOutputs`` / ``EstimatedScales`` /
+  ``UserReactionModule`` — the reaction-model contract: subclass
+  ``UserReactionModule``, implement ``__call__``, and the ``scale_*``/``unscale_*``
+  delegates handle every RAW/SCL conversion the ODE RHS needs.
+- ``LossInputs`` / ``LossOutputs`` / ``UserLossModule`` — the loss contract:
+  subclass ``UserLossModule`` and implement ``__call__`` to turn one sample's
+  predictions and measurements into named loss terms.
+
+Both ``UserReactionModule`` and ``UserLossModule`` are abstract base classes:
+their ``__call__`` (and, for the reaction module, every ``scale_*``/``unscale_*``
+helper) raise ``NotImplementedError`` until a subclass provides them. The
+training harness (``harness.py``, ``trainer.py``) drives instances of these
+through the shared ODE solve; this module defines the contract, not the solve.
+"""
+
 from __future__ import annotations
 
 from dataclasses import MISSING, dataclass, field, fields
@@ -272,20 +295,25 @@ class LinearScaler(Scaler):
         return SCL * self.scale
 
     def scale_derivative(self, RAW_rate: jax.Array) -> jax.Array:
+        """RAW rate -> SCL rate: pure division, ``RAW_rate / scale``."""
         return RAW_rate / self.scale
 
     def unscale_derivative(self, SCL_rate: jax.Array) -> jax.Array:
+        """SCL rate -> RAW rate: pure multiplication, ``SCL_rate * scale``."""
         return SCL_rate * self.scale
 
     @property
     def shape(self) -> tuple[int, ...]:
+        """Array shape of ``scale``."""
         return tuple(self.scale.shape)
 
     @property
     def offset(self) -> jax.Array:
+        """Always zero, matching :class:`AffineScaler`'s attribute for composition."""
         return jnp.zeros_like(self.scale)
 
     def astype(self, dtype: jnp.dtype) -> "LinearScaler":
+        """Return a :class:`LinearScaler` with ``scale`` cast to ``dtype``."""
         return LinearScaler(jnp.asarray(self.scale, dtype=dtype))
 
     def __getitem__(self, idx) -> "LinearScaler":
@@ -364,16 +392,20 @@ class AffineScaler(Scaler):
         )
 
     def scale_derivative(self, RAW_rate: jax.Array) -> jax.Array:
+        """RAW rate -> SCL rate: offset-free, ``RAW_rate / scale``."""
         return RAW_rate / self.scale
 
     def unscale_derivative(self, SCL_rate: jax.Array) -> jax.Array:
+        """SCL rate -> RAW rate: offset-free, ``SCL_rate * scale``."""
         return SCL_rate * self.scale
 
     @property
     def shape(self) -> tuple[int, ...]:
+        """Array shape of ``scale``."""
         return tuple(self.scale.shape)
 
     def astype(self, dtype: jnp.dtype) -> "AffineScaler":
+        """Return an :class:`AffineScaler` with ``scale``/``offset`` cast to ``dtype``."""
         return AffineScaler(
             jnp.asarray(self.scale, dtype=dtype),
             jnp.asarray(self.offset, dtype=dtype),
@@ -757,90 +789,113 @@ class UserReactionModule(eqx.Module):
     # ------------------------------------------------------------------
 
     def scale_state(self, RAW_state):
+        """RAW -> SCL for the full integrated state, via ``SCALE_state``."""
         return self.SCALE_state.scale_value(RAW_state)
 
     def unscale_state(self, SCL_state):
+        """SCL -> RAW for the full integrated state, via ``SCALE_state``."""
         return self.SCALE_state.unscale_value(SCL_state)
 
     def scale_latent(self, RAW_latent):
+        """RAW -> SCL for the latent state, via ``SCALE_latent``."""
         return self.SCALE_latent.scale_value(RAW_latent)
 
     def unscale_latent(self, SCL_latent):
+        """SCL -> RAW for the latent state, via ``SCALE_latent``."""
         return self.SCALE_latent.unscale_value(SCL_latent)
 
     def scale_modeled_RMCs(self, RAW_modeled_RMCs):
+        """RAW -> SCL for modeled reactor-medium components."""
         return self.SCALE_modeled_RMCs.scale_value(RAW_modeled_RMCs)
 
     def unscale_modeled_RMCs(self, SCL_modeled_RMCs):
+        """SCL -> RAW for modeled reactor-medium components."""
         return self.SCALE_modeled_RMCs.unscale_value(SCL_modeled_RMCs)
 
     def scale_modeled_PVs(self, RAW_modeled_PVs):
+        """RAW -> SCL for modeled process variables."""
         return self.SCALE_modeled_PVs.scale_value(RAW_modeled_PVs)
 
     def unscale_modeled_PVs(self, SCL_modeled_PVs):
+        """SCL -> RAW for modeled process variables."""
         return self.SCALE_modeled_PVs.unscale_value(SCL_modeled_PVs)
 
     def scale_modeled_V(self, RAW_modeled_V):
+        """RAW -> SCL for the modeled reactor volume."""
         return self.SCALE_modeled_V.scale_value(RAW_modeled_V)
 
     def unscale_modeled_V(self, SCL_modeled_V):
+        """SCL -> RAW for the modeled reactor volume."""
         return self.SCALE_modeled_V.unscale_value(SCL_modeled_V)
 
     def scale_V_in_cumulative(self, RAW_V_in_cumulative):
+        """RAW -> SCL for cumulative volume added by every Inflow."""
         return self.SCALE_V_in_cumulative.scale_value(RAW_V_in_cumulative)
 
     def unscale_V_in_cumulative(self, SCL_V_in_cumulative):
+        """SCL -> RAW for cumulative volume added by every Inflow."""
         return self.SCALE_V_in_cumulative.unscale_value(SCL_V_in_cumulative)
 
     def scale_modeled_Inflows_cumulative(self, RAW_modeled_Inflows_cumulative):
+        """RAW -> SCL for cumulative modeled Inflow volume."""
         return self.SCALE_modeled_Inflows_cumulative.scale_value(
             RAW_modeled_Inflows_cumulative
         )
 
     def unscale_modeled_Inflows_cumulative(self, SCL_modeled_Inflows_cumulative):
+        """SCL -> RAW for cumulative modeled Inflow volume."""
         return self.SCALE_modeled_Inflows_cumulative.unscale_value(
             SCL_modeled_Inflows_cumulative
         )
 
     def scale_modeled_Outflows_cumulative(self, RAW_modeled_Outflows_cumulative):
+        """RAW -> SCL for cumulative modeled Outflow volume."""
         return self.SCALE_modeled_Outflows_cumulative.scale_value(
             RAW_modeled_Outflows_cumulative
         )
 
     def unscale_modeled_Outflows_cumulative(self, SCL_modeled_Outflows_cumulative):
+        """SCL -> RAW for cumulative modeled Outflow volume."""
         return self.SCALE_modeled_Outflows_cumulative.unscale_value(
             SCL_modeled_Outflows_cumulative
         )
 
     def scale_controlled_Inflows_cumulative(self, RAW_controlled_Inflows_cumulative):
+        """RAW -> SCL for cumulative controlled Inflow volume."""
         return self.SCALE_controlled_Inflows_cumulative.scale_value(
             RAW_controlled_Inflows_cumulative
         )
 
     def unscale_controlled_Inflows_cumulative(self, SCL_controlled_Inflows_cumulative):
+        """SCL -> RAW for cumulative controlled Inflow volume."""
         return self.SCALE_controlled_Inflows_cumulative.unscale_value(
             SCL_controlled_Inflows_cumulative
         )
 
     def scale_controlled_Inflows_rates(self, RAW_controlled_Inflows_rates):
+        """RAW -> SCL for controlled Inflow rates (offset-free derivative op)."""
         return self.SCALE_controlled_Inflows_rates.scale_derivative(
             RAW_controlled_Inflows_rates
         )
 
     def unscale_controlled_Inflows_rates(self, SCL_controlled_Inflows_rates):
+        """SCL -> RAW for controlled Inflow rates (offset-free derivative op)."""
         return self.SCALE_controlled_Inflows_rates.unscale_derivative(
             SCL_controlled_Inflows_rates
         )
 
     def scale_controlled_Inflows_Cin(self, RAW_controlled_Inflows_Cin):
+        """RAW -> SCL for controlled Inflow feed concentrations."""
         return self.SCALE_controlled_Inflows_Cin.scale_value(RAW_controlled_Inflows_Cin)
 
     def unscale_controlled_Inflows_Cin(self, SCL_controlled_Inflows_Cin):
+        """SCL -> RAW for controlled Inflow feed concentrations."""
         return self.SCALE_controlled_Inflows_Cin.unscale_value(
             SCL_controlled_Inflows_Cin
         )
 
     def scale_controlled_Outflows_cumulative(self, RAW_controlled_Outflows_cumulative):
+        """RAW -> SCL for cumulative controlled Outflow volume."""
         return self.SCALE_controlled_Outflows_cumulative.scale_value(
             RAW_controlled_Outflows_cumulative
         )
@@ -848,58 +903,71 @@ class UserReactionModule(eqx.Module):
     def unscale_controlled_Outflows_cumulative(
         self, SCL_controlled_Outflows_cumulative
     ):
+        """SCL -> RAW for cumulative controlled Outflow volume."""
         return self.SCALE_controlled_Outflows_cumulative.unscale_value(
             SCL_controlled_Outflows_cumulative
         )
 
     def scale_controlled_Outflows_rates(self, RAW_controlled_Outflows_rates):
+        """RAW -> SCL for controlled Outflow rates (offset-free derivative op)."""
         return self.SCALE_controlled_Outflows_rates.scale_derivative(
             RAW_controlled_Outflows_rates
         )
 
     def unscale_controlled_Outflows_rates(self, SCL_controlled_Outflows_rates):
+        """SCL -> RAW for controlled Outflow rates (offset-free derivative op)."""
         return self.SCALE_controlled_Outflows_rates.unscale_derivative(
             SCL_controlled_Outflows_rates
         )
 
     def scale_controlled_PVs(self, RAW_controlled_PVs):
+        """RAW -> SCL for controlled process variables."""
         return self.SCALE_controlled_PVs.scale_value(RAW_controlled_PVs)
 
     def unscale_controlled_PVs(self, SCL_controlled_PVs):
+        """SCL -> RAW for controlled process variables."""
         return self.SCALE_controlled_PVs.unscale_value(SCL_controlled_PVs)
 
     def scale_modeled_Inflows_Cin(self, RAW_modeled_Inflows_Cin):
+        """RAW -> SCL for modeled Inflow feed concentrations."""
         return self.SCALE_modeled_Inflows_Cin.scale_value(RAW_modeled_Inflows_Cin)
 
     def unscale_modeled_Inflows_Cin(self, SCL_modeled_Inflows_Cin):
+        """SCL -> RAW for modeled Inflow feed concentrations."""
         return self.SCALE_modeled_Inflows_Cin.unscale_value(SCL_modeled_Inflows_Cin)
 
     def scale_modeled_BiologicalOde_rates(self, RAW_modeled_BiologicalOde_rates):
+        """RAW -> SCL for modeled ``biological_ode`` rates (offset-free derivative op)."""
         return self.SCALE_modeled_BiologicalOde_rates.scale_derivative(
             RAW_modeled_BiologicalOde_rates
         )
 
     def unscale_modeled_BiologicalOde_rates(self, SCL_modeled_BiologicalOde_rates):
+        """SCL -> RAW for modeled ``biological_ode`` rates (offset-free derivative op)."""
         return self.SCALE_modeled_BiologicalOde_rates.unscale_derivative(
             SCL_modeled_BiologicalOde_rates
         )
 
     def scale_modeled_Inflows_rates(self, RAW_modeled_Inflows_rates):
+        """RAW -> SCL for modeled Inflow rates (offset-free derivative op)."""
         return self.SCALE_modeled_Inflows_rates.scale_derivative(
             RAW_modeled_Inflows_rates
         )
 
     def unscale_modeled_Inflows_rates(self, SCL_modeled_Inflows_rates):
+        """SCL -> RAW for modeled Inflow rates (offset-free derivative op)."""
         return self.SCALE_modeled_Inflows_rates.unscale_derivative(
             SCL_modeled_Inflows_rates
         )
 
     def scale_modeled_Outflows_rates(self, RAW_modeled_Outflows_rates):
+        """RAW -> SCL for modeled Outflow rates (offset-free derivative op)."""
         return self.SCALE_modeled_Outflows_rates.scale_derivative(
             RAW_modeled_Outflows_rates
         )
 
     def unscale_modeled_Outflows_rates(self, SCL_modeled_Outflows_rates):
+        """SCL -> RAW for modeled Outflow rates (offset-free derivative op)."""
         return self.SCALE_modeled_Outflows_rates.unscale_derivative(
             SCL_modeled_Outflows_rates
         )
@@ -1059,4 +1127,5 @@ class UserLossModule(eqx.Module):
         return None
 
     def __call__(self, inputs: LossInputs) -> LossOutputs:
+        """Override. Compute every named loss term from ``inputs``."""
         raise NotImplementedError

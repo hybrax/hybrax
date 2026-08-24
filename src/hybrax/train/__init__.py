@@ -1,3 +1,10 @@
+"""hybrax.train: the training harness, config, and CLI over hybrax.format processes.
+
+Public names are lazily re-exported from their owning submodule via
+``__getattr__``/``_EXPORTS`` below, so importing ``hybrax.train`` does not
+eagerly import JAX or any training submodule.
+"""
+
 from __future__ import annotations
 
 # --- multi-core bootstrap: MUST run before JAX initialises ---
@@ -245,6 +252,14 @@ __all__ = list(_EXPORTS)
 
 
 def __getattr__(name: str) -> Any:
+    """Lazily import and cache a public name from its owning submodule.
+
+    Args:
+        name: Attribute name looked up on this module.
+
+    Raises:
+        AttributeError: If ``name`` is not in ``_EXPORTS``.
+    """
     if name not in _EXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     module = import_module(f".{_EXPORTS[name]}", __name__)
@@ -254,4 +269,5 @@ def __getattr__(name: str) -> Any:
 
 
 def __dir__() -> list[str]:
+    """Every already-imported name plus every lazily-exported name."""
     return sorted([*globals(), *_EXPORTS])

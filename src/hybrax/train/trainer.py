@@ -1,3 +1,12 @@
+"""The JIT-compiled per-sample solve and per-batch loss/gradient step.
+
+``build_batched_loss_fn`` builds the function ``harness.py`` JIT-compiles for
+every train step: it vmaps a single sample's ODE solve plus loss module
+evaluation (``evaluate_sample_with_loss_module``) across a batch, and
+``evaluate_one_sample_loss`` provides the equivalent single-sample path used
+outside training (holdout evaluation, dense exports).
+"""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -251,7 +260,7 @@ def evaluate_sample_with_loss_module(
     broadcast against the reaction module's ``SCALE_*`` (no vmap), build a
     :class:`LossInputs`, and call the loss module. ``per_target_loss`` is the
     stacked ``named_losses`` in ``loss_module.loss_names`` order; ``total_loss``
-    is their sum.
+    is their mean.
 
     ``SCL_target_measured`` is the measurement matrix already divided by
     ``module.SCALE_state[target_state_indices]`` (pre-scaled by the batched

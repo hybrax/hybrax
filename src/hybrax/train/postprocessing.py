@@ -423,8 +423,8 @@ def plot_cross_fold_loss_curves(
 ) -> None:
     """Overlay every fold's train and monitor loss on shared log-y axes.
 
-    Each entry in `fold_curves` is
-    `(label, train_steps, train_loss, monitor_steps, monitor_loss)`. Train
+    Each entry in ``fold_curves`` is
+    ``(label, train_steps, train_loss, monitor_steps, monitor_loss)``. Train
     curves are drawn solid and monitor (holdout) curves dashed in the same
     per-fold colour; folds with no usable history are skipped.
     """

@@ -11,7 +11,8 @@ Mirrors ``hybrax.format/serialization.py``. This module owns:
   partition.
 - ``save_opt_state`` / ``load_opt_state`` — optimizer state twins.
 - ``content_hash`` / ``file_hash`` — stable data integrity hashing.
-- ``write_run_config_json`` / ``read_run_config_json`` — the run-dir ``config.json``.
+- ``write_json`` / ``read_run_config_json`` / ``update_json`` — the run-dir
+  ``config.json``.
 - ``reconstruct_training`` — the single model-reconstruction path shared by
   model loading, forward, ensembles, and notebooks. It rebuilds a model from the
   data *it* trained on, with that input's recorded ``content_hash`` verified
@@ -261,6 +262,7 @@ def write_json(
 
 
 def read_json(path: str | Path) -> dict[str, Any]:
+    """Read and parse a JSON file; see ``hybrax.format.json_io.load_json``."""
     return load_json(path)
 
 

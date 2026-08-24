@@ -1,3 +1,12 @@
+"""Synthetic sibling-process generation from :class:`~hybrax.train.run_config.AugmentationConfig`.
+
+Resamples each real (parent) process's fitted state splines onto a new,
+randomly jittered time grid, optionally adds Gaussian noise, and stores the
+result as new :class:`~hybrax.format.dataclasses.AugmentedBioProcess` entries
+in the collection. See ``AugmentationConfig`` for the full parameter
+semantics (seed, grid spacing, noise, initial-value handling).
+"""
+
 from __future__ import annotations
 
 from copy import deepcopy
@@ -215,6 +224,39 @@ def augment_process_collection(
     run_config: RunConfig,
     augment_state_values: Any = None,
 ) -> BioProcessCollection:
+    """Generate augmented children for every parent process and add them to ``collection``.
+
+    No-op (returns ``collection`` unchanged) when ``run_config.prepare.augmentation``
+    is unset. Otherwise, for each real (non-augmented) process, generates
+    ``augmentation.n_children_per_process`` synthetic children: each gets its
+    own randomly jittered time grid, and every modeled state named in
+    ``augmentation.noise_std`` is resampled from the parent's fitted spline
+    onto that grid with Gaussian noise added (reactor-medium components are
+    clipped to stay non-negative). Every other modeled state is copied through
+    from the spline unchanged. Mutates ``collection.processes`` in place with
+    the new children and also returns ``collection``.
+
+    Args:
+        collection: Parent process collection to augment; every non-augmented
+            process in it is a candidate parent.
+        run_config: Run configuration; only ``run_config.prepare.augmentation``
+            is read.
+        augment_state_values: Optional ``augment_state_values`` custom hook.
+            When given, called once per augmented state per child to override
+            the noised values before they are stored; must return an array of
+            the same shape with only finite values.
+
+    Returns:
+        ``collection``, with the generated children added.
+
+    Raises:
+        ValueError: If a generated child name collides with an existing
+            process, a requested state cannot be augmented (controlled PV,
+            unmodeled, or spline-less), the degenerate case ``t0 == t_end``,
+            the requested grid spacing cannot be represented, or a custom
+            ``augment_state_values`` hook returns a mismatched shape or
+            non-finite values.
+    """
     prepare = run_config.prepare
     if prepare is None or prepare.augmentation is None:
         return collection

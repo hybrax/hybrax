@@ -22,12 +22,28 @@ def _bundle_prepared_gz(src: Path, dst: Path) -> None:
 
 
 class CheckpointWriter:
+    """Writes self-contained ``checkpoints/step_NNNNN/`` directories and updates ``latest``.
+
+    Each checkpoint bundles everything needed to resume or reload the run:
+    trained params, optimizer state, training-progress metadata, and (when
+    available) the run's ``config.json``/``custom.py``/prepared data.
+    """
+
     def __init__(
         self,
         checkpoints_dir: Path,
         *,
         prepared_src: Path | None = None,
     ) -> None:
+        """Create ``checkpoints_dir`` if needed.
+
+        Args:
+            checkpoints_dir: Directory every ``step_NNNNN`` checkpoint and
+                ``latest`` are written under.
+            prepared_src: Path to the run's prepared-data file, bundled as
+                ``prepared.json.gz`` into every checkpoint; omit to skip
+                bundling it.
+        """
         self._dir = Path(checkpoints_dir)
         self._dir.mkdir(parents=True, exist_ok=True)
         self._prepared_src = Path(prepared_src) if prepared_src is not None else None
@@ -42,6 +58,22 @@ class CheckpointWriter:
         mean_loss: float,
         holdout_loss: float | None,
     ) -> Path:
+        """Write one checkpoint directory and point ``latest`` at it.
+
+        Args:
+            step: Optimizer step this checkpoint is taken at; names the
+                checkpoint directory (``step_{step:05d}``).
+            samples_seen: Cumulative training samples processed so far.
+            wrapper: Trained wrapper whose params are saved to ``params.eqx``.
+            opt_state: Optimizer state saved to ``opt_state.eqx``.
+            mean_loss: Training loss at this step, recorded in
+                ``train_state.json``.
+            holdout_loss: Holdout/validation loss at this step, or ``None``
+                when no holdout was evaluated.
+
+        Returns:
+            The checkpoint directory that was written.
+        """
         d = self._dir / f"step_{step:05d}"
         d.mkdir(parents=True, exist_ok=True)
         save_model(wrapper, d / "params.eqx")

@@ -1,3 +1,12 @@
+"""Typed, validated run configuration for ``prepare``/``train``/``loo``/``forward``.
+
+``RunConfig`` (via :func:`load_run_config` and its per-command wrappers) is
+the config for ``prepare``/``train``/``loo``; ``ForwardRunConfig`` (via
+:func:`load_forward_config`) is the separate, simpler config for ``forward``.
+Every section is its own pydantic model — see each class's own docstring for
+its fields.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -402,7 +411,7 @@ class ForwardDataConfig(ConfigBase):
 
 
 class ModelRef(ConfigBase):
-    """One `models` entry: a self-contained run/checkpoint dir. ``name`` defaults
+    """One ``models`` entry: a self-contained run/checkpoint dir. ``name`` defaults
     to the basename of the bundle's ``config.output.dir`` (resolved later)."""
 
     name: str | None = None
@@ -495,24 +504,49 @@ def load_forward_config(config_path: str | Path) -> ForwardRunConfig:
 
 @dataclass(frozen=True)
 class LoadedRunConfig:
+    """A validated :class:`RunConfig` plus its loaded ``custom.py`` (if any)."""
+
     config: RunConfig
     custom_module: ModuleType | None
     custom_py_sha256: str | None
 
 
 def load_prepare_config(config_path: str | Path) -> LoadedRunConfig:
+    """Load and validate a config for the ``prepare`` command; see :func:`load_run_config`."""
     return load_run_config(config_path, command="prepare")
 
 
 def load_train_config(config_path: str | Path) -> LoadedRunConfig:
+    """Load and validate a config for the ``train`` command; see :func:`load_run_config`."""
     return load_run_config(config_path, command="train")
 
 
 def load_loo_config(config_path: str | Path) -> LoadedRunConfig:
+    """Load and validate a config for the ``loo`` command; see :func:`load_run_config`."""
     return load_run_config(config_path, command="loo")
 
 
 def load_run_config(config_path: str | Path, *, command: _Command) -> LoadedRunConfig:
+    """Load, validate, and resolve a run config JSON for one command.
+
+    Restricts the raw JSON to the sections ``command`` actually uses, validates
+    it against :class:`RunConfig`, resolves every path (``custom_py``,
+    ``data.prepared``, ``prepare.raw_input``, ``output.dir``) relative to the
+    config file's directory, loads ``custom_py`` if set, and resolves the
+    ``custom`` section through its hook (or :class:`DefaultCustomConfig`).
+
+    Args:
+        config_path: Path to the run config JSON file.
+        command: Which command is loading the config; determines which
+            top-level sections are read and which are required.
+
+    Returns:
+        The resolved config, loaded custom module (if any), and its SHA-256.
+
+    Raises:
+        ValueError: If the JSON has an unknown top-level key, or a section
+            required by ``command`` is missing.
+    """
     path = Path(config_path)
     raw = _read_raw_config(path)
     raw_custom = raw.get("custom")

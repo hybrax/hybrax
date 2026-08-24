@@ -17,6 +17,8 @@ __all__ = ["StepRecord", "RunLogger"]
 
 @dataclass(frozen=True)
 class StepRecord:
+    """One training step's loss/timing/diagnostics, as handed to :class:`RunLogger`."""
+
     step: int
     total_updates: int
     epoch: int
@@ -182,6 +184,15 @@ def _row(record: StepRecord, *, strings: bool) -> dict[str, Any]:
 
 
 class RunLogger:
+    """Console table + in-memory history + ``metrics.csv``/``metrics.jsonl`` writer.
+
+    One instance covers one training run: :meth:`start` opens the output files
+    and prints the run banner, :meth:`record_step` is called once per training
+    step, and :meth:`finalize`/:meth:`close` flush and release the file
+    handles. Usable as a context manager (``__enter__``/``__exit__`` call
+    :meth:`close`).
+    """
+
     def __init__(
         self,
         *,
@@ -191,6 +202,20 @@ class RunLogger:
         log_decimals: int = 4,
         logger_name: str = "hybrax.train.harness",
     ) -> None:
+        """Configure output destinations; no I/O happens until :meth:`start`.
+
+        Args:
+            log_process_losses: Also log a per-process loss breakdown line
+                after every step's table row.
+            metrics_csv: Path to write ``metrics.csv`` incrementally to, or
+                ``None`` to skip CSV output.
+            metrics_jsonl: Path to write ``metrics.jsonl`` incrementally to,
+                or ``None`` to skip JSONL output.
+            log_decimals: Decimal places used when formatting loss/gradient
+                values in the console table.
+            logger_name: Name of the ``logging.Logger`` to emit console lines
+                through.
+        """
         self._log_process_losses = bool(log_process_losses)
         self._metrics_csv_path = Path(metrics_csv) if metrics_csv is not None else None
         self._metrics_jsonl_path = (
@@ -227,6 +252,17 @@ class RunLogger:
         total_updates: int,
         compile_warmup_seconds: float,
     ) -> None:
+        """Open the CSV/JSONL files (if configured) and log the run banner.
+
+        Args:
+            target_names: Loss-term names, in the order every step's
+                ``per_target_loss`` is reported in.
+            process_names: Every process in the training run, for the banner
+                only.
+            total_updates: Total optimizer steps the run will take, used to
+                size the console table's step column.
+            compile_warmup_seconds: JIT warmup time to report in the banner.
+        """
         self._target_names = tuple(target_names)
         self._formatter = _ConsoleTableFormatter(
             target_names, total_updates, decimals=self._decimals
@@ -247,6 +283,7 @@ class RunLogger:
         )
 
     def record_rebuild(self, step_index: int) -> None:
+        """Log and count a train-step JIT rebuild at ``step_index``."""
         self._history["train_step_rebuild_count"] += 1
         self._logger.warning(
             "train-step rebuilt at step=%d (rebuild_count=%d)",
@@ -255,6 +292,12 @@ class RunLogger:
         )
 
     def record_step(self, record: StepRecord) -> None:
+        """Log ``record``'s console row, append it to history, and write it to
+        ``metrics.csv``/``metrics.jsonl`` (whichever are configured).
+
+        Raises:
+            RuntimeError: If called before :meth:`start`.
+        """
         if self._formatter is None:
             raise RuntimeError("RunLogger.start() must be called before record_step()")
         self._history["mean_loss_by_step"].append(float(record.mean_loss))
@@ -315,6 +358,12 @@ class RunLogger:
             self._jsonl_file.write(dumps_json(_row(record, strings=False)) + "\n")
 
     def finalize(self) -> dict[str, Any]:
+        """Flush the JSONL file and return the run's full in-memory history.
+
+        Returns:
+            Every ``_history`` series (loss, timing, per-process/per-target
+            breakdowns, holdout results) plus ``target_names``.
+        """
         if self._jsonl_file is not None:
             self._jsonl_file.flush()
         return {
@@ -326,6 +375,7 @@ class RunLogger:
         }
 
     def close(self) -> None:
+        """Close the JSONL file handle, if one is open."""
         if self._jsonl_file is not None:
             self._jsonl_file.close()
             self._jsonl_file = None

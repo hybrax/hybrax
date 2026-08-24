@@ -1,3 +1,25 @@
+"""The training and forward-evaluation harness: the layer above ``trainer.py``'s single batch step.
+
+This module provides:
+
+- ``train_collection`` / ``train_from_collection`` / ``train_from_prepared_json`` —
+  train one reaction/loss module pair over a batch stream, at increasing
+  levels of convenience (a prepared store, a raw collection, a prepared JSON
+  file on disk).
+- ``model_predict`` / ``forward_from_collection`` / ``evaluate_trained_wrapper`` —
+  run a trained model forward over new or held-out data, without touching the
+  optimizer.
+- ``prepare_training`` / ``prepare_training_from_runtime_artifact`` /
+  ``train_harness_config_from_run_config`` — build every hook-visible object
+  (reaction module, loss module, optimizer, harness config) from a
+  :class:`~hybrax.train.run_config.RunConfig` and a runtime artifact, the
+  path the CLI and LOO folds both go through.
+
+Batching, the JIT-compiled train step, and per-sample loss evaluation live in
+``trainer.py``; this module owns everything around that step — process
+selection, checkpointing, logging, and the public entry points.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -450,9 +472,7 @@ def build_optimizer_for_run(
 
     Applies the optional ``build_learning_rate`` + ``build_optimizer`` hooks,
     falling back to the default chain. Returns ``(optimizer, train_cfg)`` where
-    ``train_cfg`` carries any hook-overridden learning rate. Shared with
-    ``serialization.model_load`` so optimizer-state loading uses an identical
-    template.
+    ``train_cfg`` carries any hook-overridden learning rate.
     """
     lr_hook = get_hook(custom_module, "build_learning_rate", None)
     if lr_hook is not None:
@@ -507,6 +527,20 @@ def _validate_batching_config(
 def derive_update_budget(
     config: TrainHarnessConfig, *, selected_process_count: int
 ) -> tuple[int, int, int]:
+    """Validate batching config and derive the run's total optimizer-step count.
+
+    Args:
+        config: Harness config; ``batch_size=None`` means full-batch.
+        selected_process_count: Number of processes selected for training.
+
+    Returns:
+        ``(batch_size, batches_per_epoch, total_updates)``, where
+        ``total_updates = config.epochs * batches_per_epoch``.
+
+    Raises:
+        ValueError: If ``config``'s batching settings are invalid; see
+            ``_validate_batching_config``.
+    """
     batch_size = _validate_batching_config(
         config, selected_process_count=selected_process_count
     )
@@ -942,6 +976,32 @@ def forward_from_collection(
     A separate store is built from ``collection`` for the solves. It must be
     compatible with the training data — same measured/modeled variables in the
     same order — or the call fails with an explicit error.
+
+    Args:
+        collection: Evaluation-only process collection to forward-solve.
+        model_path: Path to the trained model's run/checkpoint directory.
+        config: Forward-run settings (prediction scope, plotting), or
+            ``None`` for defaults.
+        custom_py: Override for the recorded ``custom.py`` path, or ``None``
+            to use the one the run recorded.
+        training_process_names: Restrict reconstruction to this subset of the
+            model's original training processes, or ``None`` for all of them.
+        run_config: Pre-loaded run config, or ``None`` to read it from
+            ``model_path``'s ``config.json``.
+        custom_module: Pre-loaded custom module, or ``None`` to load it from
+            ``custom_py``/the recorded path.
+        prediction_process_names: Restrict prediction to this subset of
+            ``collection``'s processes, or ``None`` for all of them.
+        prediction_grid_n: Size of the evenly-spaced prediction grid; see
+            :func:`model_predict`'s ``grid_n``.
+
+    Returns:
+        The forward result: per-process dense exports plus the rebuilt
+        wrapper and config.
+
+    Raises:
+        ValueError: If ``collection``'s measured/modeled variables are
+            incompatible with the training data.
     """
     from .serialization import (
         content_hash,
@@ -1153,6 +1213,23 @@ def train_collection(
     ``optimizer``, when provided (via the ``build_optimizer`` hook), fully owns
     optimizer construction; otherwise the default ``_build_optimizer`` chain is
     used.
+
+    Args:
+        store: Prepared training data for every candidate process.
+        reaction_module: Reaction module to train.
+        loss_module: Loss module to train alongside it, or ``None`` for the
+            default per-target MSE module.
+        config: Harness settings (batching, optimizer, solver, checkpointing,
+            logging), or ``None`` for defaults.
+        optimizer: Pre-built optimizer, or ``None`` to use the default chain.
+
+    Returns:
+        The trained wrapper plus the full per-step training history.
+
+    Raises:
+        ValueError: If ``reaction_module`` has a nonzero latent state without
+            ``config.allow_stateful_models``, or ``config``'s solver settings
+            are non-positive.
     """
     cfg = config or TrainHarnessConfig()
     _require_stateful_opt_in(reaction_module, cfg.allow_stateful_models)
@@ -2282,9 +2359,9 @@ def train_harness_config_from_run_config(
     run_dir: Path,
 ) -> TrainHarnessConfig:
     """Map a typed :class:`RunConfig` + run-directory layout to the harness
-    config, wiring the FAIR run-dir artifact paths (metrics.csv, checkpoints/,
-    observations.csv) and the checkpoint/output/logging sections. Shared by the
-    CLI train and LOO paths.
+    config, wiring the run-dir artifact paths (``metrics.csv``, ``checkpoints/``)
+    and the checkpoint/output/logging sections. Shared by the CLI train and LOO
+    paths.
     """
     data = cfg.data
     return TrainHarnessConfig(
