@@ -242,6 +242,8 @@ def _handle_prepare(args: argparse.Namespace) -> int:
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        force=True,
     )
     output_dir = Path(args.output_dir)
     prepared = output_dir / "prepared.json"
@@ -408,6 +410,8 @@ def _handle_train(args: argparse.Namespace) -> int:
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        force=True,
     )
     log = logging.getLogger(__name__)
 
@@ -696,6 +700,8 @@ def _handle_forward(args: argparse.Namespace) -> int:
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        force=True,
     )
     log = logging.getLogger(__name__)
 
@@ -1008,6 +1014,8 @@ def _handle_loo(args: argparse.Namespace) -> int:
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        force=True,
     )
     log = logging.getLogger(__name__)
 

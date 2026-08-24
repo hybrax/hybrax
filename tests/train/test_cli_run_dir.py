@@ -224,3 +224,18 @@ def test_model_load_integrity_guard_on_content_change(tmp_path: Path):
     _write_prepared(prepared, biomass_values=(2.0, 1.5, 1.0))
     with pytest.raises(ValueError, match="differs"):
         hybrax.train.model_load(run_dir)
+
+
+def test_train_cli_info_logs_reach_output_by_default(tmp_path: Path, capsys):
+    # Regression test: hybrax.format._logging used to call a bare
+    # logging.basicConfig() at import time, which made the CLI's own
+    # basicConfig(level=INFO) a silent no-op (root already had a handler) and
+    # suppressed every RunLogger.info(...) call (per-step table, "run start",
+    # epoch summaries) regardless of --log-level.
+    prepared = _write_prepared(tmp_path / "prepared.json")
+    run_dir = tmp_path / "run"
+    config = _write_config(tmp_path / "config.json", prepared=prepared, run_dir=run_dir, epochs=1)
+
+    assert main(["train", "--config", str(config)]) == 0
+
+    assert "run start" in capsys.readouterr().err

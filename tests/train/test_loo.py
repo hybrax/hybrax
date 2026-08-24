@@ -1721,14 +1721,18 @@ def test_loo_cli_resume_does_not_load_collection(monkeypatch, tmp_path):
     assert cli.main(["loo", "--resume", str(run_dir)]) == 0
 
 
-def test_loo_cli_resume_rejects_uninitialized_run_dir(caplog, tmp_path):
+def test_loo_cli_resume_rejects_uninitialized_run_dir(capsys, tmp_path):
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     _write_min_config(run_dir / "loo-config.json")
 
     assert cli.main(["loo", "--resume", str(run_dir)]) == 1
-    assert "initialization did not complete" in caplog.text
-    assert "--overwrite" in caplog.text
+    # cli.main's logging.basicConfig(..., force=True) replaces root's handlers
+    # (including pytest's caplog one) with its own real stderr handler, so this
+    # asserts on captured stderr rather than caplog.text.
+    stderr = capsys.readouterr().err
+    assert "initialization did not complete" in stderr
+    assert "--overwrite" in stderr
 
 
 def test_loo_cli_rejects_config_and_resume_together(tmp_path):

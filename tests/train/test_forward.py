@@ -12,7 +12,6 @@ These tests exercise the pieces that do not require a real trained model:
 from __future__ import annotations
 
 import json
-import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1129,7 +1128,7 @@ def test_forward_cli_plot_failure_is_nonfatal(monkeypatch, tmp_path: Path):
 
 
 def test_forward_cli_never_guesses_an_unrecorded_training_selection(
-    monkeypatch, tmp_path: Path, caplog
+    monkeypatch, tmp_path: Path, capsys
 ):
     """A run that recorded no data.processes gets no CLI-invented substitute.
 
@@ -1160,23 +1159,25 @@ def test_forward_cli_never_guesses_an_unrecorded_training_selection(
     fwd_config = _write_forward_config(
         tmp_path, [run_dir], processes=("p1",), prepared=prepared
     )
-    with caplog.at_level(logging.WARNING):
-        assert (
-            cli.main(
-                [
-                    "forward",
-                    "--config",
-                    str(fwd_config),
-                    "--output-dir",
-                    str(output_dir),
-                ]
-            )
-            == 0
+    assert (
+        cli.main(
+            [
+                "forward",
+                "--config",
+                str(fwd_config),
+                "--output-dir",
+                str(output_dir),
+            ]
         )
+        == 0
+    )
 
     assert captured["config"].process_names == ("p1",)
     assert captured["training_process_names"] is None
-    assert "assuming it trained on all" not in caplog.text
+    # cli.main's logging.basicConfig(..., force=True) replaces root's handlers
+    # (including pytest's caplog one) with its own real stderr handler, so this
+    # asserts on captured stderr rather than caplog.text.
+    assert "assuming it trained on all" not in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(
