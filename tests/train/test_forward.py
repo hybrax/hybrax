@@ -1413,6 +1413,7 @@ def test_export_predictions_csv_header_only_for_empty_selection(
     assert rows.columns.tolist() == [
         "process",
         "t",
+        "prediction_valid",
         "c_X",
         "c_S",
         "V_real",
@@ -1462,13 +1463,21 @@ def test_dense_exports_batch_and_exclude_padded_tail(monkeypatch, process_count)
             indices,
             indices[:, None],
             indices[:, None],
-            jnp.full(indices.shape, jnp.inf),
+            jnp.ones(indices.shape, dtype=bool),
         )
 
-    def fake_dense_exports(prediction_t, save_outputs, wrapper, names):
+    def fake_dense_exports(
+        prediction_t,
+        save_outputs,
+        wrapper,
+        names,
+        *,
+        prediction_valid,
+    ):
         del wrapper
         np.testing.assert_array_equal(prediction_t[:, 0], save_outputs[:, 0])
         assert prediction_t.shape[0] == len(names)
+        assert prediction_valid.shape[0] == len(names)
         return {name: int(prediction_t[i, 0]) for i, name in enumerate(names)}
 
     monkeypatch.setattr(harness_module, "_BATCHED_LOSS_FN_JIT", fake_batched_loss)
@@ -1559,6 +1568,7 @@ def test_plot_forward_predictions_plots_every_rate(monkeypatch, tmp_path: Path):
     )
     export = postprocessing.DenseProcessExport(
         t=export.t,
+        prediction_valid=export.prediction_valid,
         c_species=export.c_species,
         v_real=export.v_real,
         b_modeled_cum=export.b_modeled_cum,
@@ -1845,6 +1855,39 @@ def test_dense_export_grid_includes_measurement_times():
     assert export.q_rates.shape[0] == export.t.shape[0]
 
 
+def test_dense_export_keeps_validity_aligned_through_sort_and_dedup():
+    wrapper = SimpleNamespace(
+        modeled_RMC_names=("biomass",),
+        modeled_PV_names=(),
+        modeled_Inflow_names=(),
+        modeled_Outflow_names=(),
+        reaction_module=SimpleNamespace(unscale_state=lambda values: values),
+    )
+    save_outputs = SaveOutputs(
+        SCL_states=jnp.asarray([[[0.0, 1.0], [20.0, 1.0], [10.0, 1.0], [21.0, 1.0]]]),
+        RAW_V_export=jnp.ones((1, 4)),
+        RAW_V=jnp.ones((1, 4)),
+        RAW_modeled_BiologicalOde_rates=jnp.asarray([[[0.0], [2.0], [1.0], [2.1]]]),
+        RAW_modeled_Inflows_rates=jnp.empty((1, 4, 0)),
+        RAW_modeled_Outflows_rates=jnp.empty((1, 4, 0)),
+        auxiliary={"regime": jnp.asarray([[0, 2, 1, 2]])},
+    )
+
+    export = postprocessing.dense_exports_from_save_outputs(
+        jnp.asarray([[0.0, 2.0, 1.0, 2.0]]),
+        save_outputs,
+        wrapper,
+        ("p1",),
+        prediction_valid=jnp.asarray([[True, False, True, False]]),
+    )["p1"]
+
+    np.testing.assert_array_equal(export.t, [0.0, 1.0, 2.0])
+    np.testing.assert_array_equal(export.prediction_valid, [True, True, False])
+    np.testing.assert_allclose(export.c_species[:2, 0], [0.0, 10.0])
+    assert np.isnan(export.c_species[2, 0])
+    np.testing.assert_array_equal(export.auxiliary["regime"], [0, 1, 2])
+
+
 def test_loo_scored_value_equals_training_framework_solve():
     """The value the LOO scorer reads at a measurement must equal the model's exact
     ODE solution there -- i.e. what the training framework evaluates the loss
@@ -1898,7 +1941,11 @@ def test_export_predictions_csv_preserves_modeled_flow_signs(tmp_path: Path):
             auxiliary=None,
         )
         return postprocessing.dense_exports_from_save_outputs(
-            jnp.asarray([[0.0, 1.0]]), save_outputs, wrapper, ("p1",)
+            jnp.asarray([[0.0, 1.0]]),
+            save_outputs,
+            wrapper,
+            ("p1",),
+            prediction_valid=jnp.ones((1, 2), dtype=bool),
         )
 
     mean_exports, std_exports = postprocessing.aggregate_dense_exports(
@@ -1910,13 +1957,14 @@ def test_export_predictions_csv_preserves_modeled_flow_signs(tmp_path: Path):
     header = [
         "process",
         "t",
+        "prediction_valid",
         "V_real",
         "B_feed_cum",
         "B_perfusion_cum",
         "B_feed_rate",
         "B_perfusion_rate",
     ]
-    columns = header[3:]
+    columns = header[4:]
     mean_path = tmp_path / "predictions.csv"
     std_path = tmp_path / "predictions_std.csv"
 
@@ -1927,6 +1975,8 @@ def test_export_predictions_csv_preserves_modeled_flow_signs(tmp_path: Path):
     std_rows = pd.read_csv(std_path)
     assert mean_rows.columns.tolist() == header
     assert std_rows.columns.tolist() == header
+    assert mean_rows["prediction_valid"].all()
+    assert std_rows["prediction_valid"].all()
     np.testing.assert_allclose(
         np.vstack((mean_rows[columns], std_rows[columns])),
         [
@@ -1965,6 +2015,7 @@ def test_export_predictions_csv_includes_auxiliary_columns(tmp_path: Path):
     assert rows.columns.tolist() == [
         "process",
         "t",
+        "prediction_valid",
         "c_biomass",
         "V_real",
         "q_biomass",
@@ -1978,10 +2029,72 @@ def test_export_predictions_csv_includes_auxiliary_columns(tmp_path: Path):
     assert np.allclose(rows["aux_mu_raw"], -0.75)
 
 
+def test_export_predictions_csv_blanks_invalid_integer_and_boolean_auxiliary(
+    tmp_path: Path,
+):
+    wrapper = SimpleNamespace(
+        modeled_RMC_names=("biomass",),
+        modeled_PV_names=(),
+        modeled_Inflow_names=(),
+        modeled_Outflow_names=(),
+        rhs_ode=SimpleNamespace(name_modeled_rates=("q_biomass",)),
+    )
+    export = postprocessing.DenseProcessExport(
+        t=np.asarray([0.0, 1.0]),
+        prediction_valid=np.asarray([True, False]),
+        c_species=np.asarray([[1.0], [9.0]]),
+        v_real=np.asarray([1.0, 9.0]),
+        b_modeled_cum=np.zeros((2, 0)),
+        q_rates=np.asarray([[0.1], [9.0]]),
+        modeled_Inflow_rates=np.zeros((2, 0)),
+        modeled_Outflow_rates=np.zeros((2, 0)),
+        auxiliary={
+            "flag": np.asarray([True, False]),
+            "regime": np.asarray([3, 9]),
+        },
+    )
+    path = tmp_path / "predictions.csv"
+
+    postprocessing.export_predictions_csv(wrapper, {"p1": export}, path)
+
+    rows = pd.read_csv(path)
+    assert rows["prediction_valid"].tolist() == [True, False]
+    assert bool(rows.loc[0, "aux_flag"])
+    assert rows.loc[0, "aux_regime"] == 3
+    output_columns = rows.columns.difference(["process", "t", "prediction_valid"])
+    assert rows.loc[1, output_columns].isna().all()
+
+
+def test_aggregate_dense_exports_requires_every_model_to_be_valid():
+    def export(values, valid):
+        values = np.asarray(values, dtype=float)
+        return postprocessing.DenseProcessExport(
+            t=np.asarray([0.0, 1.0]),
+            prediction_valid=np.asarray(valid),
+            c_species=values[:, None],
+            v_real=values,
+            b_modeled_cum=np.zeros((2, 0)),
+            q_rates=values[:, None],
+            modeled_Inflow_rates=np.zeros((2, 0)),
+            modeled_Outflow_rates=np.zeros((2, 0)),
+        )
+
+    mean, std = postprocessing.aggregate_dense_exports(
+        [
+            {"p1": export([1.0, 2.0], [True, True])},
+            {"p1": export([3.0, 999.0], [True, False])},
+        ]
+    )
+
+    np.testing.assert_array_equal(mean["p1"].prediction_valid, [True, False])
+    np.testing.assert_array_equal(std["p1"].prediction_valid, [True, False])
+
+
 def _mismatched_aux_exports() -> dict[str, "postprocessing.DenseProcessExport"]:
     return {
         "p1": postprocessing.DenseProcessExport(
             t=np.asarray([0.0, 1.0], dtype=float),
+            prediction_valid=np.ones(2, dtype=bool),
             c_species=np.asarray([[1.0], [1.0]], dtype=float),
             v_real=np.asarray([1.0, 1.0], dtype=float),
             b_modeled_cum=np.zeros((2, 0), dtype=float),
@@ -1992,6 +2105,7 @@ def _mismatched_aux_exports() -> dict[str, "postprocessing.DenseProcessExport"]:
         ),
         "p2": postprocessing.DenseProcessExport(
             t=np.asarray([0.0, 1.0], dtype=float),
+            prediction_valid=np.ones(2, dtype=bool),
             c_species=np.asarray([[1.0], [1.0]], dtype=float),
             v_real=np.asarray([1.0, 1.0], dtype=float),
             b_modeled_cum=np.zeros((2, 0), dtype=float),
@@ -2008,6 +2122,7 @@ def test_aggregate_dense_exports_rejects_mismatched_time_grids():
         rows = len(t)
         return postprocessing.DenseProcessExport(
             t=np.asarray(t, dtype=float),
+            prediction_valid=np.ones(rows, dtype=bool),
             c_species=np.zeros((rows, 1)),
             v_real=np.zeros(rows),
             b_modeled_cum=np.zeros((rows, 0)),

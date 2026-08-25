@@ -9,6 +9,7 @@ from pathlib import Path
 
 import optax
 
+from .postprocessing import DenseProcessExport, export_predictions_csv
 from .serialization import save_model, save_opt_state, write_json
 from .wrapper import HybridOdeWrapper
 
@@ -58,6 +59,7 @@ class CheckpointWriter:
         opt_state: optax.OptState,
         mean_loss: float,
         holdout_loss: float | None,
+        holdout_predictions: dict[str, DenseProcessExport] | None = None,
     ) -> Path:
         """Write one checkpoint directory and point ``latest`` at it.
 
@@ -71,6 +73,8 @@ class CheckpointWriter:
                 ``train_state.json``.
             holdout_loss: Holdout/validation loss at this step, or ``None``
                 when no holdout was evaluated.
+            holdout_predictions: Measurement-grid holdout predictions to write,
+                or ``None`` to omit the CSV artifact.
 
         Returns:
             The checkpoint directory that was written.
@@ -99,6 +103,12 @@ class CheckpointWriter:
                 shutil.copyfile(source, d / name)
         if self._prepared_src is not None and self._prepared_src.is_file():
             _bundle_prepared_gz(self._prepared_src, d / "prepared.json.gz")
+        if holdout_predictions is not None:
+            export_predictions_csv(
+                wrapper,
+                holdout_predictions,
+                d / "holdout_predictions.csv",
+            )
 
         self._update_latest(d)
         return d

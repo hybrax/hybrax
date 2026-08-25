@@ -34,6 +34,11 @@ class SingleSampleResult(eqx.Module):
     per_target_loss: jax.Array
     states: jax.Array
     save_outputs: SaveOutputs
+    # Measurement-grid view for export only. Loss inputs keep using ``save_outputs``
+    # and the finite placeholders produced by the physical solve.
+    measurement_save_outputs: SaveOutputs
+    # Row-level solve validity, before observation availability is applied.
+    measurement_prediction_valid: jax.Array
     # Time of this sample's first failed ODE segment (``+inf`` if the solve
     # never bailed). A finite value flags a partially-failed lane; the harness
     # counts finite entries per step to report how often segments fail. Always
@@ -48,6 +53,8 @@ class SingleSampleResult(eqx.Module):
     # ``prediction_grid_n`` is requested; ``None`` otherwise (e.g. training).
     prediction_t: jax.Array | None = None
     prediction_save_outputs: SaveOutputs | None = None
+    # Validity on ``prediction_t`` from this evaluation's own solve.
+    prediction_valid: jax.Array | None = None
 
 
 def clamp_padded_time_rows(times: jax.Array, lengths: jax.Array) -> jax.Array:
@@ -320,6 +327,7 @@ def evaluate_sample_with_loss_module(
         dense_views["auxiliary"] = None
         prediction_t = None
         prediction_save_outputs = None
+        prediction_valid = None
     else:
         # Dense/prediction path: solve ONCE on the union of the measurement grid,
         # the loss module's dense grid, and the forward prediction grid, then
@@ -370,6 +378,7 @@ def evaluate_sample_with_loss_module(
             dense_views = _views_from_save_outputs(dense_save_outputs)
         if prediction_grid_n is None:
             prediction_save_outputs = None
+            prediction_valid = None
         else:
             # Splice the exact measurement grid into the forward export grid so
             # predictions.csv carries a node at every measurement time (padded
@@ -382,22 +391,7 @@ def evaluate_sample_with_loss_module(
             prediction_save_outputs = jtu.tree_map(
                 lambda leaf: leaf[export_idx], save_outputs
             )
-            # Re-mark post-failure export rows as non-finite. The union solve was
-            # sanitized to a finite ``y0`` fallback for the loss (fail_time path), so a
-            # failed forward would otherwise present that fallback as a real prediction.
-            # ``inf`` keeps a failed export detectable in predictions.csv and LOO.
-            # Done here (AFTER ``physical_save_outputs`` ran the model on finite states)
-            # so no ``inf`` is ever fed into the reaction module. No-op on a healthy
-            # solve (fail_time == inf); ``prediction_t`` is finite, so the cutoff holds.
-            pred_post_fail = ~within_fail_time(prediction_t, fail_time)
-            prediction_save_outputs = jtu.tree_map(
-                lambda leaf: jnp.where(
-                    pred_post_fail.reshape((-1,) + (1,) * (leaf.ndim - 1)),
-                    jnp.asarray(jnp.inf, leaf.dtype),
-                    leaf,
-                ),
-                prediction_save_outputs,
-            )
+            prediction_valid = within_fail_time(prediction_t, fail_time)
 
     SCL_states = meas_views["SCL_states"]
     # target_state_indices selects measured states and modeled cumulative flows.
@@ -468,14 +462,22 @@ def evaluate_sample_with_loss_module(
     named = outputs.named_losses
     per_target_loss = jnp.stack([named[name] for name in loss_module.loss_names])
     total_loss = jnp.mean(per_target_loss)
+    measurement_save_outputs = (
+        save_outputs
+        if dense_grid_n is None and prediction_grid_n is None
+        else sample_save_outputs
+    )
     return SingleSampleResult(
         total_loss=total_loss,
         per_target_loss=per_target_loss,
         states=SCL_states,
         save_outputs=save_outputs,
+        measurement_save_outputs=measurement_save_outputs,
+        measurement_prediction_valid=valid_time,
         step=step_arr,
         prediction_t=prediction_t,
         prediction_save_outputs=prediction_save_outputs,
+        prediction_valid=prediction_valid,
         fail_time=fail_time,
     )
 
@@ -617,6 +619,9 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
                 result.per_target_loss,
                 result.prediction_t,
                 result.prediction_save_outputs,
+                result.prediction_valid,
+                result.measurement_save_outputs,
+                result.measurement_prediction_valid,
                 result.fail_time,
             )
 
@@ -625,6 +630,9 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
             per_sample_per_target,
             prediction_t,
             prediction_save_outputs,
+            prediction_valid,
+            measurement_save_outputs,
+            measurement_prediction_valid,
             per_sample_fail_time,
         ) = jax.vmap(
             _sample_loss,
@@ -660,15 +668,19 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
         # 2nd element is PER-SAMPLE per-target (one row per process), matching the
         # forward harvest path (compute_dense_exports); the vmap training step
         # means it. `prediction_*` are non-None only when forward requested
-        # `prediction_grid_n`; training ignores them. `per_sample_fail_time` is the
-        # per-sample first-failed-segment time (``+inf`` for clean solves) and is
-        # appended LAST so positional callers (all of which use `*_`) are unaffected.
+        # `prediction_grid_n`; training ignores them. The measurement grid and its
+        # outputs follow for checkpoint exports. `per_sample_fail_time` remains LAST
+        # so positional callers can continue to collect it with `*_`.
         return (
             mean_total,
             per_sample_per_target,
             per_sample_total,
             prediction_t,
             prediction_save_outputs,
+            prediction_valid,
+            batch_t_meas,
+            measurement_save_outputs,
+            measurement_prediction_valid,
             per_sample_fail_time,
         )
 

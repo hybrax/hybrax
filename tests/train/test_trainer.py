@@ -23,7 +23,7 @@ from hybrax.format.dataclasses import (
 from hybrax.format.mechanistic import build_rhs_ode
 
 import hybrax.train.trainer as trainer_module
-from hybrax.train.physical_solve import solve_physical_states
+from hybrax.train.physical_solve import solve_physical_states, within_fail_time
 from hybrax.train.model_api import (
     AffineScaler,
     LossInputs,
@@ -696,6 +696,9 @@ def test_jitted_batched_loss_uses_dynamic_local_controls_and_global_cin(monkeypa
                 "per_target_loss": jnp.asarray([signal]),
                 "prediction_t": None,
                 "prediction_save_outputs": None,
+                "prediction_valid": None,
+                "measurement_save_outputs": None,
+                "measurement_prediction_valid": jnp.ones(1, dtype=bool),
                 "fail_time": jnp.asarray(jnp.inf),
             },
         )()
@@ -1056,25 +1059,30 @@ def test_fail_time_dense_valid_time_populated_and_finite_on_failure():
     assert leaves and all(bool(jnp.all(jnp.isfinite(g))) for g in leaves)
 
 
-def test_fail_time_prediction_export_marks_post_failure_rows_nonfinite():
-    """A failed forward must not present the finite y0 fallback as a real prediction:
-    post-failure export rows are re-marked non-finite (detectable), while the loss the
-    same call computes stays finite (loss-facing states remain sanitized)."""
+def test_fail_time_prediction_export_marks_invalid_rows():
+    """A failed forward exposes valid rows without changing loss placeholders."""
     wrapper, pd = _build_wrapper_and_process()
     result = evaluate_sample_with_loss_module(
         wrapper, **_fail_time_kwargs(pd, max_solver_steps=1, prediction_grid_n=8)
     )
     assert bool(jnp.isfinite(result.total_loss)), "loss stays finite on a bail"
+    np.testing.assert_array_equal(
+        result.measurement_prediction_valid,
+        within_fail_time(pd.t_measured, result.fail_time),
+    )
+    assert not bool(jnp.all(result.measurement_prediction_valid))
+    assert bool(jnp.all(jnp.isfinite(result.measurement_save_outputs.SCL_states)))
+    assert bool(jnp.all(jnp.isfinite(result.states))), (
+        "loss-facing placeholders must remain finite"
+    )
 
     pred_t = result.prediction_t
-    pred_states = result.prediction_save_outputs.SCL_states
-    post = pred_t > (jnp.min(pred_t) + 1e-4)  # early bail -> fail_time == t0
-    assert bool(jnp.all(jnp.isinf(pred_states[post]))), (
-        "post-failure export rows must be non-finite (not a silent y0 fallback)"
+    np.testing.assert_array_equal(
+        result.prediction_valid,
+        within_fail_time(pred_t, result.fail_time),
     )
-    assert bool(jnp.all(jnp.isfinite(pred_states[~post]))), (
-        "pre-failure export rows (t0) stay finite"
-    )
+    assert not bool(jnp.all(result.prediction_valid))
+    assert bool(jnp.all(jnp.isfinite(result.prediction_save_outputs.SCL_states)))
 
 
 def test_simulate_measurement_states_validates_control_support(monkeypatch):

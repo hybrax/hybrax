@@ -198,6 +198,7 @@ def compute_dense_exports(
             per_sample_total,
             prediction_t,
             prediction_save_outputs,
+            prediction_valid,
             *_,
         ) = outputs
         valid = len(valid_names)
@@ -209,6 +210,7 @@ def compute_dense_exports(
                 jtu.tree_map(lambda leaf: leaf[:valid], prediction_save_outputs),
                 trained_wrapper,
                 valid_names,
+                prediction_valid=prediction_valid[:valid],
             )
         )
     return (
@@ -1965,9 +1967,10 @@ def train_collection(
 
     def _evaluate_holdout(step: int):
         if not cfg.holdout_processes:
-            return None, None
+            return None, None, None
         per_sample_total_parts = []
         per_sample_per_target_parts = []
+        dense_exports: dict[str, DenseProcessExport] = {}
         for valid_names, outputs in _iter_batched_loss_outputs(
             wrapper,
             store,
@@ -1978,17 +1981,41 @@ def train_collection(
             solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
             step=jnp.asarray(step, dtype=jnp.int32),
         ):
-            _, per_sample_per_target, per_sample_total, *_ = outputs
+            (
+                _,
+                per_sample_per_target,
+                per_sample_total,
+                _,
+                _,
+                _,
+                measurement_t,
+                measurement_save_outputs,
+                measurement_prediction_valid,
+                *_,
+            ) = outputs
             valid = len(valid_names)
             per_sample_total_parts.append(np.asarray(per_sample_total[:valid]))
             per_sample_per_target_parts.append(
                 np.asarray(per_sample_per_target[:valid])
+            )
+            dense_exports.update(
+                dense_exports_from_save_outputs(
+                    measurement_t[:valid],
+                    jtu.tree_map(
+                        lambda leaf, n_valid=valid: leaf[:n_valid],
+                        measurement_save_outputs,
+                    ),
+                    wrapper,
+                    valid_names,
+                    prediction_valid=measurement_prediction_valid[:valid],
+                )
             )
         per_sample_total = np.concatenate(per_sample_total_parts)
         per_sample_per_target = np.concatenate(per_sample_per_target_parts)
         return (
             float(np.mean(per_sample_total)),
             tuple(float(value) for value in np.mean(per_sample_per_target, axis=0)),
+            dense_exports,
         )
 
     with RunLogger(
@@ -2065,9 +2092,13 @@ def train_collection(
                 if np.isfinite(ft)
             )
 
-            holdout_loss, holdout_per_target = (None, None)
+            holdout_loss, holdout_per_target, holdout_predictions = (None, None, None)
             if step in checkpoint_boundaries:
-                holdout_loss, holdout_per_target = _evaluate_holdout(step)
+                (
+                    holdout_loss,
+                    holdout_per_target,
+                    holdout_predictions,
+                ) = _evaluate_holdout(step)
                 if holdout_loss is not None:
                     holdout_per_target_so_far[step] = holdout_per_target
 
@@ -2112,6 +2143,7 @@ def train_collection(
                     opt_state=optimizer_state,
                     mean_loss=float(loss),
                     holdout_loss=holdout_loss,
+                    holdout_predictions=holdout_predictions,
                 )
                 _write_training_plots(
                     history=run_log.snapshot(),

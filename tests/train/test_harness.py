@@ -15,6 +15,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+import pandas as pd
 import pytest
 from hybrax.format.dataclasses import (
     BioProcess,
@@ -1179,6 +1180,12 @@ def test_holdout_runs_once_at_periodic_final_collision(tmp_path, monkeypatch):
         (tmp_path / "checkpoints" / "latest" / "train_state.json").read_text()
     )
     assert state["holdout_loss"] == pytest.approx(result.holdout_loss_by_step[2])
+    holdout_predictions = pd.read_csv(
+        tmp_path / "checkpoints" / "latest" / "holdout_predictions.csv"
+    )
+    assert holdout_predictions["process"].unique().tolist() == ["p2"]
+    assert holdout_predictions["t"].tolist() == [0.0, 1.0, 2.0]
+    assert np.isfinite(holdout_predictions["c_biomass"]).all()
 
 
 def test_holdout_batches_weight_valid_samples_and_ignore_padding(tmp_path, monkeypatch):
@@ -1195,17 +1202,22 @@ def test_holdout_batches_weight_valid_samples_and_ignore_padding(tmp_path, monke
     holdout_names = ("p2", "p3", "p4")
 
     def fake_batches(wrapper, received_store, process_names, **kwargs):
-        del wrapper, kwargs
+        del wrapper
         assert received_store is store
         assert process_names == holdout_names
+        assert "prediction_grid_n" not in kwargs
         yield (
             process_names[:2],
             (
                 jnp.asarray(0.0),
                 jnp.asarray([[0.0], [0.0]]),
                 jnp.asarray([0.0, 0.0]),
+                jnp.zeros((2, 1)),
                 None,
                 None,
+                jnp.zeros((2, 1)),
+                None,
+                jnp.ones((2, 1), dtype=bool),
                 jnp.asarray([jnp.inf, jnp.inf]),
             ),
         )
@@ -1215,8 +1227,12 @@ def test_holdout_batches_weight_valid_samples_and_ignore_padding(tmp_path, monke
                 jnp.asarray(514.5),
                 jnp.asarray([[30.0], [999.0]]),
                 jnp.asarray([30.0, 999.0]),
+                jnp.zeros((2, 1)),
                 None,
                 None,
+                jnp.zeros((2, 1)),
+                None,
+                jnp.ones((2, 1), dtype=bool),
                 jnp.asarray([jnp.inf, jnp.inf]),
             ),
         )
@@ -1224,8 +1240,8 @@ def test_holdout_batches_weight_valid_samples_and_ignore_padding(tmp_path, monke
     monkeypatch.setattr(harness_module, "_iter_batched_loss_outputs", fake_batches)
     monkeypatch.setattr(
         harness_module,
-        "compute_dense_exports",
-        lambda *args, **kwargs: (np.zeros(1), np.zeros((1, 1)), {}),
+        "dense_exports_from_save_outputs",
+        lambda *_args, **_kwargs: {},
     )
     result = train_collection(
         store,

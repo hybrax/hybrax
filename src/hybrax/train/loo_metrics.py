@@ -551,7 +551,7 @@ def compute_metrics_from_predictions_csv(
         if sub.empty:
             continue
         pred_t = sub["t"].to_numpy(dtype=np.float64)
-        pred_columns = {col: sub[col].to_numpy(dtype=np.float64) for col in sub.columns}
+        pred_columns = _numeric_pred_columns(sub)
         measurements = _extract_measurements(process, targets)
         metrics_per_target = _evaluate_predictions_for_process(
             pred_t=pred_t,
