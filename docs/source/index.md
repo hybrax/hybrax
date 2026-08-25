@@ -101,22 +101,22 @@ train/further_reading
 :caption: Gallery
 :hidden:
 gallery/index
+gallery/pseudobatch_splines
+gallery/augmentation
 gallery/fed_batch
+gallery/modeled_pv
+gallery/freezing
 gallery/mechanistic_rates
 gallery/dense_loss
 gallery/stateful
-gallery/freezing
+gallery/glutamine_decay
 gallery/loo
-gallery/augmentation
 gallery/gaussian_process
 gallery/knowledge_transfer
 gallery/fba_hyb
 gallery/pls_dfba
 gallery/kan
 gallery/optfed
-gallery/glutamine_decay
-gallery/modeled_pv
-gallery/pseudobatch_splines
 ```
 
 ```{toctree}
