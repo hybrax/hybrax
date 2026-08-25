@@ -382,7 +382,10 @@ def test_prepare_rejects_inconsistent_process_variable_set(tmp_path):
     _write_custom(custom_py)
     output_dir = tmp_path / "prepared"
 
-    with pytest.raises(ValueError, match="process variables differ"):
+    with (
+        pytest.warns(UserWarning, match="non-OK status"),
+        pytest.raises(ValueError, match="process variables differ"),
+    ):
         _prepare_from_collection(collection, tmp_path, output_dir, custom_py=custom_py)
 
 
