@@ -49,7 +49,6 @@ Functions
 
    hybrax.train.loo_metrics.compute_aggregated_metrics
    hybrax.train.loo_metrics.compute_loo_metrics
-   hybrax.train.loo_metrics.compute_metrics_from_predictions_csv
    hybrax.train.loo_metrics.compute_per_process_metrics
    hybrax.train.loo_metrics.format_incompleteness_banner
 
@@ -112,14 +111,6 @@ Module Contents
 
    :returns: :class:`LOOMetricsResult` with the per-(fold, holdout_process,
              target) DataFrame and a per-target aggregate dict.
-
-
-.. py:function:: compute_metrics_from_predictions_csv(predictions_csv, prepared_json, *, target_names = None, process_names = None)
-
-   Compute the same metrics from a single ``predictions.csv``.
-
-   Useful for non-LOO ``hybrax train`` runs (one model, every process)
-   so the same metric definitions apply uniformly.
 
 
 .. py:function:: compute_per_process_metrics(output_dirs, prepared_json, *, metrics = None, extra_metrics = None, target_names = None, include_volume_changes = True, include_train = False, equal_comparison = True)

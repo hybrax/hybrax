@@ -430,13 +430,10 @@ metrics are computed.</p>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.loo_metrics.compute_loo_metrics" title="hybrax.train.loo_metrics.compute_loo_metrics"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_loo_metrics</span></code></a>(loo_output_dir, prepared_json, *)</p></td>
 <td><p>Compute per-fold/per-process/per-target R², NMAE, MAE, RMSE.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.loo_metrics.compute_metrics_from_predictions_csv" title="hybrax.train.loo_metrics.compute_metrics_from_predictions_csv"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_metrics_from_predictions_csv</span></code></a>(predictions_csv, ...)</p></td>
-<td><p>Compute the same metrics from a single <code class="docutils literal notranslate"><span class="pre">predictions.csv</span></code>.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.loo_metrics.compute_per_process_metrics" title="hybrax.train.loo_metrics.compute_per_process_metrics"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_per_process_metrics</span></code></a>(output_dirs, prepared_json, *)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.loo_metrics.compute_per_process_metrics" title="hybrax.train.loo_metrics.compute_per_process_metrics"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_per_process_metrics</span></code></a>(output_dirs, prepared_json, *)</p></td>
 <td><p>Per-(run, fold, holdout_process, target) goodness-of-fit metrics.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.loo_metrics.format_incompleteness_banner" title="hybrax.train.loo_metrics.format_incompleteness_banner"><code class="xref py py-obj docutils literal notranslate"><span class="pre">format_incompleteness_banner</span></code></a>(df)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.loo_metrics.format_incompleteness_banner" title="hybrax.train.loo_metrics.format_incompleteness_banner"><code class="xref py py-obj docutils literal notranslate"><span class="pre">format_incompleteness_banner</span></code></a>(df)</p></td>
 <td><p>Return a multi-line banner string when <code class="docutils literal notranslate"><span class="pre">df</span></code> carries incomplete-LOO</p></td>
 </tr>
 </tbody>
@@ -528,27 +525,6 @@ target) DataFrame and a per-target aggregate dict.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><a class="reference internal" href="#hybrax.train.loo_metrics.LOOMetricsResult" title="hybrax.train.loo_metrics.LOOMetricsResult">LOOMetricsResult</a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="hybrax.train.loo_metrics.compute_metrics_from_predictions_csv">
-<span class="sig-prename descclassname"><span class="pre">hybrax.train.loo_metrics.</span></span><span class="sig-name descname"><span class="pre">compute_metrics_from_predictions_csv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">predictions_csv</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_json</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">process_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/loo_metrics.html#compute_metrics_from_predictions_csv"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo_metrics.compute_metrics_from_predictions_csv" title="Link to this definition">¶</a></dt>
-<dd><p>Compute the same metrics from a single <code class="docutils literal notranslate"><span class="pre">predictions.csv</span></code>.</p>
-<p>Useful for non-LOO <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">train</span></code> runs (one model, every process)
-so the same metric definitions apply uniformly.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>predictions_csv</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>)</p></li>
-<li><p><strong>prepared_json</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p></li>
-<li><p><strong>target_names</strong> (<em>Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>)</p></li>
-<li><p><strong>process_names</strong> (<em>Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>)</p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>pandas.DataFrame</p>
 </dd>
 </dl>
 </dd></dl>
@@ -684,7 +660,6 @@ flags, else None. Banner is suitable for <code class="docutils literal notransla
 </li>
 <li><a class="reference internal" href="#hybrax.train.loo_metrics.compute_aggregated_metrics"><code class="docutils literal notranslate"><span class="pre">compute_aggregated_metrics()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.loo_metrics.compute_loo_metrics"><code class="docutils literal notranslate"><span class="pre">compute_loo_metrics()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.loo_metrics.compute_metrics_from_predictions_csv"><code class="docutils literal notranslate"><span class="pre">compute_metrics_from_predictions_csv()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.loo_metrics.compute_per_process_metrics"><code class="docutils literal notranslate"><span class="pre">compute_per_process_metrics()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.loo_metrics.format_incompleteness_banner"><code class="docutils literal notranslate"><span class="pre">format_incompleteness_banner()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.loo_metrics.DEFAULT_METRICS"><code class="docutils literal notranslate"><span class="pre">DEFAULT_METRICS</span></code></a></li>

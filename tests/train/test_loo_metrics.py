@@ -38,7 +38,6 @@ from hybrax.train.loo_metrics import (
     _read_fold_sidecar,
     compute_aggregated_metrics,
     compute_loo_metrics,
-    compute_metrics_from_predictions_csv,
     compute_per_process_metrics,
     format_incompleteness_banner,
 )
@@ -159,28 +158,6 @@ def _three_process_collection() -> BioProcessCollection:
         },
         metadata={},
     )
-
-
-def test_compute_metrics_from_predictions_csv_skips_non_numeric_columns(
-    tmp_path: Path,
-):
-    predictions = tmp_path / "predictions.csv"
-    pd.DataFrame(
-        {
-            "process": ["p1", "p1", "p1"],
-            "t": [0.0, 1.0, 2.0],
-            "prediction_valid": [True, True, True],
-            "c_biomass": [1.0, 2.0, 3.0],
-        }
-    ).to_csv(predictions, index=False)
-
-    metrics = compute_metrics_from_predictions_csv(
-        predictions,
-        BioProcessCollection(processes={"p1": _make_process("p1")}, metadata={}),
-    )
-
-    assert metrics[["process", "target"]].values.tolist() == [["p1", "biomass"]]
-    assert metrics.loc[0, "r2"] == pytest.approx(1.0)
 
 
 def _write_fold(

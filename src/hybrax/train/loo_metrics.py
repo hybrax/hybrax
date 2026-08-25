@@ -517,52 +517,6 @@ def compute_loo_metrics(
     )
 
 
-def compute_metrics_from_predictions_csv(
-    predictions_csv: str | Path,
-    prepared_json: str | Path | BioProcessCollection,
-    *,
-    target_names: Iterable[str] | None = None,
-    process_names: Iterable[str] | None = None,
-) -> pd.DataFrame:
-    """Compute the same metrics from a single ``predictions.csv``.
-
-    Useful for non-LOO ``hybrax train`` runs (one model, every process)
-    so the same metric definitions apply uniformly.
-    """
-    if isinstance(prepared_json, BioProcessCollection):
-        collection = prepared_json
-    else:
-        collection = load_process_collection(Path(prepared_json))
-    pred_df = pd.read_csv(predictions_csv)
-    targets = _resolve_target_names(
-        {}, pred_df, tuple(target_names) if target_names else None
-    )
-    selected_processes = (
-        tuple(process_names)
-        if process_names is not None
-        else tuple(pd.unique(pred_df["process"]))
-    )
-    rows: list[dict[str, Any]] = []
-    for proc_name in selected_processes:
-        process = collection.processes.get(proc_name)
-        if process is None:
-            continue
-        sub = pred_df.loc[pred_df["process"] == proc_name].sort_values("t")
-        if sub.empty:
-            continue
-        pred_t = sub["t"].to_numpy(dtype=np.float64)
-        pred_columns = _numeric_pred_columns(sub)
-        measurements = _extract_measurements(process, targets)
-        metrics_per_target = _evaluate_predictions_for_process(
-            pred_t=pred_t,
-            pred_columns=pred_columns,
-            measurements=measurements,
-        )
-        for target, m in metrics_per_target.items():
-            rows.append({"process": proc_name, "target": target, **m})
-    return pd.DataFrame(rows)
-
-
 # ---------------------------------------------------------------------------
 # Aggregation
 # ---------------------------------------------------------------------------
