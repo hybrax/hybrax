@@ -49,5 +49,5 @@ something is the way it is: never for behaviour.
 
 ## See also
 
-- [hybrax.train guide](../train/index.md): the other half of the stack.
+- [`hybrax.train` guide](../train/index.md): the other half of the stack.
 - [Design rationale](../under_the_hood/design_rationale.md): the architectural decisions.

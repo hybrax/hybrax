@@ -115,7 +115,7 @@ fold.
 
 This is not a nicety. Without it, a synthetic sibling of the held-out run sits in the
 training set, and your cross-validation score is measuring memorisation. If you use
-augmentation, use hybrax.train's LOO rather than rolling your own splits.
+augmentation, use `hybrax.train`'s LOO rather than rolling your own splits.
 
 ## Holdout without cross-validation
 

@@ -21,7 +21,7 @@ kernelspec:
 Dynamic flux-balance analysis (dFBA) normally means solving a real linear program,
 `max c^T v` subject to `S.v = 0` and flux bounds, at every integration step. That is
 not something JAX can differentiate through or `vmap`/`jit` the way it does a neural
-network, and hybrax.train has no LP solver in its training loop. The fix, from Gotsmy &
+network, and `hybrax.train` has no LP solver in its training loop. The fix, from Gotsmy &
 Guillén-Gosálbez's FBA-Hyb <a href="#ref-fbahyb">[1]</a>: fit a closed-form,
 pole-free surrogate of the FBA solution **once, offline** (10,000 real linear
 programs solved outside the training loop), then embed that surrogate directly
@@ -135,7 +135,7 @@ squashed through `_bounded_softplus` to stay inside the range the surrogate was
 actually fit over. `n_S` (succinate) is fixed at `0.0`: this page has no deliberate
 product, only real *E. coli* overflow metabolism (growth versus maintenance versus
 acetate secretion), the same trade-off the surrogate was trained on. The predicted
-weights go out through `auxiliary`, which hybrax.train threads straight into
+weights go out through `auxiliary`, which `hybrax.train` threads straight into
 `predictions.csv`.
 
 ## Training

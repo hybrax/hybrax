@@ -64,7 +64,7 @@ Useful when the final model overfitted and an earlier one is the one you want.
 
 :::{admonition} TODO: not yet a worked example
 :class: warning
-The `len(models) > 1` path below has no test coverage anywhere in hybrax.train today.
+The `len(models) > 1` path below has no test coverage anywhere in `hybrax.train` today.
 This section stays reference-only (no executed `{code-cell}`) until that is hardened
 and a real worked example can be verified rather than just described.
 :::

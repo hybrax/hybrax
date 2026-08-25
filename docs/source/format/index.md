@@ -22,7 +22,7 @@ kernelspec:
 <img class="theme-diagram diagram-dark" src="../_static/diagram_format_pipeline_dark.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, BiologicalOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
 
 You write the left column once. The right column is generated, and is the single source
-of truth for layout everywhere downstream: hybrax.train never re-derives it.
+of truth for layout everywhere downstream: `hybrax.train` never re-derives it.
 
 ## The pages
 
@@ -88,5 +88,5 @@ an amount balance. When something looks wrong, check the volume first.
 - [Concepts and vocabulary](../start/concepts.md), if any term above was unfamiliar.
 - [Tutorial 1](../tutorials/01_your_first_dataset.md): the same material as a walkthrough.
 - [API reference](../autoapi/hybrax/format/index): every signature.
-- [hybrax.train](../train/index.md) Training a model on your imported data.
+- [`hybrax.train`](../train/index.md) Training a model on your imported data.
 

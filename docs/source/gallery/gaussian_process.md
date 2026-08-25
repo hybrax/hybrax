@@ -13,14 +13,14 @@ kernelspec:
 # A Gaussian-process model
 
 > **Demonstrates.** A sparse Gaussian process, mean and variance both, occupying the
-> reaction module's slot instead of a neural network, trained end to end by hybrax.train's
+> reaction module's slot instead of a neural network, trained end to end by `hybrax.train`'s
 > own optimizer, with the predictive uncertainty read out through
 > `ReactionOutputs.auxiliary`.
 
 Inspired by Helleckes et al. 2024 <a href="#ref-helleckes2024">[1]</a>, who fit a GP-based
 hybrid model for bioprocess rates. This page is not a replication:
 their GP is fit by maximum-likelihood estimation on a precomputed rate target, ours is
-trained by gradient descent through the continuous ODE solve, which is hybrax.train's own
+trained by gradient descent through the continuous ODE solve, which is `hybrax.train`'s own
 training loop and nothing else. The mechanism (an SE kernel with automatic relevance
 determination, predicting a rate from the current state) is the same; how it gets fit
 is not. See [Knowledge transfer](knowledge_transfer.md) for the paper's other headline
@@ -120,7 +120,7 @@ returned as the rate), `var` is the predictive variance at the current state. Th
 not an RBF network only mimicking a GP's mean, it is the actual posterior computation,
 just fit by a different procedure than a textbook GP.
 
-The predictive std goes straight into `auxiliary`, which hybrax.train threads into
+The predictive std goes straight into `auxiliary`, which `hybrax.train` threads into
 `predictions.csv` as extra columns: no new plumbing needed.
 
 ```{literalinclude} ../../../examples/gallery_gaussian_process/custom.py

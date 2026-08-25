@@ -126,7 +126,7 @@ shutil.copy(EXAMPLE / "loo-config.json", WORK / "loo-config.json")
 Each entry is a `HoldoutSet`: `test` (required) is the held-out set for that fold;
 `name` (optional) labels the fold's directory and summary row; `train` (optional) pins
 the exact training set, otherwise every other process is used. With no
-`per_fold_holdout_sets` at all, hybrax.train does the same thing automatically: one fold
+`per_fold_holdout_sets` at all, `hybrax.train` does the same thing automatically: one fold
 per process.
 
 ```{code-cell} ipython3

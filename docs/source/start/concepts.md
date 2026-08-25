@@ -68,7 +68,7 @@ Volume changes are always stored in the *volume* unit (L, kg), never as a rate.
 
 ## Abbreviations
 
-These two appear constantly, especially in hybrax.train, and are rarely spelled out.
+These two appear constantly, especially in `hybrax.train`, and are rarely spelled out.
 
 | Short | Long | What it is |
 |---|---|---|
@@ -123,7 +123,7 @@ something, and the volume changed. The **pseudobatch transform** removes the sec
 batch and fed-batch runs directly comparable. A good sanity check: this trace should
 **not** jump at a pure sampling event. If it does, the volume accounting is wrong.
 
-## hybrax.train vocabulary
+## `hybrax.train` vocabulary
 
 | Term | Meaning |
 |---|---|
@@ -143,7 +143,7 @@ batch and fed-batch runs directly comparable. A good sanity check: this trace sh
 
 ### SCL and RAW
 
-The two spaces hybrax.train works in, and the source of most confusion when writing a first
+The two spaces `hybrax.train` works in, and the source of most confusion when writing a first
 reaction module.
 
 - **RAW**: physical units. g/L, litres, hours. What your data is in and what the

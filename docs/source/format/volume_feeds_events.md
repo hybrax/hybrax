@@ -130,7 +130,7 @@ sample then feed) the order is fixed:
 1. **Sample first.** The offline row describes the pre-feed reactor state.
 2. **Bolus second.** It dilutes from the post-sample volume, then adds its mass.
 
-hybrax.format and hybrax.train both apply this order. It is why a measurement timestamped
+hybrax.format and `hybrax.train` both apply this order. It is why a measurement timestamped
 strictly *before* a bolus is unaffected by that bolus, and why the alignment validator
 cares about measurements landing just *after* a sample.
 

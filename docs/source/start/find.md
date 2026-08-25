@@ -76,7 +76,7 @@ learned; scan for your row.
 | understand an error message | [Errors](../troubleshooting/errors.md) |
 | find out why a run that "worked" gives nonsense | [Silent failures](../troubleshooting/silent_failures.md) |
 | know what is simply not implemented | [Limits and gotchas](../format/limits_and_gotchas.md) |
-| find the exhaustive reference for an API | [API reference](../autoapi/hybrax/format/index) · [hybrax.train](../autoapi/hybrax/train/index) |
+| find the exhaustive reference for an API | [API reference](../autoapi/hybrax/format/index) · [`hybrax.train`](../autoapi/hybrax/train/index) |
 
 ## Things the tutorials leave out on purpose
 

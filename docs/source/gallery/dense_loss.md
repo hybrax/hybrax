@@ -14,7 +14,7 @@ kernelspec:
 
 > **Demonstrates.** A loss module that constrains the trajectory *between*
 > measurements (bounds on states and rates, and a smoothness penalty on rate
-> curvature) using hybrax.format's own `Bounds` metadata and hybrax.train's jump-aware
+> curvature) using hybrax.format's own `Bounds` metadata and `hybrax.train`'s jump-aware
 > dense-grid helpers.
 
 By default, a loss only ever looks at measurement times. Between them, the model is free
@@ -118,7 +118,7 @@ hook:
 
 This is exactly the use hybrax.format's docs describe for `Bounds`: *"pure metadata (not
 enforced inside RhsOde or the integrator; downstream consumers read them off the process
-to build soft-constraint penalties."* Nothing threads these bounds into hybrax.train
+to build soft-constraint penalties."* Nothing threads these bounds into `hybrax.train`
 automatically) the loss module below reads them itself, once, at construction:
 
 ```{literalinclude} ../../../examples/gallery_dense_loss/custom.py
@@ -159,7 +159,7 @@ triple_mask = all_triple(valid) & dense_triple_mask_away_from_jumps(
 
 A bolus creates a real, physical kink in concentration (and therefore in the inferred
 rate. Penalising curvature there would fight the data. `dense_triple_mask_away_from_jumps`
-is shipped by hybrax.train for exactly this: it excludes any three-point window whose span
+is shipped by `hybrax.train` for exactly this: it excludes any three-point window whose span
 straddles a jump time, so smoothness is only asked for where the process is actually
 smooth. `demo_batch` has no events, so this mask is a no-op here) see
 [Fed-batch](fed_batch.md) for where it matters.

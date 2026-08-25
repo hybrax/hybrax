@@ -135,7 +135,7 @@ pprint(reactor_medium.components)
 
 :::{admonition} Notes
 :class: note
-- The `bounds` are metadata, not constraints. Nothing in `Hybrax` enforces bounds per default. They are recorded so downstream consumers (hybrax.train's loss module, for instance) can build soft penalties from them.
+- The `bounds` are metadata, not constraints. Nothing in `Hybrax` enforces bounds per default. They are recorded so downstream consumers (`hybrax.train`'s loss module, for instance) can build soft penalties from them.
 - The units are explicitly required. This avoids ambiguity and enables validation downstream.
 :::
 

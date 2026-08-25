@@ -36,7 +36,7 @@ version, stated plainly:
   condition threaded into the reaction module, an added wiring cost this
   page's teaching point doesn't need. The *mechanism*, independent
   multiplicative terms, is fully real; the *count* of terms is smaller.
-- This page fits every constant by hybrax.train's ordinary gradient descent through
+- This page fits every constant by `hybrax.train`'s ordinary gradient descent through
   the whole ODE, once, with no sparsification. The paper's own Stage II runs an
   F-test-based backward term-elimination search over 13 significance levels to
   select a smaller model; Stage III then solves an orthogonal-collocation

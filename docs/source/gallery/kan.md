@@ -18,7 +18,7 @@ kernelspec:
 > slot: every edge between an input and a hidden or output node carries its own
 > learnable univariate function (a SiLU base term plus a small Gaussian
 > radial-basis expansion), summed at each node, instead of an MLP's fixed
-> activation with learned linear weights. Trained end to end by hybrax.train's own
+> activation with learned linear weights. Trained end to end by `hybrax.train`'s own
 > optimizer; each edge's learned curve can be read out directly after training.
 
 Inspired by Bühler & Guillén-Gosálbez 2026 <a href="#ref-srkan">[1]</a>, whose
@@ -28,13 +28,13 @@ interpretable kinetic rate laws for a batch fermentation of biomass, substrate
 and product, a system whose shape lines up closely with `demo_batch`'s own
 biomass/glucose/product state. This page reproduces the core architectural idea
 (learnable univariate functions on edges, summed at nodes, in place of an MLP)
-as a live hybrax.train reaction module, using a Gaussian radial-basis edge function
+as a live `hybrax.train` reaction module, using a Gaussian radial-basis edge function
 in place of B-splines, an equivalent formulation per Li 2024
 <a href="#ref-rbf">[3]</a>, the same reasoning SR-KAN itself uses to justify
 swapping B-splines for a different fast, localized basis.
 
 **Two pieces worth being explicit about.** This page trains the KAN as the live
-reaction module inside hybrax.train's own Diffrax-integrated, end-to-end
+reaction module inside `hybrax.train`'s own Diffrax-integrated, end-to-end
 differentiable training loop. SR-KAN's own bioprocess case study is a two-stage
 pipeline instead: a Neural Controlled Differential Equation first fits smooth
 derivatives from noisy measurements, then those derivatives are symbolically
