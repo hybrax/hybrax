@@ -255,6 +255,7 @@
 <li class="toctree-l1"><a class="reference internal" href="pseudobatch_splines.html">Pseudobatch Splines</a></li>
 <li class="toctree-l1"><a class="reference internal" href="augmentation.html">Augmentation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="fed_batch.html">Feeds, Boluses, and Samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="continuous_overflow.html">Continuous Culture with Controlled Overflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="modeled_pv.html">Modeled Process Variables</a></li>
 <li class="toctree-l1"><a class="reference internal" href="freezing.html">Freezing Parameters</a></li>
 <li class="toctree-l1"><a class="reference internal" href="mechanistic_rates.html">Mechanistic Models</a></li>
@@ -592,7 +593,7 @@ just fit by a different procedure than a textbook GP.</p>
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-25 16:22:13 INFO __main__: training complete: first_mean_loss=0.231452 last_mean_loss=0.000338997 delta=-0.231113
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-25 18:39:30 INFO __main__: training complete: first_mean_loss=0.231452 last_mean_loss=0.000329492 delta=-0.231122
 run directory: ./source/_data/out/runs/gallery_gaussian_process/run
 </pre></div>
 </div>
@@ -600,9 +601,9 @@ run directory: ./source/_data/out/runs/gallery_gaussian_process/run
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>biomass    R2 = 0.9948
-glucose    R2 = 0.9945
-product    R2 = 0.9977
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>biomass    R2 = 0.9950
+glucose    R2 = 0.9947
+product    R2 = 0.9978
 </pre></div>
 </div>
 </div>
@@ -612,7 +613,7 @@ R² values above are what that prior achieves against this page’s own data, wh
 the question this page sets out to answer.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/1210e84c3fd1a646034e1a5daa76757fb0c59a4658e746d455ac59e740d82517.png" src="../_images/1210e84c3fd1a646034e1a5daa76757fb0c59a4658e746d455ac59e740d82517.png" />
+<img alt="../_images/d18b251f2884acd8ea4a14974fa30313c6f4b5f9b2dfbfd47b8c3179f432eef5.png" src="../_images/d18b251f2884acd8ea4a14974fa30313c6f4b5f9b2dfbfd47b8c3179f432eef5.png" />
 </div>
 </div>
 <p>Left column: measured points against the integrated trajectory. Right column: the
@@ -623,9 +624,9 @@ which never enter the loss directly, only their integral does.</p>
 <h2>What the GP actually learned<a class="headerlink" href="#what-the-gp-actually-learned" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>centers: spread (std) per feature = [0.91912208 0.81590832 0.7428873 ]
-lengthscale (exp)   = [0.87310512 0.40858992 1.08815573]
-output_scale (exp)  = 2.752
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>centers: spread (std) per feature = [0.91935914 0.8141382  0.74214913]
+lengthscale (exp)   = [0.8735382  0.39974422 1.09443869]
+output_scale (exp)  = 2.755
 noise (exp)         = 0.049
 </pre></div>
 </div>
@@ -642,7 +643,7 @@ the input entirely (lengthscale huge).</p>
 <h2>Reading out the uncertainty<a class="headerlink" href="#reading-out-the-uncertainty" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/f9cdd8bb3de5b704b3f0c62c89f055c4df0f914bed9d07dde7dc781053a2d1e1.png" src="../_images/f9cdd8bb3de5b704b3f0c62c89f055c4df0f914bed9d07dde7dc781053a2d1e1.png" />
+<img alt="../_images/8f9ba7e96cc4e3e4d559ba086550f84633c2c8c6fb025f2de26c8af926cb947e.png" src="../_images/8f9ba7e96cc4e3e4d559ba086550f84633c2c8c6fb025f2de26c8af926cb947e.png" />
 </div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">aux_rate_std_0/1/2</span></code> are <code class="docutils literal notranslate"><span class="pre">ReactionOutputs.auxiliary[&quot;rate_std&quot;]</span></code>, one column per rate,

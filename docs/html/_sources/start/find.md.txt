@@ -86,6 +86,7 @@ The five tutorials use one batch dataset and nothing else. Everything below is i
 | Topic | Page |
 |---|---|
 | Continuous feed, boluses and sampling in one run | [Fed-batch](../gallery/fed_batch.md) |
+| Batch-to-continuous operation with controlled overflow | [Continuous culture with controlled overflow](../gallery/continuous_overflow.md) |
 | Mechanistic rate laws, partially trainable | [Mechanistic models](../gallery/mechanistic_rates.md) |
 | Bounds and smoothness penalties between measurements | [Dense losses](../gallery/dense_loss.md) |
 | A reaction module with memory (latent-ODE / LSTM) | [Stateful reaction modules](../gallery/stateful.md) |

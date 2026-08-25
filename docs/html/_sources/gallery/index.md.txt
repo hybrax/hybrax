@@ -31,6 +31,7 @@ needed at all.
 | Entry | Demonstrates |
 |---|---|
 | [Feeds, Boluses, and Samples](fed_batch.md) | Continuous feed **and** boluses **and** sampling in one run; a reaction module that reads the feed and a controlled process variable as real inputs. |
+| [Continuous Culture with Controlled Overflow](continuous_overflow.md) | One process moving through batch, fed-batch filling, and continuous culture; equal continuous inflow/outflow traces; mechanistic and neural growth laws compared during training. |
 | [Modeled Process Variables](modeled_pv.md) | A process variable with its own trained rate, contrasted against a modeled reactor component: a large feed bolus dilutes the component but leaves the process variable untouched. |
 | [Freezing Parameters](freezing.md) | Splitting a reaction module into a frozen part and a trainable part with field tags, checked with `print_trainable_structure`, and what freezing actually costs. |
 | [Mechanistic Models](mechanistic_rates.md) | Mechanistic kinetics (Monod, Luedeking-Piret) instead of a bare MLP; recovering physical parameters, and where they trade off against each other. |
