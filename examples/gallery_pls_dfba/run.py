@@ -88,5 +88,5 @@ hxt_cli(
 )
 print(
     f"forward plot (blend_67): "
-    f"{HERE / 'run/forward/forward-results/plots/blend_67.png'}"
+    f"{HERE / 'run/forward/plots/blend_67.png'}"
 )

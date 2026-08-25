@@ -5,7 +5,8 @@ hybrax.train.runtime_context
 
 .. autoapi-nested-parse::
 
-   Producer-side collection views handed to scale-estimation and training-parent hooks.
+   Producer-side collection views handed to scale-estimation and
+   training-parent hooks.
 
 
 
@@ -224,7 +225,8 @@ Module Contents
 
    .. py:property:: rhs_ode
 
-      The shared ``RhsOde`` of every training parent; see ``training_data.rhs_ode``.
+      The shared ``RhsOde`` of every training parent; see
+      ``training_data.rhs_ode``.
 
 
    .. py:attribute:: sample_volume_event_traces

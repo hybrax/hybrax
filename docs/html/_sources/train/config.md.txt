@@ -5,7 +5,7 @@
 ## The commands
 
 ```bash
-hybrax prepare --config prepare-config.json --output-dir prepared [--overwrite]
+hybrax prepare --config prepare-config.json [--output-dir DIR] [--overwrite]
 hybrax train   --config train-config.json [--output-dir DIR] [--overwrite]
                  [--epochs N] [--log-level LEVEL]
 hybrax forward --config forward-config.json [--output-dir DIR] [--overwrite]
@@ -157,6 +157,9 @@ for defaults you do not want to repeat in every config file.
 
 - **`--overwrite` is required to reuse an output directory.** You will meet this on your
   second run. It is deliberate.
+- **`--overwrite` deletes everything already in `--output-dir`**, regardless of what put it
+  there, before writing fresh output, on every one of `prepare`/`train`/`forward`/`loo`.
+  There is no partial or selective overwrite.
 - **`--config` and `--resume` are mutually exclusive** on `loo`.
 - **`prepare` fails rather than clobbering** an existing `prepared.json` without
   `--overwrite`.

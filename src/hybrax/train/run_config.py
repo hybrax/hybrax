@@ -46,7 +46,7 @@ _TRAIN_SECTIONS = {
     "custom",
 }
 _COMMAND_SECTIONS = {
-    "prepare": {"prepare", "custom_py", "custom"},
+    "prepare": {"prepare", "custom_py", "custom", "output"},
     "train": _TRAIN_SECTIONS,
     # loo reuses every train section (each fold is a train run) plus its own
     # `loo` block (holdout sets + fold-level parallelism).
@@ -421,13 +421,13 @@ class ModelRef(ConfigBase):
 class ForwardOutputConfig(ConfigBase):
     """Output settings for ``forward``.
 
-    ``dir`` (optional) is the parent directory forward writes into —
-    everything lands under one ``forward-results/`` subdirectory inside it;
-    defaults to ``<first model>/forward``. ``predictions`` (default
-    ``"none"``) mirrors ``OutputConfig.predictions`` and controls whether
-    ``forward-results/predictions.csv`` is written. ``plots`` (default
-    ``False``) additionally renders one figure per process into
-    ``forward-results/plots/<process>.png``, best-effort (a rendering
+    ``dir`` (optional) is the directory forward writes directly into —
+    ``losses.csv``, ``models/``, and optionally ``predictions.csv`` /
+    ``plots/`` all land there, with no intermediate subdirectory; defaults to
+    ``<first model>/forward``. ``predictions`` (default ``"none"``) mirrors
+    ``OutputConfig.predictions`` and controls whether ``predictions.csv`` is
+    written. ``plots`` (default ``False``) additionally renders one figure
+    per process into ``plots/<process>.png``, best-effort (a rendering
     failure is logged, not raised); it requires ``predictions`` to be
     ``"parents"`` or ``"all"`` — a validator rejects ``plots=True`` with
     ``predictions="none"``.

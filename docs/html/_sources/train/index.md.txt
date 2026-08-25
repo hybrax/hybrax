@@ -12,11 +12,15 @@
 Four commands. Everything you customise happens through one optional `custom.py`, and
 every hook in it has a working default.
 
-None of these directory names are automatic. `prepare` requires `--output-dir`
-explicitly; `train` and `loo` both fall back to the same literal `output/` if you set
-neither `--output-dir` nor `output.dir`, so anything beyond a single throwaway run needs
-a name you chose. Only `forward` has a real default: `<first model>/forward`, nested
-inside the model's own run directory, unless you point it elsewhere.
+None of these directory names are automatic beyond a literal fallback. `prepare`,
+`train`, and `loo` all fall back to the same literal `output/` if you set neither
+`--output-dir` nor `output.dir`, so anything beyond a single throwaway run needs a name
+you chose. Only `forward` has a real default: `<first model>/forward`, nested inside the
+model's own run directory, unless you point it elsewhere.
+
+Whichever directory a command lands on, `--overwrite` deletes everything already there,
+regardless of what put it there, before writing fresh output. There is no partial or
+selective overwrite.
 
 A typical layout, one command's output per directory:
 
@@ -40,7 +44,7 @@ loo_run/                 loo's output
 └── loo_summary.csv
 
 forward/                 forward's output
-├── forward-results/losses.csv
+├── losses.csv
 ├── predictions.csv
 └── plots/
 ```

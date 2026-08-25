@@ -5,7 +5,8 @@ hybrax.train.bounds_loss
 
 .. autoapi-nested-parse::
 
-   Optional state/rate bound-violation penalty on top of the default measurement loss.
+   Optional state/rate bound-violation penalty on top of the default
+   measurement loss.
 
 
 
@@ -61,7 +62,8 @@ Module Contents
       :type: int | None
 
 
-      Dense-grid opt-in set at construction; see :attr:`UserLossModule.dense_grid_n`.
+      Dense-grid opt-in set at construction; see
+      :attr:`UserLossModule.dense_grid_n`.
 
 
    .. py:property:: loss_names

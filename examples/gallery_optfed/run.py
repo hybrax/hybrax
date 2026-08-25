@@ -91,7 +91,7 @@ hxt_cli(
     "run/forward",
     "--overwrite",
 )
-print(f"forward plot (T_high): {HERE / 'run/forward/forward-results/plots/T_high.png'}")
+print(f"forward plot (T_high): {HERE / 'run/forward/plots/T_high.png'}")
 
 wrapper, cfg = hxt.model_load(str(HERE / "run"))
 m = wrapper.reaction_module

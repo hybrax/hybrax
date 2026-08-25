@@ -378,7 +378,7 @@
 <div><p>The step where a dataset stops being data and becomes a training problem: done once,
 reused by every model you fit against it.</p>
 </div></blockquote>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>hybrax<span class="w"> </span>prepare<span class="w"> </span>--config<span class="w"> </span>prepare-config.json<span class="w"> </span>--output-dir<span class="w"> </span>prepared
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>hybrax<span class="w"> </span>prepare<span class="w"> </span>--config<span class="w"> </span>prepare-config.json<span class="w"> </span><span class="o">[</span>--output-dir<span class="w"> </span>DIR<span class="o">]</span><span class="w"> </span><span class="o">[</span>--overwrite<span class="o">]</span>
 </pre></div>
 </div>
 <section id="why-it-is-a-separate-command">
@@ -515,6 +515,10 @@ advanced; see <a class="reference internal" href="../gallery/index.html"><span c
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
 <ul class="simple">
 <li><p><strong>Prepare does not overwrite without <code class="docutils literal notranslate"><span class="pre">--overwrite</span></code>.</strong> It exits non-zero with an error.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> deletes everything already in <code class="docutils literal notranslate"><span class="pre">--output-dir</span></code></strong>, regardless of what put it
+there, before writing fresh output. There is no partial or selective overwrite.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">--output-dir</span></code> is optional.</strong> It overrides <code class="docutils literal notranslate"><span class="pre">output.dir</span></code> from the config, which itself
+falls back to the literal <code class="docutils literal notranslate"><span class="pre">output/</span></code> if neither is set.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">transform_process_collection</span></code> must return the collection.</strong> Mutating in place and
 returning <code class="docutils literal notranslate"><span class="pre">None</span></code> gives you a <code class="docutils literal notranslate"><span class="pre">None</span></code> collection downstream.</p></li>
 <li><p><strong>Prepare is where bad volume descriptions become visible</strong>: via the diagnostic plots,

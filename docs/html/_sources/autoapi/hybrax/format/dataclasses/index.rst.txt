@@ -472,7 +472,8 @@ Module Contents
 
 .. py:class:: ReactorMediumComponent
 
-   One reactor-medium component: its concentration, optional pseudobatch series, and bounds.
+   One reactor-medium component: its concentration, optional pseudobatch
+   series, and bounds.
 
 
    .. py:attribute:: bounds
@@ -510,7 +511,8 @@ Module Contents
 
 .. py:class:: TimeAxis
 
-   Time axis for a process: its unit, start/end bounds, and time_reference anchor.
+   Time axis for a process: its unit, start/end bounds, and
+   time_reference anchor.
 
 
    .. py:attribute:: end

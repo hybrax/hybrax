@@ -173,7 +173,7 @@ the inferred rates on the right:
 
 hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
-Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
+Image(filename=str(WORK / "run/forward/plots/run_1.png"))
 ```
 
 ### What to look at, in order

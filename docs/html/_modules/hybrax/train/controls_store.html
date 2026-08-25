@@ -1021,7 +1021,9 @@
 <div class="viewcode-block" id="PerProcessControls.eval_controlled_Inflows_rates">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.PerProcessControls.eval_controlled_Inflows_rates">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">eval_controlled_Inflows_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""RAW controlled Inflow rate at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""</span>
+<span class="w">        </span><span class="sd">"""RAW controlled Inflow rate at ``t_arr``. See</span>
+<span class="sd">        :meth:`eval_controlled_Inflows_cumulative` for the arguments.</span>
+<span class="sd">        """</span>
         <span class="n">n_inflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_eval_derivatives</span><span class="p">(</span><span class="n">t_arr</span><span class="p">)[</span><span class="o">...</span><span class="p">,</span> <span class="p">:</span><span class="n">n_inflows</span><span class="p">]</span></div>
 
@@ -1029,7 +1031,9 @@
 <div class="viewcode-block" id="PerProcessControls.eval_controlled_Outflows_cumulative">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.PerProcessControls.eval_controlled_Outflows_cumulative">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">eval_controlled_Outflows_cumulative</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""RAW cumulative controlled Outflow volume at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""</span>
+<span class="w">        </span><span class="sd">"""RAW cumulative controlled Outflow volume at ``t_arr``. See</span>
+<span class="sd">        :meth:`eval_controlled_Inflows_cumulative` for the arguments.</span>
+<span class="sd">        """</span>
         <span class="n">n_inflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">)</span>
         <span class="n">n_outflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Outflows</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_eval_values</span><span class="p">(</span><span class="n">t_arr</span><span class="p">)[</span><span class="o">...</span><span class="p">,</span> <span class="n">n_inflows</span> <span class="p">:</span> <span class="n">n_inflows</span> <span class="o">+</span> <span class="n">n_outflows</span><span class="p">]</span></div>
@@ -1038,7 +1042,9 @@
 <div class="viewcode-block" id="PerProcessControls.eval_controlled_Outflows_rates">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.PerProcessControls.eval_controlled_Outflows_rates">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">eval_controlled_Outflows_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""RAW controlled Outflow rate at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""</span>
+<span class="w">        </span><span class="sd">"""RAW controlled Outflow rate at ``t_arr``. See</span>
+<span class="sd">        :meth:`eval_controlled_Inflows_cumulative` for the arguments.</span>
+<span class="sd">        """</span>
         <span class="n">n_inflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">)</span>
         <span class="n">n_outflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Outflows</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_eval_derivatives</span><span class="p">(</span><span class="n">t_arr</span><span class="p">)[</span><span class="o">...</span><span class="p">,</span> <span class="n">n_inflows</span> <span class="p">:</span> <span class="n">n_inflows</span> <span class="o">+</span> <span class="n">n_outflows</span><span class="p">]</span></div>
@@ -1047,7 +1053,9 @@
 <div class="viewcode-block" id="PerProcessControls.eval_controlled_PVs">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.PerProcessControls.eval_controlled_PVs">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">eval_controlled_PVs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""RAW controlled process-variable value at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""</span>
+<span class="w">        </span><span class="sd">"""RAW controlled process-variable value at ``t_arr``. See</span>
+<span class="sd">        :meth:`eval_controlled_Inflows_cumulative` for the arguments.</span>
+<span class="sd">        """</span>
         <span class="n">n_inflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">)</span>
         <span class="n">n_outflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Outflows</span><span class="p">)</span>
         <span class="n">n_pvs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_PVs</span><span class="p">)</span>
@@ -1147,7 +1155,8 @@
 <div class="viewcode-block" id="BatchControls.eval_controlled_Inflows_cumulative">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.BatchControls.eval_controlled_Inflows_cumulative">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">eval_controlled_Inflows_cumulative</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row_idx</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""RAW cumulative controlled Inflow volume for batch row ``row_idx`` at ``t_arr``.</span>
+<span class="w">        </span><span class="sd">"""RAW cumulative controlled Inflow volume for batch row ``row_idx`` at</span>
+<span class="sd">        ``t_arr``.</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            row_idx: Batch row index.</span>
@@ -1165,7 +1174,9 @@
 <div class="viewcode-block" id="BatchControls.eval_controlled_Inflows_rates">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.BatchControls.eval_controlled_Inflows_rates">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">eval_controlled_Inflows_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row_idx</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""RAW controlled Inflow rate for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""</span>
+<span class="w">        </span><span class="sd">"""RAW controlled Inflow rate for batch row ``row_idx`` at ``t_arr``.</span>
+<span class="sd">        See :meth:`eval_controlled_Inflows_cumulative` for the arguments.</span>
+<span class="sd">        """</span>
         <span class="n">n_inflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_eval_derivatives</span><span class="p">(</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">)[</span><span class="o">...</span><span class="p">,</span> <span class="p">:</span><span class="n">n_inflows</span><span class="p">]</span></div>
 
@@ -1173,7 +1184,10 @@
 <div class="viewcode-block" id="BatchControls.eval_controlled_Outflows_cumulative">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.BatchControls.eval_controlled_Outflows_cumulative">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">eval_controlled_Outflows_cumulative</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row_idx</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""RAW cumulative controlled Outflow volume for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""</span>
+<span class="w">        </span><span class="sd">"""RAW cumulative controlled Outflow volume for batch row ``row_idx``</span>
+<span class="sd">        at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the</span>
+<span class="sd">        arguments.</span>
+<span class="sd">        """</span>
         <span class="n">n_inflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">)</span>
         <span class="n">n_outflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Outflows</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_eval_values</span><span class="p">(</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">)[</span>
@@ -1184,7 +1198,9 @@
 <div class="viewcode-block" id="BatchControls.eval_controlled_Outflows_rates">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.BatchControls.eval_controlled_Outflows_rates">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">eval_controlled_Outflows_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row_idx</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""RAW controlled Outflow rate for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""</span>
+<span class="w">        </span><span class="sd">"""RAW controlled Outflow rate for batch row ``row_idx`` at ``t_arr``.</span>
+<span class="sd">        See :meth:`eval_controlled_Inflows_cumulative` for the arguments.</span>
+<span class="sd">        """</span>
         <span class="n">n_inflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">)</span>
         <span class="n">n_outflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Outflows</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_eval_derivatives</span><span class="p">(</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">)[</span>
@@ -1195,7 +1211,10 @@
 <div class="viewcode-block" id="BatchControls.eval_controlled_PVs">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.BatchControls.eval_controlled_PVs">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">eval_controlled_PVs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row_idx</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""RAW controlled process-variable value for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""</span>
+<span class="w">        </span><span class="sd">"""RAW controlled process-variable value for batch row ``row_idx`` at</span>
+<span class="sd">        ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the</span>
+<span class="sd">        arguments.</span>
+<span class="sd">        """</span>
         <span class="n">n_inflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">)</span>
         <span class="n">n_outflows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Outflows</span><span class="p">)</span>
         <span class="n">n_pvs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_PVs</span><span class="p">)</span>
@@ -1390,7 +1409,9 @@
         <span class="bp">cls</span><span class="p">,</span>
         <span class="n">collection</span><span class="p">:</span> <span class="n">BioProcessCollection</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ControlsStore</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""Build a JAX-backed runtime store from a prepared :class:`~hybrax.format.dataclasses.BioProcessCollection`."""</span>
+<span class="w">        </span><span class="sd">"""Build a JAX-backed runtime store from a prepared</span>
+<span class="sd">        :class:`~hybrax.format.dataclasses.BioProcessCollection`.</span>
+<span class="sd">        """</span>
         <span class="n">metadata</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">collection</span><span class="o">.</span><span class="n">metadata</span> <span class="ow">or</span> <span class="p">{})</span>
         <span class="n">process_order</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">_process_order</span><span class="p">(</span><span class="n">collection</span><span class="p">,</span> <span class="n">metadata</span><span class="p">,</span> <span class="n">METADATA_NAMESPACE</span><span class="p">)</span>
         <span class="n">train_metadata</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">METADATA_NAMESPACE</span><span class="p">,</span> <span class="p">{}))</span>

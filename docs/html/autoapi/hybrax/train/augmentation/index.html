@@ -374,7 +374,8 @@
         <article role="main" id="furo-main-content">
           <section id="module-hybrax.train.augmentation">
 <span id="hybrax-train-augmentation"></span><h1>hybrax.train.augmentation<a class="headerlink" href="#module-hybrax.train.augmentation" title="Link to this heading">¶</a></h1>
-<p>Synthetic sibling-process generation from <a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.AugmentationConfig" title="hybrax.train.run_config.AugmentationConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">AugmentationConfig</span></code></a>.</p>
+<p>Synthetic sibling-process generation from
+<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.AugmentationConfig" title="hybrax.train.run_config.AugmentationConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">AugmentationConfig</span></code></a>.</p>
 <p>Resamples each real (parent) process’s fitted state splines onto a new,
 randomly jittered time grid, optionally adds Gaussian noise, and stores the
 result as new <a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.AugmentedBioProcess" title="hybrax.format.dataclasses.AugmentedBioProcess"><code class="xref py py-class docutils literal notranslate"><span class="pre">AugmentedBioProcess</span></code></a> entries
@@ -386,7 +387,7 @@ semantics (seed, grid spacing, noise, initial-value handling).</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.augmentation.augment_process_collection" title="hybrax.train.augmentation.augment_process_collection"><code class="xref py py-obj docutils literal notranslate"><span class="pre">augment_process_collection</span></code></a>(collection, run_config[, ...])</p></td>
-<td><p>Generate augmented children for every parent process and add them to <code class="docutils literal notranslate"><span class="pre">collection</span></code>.</p></td>
+<td><p>Generate augmented children for every parent process and add them to</p></td>
 </tr>
 </tbody>
 </table>
@@ -397,7 +398,8 @@ semantics (seed, grid spacing, noise, initial-value handling).</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="hybrax.train.augmentation.augment_process_collection">
 <span class="sig-prename descclassname"><span class="pre">hybrax.train.augmentation.</span></span><span class="sig-name descname"><span class="pre">augment_process_collection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">augment_state_values</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/augmentation.html#augment_process_collection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.augmentation.augment_process_collection" title="Link to this definition">¶</a></dt>
-<dd><p>Generate augmented children for every parent process and add them to <code class="docutils literal notranslate"><span class="pre">collection</span></code>.</p>
+<dd><p>Generate augmented children for every parent process and add them to
+<code class="docutils literal notranslate"><span class="pre">collection</span></code>.</p>
 <p>No-op (returns <code class="docutils literal notranslate"><span class="pre">collection</span></code> unchanged) when <code class="docutils literal notranslate"><span class="pre">run_config.prepare.augmentation</span></code>
 is unset. Otherwise, for each real (non-augmented) process, generates
 <code class="docutils literal notranslate"><span class="pre">augmentation.n_children_per_process</span></code> synthetic children: each gets its

@@ -76,7 +76,7 @@ table.
 |---|---|
 | `--config` | Required. Path to a `forward-config.json` (schema below). |
 | `--output-dir` | Override `output.dir`; default `<first model>/forward`. |
-| `--overwrite` | Replace `<output.dir>/forward-results/`; unrelated files in `output.dir` are preserved. |
+| `--overwrite` | Delete everything already in `<output.dir>`, regardless of what put it there, before writing fresh output. |
 | `--log-level` | `DEBUG`/`INFO`/`WARNING`/`ERROR`. |
 
 The `forward-config.json`:
@@ -103,7 +103,7 @@ The `forward-config.json`:
 An ensemble (`len(models) > 1`) **requires** `data.prepared`, so every model
 predicts on the same collection and the per-model outputs can be aligned.
 
-Outputs under `--output-dir/forward-results/`:
+Outputs written directly under `--output-dir`:
 
 ```
 predictions.csv          # selected-process mean; omitted for "none"
@@ -113,10 +113,9 @@ losses.csv               # loss table of the first model
 models/<name>/           # per model: losses.csv + optional predictions.csv
 ```
 
-The command rejects an existing `forward-results/` unless `--overwrite` is
-passed. Overwrite stages the complete replacement before replacing that
-subdirectory, so a failed result write leaves the prior results intact. Unrelated
-files directly in `--output-dir` are preserved.
+The command rejects an existing `losses.csv` in `--output-dir` unless
+`--overwrite` is passed. `--overwrite` deletes everything already in
+`--output-dir`, regardless of what put it there, before writing fresh output.
 
 ### `hybrax loo`
 

@@ -188,7 +188,7 @@ for name, value in r2.items():
 hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
-Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
+Image(filename=str(WORK / "run/forward/plots/run_1.png"))
 ```
 
 Read the top-left and middle-left panels together. `biomass` climbs smoothly, drops

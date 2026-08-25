@@ -398,7 +398,7 @@ prepared-control-contract validation shared by every process).</p>
 <tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.prepare.load_raw_collection" title="hybrax.train.prepare.load_raw_collection"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_raw_collection</span></code></a>(input_json)</p></td>
 <td><p>Load a BioProcessCollection from a file or object.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.prepare.prepare_artifact" title="hybrax.train.prepare.prepare_artifact"><code class="xref py py-obj docutils literal notranslate"><span class="pre">prepare_artifact</span></code></a>(loaded_config, output_dir, *[, overwrite])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.prepare.prepare_artifact" title="hybrax.train.prepare.prepare_artifact"><code class="xref py py-obj docutils literal notranslate"><span class="pre">prepare_artifact</span></code></a>(loaded_config, output_dir)</p></td>
 <td><p>Run the full <code class="docutils literal notranslate"><span class="pre">prepare</span></code> pipeline and write <code class="docutils literal notranslate"><span class="pre">output_dir/prepared.json</span></code>.</p></td>
 </tr>
 </tbody>
@@ -425,11 +425,12 @@ file holding one.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="hybrax.train.prepare.prepare_artifact">
-<span class="sig-prename descclassname"><span class="pre">hybrax.train.prepare.</span></span><span class="sig-name descname"><span class="pre">prepare_artifact</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaded_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">overwrite</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/prepare.html#prepare_artifact"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.prepare.prepare_artifact" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.prepare.</span></span><span class="sig-name descname"><span class="pre">prepare_artifact</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">loaded_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/prepare.html#prepare_artifact"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.prepare.prepare_artifact" title="Link to this definition">¶</a></dt>
 <dd><p>Run the full <code class="docutils literal notranslate"><span class="pre">prepare</span></code> pipeline and write <code class="docutils literal notranslate"><span class="pre">output_dir/prepared.json</span></code>.</p>
 <p>Loads the raw collection at <code class="docutils literal notranslate"><span class="pre">config.prepare.raw_input</span></code>, validates it,
 applies the <code class="docutils literal notranslate"><span class="pre">transform_process_collection</span></code> hook (default: identity),
-generates augmented children via <a class="reference internal" href="../augmentation/index.html#hybrax.train.augmentation.augment_process_collection" title="hybrax.train.augmentation.augment_process_collection"><code class="xref py py-func docutils literal notranslate"><span class="pre">augment_process_collection()</span></code></a>,
+generates augmented children via
+<a class="reference internal" href="../augmentation/index.html#hybrax.train.augmentation.augment_process_collection" title="hybrax.train.augmentation.augment_process_collection"><code class="xref py py-func docutils literal notranslate"><span class="pre">augment_process_collection()</span></code></a>,
 re-validates the result under strict training semantics, extracts and
 validates each process’s control sources, and assembles the
 <code class="docutils literal notranslate"><span class="pre">hybrax_train</span></code> metadata block (provenance, semantics diffs vs. the raw
@@ -444,9 +445,9 @@ augmentation preview plot.</p>
 <li><p><strong>loaded_config</strong> (<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.LoadedRunConfig" title="hybrax.train.run_config.LoadedRunConfig"><em>hybrax.train.run_config.LoadedRunConfig</em></a>) – A <a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.load_prepare_config" title="hybrax.train.run_config.load_prepare_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_prepare_config()</span></code></a>
 result; <code class="docutils literal notranslate"><span class="pre">loaded_config.config.prepare</span></code> must be set.</p></li>
 <li><p><strong>output_dir</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>) – Directory <code class="docutils literal notranslate"><span class="pre">prepared.json</span></code> and the other prepare-owned
-files are written into.</p></li>
-<li><p><strong>overwrite</strong> (<em>bool</em>) – Unused; the CLI is responsible for guarding an existing
-<code class="docutils literal notranslate"><span class="pre">prepared.json</span></code> before calling this function.</p></li>
+files are written into. The CLI owns all <code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> handling
+(both guarding an existing <code class="docutils literal notranslate"><span class="pre">prepared.json</span></code> and clearing
+<code class="docutils literal notranslate"><span class="pre">output_dir</span></code>) before calling this function.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>

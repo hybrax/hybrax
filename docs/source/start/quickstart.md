@@ -170,11 +170,11 @@ off, since a dense re-solve and a rendered figure cost more than a bare loss num
 
 hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
-print((WORK / "run/forward/forward-results/losses.csv").read_text())
+print((WORK / "run/forward/losses.csv").read_text())
 ```
 
 `forward` re-simulates each run with the trained model and writes a dense trajectory to
-`forward-results/predictions.csv` plus these per-process, per-target losses. Training
+`predictions.csv` plus these per-process, per-target losses. Training
 gives you a number; forward gives you something you can plot and hand to a colleague.
 
 ## 5. Look at it
@@ -183,7 +183,7 @@ gives you a number; forward gives you something you can plot and hand to a colle
 :tags: [remove-input]
 
 from IPython.display import Image
-Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
+Image(filename=str(WORK / "run/forward/plots/run_1.png"))
 ```
 
 Left column: measurements (dots) against the integrated trajectory (line), with R² per
@@ -197,7 +197,7 @@ rate of **0.45 1/h**, and nobody told the model that:
 :tags: [remove-input]
 
 import pandas as pd
-df = pd.read_csv(WORK / "run/forward/forward-results/predictions.csv")
+df = pd.read_csv(WORK / "run/forward/predictions.csv")
 first = df[df["process"] == "run_1"].iloc[0]
 print(f"learned q_biomass at t=0 : {first['q_biomass']:.3f} 1/h")
 print( "true    mu_max           : 0.450 1/h")

@@ -213,7 +213,7 @@ your dataset happens to be smallest.
 hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run_custom/forward", "--overwrite")
 from IPython.display import Image
-Image(filename=str(WORK / "run_custom/forward/forward-results/plots/run_1.png"))
+Image(filename=str(WORK / "run_custom/forward/plots/run_1.png"))
 ```
 
 ## Check what is actually being trained

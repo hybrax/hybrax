@@ -377,7 +377,7 @@
 <h1>1. Import your Data<a class="headerlink" href="#import-your-data" title="Link to this heading">¶</a></h1>
 <blockquote>
 <div><p>Turn a CSV of experimental measurements into a hybrax.format
-<code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code> you can save, share and train on.</p>
+<code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code> that you can save, share and train on.</p>
 </div></blockquote>
 <p><code class="docutils literal notranslate"><span class="pre">Hybrax</span></code> only requires you to import your training data once into its JSON format. Everything downstream
 is derived from your data entered in this step.
@@ -429,6 +429,25 @@ run_1,4.0,0.6045,9.4939,0.0465
 </div>
 </div>
 </div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+
+<span class="n">fig</span><span class="p">,</span> <span class="n">axes</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">sharex</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">))</span>
+<span class="k">for</span> <span class="n">ax</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">axes</span><span class="p">,</span> <span class="p">(</span><span class="s2">"biomass"</span><span class="p">,</span> <span class="s2">"glucose"</span><span class="p">,</span> <span class="s2">"product"</span><span class="p">)):</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">run_1</span><span class="p">[</span><span class="s2">"time"</span><span class="p">],</span> <span class="n">run_1</span><span class="p">[</span><span class="n">name</span><span class="p">],</span> <span class="n">marker</span><span class="o">=</span><span class="s2">"o"</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> (g/L)"</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">axes</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s2">"time (h)"</span><span class="p">)</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">suptitle</span><span class="p">(</span><span class="s2">"run_1 measurements"</span><span class="p">)</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="../_images/856fa53fc32d3a7f84e4176b88d0dba2406364aee4f70d05400785709135dde7.png" src="../_images/856fa53fc32d3a7f84e4176b88d0dba2406364aee4f70d05400785709135dde7.png" />
+</div>
+</div>
 </section>
 <section id="measurements-become-timeseries">
 <h2>1.2 Measurements become <code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code><a class="headerlink" href="#measurements-become-timeseries" title="Link to this heading">¶</a></h2>
@@ -458,6 +477,9 @@ run_1,4.0,0.6045,9.4939,0.0465
 <ul class="simple">
 <li><p>Each measured species is its own <code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> naturally enabling irregular sampling.</p></li>
 <li><p>The <code class="docutils literal notranslate"><span class="pre">times</span></code> vector must be <strong>strictly increasing</strong>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">jump_times</span></code> (optional) represent discontinuities in the data (e.g. volume
+jump due to bolus feed). This is important for <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> later as it
+tells the ODE solver where to split the integration into continuous segments.</p></li>
 <li><p>For a quantity that genuinely does not change, use <code class="docutils literal notranslate"><span class="pre">hxf.StaticVariable(value)</span></code> instead.</p></li>
 </ul>
 </div>
@@ -489,12 +511,28 @@ consistent.</p>
     <span class="n">density_unit</span><span class="o">=</span><span class="s2">"kg/L"</span><span class="p">,</span>
     <span class="n">components</span><span class="o">=</span><span class="n">components</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="nb">list</span><span class="p">(</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">)</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pprint</span><span class="w"> </span><span class="kn">import</span> <span class="n">pprint</span>
+<span class="n">pprint</span><span class="p">(</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
 <div class="cell_output docutils container">
-<div class="output text_plain highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>['biomass', 'glucose', 'product']
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>{'biomass': ReactorMediumComponent(name='biomass',
+                                   unit='g/L',
+                                   concentration=TimeSeries(times=f64[15], values=f64[15], jump_times=f64[0]),
+                                   pseudobatch_concentration=None,
+                                   bounds=(0.0, None)),
+ 'glucose': ReactorMediumComponent(name='glucose',
+                                   unit='g/L',
+                                   concentration=TimeSeries(times=f64[15], values=f64[15], jump_times=f64[0]),
+                                   pseudobatch_concentration=None,
+                                   bounds=(0.0, None)),
+ 'product': ReactorMediumComponent(name='product',
+                                   unit='g/L',
+                                   concentration=TimeSeries(times=f64[15], values=f64[15], jump_times=f64[0]),
+                                   pseudobatch_concentration=None,
+                                   bounds=(0.0, None))}
 </pre></div>
 </div>
 </div>
@@ -568,7 +606,7 @@ derivatives: {'biomass': 'q_biomass * biomass', 'glucose': 'q_glucose * biomass'
 </div>
 </div>
 <p>Each species gets a specific rate <code class="docutils literal notranslate"><span class="pre">q_&lt;species&gt;</span></code>, and its derivative is
-<code class="docutils literal notranslate"><span class="pre">q_&lt;species&gt;</span> <span class="pre">*</span> <span class="pre">biomass</span></code>. Those rates are exactly what a model will later predict.</p>
+<code class="docutils literal notranslate"><span class="pre">q_&lt;species&gt;</span> <span class="pre">*</span> <span class="pre">biomass</span></code>. Those rates are exactly what a model will predict later.</p>
 <div class="warning admonition">
 <p class="admonition-title">This is why a component must be called <code class="docutils literal notranslate"><span class="pre">biomass</span></code></p>
 <p>Auto-generation makes every rate <em>specific</em> (per unit biomass) so it needs to know
@@ -579,16 +617,15 @@ immediately. If your data has no biomass, or you want different dynamics, write
 </section>
 <section id="collect-and-save">
 <h2>1.6 Collect and save<a class="headerlink" href="#collect-and-save" title="Link to this heading">¶</a></h2>
-<p>Setting <code class="docutils literal notranslate"><span class="pre">case_id</span></code>/<code class="docutils literal notranslate"><span class="pre">organism</span></code>/<code class="docutils literal notranslate"><span class="pre">citation</span></code> on a <code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code> marks it as a full
-case study, one publication or campaign. <code class="docutils literal notranslate"><span class="pre">case_id</span></code> is also the natural grouping for
-cross-validation later. Leaving them unset (the default) is fine too: that is raw or
-intermediate data with no case-study identity yet, the same container either way.</p>
+<p>Setting <code class="docutils literal notranslate"><span class="pre">case_id</span></code>/<code class="docutils literal notranslate"><span class="pre">organism</span></code>/<code class="docutils literal notranslate"><span class="pre">citation</span></code> on a <code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code> marks it as
+a full case study, i.e. all experiments pertaining to a certain publication or
+process development campaign. <code class="docutils literal notranslate"><span class="pre">case_id</span></code> is also the natural grouping for
+cross-validation later. Leaving those unset (the default) is fine too: this
+means raw or intermediate data with no case-study identity yet, the same
+container either way.</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">contextlib</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
-
-<span class="n">collection</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">BioProcessCollection</span><span class="p">(</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">collection</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">BioProcessCollection</span><span class="p">(</span>
     <span class="n">case_id</span><span class="o">=</span><span class="s2">"my_first_dataset"</span><span class="p">,</span>
     <span class="n">organism</span><span class="o">=</span><span class="s2">"Escherichia coli"</span><span class="p">,</span>
     <span class="n">citation</span><span class="o">=</span><span class="s2">"Simulated data: tutorial only."</span><span class="p">,</span>
@@ -597,8 +634,7 @@ intermediate data with no case-study identity yet, the same container either way
 
 <span class="n">out</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">"../_data/out/runs/tutorial_01"</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
 <span class="n">out</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="k">with</span> <span class="n">contextlib</span><span class="o">.</span><span class="n">redirect_stdout</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">StringIO</span><span class="p">()):</span>
-    <span class="n">hxf</span><span class="o">.</span><span class="n">serialization</span><span class="o">.</span><span class="n">save_process_collection</span><span class="p">(</span><span class="n">collection</span><span class="p">,</span> <span class="n">out</span> <span class="o">/</span> <span class="s2">"data.json"</span><span class="p">)</span>
+<span class="n">hxf</span><span class="o">.</span><span class="n">serialization</span><span class="o">.</span><span class="n">save_process_collection</span><span class="p">(</span><span class="n">collection</span><span class="p">,</span> <span class="n">out</span> <span class="o">/</span> <span class="s2">"data.json"</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"./</span><span class="si">{</span><span class="p">(</span><span class="n">out</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="s1">'data.json'</span><span class="p">)</span><span class="o">.</span><span class="n">relative_to</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">parents</span><span class="p">[</span><span class="mi">4</span><span class="p">])</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -609,9 +645,221 @@ intermediate data with no case-study identity yet, the same container either way
 </div>
 </div>
 </div>
-<p>Note the import path: the save/load functions live on <code class="docutils literal notranslate"><span class="pre">hxf.serialization</span></code>, not on the
-package root.</p>
-</section>
+<p>Note: save/load functions live on <code class="docutils literal notranslate"><span class="pre">hxf.serialization</span></code>, not on the package root.</p>
+<p>Now we can have a look at the full JSON file describing the dataset we just created:</p>
+<details class="sd-sphinx-override sd-dropdown sd-card sd-mb-3">
+<summary class="sd-summary-title sd-card-header">
+<span class="sd-summary-text">Full <code class="docutils literal notranslate"><span class="pre">data.json</span></code></span><span class="sd-summary-state-marker sd-summary-chevron-right"><svg version="1.1" width="1.5em" height="1.5em" class="sd-octicon sd-octicon-chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.72 18.78a.75.75 0 0 1 0-1.06L14.44 12 8.72 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0Z"></path></svg></span></summary><div class="sd-summary-content sd-card-body docutils">
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"case_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"my_first_dataset"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"organism"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Escherichia coli"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"citation"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Simulated data: tutorial only."</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"metadata"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"processes"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"run_1"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"metadata"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"run_1"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"process_type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"batch"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"notes"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Simulated E. coli batch culture on glucose."</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"time_axis"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"h"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"start"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"end"</span><span class="p">:</span><span class="w"> </span><span class="mf">14.0</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"time_reference"</span><span class="p">:</span><span class="w"> </span><span class="s2">"inoculation"</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"reactor_medium"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"defined_medium"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"density"</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"density_unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"kg/L"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"components"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"biomass"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"biomass"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"g/L"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"concentration"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">              </span><span class="nt">"times"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="nt">"__ndarray__"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                  </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">1.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">2.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">3.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">4.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">5.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">6.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">7.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">8.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">9.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">10.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">11.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">12.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">13.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">14.0</span>
+<span class="w">                </span><span class="p">],</span>
+<span class="w">                </span><span class="nt">"dtype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"float64"</span>
+<span class="w">              </span><span class="p">},</span>
+<span class="w">              </span><span class="nt">"values"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="nt">"__ndarray__"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                  </span><span class="mf">0.1</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.1613</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.2452</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.3831</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.6045</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.9465</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">1.4373</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">2.2987</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">3.5031</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">4.3707</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">4.8063</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">4.4439</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">4.1604</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">4.309</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">4.6623</span>
+<span class="w">                </span><span class="p">],</span>
+<span class="w">                </span><span class="nt">"dtype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"float64"</span>
+<span class="w">              </span><span class="p">},</span>
+<span class="w">              </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"TimeSeries"</span><span class="p">,</span>
+<span class="w">              </span><span class="nt">"derived"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">              </span><span class="nt">"jump_times"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="nt">"__ndarray__"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">                </span><span class="nt">"dtype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"float64"</span>
+<span class="w">              </span><span class="p">},</span>
+<span class="w">              </span><span class="nt">"continuity_side"</span><span class="p">:</span><span class="w"> </span><span class="s2">"right"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"glucose"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"glucose"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"g/L"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"concentration"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">              </span><span class="nt">"times"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="nt">"__ndarray__"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                  </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">1.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">2.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">3.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">4.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">5.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">6.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">7.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">8.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">9.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">10.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">11.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">12.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">13.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">14.0</span>
+<span class="w">                </span><span class="p">],</span>
+<span class="w">                </span><span class="nt">"dtype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"float64"</span>
+<span class="w">              </span><span class="p">},</span>
+<span class="w">              </span><span class="nt">"values"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="nt">"__ndarray__"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                  </span><span class="mf">10.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">9.8987</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">9.9369</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">8.6197</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">9.4939</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">7.8949</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">7.0528</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">5.2291</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">2.0724</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.0</span>
+<span class="w">                </span><span class="p">],</span>
+<span class="w">                </span><span class="nt">"dtype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"float64"</span>
+<span class="w">              </span><span class="p">},</span>
+<span class="w">              </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"TimeSeries"</span><span class="p">,</span>
+<span class="w">              </span><span class="nt">"derived"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">              </span><span class="nt">"jump_times"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="nt">"__ndarray__"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">                </span><span class="nt">"dtype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"float64"</span>
+<span class="w">              </span><span class="p">},</span>
+<span class="w">              </span><span class="nt">"continuity_side"</span><span class="p">:</span><span class="w"> </span><span class="s2">"right"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">          </span><span class="p">},</span>
+<span class="w">          </span><span class="nt">"product"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"product"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"g/L"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"concentration"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">              </span><span class="nt">"times"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="nt">"__ndarray__"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                  </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">1.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">2.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">3.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">4.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">5.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">6.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">7.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">8.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">9.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">10.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">11.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">12.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">13.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">14.0</span>
+<span class="w">                </span><span class="p">],</span>
+<span class="w">                </span><span class="nt">"dtype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"float64"</span>
+<span class="w">              </span><span class="p">},</span>
+<span class="w">              </span><span class="nt">"values"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="nt">"__ndarray__"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">                  </span><span class="mf">0.0</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.0052</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.0135</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.0272</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.0465</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.0791</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.1218</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.2056</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.3178</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.423</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.4165</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.4214</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.4174</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.4095</span><span class="p">,</span>
+<span class="w">                  </span><span class="mf">0.4153</span>
+<span class="w">                </span><span class="p">],</span>
+<span class="w">                </span><span class="nt">"dtype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"float64"</span>
+<span class="w">              </span><span class="p">},</span>
+<span class="w">              </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"TimeSeries"</span><span class="p">,</span>
+<span class="w">              </span><span class="nt">"derived"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">              </span><span class="nt">"jump_times"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">                </span><span class="nt">"__ndarray__"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">                </span><span class="nt">"dtype"</span><span class="p">:</span><span class="w"> </span><span class="s2">"float64"</span>
+<span class="w">              </span><span class="p">},</span>
+<span class="w">              </span><span class="nt">"continuity_side"</span><span class="p">:</span><span class="w"> </span><span class="s2">"right"</span>
+<span class="w">            </span><span class="p">}</span>
+<span class="w">          </span><span class="p">}</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"process_variables"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<span class="w">      </span><span class="nt">"volume"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"initial_volume"</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"L"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"volume_changes"</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<span class="w">      </span><span class="p">},</span>
+<span class="w">      </span><span class="nt">"biological_ode"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"algebraic"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
+<span class="w">        </span><span class="nt">"rates"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"q_biomass"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"q_glucose"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"q_product"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">        </span><span class="p">},</span>
+<span class="w">        </span><span class="nt">"derivatives"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"biomass"</span><span class="p">:</span><span class="w"> </span><span class="s2">"q_biomass * biomass"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"glucose"</span><span class="p">:</span><span class="w"> </span><span class="s2">"q_glucose * biomass"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"product"</span><span class="p">:</span><span class="w"> </span><span class="s2">"q_product * biomass"</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div>
+</details></section>
 <section id="check-the-round-trip">
 <h2>1.7 Check the round trip<a class="headerlink" href="#check-the-round-trip" title="Link to this heading">¶</a></h2>
 <div class="cell docutils container">
@@ -647,7 +895,7 @@ first 3 X   : [0.1    0.1613 0.2452]
 </section>
 <section id="what-s-next">
 <h2>What’s next<a class="headerlink" href="#what-s-next" title="Link to this heading">¶</a></h2>
-<p>Run the tutorial yourself at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/tutorial_01/</span></code>.</p>
+<p>You can run the full tutorial at <code class="docutils literal notranslate"><span class="pre">examples/tutorial_01_your_first_dataset/run.py</span></code>.</p>
 <ul class="simple">
 <li><p><strong><a class="reference internal" href="02_look_at_it.html"><span class="std std-doc">Tutorial 2</span></a></strong>: check that the package understood your data the
 way you meant it.</p></li>

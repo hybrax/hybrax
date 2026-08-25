@@ -112,7 +112,8 @@ Module Contents
 
    .. py:method:: astype(dtype)
 
-      Return an :class:`AffineScaler` with ``scale``/``offset`` cast to ``dtype``.
+      Return an :class:`AffineScaler` with ``scale``/``offset`` cast to
+      ``dtype``.
 
 
 
@@ -844,7 +845,8 @@ Module Contents
 
    .. py:method:: scale_modeled_BiologicalOde_rates(RAW_modeled_BiologicalOde_rates)
 
-      RAW -> SCL for modeled ``biological_ode`` rates (offset-free derivative op).
+      RAW -> SCL for modeled ``biological_ode`` rates (offset-free
+      derivative op).
 
 
 
@@ -952,7 +954,8 @@ Module Contents
 
    .. py:method:: unscale_modeled_BiologicalOde_rates(SCL_modeled_BiologicalOde_rates)
 
-      SCL -> RAW for modeled ``biological_ode`` rates (offset-free derivative op).
+      SCL -> RAW for modeled ``biological_ode`` rates (offset-free
+      derivative op).
 
 
 

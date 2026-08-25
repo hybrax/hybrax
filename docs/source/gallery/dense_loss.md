@@ -232,7 +232,7 @@ measurement-only losses cannot see.
 hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run_full/forward", "--overwrite")
 from IPython.display import Image
-Image(filename=str(WORK / "run_full/forward/forward-results/plots/run_1.png"))
+Image(filename=str(WORK / "run_full/forward/plots/run_1.png"))
 ```
 
 ## See also

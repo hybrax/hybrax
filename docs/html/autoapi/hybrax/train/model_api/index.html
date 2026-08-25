@@ -512,7 +512,8 @@ differentiated argument, so the offset is a genuine tracer either way.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="hybrax.train.model_api.AffineScaler.astype">
 <span class="sig-name descname"><span class="pre">astype</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dtype</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#AffineScaler.astype"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.AffineScaler.astype" title="Link to this definition">¶</a></dt>
-<dd><p>Return an <a class="reference internal" href="#hybrax.train.model_api.AffineScaler" title="hybrax.train.model_api.AffineScaler"><code class="xref py py-class docutils literal notranslate"><span class="pre">AffineScaler</span></code></a> with <code class="docutils literal notranslate"><span class="pre">scale</span></code>/<code class="docutils literal notranslate"><span class="pre">offset</span></code> cast to <code class="docutils literal notranslate"><span class="pre">dtype</span></code>.</p>
+<dd><p>Return an <a class="reference internal" href="#hybrax.train.model_api.AffineScaler" title="hybrax.train.model_api.AffineScaler"><code class="xref py py-class docutils literal notranslate"><span class="pre">AffineScaler</span></code></a> with <code class="docutils literal notranslate"><span class="pre">scale</span></code>/<code class="docutils literal notranslate"><span class="pre">offset</span></code> cast to
+<code class="docutils literal notranslate"><span class="pre">dtype</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>dtype</strong> (<em>jax.numpy.dtype</em>)</p>
@@ -1397,7 +1398,8 @@ derivative must NOT subtract the offset (<code class="docutils literal notransla
 <dl class="py method">
 <dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_modeled_BiologicalOde_rates">
 <span class="sig-name descname"><span class="pre">scale_modeled_BiologicalOde_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_BiologicalOde_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_modeled_BiologicalOde_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_BiologicalOde_rates" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for modeled <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> rates (offset-free derivative op).</p>
+<dd><p>RAW -&gt; SCL for modeled <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> rates (offset-free
+derivative op).</p>
 </dd></dl>
 
 <dl class="py method">
@@ -1505,7 +1507,8 @@ derivative must NOT subtract the offset (<code class="docutils literal notransla
 <dl class="py method">
 <dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_modeled_BiologicalOde_rates">
 <span class="sig-name descname"><span class="pre">unscale_modeled_BiologicalOde_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_BiologicalOde_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_modeled_BiologicalOde_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_BiologicalOde_rates" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for modeled <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> rates (offset-free derivative op).</p>
+<dd><p>SCL -&gt; RAW for modeled <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> rates (offset-free
+derivative op).</p>
 </dd></dl>
 
 <dl class="py method">

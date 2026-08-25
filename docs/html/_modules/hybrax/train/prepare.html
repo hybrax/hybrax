@@ -601,14 +601,13 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">prepare_artifact</span><span class="p">(</span>
     <span class="n">loaded_config</span><span class="p">:</span> <span class="n">LoadedRunConfig</span><span class="p">,</span>
     <span class="n">output_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
-    <span class="o">*</span><span class="p">,</span>
-    <span class="n">overwrite</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BioProcessCollection</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Run the full ``prepare`` pipeline and write ``output_dir/prepared.json``.</span>
 
 <span class="sd">    Loads the raw collection at ``config.prepare.raw_input``, validates it,</span>
 <span class="sd">    applies the ``transform_process_collection`` hook (default: identity),</span>
-<span class="sd">    generates augmented children via :func:`~hybrax.train.augmentation.augment_process_collection`,</span>
+<span class="sd">    generates augmented children via</span>
+<span class="sd">    :func:`~hybrax.train.augmentation.augment_process_collection`,</span>
 <span class="sd">    re-validates the result under strict training semantics, extracts and</span>
 <span class="sd">    validates each process's control sources, and assembles the</span>
 <span class="sd">    ``hybrax_train`` metadata block (provenance, semantics diffs vs. the raw</span>
@@ -622,9 +621,9 @@
 <span class="sd">        loaded_config: A :func:`~hybrax.train.run_config.load_prepare_config`</span>
 <span class="sd">            result; ``loaded_config.config.prepare`` must be set.</span>
 <span class="sd">        output_dir: Directory ``prepared.json`` and the other prepare-owned</span>
-<span class="sd">            files are written into.</span>
-<span class="sd">        overwrite: Unused; the CLI is responsible for guarding an existing</span>
-<span class="sd">            ``prepared.json`` before calling this function.</span>
+<span class="sd">            files are written into. The CLI owns all ``--overwrite`` handling</span>
+<span class="sd">            (both guarding an existing ``prepared.json`` and clearing</span>
+<span class="sd">            ``output_dir``) before calling this function.</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        The prepared :class:`~hybrax.format.dataclasses.BioProcessCollection`</span>
@@ -644,11 +643,10 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"prepare_artifact requires a prepare config section"</span><span class="p">)</span>
 
     <span class="n">input_path</span> <span class="o">=</span> <span class="n">prepare</span><span class="o">.</span><span class="n">raw_input</span>
-    <span class="c1"># `--output-dir` holds the prepare-owned files (clash-free with a train/forward</span>
-    <span class="c1"># run that may share the dir): prepared.json + prepare_config.json + optional</span>
-    <span class="c1"># augmented-data.png + prepare_diagnostics/.</span>
+    <span class="c1"># `--output-dir` is prepare's own exclusively-owned directory (the CLI</span>
+    <span class="c1"># deletes it wholesale on `--overwrite`, like train/loo/forward): prepared.json</span>
+    <span class="c1"># + prepare_config.json + optional augmented-data.png + prepare_diagnostics/.</span>
     <span class="n">output_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">output_dir</span><span class="p">)</span>
-    <span class="k">del</span> <span class="n">overwrite</span>  <span class="c1"># the CLI guards prepared.json; prepare only (re)writes its own files</span>
     <span class="n">output_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">"prepared.json"</span>
 
     <span class="n">raw_collection</span> <span class="o">=</span> <span class="n">load_raw_collection</span><span class="p">(</span><span class="n">input_path</span><span class="p">)</span>
@@ -900,8 +898,10 @@
         <span class="n">render_control_diagnostics</span><span class="p">,</span>
     <span class="p">)</span>
 
-    <span class="c1"># prepare-owned plot dir: clear stale plots (e.g. fewer processes on re-prepare),</span>
-    <span class="c1"># but never touch the rest of a possibly-shared train/forward run dir.</span>
+    <span class="c1"># Idempotent re-run into a directory the CLI's --overwrite guard did not clear</span>
+    <span class="c1"># (a first-ever run landing on stray content from a previous failed attempt,</span>
+    <span class="c1"># one that crashed before writing prepared.json): clear stale plots (e.g.</span>
+    <span class="c1"># fewer processes than the last attempt) before rebuilding them.</span>
     <span class="n">diag_dir</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">"prepare_diagnostics"</span>
     <span class="k">if</span> <span class="n">diag_dir</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
         <span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="n">diag_dir</span><span class="p">)</span>

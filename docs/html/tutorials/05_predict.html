@@ -413,8 +413,8 @@ train (mean),0.000242777,0.000296376,0.000307738,0.000124218,train
 </div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">forward</span></code> re-solves each process with the trained model on a dense time grid and writes
-<code class="docutils literal notranslate"><span class="pre">forward-results/predictions.csv</span></code>, <code class="docutils literal notranslate"><span class="pre">forward-results/losses.csv</span></code>, and (with <code class="docutils literal notranslate"><span class="pre">plots:</span> <span class="pre">true</span></code>)
-one figure per process under <code class="docutils literal notranslate"><span class="pre">forward-results/plots/</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">predictions.csv</span></code>, <code class="docutils literal notranslate"><span class="pre">losses.csv</span></code>, and (with <code class="docutils literal notranslate"><span class="pre">plots:</span> <span class="pre">true</span></code>) one figure per process under
+<code class="docutils literal notranslate"><span class="pre">plots/</span></code>, all directly in the output directory.</p>
 <div class="note admonition">
 <p class="admonition-title">Why <code class="docutils literal notranslate"><span class="pre">forward</span></code> exists separately from <code class="docutils literal notranslate"><span class="pre">train</span></code></p>
 <p>Training reports a loss. <code class="docutils literal notranslate"><span class="pre">forward</span></code> reports a <em>trajectory</em>: dense states, the inferred
@@ -579,7 +579,7 @@ directories portable.</p></li>
 </section>
 <section id="what-s-next">
 <h2>What’s next<a class="headerlink" href="#what-s-next" title="Link to this heading">¶</a></h2>
-<p>Run the tutorial yourself at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/tutorial_05/</span></code>.</p>
+<p>You can run the full tutorial at <code class="docutils literal notranslate"><span class="pre">examples/tutorial_05_predict/run.py</span></code>.</p>
 <p>You have now seen the whole loop. Everything the tutorials deliberately left out is in
 the gallery, each as a self-contained example:</p>
 <ul class="simple">

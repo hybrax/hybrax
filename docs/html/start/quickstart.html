@@ -431,9 +431,9 @@ setting.</p></li>
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-24 16:07:59 INFO hybrax.train.prepare: prepare hooks detected: none
-2026-08-24 16:07:59 INFO hybrax.train.prepare: prepare hooks default: transform_process_collection, augment_state_values
-2026-08-24 16:07:59 INFO hybrax.format.serialization: Saved to prepared/prepared.json
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-25 11:31:33 INFO hybrax.train.prepare: prepare hooks detected: none
+2026-08-25 11:31:33 INFO hybrax.train.prepare: prepare hooks default: transform_process_collection, augment_state_values
+2026-08-25 11:31:33 INFO hybrax.format.serialization: Saved to /home/mgotsmy/code/bpbench/hybrax/docs/source/_data/out/runs/quickstart/prepared/prepared.json
 </pre></div>
 </div>
 </div>
@@ -452,7 +452,7 @@ each run’s controls. Worth a look the first time you prepare your own data.</p
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-24 16:09:03 INFO __main__: training complete: first_mean_loss=38.6735 last_mean_loss=0.114875 delta=-38.5587
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-25 11:31:58 INFO __main__: training complete: first_mean_loss=38.6735 last_mean_loss=0.114875 delta=-38.5587
 </pre></div>
 </div>
 </div>
@@ -482,7 +482,7 @@ train (mean),0.114567,0.0908896,0.250197,0.00261295,train
 </div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">forward</span></code> re-simulates each run with the trained model and writes a dense trajectory to
-<code class="docutils literal notranslate"><span class="pre">forward-results/predictions.csv</span></code> plus these per-process, per-target losses. Training
+<code class="docutils literal notranslate"><span class="pre">predictions.csv</span></code> plus these per-process, per-target losses. Training
 gives you a number; forward gives you something you can plot and hand to a colleague.</p>
 </section>
 <section id="look-at-it">
@@ -521,17 +521,16 @@ keep working from the copy, no other files needed.</p>
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>config.json
 forward/
-  forward-results/
-    losses.csv
-    models/
-      run/
-        losses.csv
-        predictions.csv
-    plots/
-      run_1.png
-      run_2.png
-      run_3.png
-    predictions.csv
+  losses.csv
+  models/
+    run/
+      losses.csv
+      predictions.csv
+  plots/
+    run_1.png
+    run_2.png
+    run_3.png
+  predictions.csv
 grad_norm_curve.png
 loss_curve.png
 losses.csv
@@ -572,9 +571,9 @@ model/
 </section>
 <section id="what-to-do-next">
 <h2>What to do next<a class="headerlink" href="#what-to-do-next" title="Link to this heading">¶</a></h2>
-<p>Run the tutorial yourself at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/quickstart/</span></code>.</p>
+<p>You can inspect this page’s files in <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/quickstart/</span></code>.</p>
 <div class="tip admonition">
-<p class="admonition-title">You have not seen any of the interesting parts yet</p>
+<p class="admonition-title">This was a quick taste but there is a lot more</p>
 <p>This run used every default: a generic MLP for the rates, mean-squared error for the
 loss, <strong>and no scaling at all</strong>. It fits this small, well-behaved dataset anyway. On real
 data the scaling in particular matters a great deal: see

@@ -541,7 +541,9 @@
     <span class="n">variable</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Build one TimeSeries from full input.json-like data."""</span>
-    <span class="n">process_state</span> <span class="o">=</span> <span class="n">input_data</span><span class="p">[</span><span class="s2">"metadata"</span><span class="p">][</span><span class="s2">"hybrax-format"</span><span class="p">][</span><span class="s2">"process_state"</span><span class="p">][</span><span class="n">process_key</span><span class="p">]</span>
+    <span class="n">process_state</span> <span class="o">=</span> <span class="n">input_data</span><span class="p">[</span><span class="s2">"metadata"</span><span class="p">][</span><span class="s2">"hybrax-format"</span><span class="p">][</span><span class="s2">"process_state"</span><span class="p">][</span>
+        <span class="n">process_key</span>
+    <span class="p">]</span>
     <span class="k">return</span> <span class="n">timeseries_from_process_state</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">process_state</span><span class="p">,</span> <span class="n">variable</span><span class="p">)</span></div>
 
 </pre></div>

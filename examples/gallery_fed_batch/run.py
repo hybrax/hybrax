@@ -64,4 +64,4 @@ hxt_cli(
     "run/forward",
     "--overwrite",
 )
-print(f"forward plot: {HERE / 'run/forward/forward-results/plots/fedbatch_1.png'}")
+print(f"forward plot: {HERE / 'run/forward/plots/fedbatch_1.png'}")

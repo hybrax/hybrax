@@ -22,7 +22,8 @@ Module Contents
 
 .. py:class:: CheckpointWriter(checkpoints_dir, *, prepared_src = None)
 
-   Writes self-contained ``checkpoints/step_NNNNN/`` directories and updates ``latest``.
+   Writes self-contained ``checkpoints/step_NNNNN/`` directories and
+   updates ``latest``.
 
    Each checkpoint bundles everything needed to resume or reload the run:
    trained params, optimizer state, training-progress metadata, and (when

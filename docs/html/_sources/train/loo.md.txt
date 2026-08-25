@@ -131,6 +131,8 @@ API-only. `losses.csv` then labels each process `train` or `holdout`.
 - **Fold directories are named by slug**, derived from the held-out process names.
 - **`--resume` ignores config changes.** If you edited the config, you want a fresh run,
   not a resume.
+- **`--overwrite` is required** to reuse an output directory, and deletes everything
+  already there, regardless of what put it there, before writing fresh output.
 
 ## See also
 

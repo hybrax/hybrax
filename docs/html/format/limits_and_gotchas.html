@@ -394,24 +394,25 @@ them, you need to know now rather than halfway through.</p>
 <tr class="row-even"><td><p><strong>Time-varying feed composition</strong></p></td>
 <td><p>A <code class="docutils literal notranslate"><span class="pre">FeedMediumComponent</span></code> concentration may be a <code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> in the schema, but <code class="docutils literal notranslate"><span class="pre">build_rhs_ode</span></code> raises <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code>. Use <code class="docutils literal notranslate"><span class="pre">StaticVariable</span></code>; split genuinely changing feeds into separate streams.</p></td>
 </tr>
-<tr class="row-odd"><td><p><strong>Perfusion / cell retention</strong></p></td>
-<td><p>The vessel model is a well-mixed CSTR. There is no mechanism for retaining cells while removing liquid. A perfusion process cannot be described correctly.</p></td>
+<tr class="row-odd"><td><p><strong>Declarative level-controlled outflow</strong></p></td>
+<td><p>There is no built-in overflow or level-controller object that derives an <code class="docutils literal notranslate"><span class="pre">Outflow</span></code> from reactor volume. Store a known outflow as a controlled cumulative trace, or compute a modeled outflow rate in a custom reaction module.</p></td>
 </tr>
-<tr class="row-even"><td><p><strong>Evaporation with solute retention</strong></p></td>
-<td><p>Same reason: removing solvent while keeping solutes is not representable.</p></td>
-</tr>
-<tr class="row-odd"><td><p><strong>Pseudobatch on a continuous <code class="docutils literal notranslate"><span class="pre">Outflow</span></code></strong></p></td>
+<tr class="row-even"><td><p><strong>Pseudobatch on a continuous <code class="docutils literal notranslate"><span class="pre">Outflow</span></code></strong></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">build_pseudobatch_transform</span></code> raises <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code> for any continuous <code class="docutils literal notranslate"><span class="pre">Outflow</span></code> (perfusion, continuous harvest), retention or not. Its closed-form ADF assumes volume only grows from <code class="docutils literal notranslate"><span class="pre">Inflow</span></code>s. Only <code class="docutils literal notranslate"><span class="pre">Inflow</span></code> and discrete <code class="docutils literal notranslate"><span class="pre">Outflow</span></code> (sampling) are supported. See <a class="reference internal" href="pseudobatch_transform.html"><span class="std std-doc">The pseudobatch transform</span></a>.</p></td>
 </tr>
-<tr class="row-even"><td><p><strong>Rate inversion</strong></p></td>
+<tr class="row-odd"><td><p><strong>Rate inversion</strong></p></td>
 <td><p>There is no facility for computing rates analytically from measured concentrations. Rates come from a model.</p></td>
 </tr>
-<tr class="row-odd"><td><p><strong>Unit conversion</strong></p></td>
+<tr class="row-even"><td><p><strong>Unit conversion</strong></p></td>
 <td><p>Units are free-form strings. Nothing is parsed and nothing is converted.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
+<p>Continuous <code class="docutils literal notranslate"><span class="pre">Outflow</span></code>s can assign a fixed per-component retention fraction. This
+supports, for example, cell retention in perfusion and solute retention during
+evaporation. Missing components have zero retention and leave at the well-mixed bulk
+concentration.</p>
 <p>The last one deserves emphasis: units are used for exactly two checks, that quantities
 you <em>add</em> in a <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> expression share a unit, and that processes in a case
 study agree. <code class="docutils literal notranslate"><span class="pre">&quot;g/L&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;g/l&quot;</span></code> are different strings. Pick one spelling.</p>

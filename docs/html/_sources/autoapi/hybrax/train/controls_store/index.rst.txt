@@ -64,7 +64,8 @@ Module Contents
 
    .. py:method:: eval_controlled_Inflows_cumulative(row_idx, t_arr, states)
 
-      RAW cumulative controlled Inflow volume for batch row ``row_idx`` at ``t_arr``.
+      RAW cumulative controlled Inflow volume for batch row ``row_idx`` at
+      ``t_arr``.
 
       :param row_idx: Batch row index.
       :param t_arr: Query time(s), scalar or array.
@@ -77,25 +78,31 @@ Module Contents
 
    .. py:method:: eval_controlled_Inflows_rates(row_idx, t_arr, states)
 
-      RAW controlled Inflow rate for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+      RAW controlled Inflow rate for batch row ``row_idx`` at ``t_arr``.
+      See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
 
 
 
    .. py:method:: eval_controlled_Outflows_cumulative(row_idx, t_arr, states)
 
-      RAW cumulative controlled Outflow volume for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+      RAW cumulative controlled Outflow volume for batch row ``row_idx``
+      at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the
+      arguments.
 
 
 
    .. py:method:: eval_controlled_Outflows_rates(row_idx, t_arr, states)
 
-      RAW controlled Outflow rate for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+      RAW controlled Outflow rate for batch row ``row_idx`` at ``t_arr``.
+      See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
 
 
 
    .. py:method:: eval_controlled_PVs(row_idx, t_arr, states)
 
-      RAW controlled process-variable value for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+      RAW controlled process-variable value for batch row ``row_idx`` at
+      ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the
+      arguments.
 
 
 
@@ -233,7 +240,8 @@ Module Contents
       :classmethod:
 
 
-      Build a JAX-backed runtime store from a prepared :class:`~hybrax.format.dataclasses.BioProcessCollection`.
+      Build a JAX-backed runtime store from a prepared
+      :class:`~hybrax.format.dataclasses.BioProcessCollection`.
 
 
 
@@ -409,25 +417,29 @@ Module Contents
 
    .. py:method:: eval_controlled_Inflows_rates(t_arr, states)
 
-      RAW controlled Inflow rate at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+      RAW controlled Inflow rate at ``t_arr``. See
+      :meth:`eval_controlled_Inflows_cumulative` for the arguments.
 
 
 
    .. py:method:: eval_controlled_Outflows_cumulative(t_arr, states)
 
-      RAW cumulative controlled Outflow volume at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+      RAW cumulative controlled Outflow volume at ``t_arr``. See
+      :meth:`eval_controlled_Inflows_cumulative` for the arguments.
 
 
 
    .. py:method:: eval_controlled_Outflows_rates(t_arr, states)
 
-      RAW controlled Outflow rate at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+      RAW controlled Outflow rate at ``t_arr``. See
+      :meth:`eval_controlled_Inflows_cumulative` for the arguments.
 
 
 
    .. py:method:: eval_controlled_PVs(t_arr, states)
 
-      RAW controlled process-variable value at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+      RAW controlled process-variable value at ``t_arr``. See
+      :meth:`eval_controlled_Inflows_cumulative` for the arguments.
 
 
 

@@ -394,9 +394,9 @@ bare loss number does.</p>
 <p><code class="docutils literal notranslate"><span class="pre">predictions</span></code> accepts <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code> (default), <code class="docutils literal notranslate"><span class="pre">&quot;parents&quot;</span></code> (every non-augmented evaluated
 process), or <code class="docutils literal notranslate"><span class="pre">&quot;all&quot;</span></code>. <code class="docutils literal notranslate"><span class="pre">plots</span></code> requires <code class="docutils literal notranslate"><span class="pre">predictions</span></code> to be <code class="docutils literal notranslate"><span class="pre">&quot;parents&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;all&quot;</span></code>, and
 is best-effort: a rendering failure is logged, not raised.</p>
-<p>Output defaults to <code class="docutils literal notranslate"><span class="pre">&lt;first</span> <span class="pre">model&gt;/forward</span></code>. Everything the command writes lands under
-one <code class="docutils literal notranslate"><span class="pre">forward-results/</span></code> subdirectory inside that, so overwriting never touches
-unrelated files sitting next to it.</p>
+<p>Output defaults to <code class="docutils literal notranslate"><span class="pre">&lt;first</span> <span class="pre">model&gt;/forward</span></code>. Everything the command writes lands
+directly in that directory, and <code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> deletes everything already there
+before writing fresh output.</p>
 <section id="what-it-produces">
 <h2>What it produces<a class="headerlink" href="#what-it-produces" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper colwidths-auto docutils container">
@@ -407,19 +407,19 @@ unrelated files sitting next to it.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">forward-results/losses.csv</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">losses.csv</span></code></p></td>
 <td><p>Per-process, per-target loss, with the train/holdout split. Always written.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">forward-results/predictions.csv</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">predictions.csv</span></code></p></td>
 <td><p>Dense trajectory per process: <code class="docutils literal notranslate"><span class="pre">t</span></code>, <code class="docutils literal notranslate"><span class="pre">c_&lt;species&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">q_&lt;rate&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">V_real</span></code>. Needs <code class="docutils literal notranslate"><span class="pre">output.predictions</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">forward-results/plots/&lt;process&gt;.png</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">plots/&lt;process&gt;.png</span></code></p></td>
 <td><p>Fit, inferred rates, <code class="docutils literal notranslate"><span class="pre">V_real</span></code> and volume events, per process. Needs <code class="docutils literal notranslate"><span class="pre">output.plots</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">forward-results/predictions_std.csv</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">predictions_std.csv</span></code></p></td>
 <td><p>Ensembles only: spread across models.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">forward-results/models/&lt;name&gt;/</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">models/&lt;name&gt;/</span></code></p></td>
 <td><p>Ensembles only: each member’s own predictions and losses.</p></td>
 </tr>
 </tbody>
@@ -459,7 +459,7 @@ and a real worked example can be verified rather than just described.</p>
 <span class="p">}</span>
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">forward-results/predictions.csv</span></code> holds the mean and <code class="docutils literal notranslate"><span class="pre">predictions_std.csv</span></code> the standard deviation across
+<p><code class="docutils literal notranslate"><span class="pre">predictions.csv</span></code> holds the mean and <code class="docutils literal notranslate"><span class="pre">predictions_std.csv</span></code> the standard deviation across
 members. Training the same configuration under several seeds and reading the spread is
 the cheapest uncertainty estimate available here, and it is genuinely informative,
 because neural ODE fits on sparse bioprocess data are often seed-sensitive in the rates
@@ -511,7 +511,9 @@ needs no <code class="docutils literal notranslate"><span class="pre">custom.py<
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> is required</strong> for a forward directory that already has results.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> is required</strong> for a forward directory that already has results, and
+deletes everything already there, regardless of what put it there, before writing fresh
+output.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">--config</span></code> is mandatory</strong> for <code class="docutils literal notranslate"><span class="pre">forward</span></code>: unlike <code class="docutils literal notranslate"><span class="pre">train</span></code>, there is no implicit default.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">losses.csv</span></code> labels each process <code class="docutils literal notranslate"><span class="pre">train</span></code> or <code class="docutils literal notranslate"><span class="pre">holdout</span></code>.</strong> On a plain forward over the
 training data everything says <code class="docutils literal notranslate"><span class="pre">train</span></code>; that is not a bug.</p></li>

@@ -375,7 +375,6 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">tempfile</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
@@ -443,7 +442,9 @@
     <span class="c1"># ---- prepare ----</span>
     <span class="n">prepare_parser</span> <span class="o">=</span> <span class="n">subparsers</span><span class="o">.</span><span class="n">add_parser</span><span class="p">(</span>
         <span class="s2">"prepare"</span><span class="p">,</span>
-        <span class="n">help</span><span class="o">=</span><span class="s2">"Transform a raw hybrax.format process collection into a prepared artifact."</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">"Transform a raw hybrax.format process collection into a prepared artifact."</span>
+        <span class="p">),</span>
     <span class="p">)</span>
     <span class="n">prepare_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
         <span class="s2">"--config"</span><span class="p">,</span>
@@ -452,15 +453,18 @@
     <span class="p">)</span>
     <span class="n">prepare_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
         <span class="s2">"--output-dir"</span><span class="p">,</span>
-        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-        <span class="n">help</span><span class="o">=</span><span class="s2">"Output directory for the prepare artifacts "</span>
-        <span class="s2">"(prepared.json, prepare_config.json, optional augmented-data.png, "</span>
-        <span class="s2">"prepare_diagnostics/)."</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">"Override output.dir from the config (default </span><span class="se">\"</span><span class="s2">output</span><span class="se">\"</span><span class="s2">); where "</span>
+        <span class="s2">"prepare's artifacts are written (prepared.json, prepare_config.json, "</span>
+        <span class="s2">"optional augmented-data.png, prepare_diagnostics/)."</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="n">prepare_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
         <span class="s2">"--overwrite"</span><span class="p">,</span>
         <span class="n">action</span><span class="o">=</span><span class="s2">"store_true"</span><span class="p">,</span>
-        <span class="n">help</span><span class="o">=</span><span class="s2">"Overwrite an existing prepared.json in --output-dir."</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">"Delete everything already in --output-dir, regardless of what put "</span>
+            <span class="s2">"it there, before writing fresh output."</span>
+        <span class="p">),</span>
     <span class="p">)</span>
     <span class="n">prepare_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
         <span class="s2">"--log-level"</span><span class="p">,</span>
@@ -488,7 +492,10 @@
     <span class="n">train_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
         <span class="s2">"--overwrite"</span><span class="p">,</span>
         <span class="n">action</span><span class="o">=</span><span class="s2">"store_true"</span><span class="p">,</span>
-        <span class="n">help</span><span class="o">=</span><span class="s2">"Allow re-running into a run dir that already completed."</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">"Delete everything already in --output-dir, regardless of what put "</span>
+            <span class="s2">"it there, before writing fresh output."</span>
+        <span class="p">),</span>
     <span class="p">)</span>
     <span class="n">train_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
         <span class="s2">"--epochs"</span><span class="p">,</span>
@@ -529,16 +536,16 @@
         <span class="s2">"--output-dir"</span><span class="p">,</span>
         <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
         <span class="n">help</span><span class="o">=</span><span class="p">(</span>
-            <span class="s2">"Parent directory for forward outputs (overrides output.dir); results "</span>
-            <span class="s2">"are written under forward-results/. Defaults to &lt;first model&gt;/forward."</span>
+            <span class="s2">"Directory forward writes into (overrides output.dir). Defaults to "</span>
+            <span class="s2">"&lt;first model&gt;/forward."</span>
         <span class="p">),</span>
     <span class="p">)</span>
     <span class="n">forward_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
         <span class="s2">"--overwrite"</span><span class="p">,</span>
         <span class="n">action</span><span class="o">=</span><span class="s2">"store_true"</span><span class="p">,</span>
         <span class="n">help</span><span class="o">=</span><span class="p">(</span>
-            <span class="s2">"Replace existing forward-results/ while preserving other files in "</span>
-            <span class="s2">"the parent output directory."</span>
+            <span class="s2">"Delete everything already in --output-dir, regardless of what put "</span>
+            <span class="s2">"it there, before writing fresh output."</span>
         <span class="p">),</span>
     <span class="p">)</span>
     <span class="n">forward_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
@@ -587,7 +594,10 @@
     <span class="n">loo_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
         <span class="s2">"--overwrite"</span><span class="p">,</span>
         <span class="n">action</span><span class="o">=</span><span class="s2">"store_true"</span><span class="p">,</span>
-        <span class="n">help</span><span class="o">=</span><span class="s2">"Replace an existing LOO output directory."</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">"Delete everything already in --output-dir, regardless of what put "</span>
+            <span class="s2">"it there, before writing fresh output."</span>
+        <span class="p">),</span>
     <span class="p">)</span>
     <span class="n">internal_loo_mode</span> <span class="o">=</span> <span class="n">loo_parser</span><span class="o">.</span><span class="n">add_mutually_exclusive_group</span><span class="p">()</span>
     <span class="n">internal_loo_mode</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
@@ -615,7 +625,9 @@
         <span class="n">datefmt</span><span class="o">=</span><span class="s2">"%Y-%m-</span><span class="si">%d</span><span class="s2"> %H:%M:%S"</span><span class="p">,</span>
         <span class="n">force</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
     <span class="p">)</span>
-    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">output_dir</span><span class="p">)</span>
+    <span class="n">loaded</span> <span class="o">=</span> <span class="n">load_prepare_config</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">config</span><span class="p">)</span>
+    <span class="n">cfg</span> <span class="o">=</span> <span class="n">_apply_train_cli_overrides</span><span class="p">(</span><span class="n">loaded</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="n">args</span><span class="p">)</span>
+    <span class="n">output_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">dir</span><span class="p">)</span>
     <span class="n">prepared</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">"prepared.json"</span>
     <span class="k">if</span> <span class="n">prepared</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">:</span>
         <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
@@ -623,11 +635,12 @@
             <span class="n">prepared</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="k">return</span> <span class="mi">1</span>
-    <span class="n">prepare_artifact</span><span class="p">(</span>
-        <span class="n">load_prepare_config</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">config</span><span class="p">),</span>
-        <span class="n">output_dir</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">output_dir</span><span class="p">,</span>
-        <span class="n">overwrite</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">,</span>
-    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">:</span>
+        <span class="n">_clear_output_dir_for_overwrite</span><span class="p">(</span>
+            <span class="n">output_dir</span><span class="p">,</span>
+            <span class="n">input_paths</span><span class="o">=</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="n">cfg</span><span class="o">.</span><span class="n">prepare</span><span class="o">.</span><span class="n">raw_input</span><span class="p">,</span> <span class="n">cfg</span><span class="o">.</span><span class="n">custom_py</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="n">prepare_artifact</span><span class="p">(</span><span class="n">loaded</span><span class="p">,</span> <span class="n">output_dir</span><span class="o">=</span><span class="n">output_dir</span><span class="p">)</span>
     <span class="k">return</span> <span class="mi">0</span>
 
 
@@ -1127,17 +1140,16 @@
         <span class="n">output_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">fcfg</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">dir</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">output_dir</span> <span class="o">=</span> <span class="n">bundles</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="s2">"forward"</span>
-    <span class="n">results_dir</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">"forward-results"</span>
-    <span class="n">results_exist</span> <span class="o">=</span> <span class="n">results_dir</span><span class="o">.</span><span class="n">is_symlink</span><span class="p">()</span> <span class="ow">or</span> <span class="n">results_dir</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span>
-    <span class="k">if</span> <span class="n">results_exist</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">:</span>
+    <span class="n">losses_path</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">"losses.csv"</span>
+    <span class="k">if</span> <span class="n">losses_path</span><span class="o">.</span><span class="n">is_file</span><span class="p">()</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">:</span>
         <span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
             <span class="s2">"forward results already exist at </span><span class="si">%s</span><span class="s2">; pass --overwrite to replace them"</span><span class="p">,</span>
-            <span class="n">results_dir</span><span class="p">,</span>
+            <span class="n">output_dir</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="k">return</span> <span class="mi">1</span>
-    <span class="k">if</span> <span class="n">results_exist</span><span class="p">:</span>
-        <span class="n">_check_output_dir_overwrite_safe</span><span class="p">(</span>
-            <span class="n">results_dir</span><span class="p">,</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">:</span>
+        <span class="n">_clear_output_dir_for_overwrite</span><span class="p">(</span>
+            <span class="n">output_dir</span><span class="p">,</span>
             <span class="n">input_paths</span><span class="o">=</span><span class="p">(</span>
                 <span class="n">args</span><span class="o">.</span><span class="n">config</span><span class="p">,</span>
                 <span class="n">shared_prepared</span><span class="p">,</span>
@@ -1218,80 +1230,31 @@
         <span class="p">)</span>
         <span class="n">per_model</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">name</span><span class="p">,</span> <span class="n">result</span><span class="p">))</span>
 
-    <span class="n">staging_root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">".forward-results-"</span><span class="p">,</span> <span class="nb">dir</span><span class="o">=</span><span class="n">output_dir</span><span class="p">))</span>
-    <span class="n">staging_dir</span> <span class="o">=</span> <span class="n">staging_root</span> <span class="o">/</span> <span class="n">results_dir</span><span class="o">.</span><span class="n">name</span>
-    <span class="n">staging_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">()</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="n">_write_forward_results</span><span class="p">(</span>
-            <span class="n">staging_dir</span><span class="p">,</span>
-            <span class="n">per_model</span><span class="p">,</span>
-            <span class="n">prediction_processes</span><span class="p">,</span>
-            <span class="n">plot_collection</span><span class="p">,</span>
-            <span class="n">plots</span><span class="o">=</span><span class="n">fcfg</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">plots</span><span class="p">,</span>
-        <span class="p">)</span>
-        <span class="n">_publish_forward_results</span><span class="p">(</span><span class="n">staging_dir</span><span class="p">,</span> <span class="n">results_dir</span><span class="p">)</span>
-    <span class="k">finally</span><span class="p">:</span>
-        <span class="k">if</span> <span class="n">staging_root</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
-            <span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="n">staging_root</span><span class="p">)</span>
+    <span class="n">_write_forward_results</span><span class="p">(</span>
+        <span class="n">output_dir</span><span class="p">,</span>
+        <span class="n">per_model</span><span class="p">,</span>
+        <span class="n">prediction_processes</span><span class="p">,</span>
+        <span class="n">plot_collection</span><span class="p">,</span>
+        <span class="n">plots</span><span class="o">=</span><span class="n">fcfg</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">plots</span><span class="p">,</span>
+    <span class="p">)</span>
 
     <span class="k">return</span> <span class="mi">0</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_publish_forward_results</span><span class="p">(</span><span class="n">staging_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">results_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Publish staged results, restoring prior results if publication fails."""</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">results_dir</span><span class="o">.</span><span class="n">is_symlink</span><span class="p">()</span> <span class="ow">or</span> <span class="n">results_dir</span><span class="o">.</span><span class="n">exists</span><span class="p">()):</span>
-        <span class="n">staging_dir</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">results_dir</span><span class="p">)</span>
-        <span class="k">return</span>
-
-    <span class="n">backup_root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span>
-        <span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">".forward-results-old-"</span><span class="p">,</span> <span class="nb">dir</span><span class="o">=</span><span class="n">results_dir</span><span class="o">.</span><span class="n">parent</span><span class="p">)</span>
-    <span class="p">)</span>
-    <span class="n">backup_dir</span> <span class="o">=</span> <span class="n">backup_root</span> <span class="o">/</span> <span class="n">results_dir</span><span class="o">.</span><span class="n">name</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="n">results_dir</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">backup_dir</span><span class="p">)</span>
-    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-        <span class="n">backup_root</span><span class="o">.</span><span class="n">rmdir</span><span class="p">()</span>
-        <span class="k">raise</span>
-
-    <span class="k">try</span><span class="p">:</span>
-        <span class="n">staging_dir</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">results_dir</span><span class="p">)</span>
-    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">backup_dir</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">results_dir</span><span class="p">)</span>
-        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-            <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span>
-                <span class="s2">"failed to restore prior forward results; backup remains at </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
-                <span class="n">backup_dir</span><span class="p">,</span>
-            <span class="p">)</span>
-            <span class="k">raise</span>
-        <span class="n">backup_root</span><span class="o">.</span><span class="n">rmdir</span><span class="p">()</span>
-        <span class="k">raise</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="n">backup_root</span><span class="p">)</span>
-        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-            <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span>
-                <span class="s2">"published new forward results but failed to remove prior "</span>
-                <span class="s2">"results at </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
-                <span class="n">backup_root</span><span class="p">,</span>
-            <span class="p">)</span>
-            <span class="k">raise</span>
-
-
 <span class="k">def</span><span class="w"> </span><span class="nf">_write_forward_results</span><span class="p">(</span>
-    <span class="n">results_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
+    <span class="n">output_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
     <span class="n">per_model</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">ForwardResult</span><span class="p">]],</span>
     <span class="n">prediction_processes</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
     <span class="n">plot_collection</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
     <span class="o">*</span><span class="p">,</span>
     <span class="n">plots</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Write a complete forward result set into a fresh staging directory."""</span>
+<span class="w">    </span><span class="sd">"""Write a complete forward result set directly into ``output_dir``."""</span>
     <span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
     <span class="n">wrapper0</span> <span class="o">=</span> <span class="n">per_model</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">trained_wrapper</span>
 
     <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">per_model</span><span class="p">:</span>
-        <span class="n">model_dir</span> <span class="o">=</span> <span class="n">results_dir</span> <span class="o">/</span> <span class="s2">"models"</span> <span class="o">/</span> <span class="n">name</span>
+        <span class="n">model_dir</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">"models"</span> <span class="o">/</span> <span class="n">name</span>
         <span class="n">model_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">prediction_processes</span><span class="p">:</span>
             <span class="n">export_predictions_csv</span><span class="p">(</span>
@@ -1312,14 +1275,14 @@
         <span class="n">export_predictions_csv</span><span class="p">(</span>
             <span class="n">wrapper0</span><span class="p">,</span>
             <span class="n">mean_exports</span><span class="p">,</span>
-            <span class="n">results_dir</span> <span class="o">/</span> <span class="s2">"predictions.csv"</span><span class="p">,</span>
+            <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">"predictions.csv"</span><span class="p">,</span>
             <span class="n">process_names</span><span class="o">=</span><span class="n">prediction_processes</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="k">if</span> <span class="n">std_exports</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">export_predictions_csv</span><span class="p">(</span>
                 <span class="n">wrapper0</span><span class="p">,</span>
                 <span class="n">std_exports</span><span class="p">,</span>
-                <span class="n">results_dir</span> <span class="o">/</span> <span class="s2">"predictions_std.csv"</span><span class="p">,</span>
+                <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">"predictions_std.csv"</span><span class="p">,</span>
                 <span class="n">process_names</span><span class="o">=</span><span class="n">prediction_processes</span><span class="p">,</span>
             <span class="p">)</span>
         <span class="k">if</span> <span class="n">plots</span><span class="p">:</span>
@@ -1332,14 +1295,14 @@
                     <span class="n">_aggregate_forward_plot_losses</span><span class="p">(</span>
                         <span class="p">[</span><span class="n">result</span> <span class="k">for</span> <span class="n">_name</span><span class="p">,</span> <span class="n">result</span> <span class="ow">in</span> <span class="n">per_model</span><span class="p">]</span>
                     <span class="p">),</span>
-                    <span class="n">results_dir</span><span class="p">,</span>
+                    <span class="n">output_dir</span><span class="p">,</span>
                 <span class="p">)</span>
             <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
                 <span class="n">log</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="s2">"failed to create forward prediction plots"</span><span class="p">)</span>
 
     <span class="n">table_str</span><span class="p">,</span> <span class="n">csv_rows</span> <span class="o">=</span> <span class="n">_format_loss_table</span><span class="p">(</span><span class="n">per_model</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
     <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">table_str</span><span class="p">)</span>
-    <span class="n">_write_loss_csv</span><span class="p">(</span><span class="n">csv_rows</span><span class="p">,</span> <span class="n">results_dir</span> <span class="o">/</span> <span class="s2">"losses.csv"</span><span class="p">)</span>
+    <span class="n">_write_loss_csv</span><span class="p">(</span><span class="n">csv_rows</span><span class="p">,</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">"losses.csv"</span><span class="p">)</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_aggregate_forward_plot_losses</span><span class="p">(</span>

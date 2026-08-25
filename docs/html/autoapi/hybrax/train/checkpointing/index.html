@@ -381,7 +381,7 @@
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.checkpointing.CheckpointWriter" title="hybrax.train.checkpointing.CheckpointWriter"><code class="xref py py-obj docutils literal notranslate"><span class="pre">CheckpointWriter</span></code></a></p></td>
-<td><p>Writes self-contained <code class="docutils literal notranslate"><span class="pre">checkpoints/step_NNNNN/</span></code> directories and updates <code class="docutils literal notranslate"><span class="pre">latest</span></code>.</p></td>
+<td><p>Writes self-contained <code class="docutils literal notranslate"><span class="pre">checkpoints/step_NNNNN/</span></code> directories and</p></td>
 </tr>
 </tbody>
 </table>
@@ -392,7 +392,8 @@
 <dl class="py class">
 <dt class="sig sig-object py" id="hybrax.train.checkpointing.CheckpointWriter">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.checkpointing.</span></span><span class="sig-name descname"><span class="pre">CheckpointWriter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">checkpoints_dir</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_src</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/checkpointing.html#CheckpointWriter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.checkpointing.CheckpointWriter" title="Link to this definition">¶</a></dt>
-<dd><p>Writes self-contained <code class="docutils literal notranslate"><span class="pre">checkpoints/step_NNNNN/</span></code> directories and updates <code class="docutils literal notranslate"><span class="pre">latest</span></code>.</p>
+<dd><p>Writes self-contained <code class="docutils literal notranslate"><span class="pre">checkpoints/step_NNNNN/</span></code> directories and
+updates <code class="docutils literal notranslate"><span class="pre">latest</span></code>.</p>
 <p>Each checkpoint bundles everything needed to resume or reload the run:
 trained params, optimizer state, training-progress metadata, and (when
 available) the run’s <code class="docutils literal notranslate"><span class="pre">config.json</span></code>/<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>/prepared data.</p>

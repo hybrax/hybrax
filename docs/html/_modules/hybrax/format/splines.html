@@ -1987,7 +1987,8 @@
     <span class="n">c_star</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">comp</span><span class="p">,</span> <span class="s2">"pseudobatch_concentration"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">c_star</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">"Component </span><span class="si">{</span><span class="n">comp</span><span class="o">.</span><span class="n">name</span><span class="si">!r}</span><span class="s2"> has no pseudobatch_concentration to backtransform."</span>
+            <span class="sa">f</span><span class="s2">"Component </span><span class="si">{</span><span class="n">comp</span><span class="o">.</span><span class="n">name</span><span class="si">!r}</span><span class="s2"> has no "</span>
+            <span class="s2">"pseudobatch_concentration to backtransform."</span>
         <span class="p">)</span>
     <span class="k">if</span> <span class="n">comp</span><span class="o">.</span><span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">transform</span><span class="o">.</span><span class="n">feed_corrections</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="n">comp</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
@@ -2196,7 +2197,8 @@
             <span class="n">constant_value</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
-            <span class="s2">"component.pseudobatch_concentration must be a TimeSeries or StaticVariable."</span>
+            <span class="s2">"component.pseudobatch_concentration must be a "</span>
+            <span class="s2">"TimeSeries or StaticVariable."</span>
         <span class="p">)</span>
 
     <span class="n">xi_source</span> <span class="o">=</span> <span class="n">c_star_ts</span><span class="o">.</span><span class="n">times</span> <span class="k">if</span> <span class="n">c_star_ts</span><span class="o">.</span><span class="n">times</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">c_star_ts</span><span class="o">.</span><span class="n">breaks</span>

@@ -97,7 +97,7 @@ print(lines[0] if lines else "training complete")
 hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
-Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
+Image(filename=str(WORK / "run/forward/plots/run_1.png"))
 ```
 
 ## Checking the split actually took

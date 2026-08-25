@@ -5,7 +5,8 @@ hybrax.train.wrapper
 
 .. autoapi-nested-parse::
 
-   ``HybridOdeWrapper``: RAW physical-state ODE wrapper around a user reaction module.
+   ``HybridOdeWrapper``: RAW physical-state ODE wrapper around a user
+   reaction module.
 
 
 

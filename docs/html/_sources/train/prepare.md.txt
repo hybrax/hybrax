@@ -4,7 +4,7 @@
 > reused by every model you fit against it.
 
 ```bash
-hybrax prepare --config prepare-config.json --output-dir prepared
+hybrax prepare --config prepare-config.json [--output-dir DIR] [--overwrite]
 ```
 
 ## Why it is a separate command
@@ -157,6 +157,10 @@ advanced; see [Gallery](../gallery/index.md).
 ## Gotchas
 
 - **Prepare does not overwrite without `--overwrite`.** It exits non-zero with an error.
+- **`--overwrite` deletes everything already in `--output-dir`**, regardless of what put it
+  there, before writing fresh output. There is no partial or selective overwrite.
+- **`--output-dir` is optional.** It overrides `output.dir` from the config, which itself
+  falls back to the literal `output/` if neither is set.
 - **`transform_process_collection` must return the collection.** Mutating in place and
   returning `None` gives you a `None` collection downstream.
 - **Prepare is where bad volume descriptions become visible**: via the diagnostic plots,

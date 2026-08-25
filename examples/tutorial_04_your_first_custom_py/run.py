@@ -88,7 +88,7 @@ hxt_cli(
     "run_custom/forward",
     "--overwrite",
 )
-print(f"forward plot: {HERE / 'run_custom/forward/forward-results/plots/run_1.png'}")
+print(f"forward plot: {HERE / 'run_custom/forward/plots/run_1.png'}")
 
 wrapper, cfg = hxt.model_load(str(HERE / "run_custom"))
 hxt.print_trainable_structure(wrapper)

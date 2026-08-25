@@ -91,7 +91,7 @@ hxt_cli(
     "run/forward",
     "--overwrite",
 )
-print(f"forward plot: {HERE / 'run/forward/forward-results/plots/run_1.png'}")
+print(f"forward plot: {HERE / 'run/forward/plots/run_1.png'}")
 
 df = pd.read_csv(HERE / "run" / "predictions.csv")
 run_1 = df[df["process"] == "run_1"]

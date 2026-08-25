@@ -385,11 +385,14 @@ it by differentiating through an ODE solve. For the data side, see
 <img class="theme-diagram diagram-dark" src="../_static/diagram_train_pipeline_dark.svg" alt="hybrax-format data (from data.csv or data.xlsx) flows through hybrax prepare (producing data.json, then prepared.json), hybrax train or loo (producing run/) and hybrax forward to produce predictions, rates and metrics. Measured data, process transformation and augmentation, the reaction module, loss module, scales, optimizer and learning rate (all custom.py), and old or new controls (data.json, new_data.json) feed in from the left. Each stage's own script or config file feeds in from the right: import.py, prepare-config.json, train-config.json or loo-config.json, and forward-config.json.">
 <p>Four commands. Everything you customise happens through one optional <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, and
 every hook in it has a working default.</p>
-<p>None of these directory names are automatic. <code class="docutils literal notranslate"><span class="pre">prepare</span></code> requires <code class="docutils literal notranslate"><span class="pre">--output-dir</span></code>
-explicitly; <code class="docutils literal notranslate"><span class="pre">train</span></code> and <code class="docutils literal notranslate"><span class="pre">loo</span></code> both fall back to the same literal <code class="docutils literal notranslate"><span class="pre">output/</span></code> if you set
-neither <code class="docutils literal notranslate"><span class="pre">--output-dir</span></code> nor <code class="docutils literal notranslate"><span class="pre">output.dir</span></code>, so anything beyond a single throwaway run needs
-a name you chose. Only <code class="docutils literal notranslate"><span class="pre">forward</span></code> has a real default: <code class="docutils literal notranslate"><span class="pre">&lt;first</span> <span class="pre">model&gt;/forward</span></code>, nested
-inside the model’s own run directory, unless you point it elsewhere.</p>
+<p>None of these directory names are automatic beyond a literal fallback. <code class="docutils literal notranslate"><span class="pre">prepare</span></code>,
+<code class="docutils literal notranslate"><span class="pre">train</span></code>, and <code class="docutils literal notranslate"><span class="pre">loo</span></code> all fall back to the same literal <code class="docutils literal notranslate"><span class="pre">output/</span></code> if you set neither
+<code class="docutils literal notranslate"><span class="pre">--output-dir</span></code> nor <code class="docutils literal notranslate"><span class="pre">output.dir</span></code>, so anything beyond a single throwaway run needs a name
+you chose. Only <code class="docutils literal notranslate"><span class="pre">forward</span></code> has a real default: <code class="docutils literal notranslate"><span class="pre">&lt;first</span> <span class="pre">model&gt;/forward</span></code>, nested inside the
+model’s own run directory, unless you point it elsewhere.</p>
+<p>Whichever directory a command lands on, <code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> deletes everything already there,
+regardless of what put it there, before writing fresh output. There is no partial or
+selective overwrite.</p>
 <p>A typical layout, one command’s output per directory:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>prepared/                prepare's output
 ├── prepared.json
@@ -410,7 +413,7 @@ loo_run/                 loo's output
 └── loo_summary.csv
 
 forward/                 forward's output
-├── forward-results/losses.csv
+├── losses.csv
 ├── predictions.csv
 └── plots/
 </pre></div>

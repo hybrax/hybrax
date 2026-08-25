@@ -105,7 +105,7 @@ print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
-Image(filename=str(WORK / "run/forward/forward-results/plots/run_1.png"))
+Image(filename=str(WORK / "run/forward/plots/run_1.png"))
 ```
 
 ## Did it recover the true parameters?

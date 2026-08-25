@@ -280,13 +280,13 @@ Module Contents
 
    Output settings for ``forward``.
 
-   ``dir`` (optional) is the parent directory forward writes into —
-   everything lands under one ``forward-results/`` subdirectory inside it;
-   defaults to ``<first model>/forward``. ``predictions`` (default
-   ``"none"``) mirrors ``OutputConfig.predictions`` and controls whether
-   ``forward-results/predictions.csv`` is written. ``plots`` (default
-   ``False``) additionally renders one figure per process into
-   ``forward-results/plots/<process>.png``, best-effort (a rendering
+   ``dir`` (optional) is the directory forward writes directly into —
+   ``losses.csv``, ``models/``, and optionally ``predictions.csv`` /
+   ``plots/`` all land there, with no intermediate subdirectory; defaults to
+   ``<first model>/forward``. ``predictions`` (default ``"none"``) mirrors
+   ``OutputConfig.predictions`` and controls whether ``predictions.csv`` is
+   written. ``plots`` (default ``False``) additionally renders one figure
+   per process into ``plots/<process>.png``, best-effort (a rendering
    failure is logged, not raised); it requires ``predictions`` to be
    ``"parents"`` or ``"all"`` — a validator rejects ``plots=True`` with
    ``predictions="none"``.
@@ -781,12 +781,14 @@ Module Contents
 
 .. py:function:: load_loo_config(config_path)
 
-   Load and validate a config for the ``loo`` command; see :func:`load_run_config`.
+   Load and validate a config for the ``loo`` command; see
+   :func:`load_run_config`.
 
 
 .. py:function:: load_prepare_config(config_path)
 
-   Load and validate a config for the ``prepare`` command; see :func:`load_run_config`.
+   Load and validate a config for the ``prepare`` command; see
+   :func:`load_run_config`.
 
 
 .. py:function:: load_run_config(config_path, *, command)
@@ -811,7 +813,8 @@ Module Contents
 
 .. py:function:: load_train_config(config_path)
 
-   Load and validate a config for the ``train`` command; see :func:`load_run_config`.
+   Load and validate a config for the ``train`` command; see
+   :func:`load_run_config`.
 
 
 .. py:function:: reresolve_custom(config, custom_module)

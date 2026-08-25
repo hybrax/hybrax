@@ -34,7 +34,8 @@ Module Contents
 
    .. py:method:: deriv(order = 1)
 
-      Return a derived TimeSeries holding the spline derivative of the given order.
+      Return a derived TimeSeries holding the spline derivative of the
+      given order.
 
 
 

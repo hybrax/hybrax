@@ -5,7 +5,8 @@ hybrax.train.augmentation
 
 .. autoapi-nested-parse::
 
-   Synthetic sibling-process generation from :class:`~hybrax.train.run_config.AugmentationConfig`.
+   Synthetic sibling-process generation from
+   :class:`~hybrax.train.run_config.AugmentationConfig`.
 
    Resamples each real (parent) process's fitted state splines onto a new,
    randomly jittered time grid, optionally adds Gaussian noise, and stores the
@@ -28,7 +29,8 @@ Module Contents
 
 .. py:function:: augment_process_collection(collection, run_config, augment_state_values = None)
 
-   Generate augmented children for every parent process and add them to ``collection``.
+   Generate augmented children for every parent process and add them to
+   ``collection``.
 
    No-op (returns ``collection`` unchanged) when ``run_config.prepare.augmentation``
    is unset. Otherwise, for each real (non-augmented) process, generates

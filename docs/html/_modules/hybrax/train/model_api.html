@@ -822,7 +822,9 @@
 <div class="viewcode-block" id="AffineScaler.astype">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.AffineScaler.astype">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">astype</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"AffineScaler"</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""Return an :class:`AffineScaler` with ``scale``/``offset`` cast to ``dtype``."""</span>
+<span class="w">        </span><span class="sd">"""Return an :class:`AffineScaler` with ``scale``/``offset`` cast to</span>
+<span class="sd">        ``dtype``.</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="n">AffineScaler</span><span class="p">(</span>
             <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">),</span>
             <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">),</span>
@@ -1465,7 +1467,9 @@
 <div class="viewcode-block" id="UserReactionModule.scale_modeled_BiologicalOde_rates">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_BiologicalOde_rates">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_modeled_BiologicalOde_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_modeled_BiologicalOde_rates</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""RAW -&gt; SCL for modeled ``biological_ode`` rates (offset-free derivative op)."""</span>
+<span class="w">        </span><span class="sd">"""RAW -&gt; SCL for modeled ``biological_ode`` rates (offset-free</span>
+<span class="sd">        derivative op).</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_BiologicalOde_rates</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span>
             <span class="n">RAW_modeled_BiologicalOde_rates</span>
         <span class="p">)</span></div>
@@ -1474,7 +1478,9 @@
 <div class="viewcode-block" id="UserReactionModule.unscale_modeled_BiologicalOde_rates">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_BiologicalOde_rates">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_modeled_BiologicalOde_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""SCL -&gt; RAW for modeled ``biological_ode`` rates (offset-free derivative op)."""</span>
+<span class="w">        </span><span class="sd">"""SCL -&gt; RAW for modeled ``biological_ode`` rates (offset-free</span>
+<span class="sd">        derivative op).</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_BiologicalOde_rates</span><span class="o">.</span><span class="n">unscale_derivative</span><span class="p">(</span>
             <span class="n">SCL_modeled_BiologicalOde_rates</span>
         <span class="p">)</span></div>

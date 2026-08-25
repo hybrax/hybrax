@@ -183,7 +183,8 @@ concentration plot and obvious in the rate one.
 
 ## Gotchas
 
-- **`--overwrite` is required** to reuse a run directory.
+- **`--overwrite` is required** to reuse a run directory, and deletes everything already
+  there, regardless of what put it there, before writing fresh output.
 - **`--epochs` overrides the config**, which is what you want while iterating.
 - **`batch_size` greater than the process count** raises rather than clamping.
 - **Stateful modules need `train.allow_stateful_models: true`.**

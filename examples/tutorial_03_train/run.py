@@ -59,4 +59,4 @@ for i in (0, len(metrics) // 2, len(metrics) - 1):
     print(metrics.iloc[i, :4].to_dict())
 
 print(f"loss curve: {HERE / 'run/loss_curve.png'}")
-print(f"forward plot: {HERE / 'run/forward/forward-results/plots/run_1.png'}")
+print(f"forward plot: {HERE / 'run/forward/plots/run_1.png'}")

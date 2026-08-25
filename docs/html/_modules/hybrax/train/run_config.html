@@ -414,7 +414,7 @@
     <span class="s2">"custom"</span><span class="p">,</span>
 <span class="p">}</span>
 <span class="n">_COMMAND_SECTIONS</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">"prepare"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"prepare"</span><span class="p">,</span> <span class="s2">"custom_py"</span><span class="p">,</span> <span class="s2">"custom"</span><span class="p">},</span>
+    <span class="s2">"prepare"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"prepare"</span><span class="p">,</span> <span class="s2">"custom_py"</span><span class="p">,</span> <span class="s2">"custom"</span><span class="p">,</span> <span class="s2">"output"</span><span class="p">},</span>
     <span class="s2">"train"</span><span class="p">:</span> <span class="n">_TRAIN_SECTIONS</span><span class="p">,</span>
     <span class="c1"># loo reuses every train section (each fold is a train run) plus its own</span>
     <span class="c1"># `loo` block (holdout sets + fold-level parallelism).</span>
@@ -836,13 +836,13 @@
 <span class="k">class</span><span class="w"> </span><span class="nc">ForwardOutputConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Output settings for ``forward``.</span>
 
-<span class="sd">    ``dir`` (optional) is the parent directory forward writes into —</span>
-<span class="sd">    everything lands under one ``forward-results/`` subdirectory inside it;</span>
-<span class="sd">    defaults to ``&lt;first model&gt;/forward``. ``predictions`` (default</span>
-<span class="sd">    ``"none"``) mirrors ``OutputConfig.predictions`` and controls whether</span>
-<span class="sd">    ``forward-results/predictions.csv`` is written. ``plots`` (default</span>
-<span class="sd">    ``False``) additionally renders one figure per process into</span>
-<span class="sd">    ``forward-results/plots/&lt;process&gt;.png``, best-effort (a rendering</span>
+<span class="sd">    ``dir`` (optional) is the directory forward writes directly into —</span>
+<span class="sd">    ``losses.csv``, ``models/``, and optionally ``predictions.csv`` /</span>
+<span class="sd">    ``plots/`` all land there, with no intermediate subdirectory; defaults to</span>
+<span class="sd">    ``&lt;first model&gt;/forward``. ``predictions`` (default ``"none"``) mirrors</span>
+<span class="sd">    ``OutputConfig.predictions`` and controls whether ``predictions.csv`` is</span>
+<span class="sd">    written. ``plots`` (default ``False``) additionally renders one figure</span>
+<span class="sd">    per process into ``plots/&lt;process&gt;.png``, best-effort (a rendering</span>
 <span class="sd">    failure is logged, not raised); it requires ``predictions`` to be</span>
 <span class="sd">    ``"parents"`` or ``"all"`` — a validator rejects ``plots=True`` with</span>
 <span class="sd">    ``predictions="none"``.</span>
@@ -939,7 +939,9 @@
 <div class="viewcode-block" id="load_prepare_config">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.load_prepare_config">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_prepare_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LoadedRunConfig</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Load and validate a config for the ``prepare`` command; see :func:`load_run_config`."""</span>
+<span class="w">    </span><span class="sd">"""Load and validate a config for the ``prepare`` command; see</span>
+<span class="sd">    :func:`load_run_config`.</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">load_run_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="s2">"prepare"</span><span class="p">)</span></div>
 
 
@@ -947,7 +949,9 @@
 <div class="viewcode-block" id="load_train_config">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.load_train_config">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_train_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LoadedRunConfig</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Load and validate a config for the ``train`` command; see :func:`load_run_config`."""</span>
+<span class="w">    </span><span class="sd">"""Load and validate a config for the ``train`` command; see</span>
+<span class="sd">    :func:`load_run_config`.</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">load_run_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="s2">"train"</span><span class="p">)</span></div>
 
 
@@ -955,7 +959,9 @@
 <div class="viewcode-block" id="load_loo_config">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.load_loo_config">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_loo_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LoadedRunConfig</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Load and validate a config for the ``loo`` command; see :func:`load_run_config`."""</span>
+<span class="w">    </span><span class="sd">"""Load and validate a config for the ``loo`` command; see</span>
+<span class="sd">    :func:`load_run_config`.</span>
+<span class="sd">    """</span>
     <span class="k">return</span> <span class="n">load_run_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="s2">"loo"</span><span class="p">)</span></div>
 
 

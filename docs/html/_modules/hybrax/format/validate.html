@@ -450,7 +450,8 @@
     <span class="n">bo</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span>
     <span class="k">if</span> <span class="n">bo</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"SKIP"</span><span class="p">,</span> <span class="s2">"biological_ode"</span><span class="p">,</span>
+            <span class="s2">"SKIP"</span><span class="p">,</span>
+            <span class="s2">"biological_ode"</span><span class="p">,</span>
             <span class="s2">"process.biological_ode is None: structural checks skipped"</span><span class="p">,</span>
         <span class="p">)</span>
 
@@ -607,10 +608,16 @@
             <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">detail</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span><span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"biological_ode"</span><span class="p">,</span> <span class="n">_join_details</span><span class="p">(</span><span class="n">errors</span><span class="p">,</span> <span class="n">bulleted</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
+            <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"biological_ode"</span><span class="p">,</span> <span class="n">_join_details</span><span class="p">(</span><span class="n">errors</span><span class="p">,</span> <span class="n">bulleted</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="p">)</span>
     <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-        <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"biological_ode"</span><span class="p">,</span>
-        <span class="s2">"derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"</span><span class="p">,</span>
+        <span class="s2">"PASS"</span><span class="p">,</span>
+        <span class="s2">"biological_ode"</span><span class="p">,</span>
+        <span class="p">(</span>
+            <span class="s2">"derivatives/algebraic/rates parse, resolve, and are acyclic "</span>
+            <span class="s2">"with consistent units"</span>
+        <span class="p">),</span>
     <span class="p">)</span></div>
 
 
@@ -637,7 +644,8 @@
     <span class="n">procs</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">container</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">items</span><span class="p">())</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">procs</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"biological_ode_equivalence"</span><span class="p">,</span>
+            <span class="s2">"PASS"</span><span class="p">,</span>
+            <span class="s2">"biological_ode_equivalence"</span><span class="p">,</span>
             <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">procs</span><span class="p">)</span><span class="si">}</span><span class="s2"> process(es): trivially equivalent"</span><span class="p">,</span>
         <span class="p">)</span>
 
@@ -685,7 +693,9 @@
     <span class="n">errors</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">if</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="p">:</span>
         <span class="k">for</span> <span class="n">cname</span><span class="p">,</span> <span class="n">comp</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="n">ok</span><span class="p">,</span> <span class="n">detail</span> <span class="o">=</span> <span class="n">_check_bounds_tuple</span><span class="p">(</span><span class="n">comp</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"reactor component </span><span class="si">{</span><span class="n">cname</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="n">ok</span><span class="p">,</span> <span class="n">detail</span> <span class="o">=</span> <span class="n">_check_bounds_tuple</span><span class="p">(</span>
+                <span class="n">comp</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"reactor component </span><span class="si">{</span><span class="n">cname</span><span class="si">!r}</span><span class="s2">"</span>
+            <span class="p">)</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">ok</span><span class="p">:</span>
                 <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">detail</span><span class="p">)</span>
     <span class="k">for</span> <span class="n">pname</span><span class="p">,</span> <span class="n">pv</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
@@ -698,7 +708,9 @@
     <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span><span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"bounds"</span><span class="p">,</span> <span class="n">_join_details</span><span class="p">(</span><span class="n">errors</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-        <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"bounds"</span><span class="p">,</span> <span class="s2">"lo &lt;= hi holds for reactor components, process variables, volume"</span>
+        <span class="s2">"PASS"</span><span class="p">,</span>
+        <span class="s2">"bounds"</span><span class="p">,</span>
+        <span class="s2">"lo &lt;= hi holds for reactor components, process variables, volume"</span><span class="p">,</span>
     <span class="p">)</span></div>
 
 
@@ -790,7 +802,9 @@
     <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span><span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"bounds_against_data"</span><span class="p">,</span> <span class="n">_join_details</span><span class="p">(</span><span class="n">errors</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-        <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"bounds_against_data"</span><span class="p">,</span> <span class="s2">"all measured datapoints with declared bounds fall within them"</span>
+        <span class="s2">"PASS"</span><span class="p">,</span>
+        <span class="s2">"bounds_against_data"</span><span class="p">,</span>
+        <span class="s2">"all measured datapoints with declared bounds fall within them"</span><span class="p">,</span>
     <span class="p">)</span></div>
 
 
@@ -829,7 +843,8 @@
 
     <span class="k">if</span> <span class="ow">not</span> <span class="n">_is_dynamic_series</span><span class="p">(</span><span class="n">ts</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"timeseries_shape"</span><span class="p">,</span>
+            <span class="s2">"FAIL"</span><span class="p">,</span>
+            <span class="s2">"timeseries_shape"</span><span class="p">,</span>
             <span class="sa">f</span><span class="s2">"TimeSeries </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">: missing discrete times/values arrays"</span><span class="p">,</span>
         <span class="p">)</span>
 
@@ -859,7 +874,8 @@
             <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"timeseries_shape"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"TimeSeries </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">: "</span> <span class="o">+</span> <span class="n">_join_details</span><span class="p">(</span><span class="n">errors</span><span class="p">)</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-        <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"timeseries_shape"</span><span class="p">,</span>
+        <span class="s2">"PASS"</span><span class="p">,</span>
+        <span class="s2">"timeseries_shape"</span><span class="p">,</span>
         <span class="sa">f</span><span class="s2">"TimeSeries </span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">: 1-D, equal-length, strictly increasing times"</span><span class="p">,</span>
     <span class="p">)</span></div>
 
@@ -872,7 +888,8 @@
     <span class="n">events</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">discrete_events</span>
     <span class="k">if</span> <span class="n">events</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"SKIP"</span><span class="p">,</span> <span class="s2">"discrete_events"</span><span class="p">,</span>
+            <span class="s2">"SKIP"</span><span class="p">,</span>
+            <span class="s2">"discrete_events"</span><span class="p">,</span>
             <span class="s2">"process.discrete_events is None: timing/label checks skipped"</span><span class="p">,</span>
         <span class="p">)</span>
 
@@ -901,7 +918,8 @@
     <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span><span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"discrete_events"</span><span class="p">,</span> <span class="n">_join_details</span><span class="p">(</span><span class="n">errors</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-        <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"discrete_events"</span><span class="p">,</span>
+        <span class="s2">"PASS"</span><span class="p">,</span>
+        <span class="s2">"discrete_events"</span><span class="p">,</span>
         <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">times</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2"> event(s), strictly increasing, within time axis bounds"</span><span class="p">,</span>
     <span class="p">)</span></div>
 
@@ -914,7 +932,9 @@
     <span class="n">axis</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">time_axis</span>
     <span class="k">if</span> <span class="n">axis</span><span class="o">.</span><span class="n">start</span> <span class="o">&gt;</span> <span class="n">axis</span><span class="o">.</span><span class="n">end</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"time_axis"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"start </span><span class="si">{</span><span class="n">axis</span><span class="o">.</span><span class="n">start</span><span class="si">}</span><span class="s2"> is after end </span><span class="si">{</span><span class="n">axis</span><span class="o">.</span><span class="n">end</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">axis</span><span class="o">.</span><span class="n">unit</span><span class="si">}</span><span class="s2">"</span>
+            <span class="s2">"FAIL"</span><span class="p">,</span>
+            <span class="s2">"time_axis"</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">"start </span><span class="si">{</span><span class="n">axis</span><span class="o">.</span><span class="n">start</span><span class="si">}</span><span class="s2"> is after end </span><span class="si">{</span><span class="n">axis</span><span class="o">.</span><span class="n">end</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">axis</span><span class="o">.</span><span class="n">unit</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span><span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"time_axis"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"[</span><span class="si">{</span><span class="n">axis</span><span class="o">.</span><span class="n">start</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">axis</span><span class="o">.</span><span class="n">end</span><span class="si">}</span><span class="s2">] </span><span class="si">{</span><span class="n">axis</span><span class="o">.</span><span class="n">unit</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span></div>
 
@@ -964,7 +984,8 @@
     <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span><span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"timestamp_bounds"</span><span class="p">,</span> <span class="n">_join_details</span><span class="p">(</span><span class="n">errors</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-        <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"timestamp_bounds"</span><span class="p">,</span>
+        <span class="s2">"PASS"</span><span class="p">,</span>
+        <span class="s2">"timestamp_bounds"</span><span class="p">,</span>
         <span class="sa">f</span><span class="s2">"all timestamps within [</span><span class="si">{</span><span class="n">start</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="n">end</span><span class="si">}</span><span class="s2">] </span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">unit</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
     <span class="p">)</span></div>
 
@@ -994,22 +1015,26 @@
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">volume_change</span><span class="p">,</span> <span class="n">Inflow</span><span class="p">):</span>
         <span class="k">if</span> <span class="nb">bool</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">vals</span> <span class="o">&gt;=</span> <span class="o">-</span><span class="n">_VOLUME_SIGN_EPS</span><span class="p">)):</span>
             <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-                <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"volume_change_sign"</span><span class="p">,</span>
+                <span class="s2">"PASS"</span><span class="p">,</span>
+                <span class="s2">"volume_change_sign"</span><span class="p">,</span>
                 <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">volume_change</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">' (Inflow) has all non-negative values"</span><span class="p">,</span>
             <span class="p">)</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"volume_change_sign"</span><span class="p">,</span>
+            <span class="s2">"FAIL"</span><span class="p">,</span>
+            <span class="s2">"volume_change_sign"</span><span class="p">,</span>
             <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">volume_change</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">' (Inflow) contains negative values; "</span>
             <span class="s2">"Inflows must have all values &gt;= 0"</span><span class="p">,</span>
         <span class="p">)</span>
     <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">volume_change</span><span class="p">,</span> <span class="n">Outflow</span><span class="p">):</span>
         <span class="k">if</span> <span class="nb">bool</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">vals</span> <span class="o">&lt;=</span> <span class="n">_VOLUME_SIGN_EPS</span><span class="p">)):</span>
             <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-                <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"volume_change_sign"</span><span class="p">,</span>
+                <span class="s2">"PASS"</span><span class="p">,</span>
+                <span class="s2">"volume_change_sign"</span><span class="p">,</span>
                 <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">volume_change</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">' (Outflow) has all non-positive values"</span><span class="p">,</span>
             <span class="p">)</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"volume_change_sign"</span><span class="p">,</span>
+            <span class="s2">"FAIL"</span><span class="p">,</span>
+            <span class="s2">"volume_change_sign"</span><span class="p">,</span>
             <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">volume_change</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">' (Outflow) contains positive values; "</span>
             <span class="s2">"Outflows must have all values &lt;= 0"</span><span class="p">,</span>
         <span class="p">)</span>
@@ -1024,7 +1049,8 @@
                 <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"volume_change_sign"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">volume_change</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">' is purely </span><span class="si">{</span><span class="n">sign</span><span class="si">}</span><span class="s2">"</span>
             <span class="p">)</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"volume_change_sign"</span><span class="p">,</span>
+            <span class="s2">"FAIL"</span><span class="p">,</span>
+            <span class="s2">"volume_change_sign"</span><span class="p">,</span>
             <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">volume_change</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">' contains mixed positive and negative values; "</span>
             <span class="s2">"each volume change must be purely positive or purely negative"</span><span class="p">,</span>
         <span class="p">)</span></div>
@@ -1061,7 +1087,8 @@
 
     <span class="k">if</span> <span class="ow">not</span> <span class="n">state_names</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"SKIP"</span><span class="p">,</span> <span class="s2">"volume_change_states"</span><span class="p">,</span>
+            <span class="s2">"SKIP"</span><span class="p">,</span>
+            <span class="s2">"volume_change_states"</span><span class="p">,</span>
             <span class="s2">"no dynamic state variables found in reactor medium"</span><span class="p">,</span>
         <span class="p">)</span>
 
@@ -1098,7 +1125,8 @@
     <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span><span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"volume_change_states"</span><span class="p">,</span> <span class="n">_join_details</span><span class="p">(</span><span class="n">errors</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-        <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"volume_change_states"</span><span class="p">,</span>
+        <span class="s2">"PASS"</span><span class="p">,</span>
+        <span class="s2">"volume_change_states"</span><span class="p">,</span>
         <span class="s2">"all declared dynamic feed components use matching reactor units"</span><span class="p">,</span>
     <span class="p">)</span></div>
 
@@ -1136,7 +1164,9 @@
 
     <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span><span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"outflow_retention"</span><span class="p">,</span> <span class="n">_join_details</span><span class="p">(</span><span class="n">errors</span><span class="p">))</span>
-    <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span><span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"outflow_retention"</span><span class="p">,</span> <span class="s2">"all Outflow retention values are valid"</span><span class="p">)</span></div>
+    <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
+        <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"outflow_retention"</span><span class="p">,</span> <span class="s2">"all Outflow retention values are valid"</span>
+    <span class="p">)</span></div>
 
 
 
@@ -1155,7 +1185,8 @@
 <span class="sd">    """</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"biomass_in_reactor_medium"</span><span class="p">,</span>
+            <span class="s2">"FAIL"</span><span class="p">,</span>
+            <span class="s2">"biomass_in_reactor_medium"</span><span class="p">,</span>
             <span class="s2">"reactor medium has no components: cannot verify biomass presence"</span><span class="p">,</span>
         <span class="p">)</span>
 
@@ -1165,11 +1196,13 @@
 
     <span class="k">if</span> <span class="n">biomass_keys</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"biomass_in_reactor_medium"</span><span class="p">,</span>
+            <span class="s2">"PASS"</span><span class="p">,</span>
+            <span class="s2">"biomass_in_reactor_medium"</span><span class="p">,</span>
             <span class="sa">f</span><span class="s2">"biomass found in reactor medium as </span><span class="si">{</span><span class="n">biomass_keys</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">!r}</span><span class="s2">"</span><span class="p">,</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-        <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"biomass_in_reactor_medium"</span><span class="p">,</span>
+        <span class="s2">"FAIL"</span><span class="p">,</span>
+        <span class="s2">"biomass_in_reactor_medium"</span><span class="p">,</span>
         <span class="s2">"reactor medium does not contain a 'biomass' component; found components: "</span>
         <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
     <span class="p">)</span></div>
@@ -1185,7 +1218,9 @@
 <span class="sd">    and initial volume come from different points in time.</span>
 <span class="sd">    """</span>
     <span class="n">t0</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">start</span>
-    <span class="n">tolerance</span> <span class="o">=</span> <span class="n">_timestamp_bounds_tolerance</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">start</span><span class="p">,</span> <span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">end</span><span class="p">)</span>
+    <span class="n">tolerance</span> <span class="o">=</span> <span class="n">_timestamp_bounds_tolerance</span><span class="p">(</span>
+        <span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">start</span><span class="p">,</span> <span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">end</span>
+    <span class="p">)</span>
     <span class="n">missing</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
 
     <span class="k">if</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span> <span class="ow">and</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">:</span>
@@ -1203,14 +1238,16 @@
 
     <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"initial_state_alignment"</span><span class="p">,</span>
+            <span class="s2">"FAIL"</span><span class="p">,</span>
+            <span class="s2">"initial_state_alignment"</span><span class="p">,</span>
             <span class="sa">f</span><span class="s2">"no measurement at time_axis.start=</span><span class="si">{</span><span class="n">t0</span><span class="si">:</span><span class="s2">g</span><span class="si">}</span><span class="s2"> for: </span><span class="si">{</span><span class="n">_join_details</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2"> "</span>
             <span class="s2">"(volume.initial_volume is anchored at time_axis.start; every dynamic "</span>
             <span class="s2">"state needs a value there too, or the ODE's initial condition is "</span>
             <span class="s2">"undefined)"</span><span class="p">,</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-        <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"initial_state_alignment"</span><span class="p">,</span>
+        <span class="s2">"PASS"</span><span class="p">,</span>
+        <span class="s2">"initial_state_alignment"</span><span class="p">,</span>
         <span class="s2">"all dynamic reactor-medium components and process variables have a "</span>
         <span class="sa">f</span><span class="s2">"measurement at time_axis.start=</span><span class="si">{</span><span class="n">t0</span><span class="si">:</span><span class="s2">g</span><span class="si">}</span><span class="s2">, consistent with volume.initial_volume"</span><span class="p">,</span>
     <span class="p">)</span></div>
@@ -1228,12 +1265,15 @@
     <span class="p">]</span>
     <span class="k">if</span> <span class="n">mismatches</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"volume_units"</span><span class="p">,</span>
+            <span class="s2">"FAIL"</span><span class="p">,</span>
+            <span class="s2">"volume_units"</span><span class="p">,</span>
             <span class="sa">f</span><span class="s2">"volume changes must use volume unit </span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">unit</span><span class="si">!r}</span><span class="s2">: "</span>
             <span class="o">+</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">mismatches</span><span class="p">),</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-        <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"volume_units"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"volume changes use volume unit </span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">unit</span><span class="si">!r}</span><span class="s2">"</span>
+        <span class="s2">"PASS"</span><span class="p">,</span>
+        <span class="s2">"volume_units"</span><span class="p">,</span>
+        <span class="sa">f</span><span class="s2">"volume changes use volume unit </span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">unit</span><span class="si">!r}</span><span class="s2">"</span><span class="p">,</span>
     <span class="p">)</span></div>
 
 
@@ -1313,7 +1353,9 @@
     <span class="c1"># Measured total volume</span>
     <span class="k">if</span> <span class="n">_is_dynamic_series</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">total_volume</span><span class="p">):</span>
         <span class="n">_record</span><span class="p">(</span>
-            <span class="n">validate_timeseries_shape</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">total_volume</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"measured total volume"</span><span class="p">)</span>
+            <span class="n">validate_timeseries_shape</span><span class="p">(</span>
+                <span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">total_volume</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"measured total volume"</span>
+            <span class="p">)</span>
         <span class="p">)</span>
 
     <span class="c1"># --- Time-axis checks ---</span>
@@ -1425,19 +1467,22 @@
                 <span class="k">if</span> <span class="mi">0</span> <span class="o">&lt;</span> <span class="n">delta</span> <span class="o">&lt;=</span> <span class="n">abs_threshold</span><span class="p">:</span>
                     <span class="n">warnings</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
                         <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">comp_name</span><span class="si">}</span><span class="s2">' measurement at t=</span><span class="si">{</span><span class="n">mt_f</span><span class="si">:</span><span class="s2">.6f</span><span class="si">}</span><span class="s2"> is </span><span class="si">{</span><span class="n">delta</span><span class="si">:</span><span class="s2">.6f</span><span class="si">}</span><span class="s2"> "</span>
-                        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">unit</span><span class="si">}</span><span class="s2"> after sampling at t=</span><span class="si">{</span><span class="n">nearest_st</span><span class="si">:</span><span class="s2">.6f</span><span class="si">}</span><span class="s2"> "</span>
+                        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">unit</span><span class="si">}</span><span class="s2"> after sampling "</span>
+                        <span class="sa">f</span><span class="s2">"at t=</span><span class="si">{</span><span class="n">nearest_st</span><span class="si">:</span><span class="s2">.6f</span><span class="si">}</span><span class="s2"> "</span>
                         <span class="sa">f</span><span class="s2">"(</span><span class="si">{</span><span class="n">delta</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">proc_length</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">100</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">% of process length)"</span>
                     <span class="p">)</span>
 
     <span class="k">if</span> <span class="n">warnings</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"measurement_sampling_alignment"</span><span class="p">,</span>
+            <span class="s2">"FAIL"</span><span class="p">,</span>
+            <span class="s2">"measurement_sampling_alignment"</span><span class="p">,</span>
             <span class="s2">"measurement times slightly offset from sampling times, which can cause "</span>
             <span class="s2">"incorrect ADF values in the pseudobatch normalisation and errors in "</span>
             <span class="s2">"the spline calculation: "</span> <span class="o">+</span> <span class="n">_join_details</span><span class="p">(</span><span class="n">warnings</span><span class="p">),</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-        <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"measurement_sampling_alignment"</span><span class="p">,</span>
+        <span class="s2">"PASS"</span><span class="p">,</span>
+        <span class="s2">"measurement_sampling_alignment"</span><span class="p">,</span>
         <span class="s2">"no reactor-medium measurement times are suspiciously close to sampling events"</span><span class="p">,</span>
     <span class="p">)</span></div>
 
@@ -1488,9 +1533,7 @@
             <span class="c1"># Cumulative volume: final - initial</span>
             <span class="n">change_vol</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">values</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
             <span class="n">total_change</span> <span class="o">+=</span> <span class="n">change_vol</span>
-            <span class="n">table</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">"  </span><span class="si">{</span><span class="n">name</span><span class="si">:</span><span class="s2">15</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">change_vol</span><span class="si">:</span><span class="s2">+8.2f</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">volume</span><span class="o">.</span><span class="n">unit</span><span class="si">}</span><span class="s2"> (continuous)"</span>
-            <span class="p">)</span>
+            <span class="n">table</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  </span><span class="si">{</span><span class="n">name</span><span class="si">:</span><span class="s2">15</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">change_vol</span><span class="si">:</span><span class="s2">+8.2f</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">volume</span><span class="o">.</span><span class="n">unit</span><span class="si">}</span><span class="s2"> (continuous)"</span><span class="p">)</span>
         <span class="k">elif</span> <span class="ow">not</span> <span class="n">change</span><span class="o">.</span><span class="n">is_continuous</span><span class="p">:</span>
             <span class="c1"># For discrete changes, sum all values from the timeseries</span>
             <span class="n">values</span> <span class="o">=</span> <span class="n">change</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">values</span>
@@ -1548,7 +1591,8 @@
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">processes</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">True</span><span class="p">,</span> <span class="p">[</span>
             <span class="n">_check_result</span><span class="p">(</span>
-                <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"cross_process_consistency"</span><span class="p">,</span>
+                <span class="s2">"PASS"</span><span class="p">,</span>
+                <span class="s2">"cross_process_consistency"</span><span class="p">,</span>
                 <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">processes</span><span class="p">)</span><span class="si">}</span><span class="s2"> process(es): trivially consistent"</span><span class="p">,</span>
             <span class="p">)</span>
         <span class="p">]</span>
@@ -1616,12 +1660,14 @@
     <span class="k">if</span> <span class="ow">not</span> <span class="n">consistency_errors</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">True</span><span class="p">,</span> <span class="p">[</span>
             <span class="n">_check_result</span><span class="p">(</span>
-                <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"cross_process_consistency"</span><span class="p">,</span>
+                <span class="s2">"PASS"</span><span class="p">,</span>
+                <span class="s2">"cross_process_consistency"</span><span class="p">,</span>
                 <span class="sa">f</span><span class="s2">"structure matches '</span><span class="si">{</span><span class="n">first_name</span><span class="si">}</span><span class="s2">' across </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">processes</span><span class="p">)</span><span class="si">}</span><span class="s2"> processes"</span><span class="p">,</span>
             <span class="p">)</span>
         <span class="p">]</span>
     <span class="k">return</span> <span class="kc">False</span><span class="p">,</span> <span class="p">[</span>
-        <span class="n">_check_result</span><span class="p">(</span><span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"cross_process_consistency"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">consistency_errors</span>
+        <span class="n">_check_result</span><span class="p">(</span><span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"cross_process_consistency"</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">consistency_errors</span>
     <span class="p">]</span></div>
 
 
@@ -1726,7 +1772,8 @@
             <span class="n">all_valid</span> <span class="o">=</span> <span class="kc">False</span>
             <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
                 <span class="n">_check_result</span><span class="p">(</span>
-                    <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"augmented_parent_refs"</span><span class="p">,</span>
+                    <span class="s2">"FAIL"</span><span class="p">,</span>
+                    <span class="s2">"augmented_parent_refs"</span><span class="p">,</span>
                     <span class="sa">f</span><span class="s2">"AugmentedBioProcess </span><span class="si">{</span><span class="n">child_name</span><span class="si">!r}</span><span class="s2"> references unknown "</span>
                     <span class="sa">f</span><span class="s2">"parent_process </span><span class="si">{</span><span class="n">parent_name</span><span class="si">!r}</span><span class="s2">"</span><span class="p">,</span>
                 <span class="p">)</span>
@@ -1737,7 +1784,8 @@
             <span class="n">all_valid</span> <span class="o">=</span> <span class="kc">False</span>
             <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
                 <span class="n">_check_result</span><span class="p">(</span>
-                    <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"augmented_parent_refs"</span><span class="p">,</span>
+                    <span class="s2">"FAIL"</span><span class="p">,</span>
+                    <span class="s2">"augmented_parent_refs"</span><span class="p">,</span>
                     <span class="sa">f</span><span class="s2">"AugmentedBioProcess </span><span class="si">{</span><span class="n">child_name</span><span class="si">!r}</span><span class="s2"> references parent "</span>
                     <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">parent_name</span><span class="si">!r}</span><span class="s2">, which is itself augmented; chained "</span>
                     <span class="s2">"augmentation is not supported"</span><span class="p">,</span>
@@ -1745,10 +1793,13 @@
             <span class="p">)</span>
 
     <span class="k">if</span> <span class="ow">not</span> <span class="n">results</span><span class="p">:</span>
-        <span class="n">n_augmented</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">AugmentedBioProcess</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">processes</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="n">n_augmented</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span>
+            <span class="nb">isinstance</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">AugmentedBioProcess</span><span class="p">)</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">processes</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+        <span class="p">)</span>
         <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
             <span class="n">_check_result</span><span class="p">(</span>
-                <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"augmented_parent_refs"</span><span class="p">,</span>
+                <span class="s2">"PASS"</span><span class="p">,</span>
+                <span class="s2">"augmented_parent_refs"</span><span class="p">,</span>
                 <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">n_augmented</span><span class="si">}</span><span class="s2"> augmented process(es) have valid parent references"</span><span class="p">,</span>
             <span class="p">)</span>
         <span class="p">)</span>

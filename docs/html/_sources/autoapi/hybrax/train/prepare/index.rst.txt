@@ -41,13 +41,14 @@ Module Contents
    file holding one.
 
 
-.. py:function:: prepare_artifact(loaded_config, output_dir, *, overwrite = False)
+.. py:function:: prepare_artifact(loaded_config, output_dir)
 
    Run the full ``prepare`` pipeline and write ``output_dir/prepared.json``.
 
    Loads the raw collection at ``config.prepare.raw_input``, validates it,
    applies the ``transform_process_collection`` hook (default: identity),
-   generates augmented children via :func:`~hybrax.train.augmentation.augment_process_collection`,
+   generates augmented children via
+   :func:`~hybrax.train.augmentation.augment_process_collection`,
    re-validates the result under strict training semantics, extracts and
    validates each process's control sources, and assembles the
    ``hybrax_train`` metadata block (provenance, semantics diffs vs. the raw
@@ -60,9 +61,9 @@ Module Contents
    :param loaded_config: A :func:`~hybrax.train.run_config.load_prepare_config`
                          result; ``loaded_config.config.prepare`` must be set.
    :param output_dir: Directory ``prepared.json`` and the other prepare-owned
-                      files are written into.
-   :param overwrite: Unused; the CLI is responsible for guarding an existing
-                     ``prepared.json`` before calling this function.
+                      files are written into. The CLI owns all ``--overwrite`` handling
+                      (both guarding an existing ``prepared.json`` and clearing
+                      ``output_dir``) before calling this function.
 
    :returns: The prepared :class:`~hybrax.format.dataclasses.BioProcessCollection`
              (the same object written to ``prepared.json``).

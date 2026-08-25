@@ -1085,7 +1085,8 @@
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Re-derive the control layout from the parents and reject a stored mismatch.</span>
 
-<span class="sd">    Loading ``.npy`` arrays straight into :class:`~hybrax.train.controls_store.ControlsStore`</span>
+<span class="sd">    Loading ``.npy`` arrays straight into</span>
+<span class="sd">    :class:`~hybrax.train.controls_store.ControlsStore`</span>
 <span class="sd">    bypasses its ``__post_init__``, so these statics are otherwise taken on trust.</span>
 <span class="sd">    """</span>
     <span class="n">partition</span> <span class="o">=</span> <span class="n">derive_control_partition</span><span class="p">(</span><span class="n">parent_collection</span><span class="p">)</span>

@@ -197,7 +197,7 @@ for name, value in r2.items():
 hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
-Image(filename=str(WORK / "run/forward/forward-results/plots/T_high.png"))
+Image(filename=str(WORK / "run/forward/plots/T_high.png"))
 ```
 
 `T_high` (40°C, the hottest of this page's six runs) is worth looking at

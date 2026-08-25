@@ -420,7 +420,9 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">_validated_events</span><span class="p">(</span>
     <span class="n">iterator</span><span class="p">:</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="n">source</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
-<span class="w">    </span><span class="sd">"""Pass through parser events while enforcing single-value, no-duplicate-key input."""</span>
+<span class="w">    </span><span class="sd">"""Pass through parser events while enforcing single-value,</span>
+<span class="sd">    no-duplicate-key input.</span>
+<span class="sd">    """</span>
     <span class="n">root_count</span> <span class="o">=</span> <span class="mi">0</span>
     <span class="n">top_level_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
     <span class="n">pending_sentinel</span> <span class="o">=</span> <span class="kc">False</span>

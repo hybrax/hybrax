@@ -75,7 +75,8 @@ Module Contents
 
 .. py:class:: SignalSource
 
-   One controlled signal (Inflow, Outflow, or PV) as a hybrid spline/linear evaluator.
+   One controlled signal (Inflow, Outflow, or PV) as a hybrid
+   spline/linear evaluator.
 
 
    .. py:attribute:: continuity_side

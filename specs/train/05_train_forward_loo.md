@@ -109,7 +109,7 @@ ensemble) plus optional `data` and `output` blocks.
   separate physical modeled Inflow/Outflow rates, and auxiliary values.
   It is *the* single source of dense predictions for forward evaluation and
   final training exports, so exported predictions always match the training solve.
-- All forward artifacts are contained in `<output-dir>/forward-results/`.
+- All forward artifacts are written directly into `<output-dir>`.
   For an ensemble, per-model exports are averaged (`aggregate_dense_exports`)
   into `predictions.csv` plus a `predictions_std.csv`; each model also keeps its
   own `models/<name>/predictions.csv` and `losses.csv` there.
@@ -119,7 +119,7 @@ ensemble) plus optional `data` and `output` blocks.
 - Outputs are written by `export_predictions_csv` in
   [`postprocessing.py`](../../src/hybrax/train/postprocessing.py). Set `output.plots` to
   `true` to also write
-  `<output-dir>/forward-results/plots/<process>.png` for every exported process.
+  `<output-dir>/plots/<process>.png` for every exported process.
   Plotting requires `output.predictions` to be `parents` or `all` and is
   best-effort: rendering failures are logged without failing forward.
   Modeled flow columns use `B_<name>_cum` for cumulative values and
@@ -287,7 +287,7 @@ import matplotlib.pyplot as plt
 
 column = "c_biomass"
 series = defaultdict(list)
-with open("output/forward/forward-results/predictions.csv", newline="") as file:
+with open("output/forward/predictions.csv", newline="") as file:
     for row in csv.DictReader(file):
         series[row["process"]].append((float(row["t"]), float(row[column])))
 

@@ -366,7 +366,9 @@
         </div>
         <article role="main" id="furo-main-content">
           <h1>Source code for hybrax.train.runtime_context</h1><div class="highlight"><pre>
-<span></span><span class="sd">"""Producer-side collection views handed to scale-estimation and training-parent hooks."""</span>
+<span></span><span class="sd">"""Producer-side collection views handed to scale-estimation and</span>
+<span class="sd">training-parent hooks.</span>
+<span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
@@ -659,7 +661,9 @@
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">rhs_ode</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""The shared ``RhsOde`` of every training parent; see ``training_data.rhs_ode``."""</span>
+<span class="w">        </span><span class="sd">"""The shared ``RhsOde`` of every training parent; see</span>
+<span class="sd">        ``training_data.rhs_ode``.</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">training_data</span><span class="o">.</span><span class="n">rhs_ode</span>
 
     <span class="nd">@property</span>

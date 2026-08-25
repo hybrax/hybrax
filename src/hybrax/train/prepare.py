@@ -228,8 +228,6 @@ def _validate_prepared_control_contract(
 def prepare_artifact(
     loaded_config: LoadedRunConfig,
     output_dir: str | Path,
-    *,
-    overwrite: bool = False,
 ) -> BioProcessCollection:
     """Run the full ``prepare`` pipeline and write ``output_dir/prepared.json``.
 
@@ -250,9 +248,9 @@ def prepare_artifact(
         loaded_config: A :func:`~hybrax.train.run_config.load_prepare_config`
             result; ``loaded_config.config.prepare`` must be set.
         output_dir: Directory ``prepared.json`` and the other prepare-owned
-            files are written into.
-        overwrite: Unused; the CLI is responsible for guarding an existing
-            ``prepared.json`` before calling this function.
+            files are written into. The CLI owns all ``--overwrite`` handling
+            (both guarding an existing ``prepared.json`` and clearing
+            ``output_dir``) before calling this function.
 
     Returns:
         The prepared :class:`~hybrax.format.dataclasses.BioProcessCollection`
@@ -272,11 +270,10 @@ def prepare_artifact(
         raise ValueError("prepare_artifact requires a prepare config section")
 
     input_path = prepare.raw_input
-    # `--output-dir` holds the prepare-owned files (clash-free with a train/forward
-    # run that may share the dir): prepared.json + prepare_config.json + optional
-    # augmented-data.png + prepare_diagnostics/.
+    # `--output-dir` is prepare's own exclusively-owned directory (the CLI
+    # deletes it wholesale on `--overwrite`, like train/loo/forward): prepared.json
+    # + prepare_config.json + optional augmented-data.png + prepare_diagnostics/.
     output_dir = Path(output_dir)
-    del overwrite  # the CLI guards prepared.json; prepare only (re)writes its own files
     output_path = output_dir / "prepared.json"
 
     raw_collection = load_raw_collection(input_path)
@@ -527,8 +524,10 @@ def _render_control_diagnostics(
         render_control_diagnostics,
     )
 
-    # prepare-owned plot dir: clear stale plots (e.g. fewer processes on re-prepare),
-    # but never touch the rest of a possibly-shared train/forward run dir.
+    # Idempotent re-run into a directory the CLI's --overwrite guard did not clear
+    # (a first-ever run landing on stray content from a previous failed attempt,
+    # one that crashed before writing prepared.json): clear stale plots (e.g.
+    # fewer processes than the last attempt) before rebuilding them.
     diag_dir = output_dir / "prepare_diagnostics"
     if diag_dir.exists():
         shutil.rmtree(diag_dir)

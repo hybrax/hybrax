@@ -556,7 +556,8 @@ concentration plot and obvious in the rate one.</p>
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> is required</strong> to reuse a run directory.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> is required</strong> to reuse a run directory, and deletes everything already
+there, regardless of what put it there, before writing fresh output.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">--epochs</span></code> overrides the config</strong>, which is what you want while iterating.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">batch_size</span></code> greater than the process count</strong> raises rather than clamping.</p></li>
 <li><p><strong>Stateful modules need <code class="docutils literal notranslate"><span class="pre">train.allow_stateful_models:</span> <span class="pre">true</span></code>.</strong></p></li>

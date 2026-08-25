@@ -467,16 +467,16 @@ its fields.</p>
 <td><p>Load + validate a forward_config.json, resolving model paths and the</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.run_config.load_loo_config" title="hybrax.train.run_config.load_loo_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_loo_config</span></code></a>(config_path)</p></td>
-<td><p>Load and validate a config for the <code class="docutils literal notranslate"><span class="pre">loo</span></code> command; see <a class="reference internal" href="#hybrax.train.run_config.load_run_config" title="hybrax.train.run_config.load_run_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_run_config()</span></code></a>.</p></td>
+<td><p>Load and validate a config for the <code class="docutils literal notranslate"><span class="pre">loo</span></code> command; see</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.run_config.load_prepare_config" title="hybrax.train.run_config.load_prepare_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_prepare_config</span></code></a>(config_path)</p></td>
-<td><p>Load and validate a config for the <code class="docutils literal notranslate"><span class="pre">prepare</span></code> command; see <a class="reference internal" href="#hybrax.train.run_config.load_run_config" title="hybrax.train.run_config.load_run_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_run_config()</span></code></a>.</p></td>
+<td><p>Load and validate a config for the <code class="docutils literal notranslate"><span class="pre">prepare</span></code> command; see</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.run_config.load_run_config" title="hybrax.train.run_config.load_run_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_run_config</span></code></a>(config_path, *, command)</p></td>
 <td><p>Load, validate, and resolve a run config JSON for one command.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.run_config.load_train_config" title="hybrax.train.run_config.load_train_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_train_config</span></code></a>(config_path)</p></td>
-<td><p>Load and validate a config for the <code class="docutils literal notranslate"><span class="pre">train</span></code> command; see <a class="reference internal" href="#hybrax.train.run_config.load_run_config" title="hybrax.train.run_config.load_run_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_run_config()</span></code></a>.</p></td>
+<td><p>Load and validate a config for the <code class="docutils literal notranslate"><span class="pre">train</span></code> command; see</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.run_config.reresolve_custom" title="hybrax.train.run_config.reresolve_custom"><code class="xref py py-obj docutils literal notranslate"><span class="pre">reresolve_custom</span></code></a>(config, custom_module)</p></td>
 <td><p>Re-resolve <code class="docutils literal notranslate"><span class="pre">config.custom</span></code> (a raw dict loaded from a run's config.json)</p></td>
@@ -711,13 +711,13 @@ restricts evaluation to this subset of process names.</p>
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.run_config.</span></span><span class="sig-name descname"><span class="pre">ForwardOutputConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">/</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">**data</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/run_config.html#ForwardOutputConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.run_config.ForwardOutputConfig" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#hybrax.train.run_config.ConfigBase" title="hybrax.train.run_config.ConfigBase"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ConfigBase</span></code></a></p>
 <p>Output settings for <code class="docutils literal notranslate"><span class="pre">forward</span></code>.</p>
-<p><code class="docutils literal notranslate"><span class="pre">dir</span></code> (optional) is the parent directory forward writes into —
-everything lands under one <code class="docutils literal notranslate"><span class="pre">forward-results/</span></code> subdirectory inside it;
-defaults to <code class="docutils literal notranslate"><span class="pre">&lt;first</span> <span class="pre">model&gt;/forward</span></code>. <code class="docutils literal notranslate"><span class="pre">predictions</span></code> (default
-<code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code>) mirrors <code class="docutils literal notranslate"><span class="pre">OutputConfig.predictions</span></code> and controls whether
-<code class="docutils literal notranslate"><span class="pre">forward-results/predictions.csv</span></code> is written. <code class="docutils literal notranslate"><span class="pre">plots</span></code> (default
-<code class="docutils literal notranslate"><span class="pre">False</span></code>) additionally renders one figure per process into
-<code class="docutils literal notranslate"><span class="pre">forward-results/plots/&lt;process&gt;.png</span></code>, best-effort (a rendering
+<p><code class="docutils literal notranslate"><span class="pre">dir</span></code> (optional) is the directory forward writes directly into —
+<code class="docutils literal notranslate"><span class="pre">losses.csv</span></code>, <code class="docutils literal notranslate"><span class="pre">models/</span></code>, and optionally <code class="docutils literal notranslate"><span class="pre">predictions.csv</span></code> /
+<code class="docutils literal notranslate"><span class="pre">plots/</span></code> all land there, with no intermediate subdirectory; defaults to
+<code class="docutils literal notranslate"><span class="pre">&lt;first</span> <span class="pre">model&gt;/forward</span></code>. <code class="docutils literal notranslate"><span class="pre">predictions</span></code> (default <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code>) mirrors
+<code class="docutils literal notranslate"><span class="pre">OutputConfig.predictions</span></code> and controls whether <code class="docutils literal notranslate"><span class="pre">predictions.csv</span></code> is
+written. <code class="docutils literal notranslate"><span class="pre">plots</span></code> (default <code class="docutils literal notranslate"><span class="pre">False</span></code>) additionally renders one figure
+per process into <code class="docutils literal notranslate"><span class="pre">plots/&lt;process&gt;.png</span></code>, best-effort (a rendering
 failure is logged, not raised); it requires <code class="docutils literal notranslate"><span class="pre">predictions</span></code> to be
 <code class="docutils literal notranslate"><span class="pre">&quot;parents&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;all&quot;</span></code> — a validator rejects <code class="docutils literal notranslate"><span class="pre">plots=True</span></code> with
 <code class="docutils literal notranslate"><span class="pre">predictions=&quot;none&quot;</span></code>.</p>
@@ -1221,7 +1221,8 @@ optional <code class="docutils literal notranslate"><span class="pre">data.prepa
 <dl class="py function">
 <dt class="sig sig-object py" id="hybrax.train.run_config.load_loo_config">
 <span class="sig-prename descclassname"><span class="pre">hybrax.train.run_config.</span></span><span class="sig-name descname"><span class="pre">load_loo_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/run_config.html#load_loo_config"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.run_config.load_loo_config" title="Link to this definition">¶</a></dt>
-<dd><p>Load and validate a config for the <code class="docutils literal notranslate"><span class="pre">loo</span></code> command; see <a class="reference internal" href="#hybrax.train.run_config.load_run_config" title="hybrax.train.run_config.load_run_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_run_config()</span></code></a>.</p>
+<dd><p>Load and validate a config for the <code class="docutils literal notranslate"><span class="pre">loo</span></code> command; see
+<a class="reference internal" href="#hybrax.train.run_config.load_run_config" title="hybrax.train.run_config.load_run_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_run_config()</span></code></a>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>config_path</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>)</p>
@@ -1235,7 +1236,8 @@ optional <code class="docutils literal notranslate"><span class="pre">data.prepa
 <dl class="py function">
 <dt class="sig sig-object py" id="hybrax.train.run_config.load_prepare_config">
 <span class="sig-prename descclassname"><span class="pre">hybrax.train.run_config.</span></span><span class="sig-name descname"><span class="pre">load_prepare_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/run_config.html#load_prepare_config"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.run_config.load_prepare_config" title="Link to this definition">¶</a></dt>
-<dd><p>Load and validate a config for the <code class="docutils literal notranslate"><span class="pre">prepare</span></code> command; see <a class="reference internal" href="#hybrax.train.run_config.load_run_config" title="hybrax.train.run_config.load_run_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_run_config()</span></code></a>.</p>
+<dd><p>Load and validate a config for the <code class="docutils literal notranslate"><span class="pre">prepare</span></code> command; see
+<a class="reference internal" href="#hybrax.train.run_config.load_run_config" title="hybrax.train.run_config.load_run_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_run_config()</span></code></a>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>config_path</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>)</p>
@@ -1279,7 +1281,8 @@ required by <code class="docutils literal notranslate"><span class="pre">command
 <dl class="py function">
 <dt class="sig sig-object py" id="hybrax.train.run_config.load_train_config">
 <span class="sig-prename descclassname"><span class="pre">hybrax.train.run_config.</span></span><span class="sig-name descname"><span class="pre">load_train_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/run_config.html#load_train_config"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.run_config.load_train_config" title="Link to this definition">¶</a></dt>
-<dd><p>Load and validate a config for the <code class="docutils literal notranslate"><span class="pre">train</span></code> command; see <a class="reference internal" href="#hybrax.train.run_config.load_run_config" title="hybrax.train.run_config.load_run_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_run_config()</span></code></a>.</p>
+<dd><p>Load and validate a config for the <code class="docutils literal notranslate"><span class="pre">train</span></code> command; see
+<a class="reference internal" href="#hybrax.train.run_config.load_run_config" title="hybrax.train.run_config.load_run_config"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_run_config()</span></code></a>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>config_path</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>)</p>

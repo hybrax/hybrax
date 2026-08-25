@@ -175,7 +175,7 @@ for name, value in r2.items():
 hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
-Image(filename=str(WORK / "run/forward/forward-results/plots/blend_67.png"))
+Image(filename=str(WORK / "run/forward/plots/blend_67.png"))
 ```
 
 Every predictor passes through only three latent scores before the final linear

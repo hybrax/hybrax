@@ -389,13 +389,13 @@ in the way.</p>
 jumps mass and volume together. Both phases are closed-form exponential decay at
 constant volume, so the dense curve below is the exact ground truth, not a numerical
 approximation of it:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">SJ_K</span> <span class="o">=</span> <span class="mf">0.15</span>              <span class="c1"># 1/h, first-order decay rate</span>
-<span class="n">SJ_V0</span> <span class="o">=</span> <span class="mf">1.0</span>              <span class="c1"># L</span>
-<span class="n">SJ_C0</span> <span class="o">=</span> <span class="mf">5.0</span>              <span class="c1"># g/L</span>
-<span class="n">SJ_T_END</span> <span class="o">=</span> <span class="mf">17.0</span>          <span class="c1"># h, matches the last measurement, no unobserved tail</span>
-<span class="n">SJ_T_JUMP</span> <span class="o">=</span> <span class="mf">10.0</span>         <span class="c1"># h, when the bolus lands</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">SJ_K</span> <span class="o">=</span> <span class="mf">0.15</span>  <span class="c1"># 1/h, first-order decay rate</span>
+<span class="n">SJ_V0</span> <span class="o">=</span> <span class="mf">1.0</span>  <span class="c1"># L</span>
+<span class="n">SJ_C0</span> <span class="o">=</span> <span class="mf">5.0</span>  <span class="c1"># g/L</span>
+<span class="n">SJ_T_END</span> <span class="o">=</span> <span class="mf">17.0</span>  <span class="c1"># h, matches the last measurement, no unobserved tail</span>
+<span class="n">SJ_T_JUMP</span> <span class="o">=</span> <span class="mf">10.0</span>  <span class="c1"># h, when the bolus lands</span>
 <span class="n">SJ_DELTA_V_BOLUS</span> <span class="o">=</span> <span class="mf">0.15</span>  <span class="c1"># L</span>
-<span class="n">SJ_C_FEED</span> <span class="o">=</span> <span class="mf">40.0</span>         <span class="c1"># g/L</span>
+<span class="n">SJ_C_FEED</span> <span class="o">=</span> <span class="mf">40.0</span>  <span class="c1"># g/L</span>
 <span class="n">SJ_SAMPLE_TIMES</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">,</span> <span class="mf">9.0</span><span class="p">,</span> <span class="mf">11.0</span><span class="p">,</span> <span class="mf">17.0</span><span class="p">])</span>
 
 

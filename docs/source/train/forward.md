@@ -25,19 +25,19 @@ To also get dense trajectories and one figure per process:
 process), or `"all"`. `plots` requires `predictions` to be `"parents"` or `"all"`, and
 is best-effort: a rendering failure is logged, not raised.
 
-Output defaults to `<first model>/forward`. Everything the command writes lands under
-one `forward-results/` subdirectory inside that, so overwriting never touches
-unrelated files sitting next to it.
+Output defaults to `<first model>/forward`. Everything the command writes lands
+directly in that directory, and `--overwrite` deletes everything already there
+before writing fresh output.
 
 ## What it produces
 
 | File | Contents |
 |---|---|
-| `forward-results/losses.csv` | Per-process, per-target loss, with the train/holdout split. Always written. |
-| `forward-results/predictions.csv` | Dense trajectory per process: `t`, `c_<species>`, `q_<rate>`, `V_real`. Needs `output.predictions`. |
-| `forward-results/plots/<process>.png` | Fit, inferred rates, `V_real` and volume events, per process. Needs `output.plots`. |
-| `forward-results/predictions_std.csv` | Ensembles only: spread across models. |
-| `forward-results/models/<name>/` | Ensembles only: each member's own predictions and losses. |
+| `losses.csv` | Per-process, per-target loss, with the train/holdout split. Always written. |
+| `predictions.csv` | Dense trajectory per process: `t`, `c_<species>`, `q_<rate>`, `V_real`. Needs `output.predictions`. |
+| `plots/<process>.png` | Fit, inferred rates, `V_real` and volume events, per process. Needs `output.plots`. |
+| `predictions_std.csv` | Ensembles only: spread across models. |
+| `models/<name>/` | Ensembles only: each member's own predictions and losses. |
 
 ## Why it is separate from training
 
@@ -78,7 +78,7 @@ More than one entry turns it into an ensemble:
 }
 ```
 
-`forward-results/predictions.csv` holds the mean and `predictions_std.csv` the standard deviation across
+`predictions.csv` holds the mean and `predictions_std.csv` the standard deviation across
 members. Training the same configuration under several seeds and reading the spread is
 the cheapest uncertainty estimate available here, and it is genuinely informative,
 because neural ODE fits on sparse bioprocess data are often seed-sensitive in the rates
@@ -134,7 +134,9 @@ export.t, export.c_species, export.q_rates, export.v_real
 
 ## Gotchas
 
-- **`--overwrite` is required** for a forward directory that already has results.
+- **`--overwrite` is required** for a forward directory that already has results, and
+  deletes everything already there, regardless of what put it there, before writing fresh
+  output.
 - **`--config` is mandatory** for `forward`: unlike `train`, there is no implicit default.
 - **`losses.csv` labels each process `train` or `holdout`.** On a plain forward over the
   training data everything says `train`; that is not a bug.

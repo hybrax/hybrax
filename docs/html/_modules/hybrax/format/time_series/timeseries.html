@@ -663,7 +663,7 @@
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">breaks</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">coeffs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
         <span class="k">return</span> <span class="n">PPoly</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">breaks</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">coeffs</span><span class="p">,</span> <span class="n">continuity_side</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">continuity_side</span><span class="p">)</span>
-    
+
 <div class="viewcode-block" id="TimeSeries.lin_interp">
 <a class="viewcode-back" href="../../../../autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries.lin_interp">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">lin_interp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">):</span>
@@ -699,7 +699,9 @@
 <div class="viewcode-block" id="TimeSeries.deriv">
 <a class="viewcode-back" href="../../../../autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries.deriv">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">deriv</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">order</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""Return a derived TimeSeries holding the spline derivative of the given order."""</span>
+<span class="w">        </span><span class="sd">"""Return a derived TimeSeries holding the spline derivative of the</span>
+<span class="sd">        given order.</span>
+<span class="sd">        """</span>
         <span class="n">order</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">order</span><span class="p">)</span>
         <span class="n">poly</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">poly</span>
         <span class="k">if</span> <span class="n">poly</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>

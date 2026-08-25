@@ -4,9 +4,11 @@ import json
 from pathlib import Path
 
 import pytest
+from hybrax.format.serialization import save_process_collection
 
 from hybrax.train import cli
 from hybrax.train.harness import ForwardResult, TrainHarnessResult
+from test_prepare import _make_two_process_collection
 
 
 class _DummyCollection:
@@ -54,10 +56,9 @@ def test_prepare_cli_dispatches_loaded_config(monkeypatch, tmp_path: Path):
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps({"prepare": {"raw_input": "raw.json"}}))
 
-    def fake_prepare_artifact(loaded_config, *, output_dir, overwrite=False):
+    def fake_prepare_artifact(loaded_config, *, output_dir):
         captured["loaded_config"] = loaded_config
         captured["output_dir"] = output_dir
-        captured["overwrite"] = overwrite
 
     monkeypatch.setattr(cli, "prepare_artifact", fake_prepare_artifact)
 
@@ -68,7 +69,96 @@ def test_prepare_cli_dispatches_loaded_config(monkeypatch, tmp_path: Path):
     assert exit_code == 0
     loaded = captured["loaded_config"]
     assert loaded.config.prepare.raw_input == tmp_path / "raw.json"
-    assert captured["output_dir"] == "prepared"
+    # --output-dir now goes through _apply_train_cli_overrides, same as train,
+    # which resolves it to an absolute path (not the raw CLI string).
+    assert captured["output_dir"] == (tmp_path / "prepared").resolve()
+
+
+def test_prepare_cli_output_dir_falls_back_to_config(monkeypatch, tmp_path: Path):
+    captured: dict[str, object] = {}
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "prepare": {"raw_input": "raw.json"},
+                "output": {"dir": "from-config"},
+            }
+        )
+    )
+
+    def fake_prepare_artifact(loaded_config, *, output_dir):
+        captured["output_dir"] = output_dir
+
+    monkeypatch.setattr(cli, "prepare_artifact", fake_prepare_artifact)
+
+    # No --output-dir at all: falls back to the config's output.dir, resolved
+    # relative to the config file (same rule as train/loo).
+    assert cli.main(["prepare", "--config", str(config_path)]) == 0
+    assert captured["output_dir"] == (tmp_path / "from-config").resolve()
+
+
+def test_prepare_cli_output_dir_falls_back_to_literal_output(
+    monkeypatch, tmp_path: Path
+):
+    captured: dict[str, object] = {}
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"prepare": {"raw_input": "raw.json"}}))
+
+    def fake_prepare_artifact(loaded_config, *, output_dir):
+        captured["output_dir"] = output_dir
+
+    monkeypatch.setattr(cli, "prepare_artifact", fake_prepare_artifact)
+
+    # Neither --output-dir nor config output.dir set: falls back to the
+    # literal "output", relative to the config file, same as train/loo.
+    assert cli.main(["prepare", "--config", str(config_path)]) == 0
+    assert captured["output_dir"] == (tmp_path / "output").resolve()
+
+
+def test_prepare_cli_overwrite_wipes_output_dir(tmp_path: Path):
+    """--overwrite deletes everything already in --output-dir, not just
+    prepare's own files, matching train/loo/forward (mirrors
+    test_train_cli_rerun_guard_and_overwrite)."""
+    raw_json = tmp_path / "raw.json"
+    save_process_collection(_make_two_process_collection(), raw_json)
+    output_dir = tmp_path / "prepared"
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({"prepare": {"raw_input": str(raw_json), "diagnostics": False}})
+    )
+    base = ["prepare", "--config", str(config_path), "--output-dir", str(output_dir)]
+
+    assert cli.main(base) == 0
+    assert (output_dir / "prepared.json").is_file()
+    # Already has a prepared.json, and no --overwrite: blocked.
+    assert cli.main(base) == 1
+
+    unrelated = output_dir / "unrelated.txt"
+    unrelated.write_text("keep", encoding="utf-8")
+
+    assert cli.main(base + ["--overwrite"]) == 0
+    assert not unrelated.exists()
+    assert (output_dir / "prepared.json").is_file()
+
+
+def test_prepare_overwrite_rejects_raw_input_inside_output_dir(tmp_path: Path):
+    output_dir = tmp_path / "prepared"
+    output_dir.mkdir()
+    raw_json = output_dir / "raw.json"
+    save_process_collection(_make_two_process_collection(), raw_json)
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "prepare": {"raw_input": str(raw_json)},
+                "output": {"dir": str(output_dir)},
+            }
+        )
+    )
+
+    with pytest.raises(ValueError, match="contains input file"):
+        cli.main(["prepare", "--config", str(config_path), "--overwrite"])
+    assert raw_json.is_file()
 
 
 @pytest.mark.parametrize("flag", ["--input", "--custom", "--case-study"])

@@ -366,7 +366,8 @@
         </div>
         <article role="main" id="furo-main-content">
           <h1>Source code for hybrax.train.augmentation</h1><div class="highlight"><pre>
-<span></span><span class="sd">"""Synthetic sibling-process generation from :class:`~hybrax.train.run_config.AugmentationConfig`.</span>
+<span></span><span class="sd">"""Synthetic sibling-process generation from</span>
+<span class="sd">:class:`~hybrax.train.run_config.AugmentationConfig`.</span>
 
 <span class="sd">Resamples each real (parent) process's fitted state splines onto a new,</span>
 <span class="sd">randomly jittered time grid, optionally adds Gaussian noise, and stores the</span>
@@ -594,7 +595,8 @@
     <span class="n">run_config</span><span class="p">:</span> <span class="n">RunConfig</span><span class="p">,</span>
     <span class="n">augment_state_values</span><span class="p">:</span> <span class="n">Any</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BioProcessCollection</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Generate augmented children for every parent process and add them to ``collection``.</span>
+<span class="w">    </span><span class="sd">"""Generate augmented children for every parent process and add them to</span>
+<span class="sd">    ``collection``.</span>
 
 <span class="sd">    No-op (returns ``collection`` unchanged) when ``run_config.prepare.augmentation``</span>
 <span class="sd">    is unset. Otherwise, for each real (non-augmented) process, generates</span>

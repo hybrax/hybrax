@@ -132,7 +132,7 @@ print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
 hxt_cli("forward", "--config", "forward-config.json",
          "--output-dir", "run/forward", "--overwrite")
 from IPython.display import Image
-Image(filename=str(WORK / "run/forward/forward-results/plots/fedbatch_1.png"))
+Image(filename=str(WORK / "run/forward/plots/fedbatch_1.png"))
 ```
 
 Look at the bottom-right panel (`volume_changes`) before anything else. It plots every

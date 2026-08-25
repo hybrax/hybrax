@@ -80,12 +80,12 @@ explicitly (both default to off):
 
 hxt_cli("forward", "--config", "forward-config.json",
              "--output-dir", "run/forward", "--overwrite")
-print((WORK / "run/forward/forward-results/losses.csv").read_text())
+print((WORK / "run/forward/losses.csv").read_text())
 ```
 
 `forward` re-solves each process with the trained model on a dense time grid and writes
-`forward-results/predictions.csv`, `forward-results/losses.csv`, and (with `plots: true`)
-one figure per process under `forward-results/plots/`.
+`predictions.csv`, `losses.csv`, and (with `plots: true`) one figure per process under
+`plots/`, all directly in the output directory.
 
 :::{admonition} Why `forward` exists separately from `train`
 :class: note
@@ -99,7 +99,7 @@ saved model reproduces what training claimed.
 :tags: [remove-input]
 
 import pandas as pd
-df = pd.read_csv(WORK / "run/forward/forward-results/predictions.csv")
+df = pd.read_csv(WORK / "run/forward/predictions.csv")
 print("columns:", ", ".join(df.columns))
 print("rows   :", len(df))
 ```

@@ -813,7 +813,9 @@
     <span class="n">_splines</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">PPoly</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""Evaluate all controlled signals at ``t``; see the class docstring for layout."""</span>
+<span class="w">        </span><span class="sd">"""Evaluate all controlled signals at ``t``; see the class</span>
+<span class="sd">        docstring for layout.</span>
+<span class="sd">        """</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_splines</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">shape</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">+</span> <span class="p">(</span><span class="mi">0</span><span class="p">,))</span>
         <span class="n">n_flows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Outflows</span><span class="p">)</span>
@@ -1242,7 +1244,9 @@
                         <span class="s2">"reasonable way to fabricate an entire medium's "</span>
                         <span class="s2">"identity from nothing. Define feed_medium explicitly."</span>
                     <span class="p">)</span>
-                <span class="n">Cin_event</span> <span class="o">=</span> <span class="n">_build_cin</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="p">(</span><span class="n">vc_name</span><span class="p">,),</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">Cin_event</span> <span class="o">=</span> <span class="n">_build_cin</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="p">(</span><span class="n">vc_name</span><span class="p">,),</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">)[</span>
+                    <span class="mi">0</span>
+                <span class="p">]</span>
                 <span class="n">events</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
                     <span class="nb">dict</span><span class="p">(</span>
                         <span class="n">t</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">t_event</span><span class="p">),</span>

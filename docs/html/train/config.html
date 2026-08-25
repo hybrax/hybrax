@@ -379,7 +379,7 @@
 </div></blockquote>
 <section id="the-commands">
 <h2>The commands<a class="headerlink" href="#the-commands" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>hybrax<span class="w"> </span>prepare<span class="w"> </span>--config<span class="w"> </span>prepare-config.json<span class="w"> </span>--output-dir<span class="w"> </span>prepared<span class="w"> </span><span class="o">[</span>--overwrite<span class="o">]</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>hybrax<span class="w"> </span>prepare<span class="w"> </span>--config<span class="w"> </span>prepare-config.json<span class="w"> </span><span class="o">[</span>--output-dir<span class="w"> </span>DIR<span class="o">]</span><span class="w"> </span><span class="o">[</span>--overwrite<span class="o">]</span>
 hybrax<span class="w"> </span>train<span class="w">   </span>--config<span class="w"> </span>train-config.json<span class="w"> </span><span class="o">[</span>--output-dir<span class="w"> </span>DIR<span class="o">]</span><span class="w"> </span><span class="o">[</span>--overwrite<span class="o">]</span>
 <span class="w">                 </span><span class="o">[</span>--epochs<span class="w"> </span>N<span class="o">]</span><span class="w"> </span><span class="o">[</span>--log-level<span class="w"> </span>LEVEL<span class="o">]</span>
 hybrax<span class="w"> </span>forward<span class="w"> </span>--config<span class="w"> </span>forward-config.json<span class="w"> </span><span class="o">[</span>--output-dir<span class="w"> </span>DIR<span class="o">]</span><span class="w"> </span><span class="o">[</span>--overwrite<span class="o">]</span>
@@ -575,6 +575,9 @@ for defaults you do not want to repeat in every config file.</p>
 <ul class="simple">
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> is required to reuse an output directory.</strong> You will meet this on your
 second run. It is deliberate.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> deletes everything already in <code class="docutils literal notranslate"><span class="pre">--output-dir</span></code></strong>, regardless of what put it
+there, before writing fresh output, on every one of <code class="docutils literal notranslate"><span class="pre">prepare</span></code>/<code class="docutils literal notranslate"><span class="pre">train</span></code>/<code class="docutils literal notranslate"><span class="pre">forward</span></code>/<code class="docutils literal notranslate"><span class="pre">loo</span></code>.
+There is no partial or selective overwrite.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">--config</span></code> and <code class="docutils literal notranslate"><span class="pre">--resume</span></code> are mutually exclusive</strong> on <code class="docutils literal notranslate"><span class="pre">loo</span></code>.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">prepare</span></code> fails rather than clobbering</strong> an existing <code class="docutils literal notranslate"><span class="pre">prepared.json</span></code> without
 <code class="docutils literal notranslate"><span class="pre">--overwrite</span></code>.</p></li>

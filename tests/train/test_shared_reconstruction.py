@@ -768,6 +768,6 @@ def test_ensemble_forward_rebuilds_each_model_from_its_own_input(tmp_path: Path)
         encoding="utf-8",
     )
     assert main(["forward", "--config", str(forward_config)]) == 0
-    results_dir = tmp_path / "fwd" / "forward-results"
-    assert (results_dir / "losses.csv").is_file()
-    assert len(list((results_dir / "models").glob("*/losses.csv"))) == 2
+    output_dir = tmp_path / "fwd"
+    assert (output_dir / "losses.csv").is_file()
+    assert len(list((output_dir / "models").glob("*/losses.csv"))) == 2

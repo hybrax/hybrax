@@ -63,9 +63,9 @@ hxt_cli(
     "run/forward",
     "--overwrite",
 )
-print((HERE / "run/forward/forward-results/losses.csv").read_text())
+print((HERE / "run/forward/losses.csv").read_text())
 
-df = pd.read_csv(HERE / "run/forward/forward-results/predictions.csv")
+df = pd.read_csv(HERE / "run/forward/predictions.csv")
 print("columns:", ", ".join(df.columns))
 print("rows   :", len(df))
 
