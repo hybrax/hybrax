@@ -244,7 +244,10 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
     return _check_result(
         "PASS",
         "biological_ode",
-        "derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units",
+        (
+            "derivatives/algebraic/rates parse, resolve, and are acyclic "
+            "with consistent units"
+        ),
     )
 
 
@@ -1049,7 +1052,8 @@ def validate_measurement_sampling_alignment(
                 if 0 < delta <= abs_threshold:
                     warnings.append(
                         f"'{comp_name}' measurement at t={mt_f:.6f} is {delta:.6f} "
-                        f"{process.time_axis.unit} after sampling at t={nearest_st:.6f} "
+                        f"{process.time_axis.unit} after sampling "
+                        f"at t={nearest_st:.6f} "
                         f"({delta / proc_length * 100:.4f}% of process length)"
                     )
 

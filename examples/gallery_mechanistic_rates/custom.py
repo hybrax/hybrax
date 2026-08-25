@@ -19,7 +19,10 @@ from hybrax.train import (
 
 
 class MonodModule(UserReactionModule):
-    """mu = mu_max·S/(Ks+S);  q_S = -(mu/Yxs + ms·sigma);  q_P = alpha·mu + beta·sigma."""
+    """mu = mu_max·S/(Ks+S);
+    q_S = -(mu/Yxs + ms·sigma);
+    q_P = alpha·mu + beta·sigma.
+    """
 
     # Log-parameterised so every constant stays strictly positive under an
     # unconstrained optimizer. This is the cheapest way to impose positivity.

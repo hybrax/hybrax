@@ -512,17 +512,23 @@ class LoadedRunConfig:
 
 
 def load_prepare_config(config_path: str | Path) -> LoadedRunConfig:
-    """Load and validate a config for the ``prepare`` command; see :func:`load_run_config`."""
+    """Load and validate a config for the ``prepare`` command; see
+    :func:`load_run_config`.
+    """
     return load_run_config(config_path, command="prepare")
 
 
 def load_train_config(config_path: str | Path) -> LoadedRunConfig:
-    """Load and validate a config for the ``train`` command; see :func:`load_run_config`."""
+    """Load and validate a config for the ``train`` command; see
+    :func:`load_run_config`.
+    """
     return load_run_config(config_path, command="train")
 
 
 def load_loo_config(config_path: str | Path) -> LoadedRunConfig:
-    """Load and validate a config for the ``loo`` command; see :func:`load_run_config`."""
+    """Load and validate a config for the ``loo`` command; see
+    :func:`load_run_config`.
+    """
     return load_run_config(config_path, command="loo")
 
 

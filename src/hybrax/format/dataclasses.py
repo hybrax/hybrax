@@ -134,7 +134,9 @@ class DiscreteEvents:
 
 @dataclass
 class TimeAxis:
-    """Time axis for a process: its unit, start/end bounds, and time_reference anchor."""
+    """Time axis for a process: its unit, start/end bounds, and
+    time_reference anchor.
+    """
 
     unit: str  # e.g. "hours", "days"
     start: float
@@ -174,7 +176,9 @@ class FeedMediumComponent:
 
 @dataclass
 class ReactorMediumComponent:
-    """One reactor-medium component: its concentration, optional pseudobatch series, and bounds."""
+    """One reactor-medium component: its concentration, optional pseudobatch
+    series, and bounds.
+    """
 
     name: str  # eg. "glucose", "ammonium", "inductor"
     unit: str  # e.g. "g/L", "mM"

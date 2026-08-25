@@ -303,7 +303,9 @@ class TimeSeries(eqx.Module):
         return poly(ts_arr, side=side)
 
     def deriv(self, order: int = 1):
-        """Return a derived TimeSeries holding the spline derivative of the given order."""
+        """Return a derived TimeSeries holding the spline derivative of the
+        given order.
+        """
         order = int(order)
         poly = self.poly
         if poly is None:

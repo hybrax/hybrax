@@ -1587,7 +1587,8 @@ def evaluate_pseudobatch_transform(
     c_star = getattr(comp, "pseudobatch_concentration", None)
     if c_star is None:
         raise ValueError(
-            f"Component {comp.name!r} has no pseudobatch_concentration to backtransform."
+            f"Component {comp.name!r} has no "
+            "pseudobatch_concentration to backtransform."
         )
     if comp.name not in transform.feed_corrections:
         raise KeyError(comp.name)
@@ -1784,7 +1785,8 @@ def build_backtransform_spline(
             constant_value = jnp.asarray(0.0)
     else:
         raise TypeError(
-            "component.pseudobatch_concentration must be a TimeSeries or StaticVariable."
+            "component.pseudobatch_concentration must be a "
+            "TimeSeries or StaticVariable."
         )
 
     xi_source = c_star_ts.times if c_star_ts.times is not None else c_star_ts.breaks

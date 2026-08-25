@@ -49,7 +49,9 @@ def _unsupported_comments() -> RuntimeError:
 def _validated_events(
     iterator: Iterator[tuple[str, str, Any]], source: str | Path
 ) -> Iterator[tuple[str, str, Any]]:
-    """Pass through parser events while enforcing single-value, no-duplicate-key input."""
+    """Pass through parser events while enforcing single-value,
+    no-duplicate-key input.
+    """
     root_count = 0
     top_level_keys = set()
     pending_sentinel = False

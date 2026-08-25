@@ -216,13 +216,13 @@ def test_solve_raises_when_the_grid_violates_the_window_precondition():
 
     The window is sized from a RELATIVE inter-event gap fraction measured over the
     process's measurement window (``_output_window_bounds``). A caller that hand-rolls a
-    strictly narrower ``t_eval`` shrinks the denominator, inflating the true fraction past
-    the bound. No tight bound survives an arbitrary sub-window, so this is a documented
-    precondition — and this test pins that violating it is LOUD rather than silently
-    dropping output rows."""
-    # 8 evenly spaced samples over [0, 240] -> widest gap is 1/7.5 of the horizon, so the
-    # bound is sized for a small fraction. Solving over [0, 45] leaves one 32 h gap
-    # spanning ~70% of that window, far past the bound.
+    strictly narrower ``t_eval`` shrinks the denominator, inflating the true fraction
+    past the bound. No tight bound survives an arbitrary sub-window, so this is a
+    documented precondition — and this test pins that violating it is LOUD rather
+    than silently dropping output rows."""
+    # 8 evenly spaced samples over [0, 240] -> widest gap is 1/7.5 of the horizon,
+    # so the bound is sized for a small fraction. Solving over [0, 45] leaves one 32 h
+    # gap spanning ~70% of that window, far past the bound.
     process, _ = _process("p", n_sample=8, n_bolus=0)
     wrapper = _wrapper(process)
     narrow = jnp.linspace(0.0, 45.0, 400, dtype=jnp.float64)
@@ -367,10 +367,11 @@ def test_output_window_bound_covers_every_gap(n_sample, n_bolus, n_dense, n_pred
             "window must be exactly the documented formula"
         )
 
-    # ...and TIGHT. Some slack is unavoidable: ``f`` and ``G`` are collection-wide maxima
-    # and need not be attained in the same gap, or even the same process. What must never
-    # come back is gross looseness — counting online control signals as measurements put
-    # G at 451 instead of 6, which pushed the window past the grid so it clamped and did
+    # ...and TIGHT. Some slack is unavoidable: ``f`` and ``G`` are collection-wide
+    # maxima and need not be attained in the same gap, or even the same process. What
+    # must never come back is gross looseness — counting online control signals as
+    # measurements put G at 451 instead of 6, which pushed the window past the grid so
+    # it clamped and did
     # nothing. Per-segment save cost scales with the window, so this is a real guard.
     assert window <= 2 * collection_true_max + 8, (
         f"window {window} is loose against the collection's true max "
@@ -391,9 +392,9 @@ def _with_process_variable(process, name, n_points, *, is_controlled):
 
 
 def test_controlled_process_variables_do_not_inflate_the_window():
-    """A CONTROLLED process variable is a model input (pH, temperature, gas flow), logged
-    online at thousands of points. It can never be a measurement target, so its timestamps
-    must not enter the window bound.
+    """A CONTROLLED process variable is a model input (pH, temperature, gas flow),
+    logged online at thousands of points. It can never be a measurement target, so its
+    timestamps must not enter the window bound.
 
     Counting them was a real bug: G came out at 288/317/451 instead of 1/15/6 on the
     shipped examples, so the window clamped to the whole grid and did nothing at all.
@@ -407,7 +408,8 @@ def test_controlled_process_variables_do_not_inflate_the_window():
     grid, *_ = build_union_time_grid(meas, meas.shape[0], n_prediction=n_prediction)
     window = _output_window(controls, n_prediction)
     assert window < grid.shape[0], (
-        f"window {window} must stay well under the grid ({grid.shape[0]}); a controlled "
+        f"window {window} must stay well under the grid ({grid.shape[0]}); "
+        "a controlled "
         "PV's 1441 online samples are not measurements"
     )
     # Same collection without the controlled PV must give the identical window.
@@ -422,8 +424,8 @@ def test_controlled_process_variables_do_not_inflate_the_window():
 
 def test_measured_process_variables_do_count_toward_the_window():
     """The mirror: an ``is_controlled=False`` process variable IS selectable as a target
-    (``target_source='process_variables'`` / ``'combined'``), so its timestamps must be in
-    the bound. Otherwise a combined-target run would overflow."""
+    (``target_source='process_variables'`` / ``'combined'``), so its timestamps must be
+    in the bound. Otherwise a combined-target run would overflow."""
     n_pv_points = 61
     process, _ = _process("p", n_sample=4, n_bolus=0)
     measured_pv = _with_process_variable(

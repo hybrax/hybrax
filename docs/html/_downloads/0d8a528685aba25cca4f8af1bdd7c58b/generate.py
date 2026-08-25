@@ -953,7 +953,10 @@ def build_demo_ecoli_fba() -> None:
             metadata=hxf.BioProcessMetadata(
                 name=name,
                 process_type="batch",
-                notes="Forward-simulated from a real surrogate-FBA model (documentation demo).",
+                notes=(
+                    "Forward-simulated from a real surrogate-FBA model "
+                    "(documentation demo)."
+                ),
             ),
             time_axis=hxf.TimeAxis(
                 unit="h", start=0.0, end=ECOLI_T_END, time_reference="inoculation"
@@ -970,7 +973,10 @@ def build_demo_ecoli_fba() -> None:
     collection = hxf.BioProcessCollection(
         case_id="demo_ecoli_fba",
         organism="Escherichia coli (core metabolism, Orth/Fleming/Palsson 2010)",
-        citation="Simulated via a surrogate-FBA forward model — bp-docs demo, not a real experiment.",
+        citation=(
+            "Simulated via a surrogate-FBA forward model — bp-docs demo, "
+            "not a real experiment."
+        ),
         processes=processes,
     )
     hxf.serialization.save_process_collection(collection, out / "data.json")
@@ -1020,7 +1026,10 @@ def build_demo_ecoli_blend() -> None:
             metadata=hxf.BioProcessMetadata(
                 name=name,
                 process_type="batch",
-                notes="Forward-simulated from a real surrogate-FBA model, blend-dependent (documentation demo).",
+                notes=(
+                    "Forward-simulated from a real surrogate-FBA model, "
+                    "blend-dependent (documentation demo)."
+                ),
             ),
             time_axis=hxf.TimeAxis(
                 unit="h", start=0.0, end=ECOLI_T_END, time_reference="inoculation"
@@ -1037,7 +1046,10 @@ def build_demo_ecoli_blend() -> None:
     collection = hxf.BioProcessCollection(
         case_id="demo_ecoli_blend",
         organism="Escherichia coli (core metabolism, Orth/Fleming/Palsson 2010)",
-        citation="Simulated via a surrogate-FBA forward model — bp-docs demo, not a real experiment.",
+        citation=(
+            "Simulated via a surrogate-FBA forward model — bp-docs demo, "
+            "not a real experiment."
+        ),
         processes=processes,
     )
     hxf.serialization.save_process_collection(collection, out / "data.json")
@@ -1630,7 +1642,9 @@ def build_demo_modeled_pv() -> None:
 
     collection = hxf.BioProcessCollection(
         case_id="demo_modeled_pv",
-        organism="None (synthetic biomass + a glycosylation-fraction quality attribute)",
+        organism=(
+            "None (synthetic biomass + a glycosylation-fraction quality attribute)"
+        ),
         citation="Simulated data — bp-docs demo, not a real experiment.",
         processes=processes,
     )

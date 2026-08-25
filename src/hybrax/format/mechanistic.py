@@ -440,7 +440,9 @@ class ControlSplines(eqx.Module):
     _splines: tuple[PPoly, ...]
 
     def __call__(self, t: jnp.ndarray) -> jnp.ndarray:
-        """Evaluate all controlled signals at ``t``; see the class docstring for layout."""
+        """Evaluate all controlled signals at ``t``; see the class
+        docstring for layout.
+        """
         if not self._splines:
             return jnp.zeros(jnp.shape(t) + (0,))
         n_flows = len(self.name_controlled_Inflows) + len(self.name_controlled_Outflows)

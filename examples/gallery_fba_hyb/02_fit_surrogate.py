@@ -189,7 +189,8 @@ def main():
         thr = np.percentile(np.abs(y), 10)
         m = np.abs(y) <= thr
         print(
-            f"{nm:5} | {r2(y, p):8.4f} {nmae(y, p):9.4f} {r2(y[m], p[m]):9.4f} {nmae(y[m], p[m]):11.4f}"
+            f"{nm:5} | {r2(y, p):8.4f} {nmae(y, p):9.4f} "
+            f"{r2(y[m], p[m]):9.4f} {nmae(y[m], p[m]):11.4f}"
         )
 
     # Boundedness certificate over the physical sampling box.
@@ -216,7 +217,8 @@ def main():
         ok = ratio <= 3.0
         all_ok &= ok
         print(
-            f"{nm:5} | {m_box:14.1f} {m_dat:15.1f} {ratio:10.1f}x | {'OK' if ok else 'MISS'}"
+            f"{nm:5} | {m_box:14.1f} {m_dat:15.1f} "
+            f"{ratio:10.1f}x | {'OK' if ok else 'MISS'}"
         )
     print("-" * 70)
     print(f"pole-free: min denominator over box = {min_den:.5f}")

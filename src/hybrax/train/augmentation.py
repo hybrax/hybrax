@@ -1,4 +1,5 @@
-"""Synthetic sibling-process generation from :class:`~hybrax.train.run_config.AugmentationConfig`.
+"""Synthetic sibling-process generation from
+:class:`~hybrax.train.run_config.AugmentationConfig`.
 
 Resamples each real (parent) process's fitted state splines onto a new,
 randomly jittered time grid, optionally adds Gaussian noise, and stores the
@@ -224,7 +225,8 @@ def augment_process_collection(
     run_config: RunConfig,
     augment_state_values: Any = None,
 ) -> BioProcessCollection:
-    """Generate augmented children for every parent process and add them to ``collection``.
+    """Generate augmented children for every parent process and add them to
+    ``collection``.
 
     No-op (returns ``collection`` unchanged) when ``run_config.prepare.augmentation``
     is unset. Otherwise, for each real (non-augmented) process, generates

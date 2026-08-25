@@ -235,7 +235,8 @@ def prepare_artifact(
 
     Loads the raw collection at ``config.prepare.raw_input``, validates it,
     applies the ``transform_process_collection`` hook (default: identity),
-    generates augmented children via :func:`~hybrax.train.augmentation.augment_process_collection`,
+    generates augmented children via
+    :func:`~hybrax.train.augmentation.augment_process_collection`,
     re-validates the result under strict training semantics, extracts and
     validates each process's control sources, and assembles the
     ``hybrax_train`` metadata block (provenance, semantics diffs vs. the raw

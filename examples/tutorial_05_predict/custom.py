@@ -32,7 +32,8 @@ class BatchReactionModule(UserReactionModule):
         super().__init__(**scale_kwargs)
         self.mlp = eqx.nn.MLP(
             in_size=self.n_modeled_RMCs,  # biomass, glucose, product
-            out_size=self.n_modeled_BiologicalOde_rates,  # q_biomass, q_glucose, q_product
+            out_size=self.n_modeled_BiologicalOde_rates,  # q_biomass, q_glucose,
+            # q_product
             width_size=32,
             depth=3,
             # Use a SMOOTH activation. eqx.nn.MLP defaults to relu, which makes

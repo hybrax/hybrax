@@ -161,7 +161,9 @@ def integrate_definite(
     a: float,
     b: float,
 ) -> float:
-    """Integrate a piecewise cubic spline from ``a`` to ``b``, clipped to its support."""
+    """Integrate a piecewise cubic spline from ``a`` to ``b``, clipped to
+    its support.
+    """
     if a == b:
         return 0.0
     sign = 1.0

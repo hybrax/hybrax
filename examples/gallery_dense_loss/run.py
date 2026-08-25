@@ -101,10 +101,12 @@ for name in ("biomass", "glucose", "product"):
     print(f"{name:10s} {r2_base[name]:12.4f} {r2[name]:14.4f}")
 print(f"{'min glucose':10s} {min_glucose_base:12.4f} {min_glucose:14.4f}")
 print(
-    f"{'curv(q_X)':10s} {curvature_base['q_biomass']:12.4f} {curvature['q_biomass']:14.4f}"
+    f"{'curv(q_X)':10s} {curvature_base['q_biomass']:12.4f} "
+    f"{curvature['q_biomass']:14.4f}"
 )
 print(
-    f"{'curv(q_S)':10s} {curvature_base['q_glucose']:12.4f} {curvature['q_glucose']:14.4f}"
+    f"{'curv(q_S)':10s} {curvature_base['q_glucose']:12.4f} "
+    f"{curvature['q_glucose']:14.4f}"
 )
 
 hxt_cli(
