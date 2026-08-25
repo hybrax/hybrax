@@ -312,24 +312,47 @@ def _time_series_samples(change) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _plot_volume_changes(axis, process: BioProcess, t: np.ndarray) -> None:
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Patch
+
     width = max((process.time_axis.end - process.time_axis.start) * 0.008, 0.001)
-    for name, change in process.volume.volume_changes.items():
+    cycle_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    empty_series_handles = []
+    for index, (name, change) in enumerate(process.volume.volume_changes.items()):
         times, values = _time_series_samples(change)
         if isinstance(change, Inflow):
             kind = "inflow" if change.is_continuous else "bolus"
         else:
             kind = "outflow" if change.is_continuous else "sampling"
+        label = f"{kind}: {name}"
+        color = cycle_colors[index % len(cycle_colors)]
         if change.is_continuous:
             if change.values.breaks is not None:
                 times, values = t, _continuous_volume_values(change, t)
-            axis.plot(times, values, label=f"{kind}: {name}")
+            axis.plot(times, values, label=label, color=color)
+        elif values.size == 0:
+            # axis.bar([], []) produces a BarContainer with no patches, so
+            # matplotlib can't derive a legend swatch color from it and falls
+            # back to a default (blue) — build the swatch explicitly instead.
+            empty_series_handles.append(
+                Patch(facecolor=color, edgecolor="k", alpha=0.6, label=label)
+            )
         else:
-            axis.bar(times, values, width=width, alpha=0.6, label=f"{kind}: {name}")
+            axis.bar(
+                times,
+                values,
+                width=width,
+                alpha=0.6,
+                label=label,
+                color=color,
+                edgecolor="k",
+            )
     axis.axhline(0, color="black", linewidth=0.5)
     axis.set_title("volume_changes")
     axis.set_ylabel(process.volume.unit)
     if process.volume.volume_changes:
-        axis.legend(fontsize="small")
+        handles, _ = axis.get_legend_handles_labels()
+        axis.legend(handles=handles + empty_series_handles, fontsize="small")
 
 
 def _fit_title(name: str, loss: float | None, r_squared: float | None) -> str:

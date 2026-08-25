@@ -19,6 +19,8 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 import pytest
+import matplotlib.pyplot as plt
+from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
 from hybrax.format.dataclasses import (
     BioProcess,
@@ -1670,6 +1672,46 @@ def test_plot_volume_changes_samples_nonlinear_spline_on_dense_grid():
 
     np.testing.assert_array_equal(axis.lines[0].get_xdata(), t)
     np.testing.assert_allclose(axis.lines[0].get_ydata(), t**2)
+
+
+def test_plot_volume_changes_empty_series_gets_correct_legend_color():
+    """A discrete series with no recorded events must not fall back to
+    matplotlib's default legend swatch color (blue) — it should keep the
+    color its position in the cycle actually maps to."""
+    non_empty = SimpleNamespace(
+        is_continuous=False,
+        values=SimpleNamespace(
+            breaks=None, times=np.array([0.5]), values=np.array([1.0])
+        ),
+    )
+    empty = SimpleNamespace(
+        is_continuous=False,
+        values=SimpleNamespace(
+            breaks=None, times=np.array([]), values=np.array([])
+        ),
+    )
+    process = SimpleNamespace(
+        time_axis=SimpleNamespace(start=0.0, end=2.0),
+        volume=SimpleNamespace(
+            volume_changes={"feed1": non_empty, "run3_feed1": empty}, unit="L"
+        ),
+    )
+    axis = Figure().subplots()
+
+    forward_plotting._plot_volume_changes(axis, process, np.linspace(0.0, 2.0, 5))
+
+    legend = axis.get_legend()
+    colors_by_label = {
+        text.get_text(): handle.get_facecolor()
+        for handle, text in zip(legend.legend_handles, legend.get_texts())
+    }
+    cycle_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    expected_empty_color = to_rgba(cycle_colors[1], alpha=0.6)
+
+    assert colors_by_label["sampling: feed1"] != colors_by_label["sampling: run3_feed1"]
+    np.testing.assert_allclose(
+        colors_by_label["sampling: run3_feed1"], expected_empty_color
+    )
 
 
 def test_plot_forward_predictions_removes_partial_png_on_failure(
