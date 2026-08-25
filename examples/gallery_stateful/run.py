@@ -48,7 +48,7 @@ hxt_cli(
 
 # Declaring a nonzero latent without opting in is a hard error, by design.
 out = hxt_cli("train", "--config", "train-no-optin.json", "--overwrite", check=False)
-print([l for l in out.splitlines() if "ValueError" in l][-1])
+print([line for line in out.splitlines() if "ValueError" in line][-1])
 
 hxt_cli("train", "--config", "train.json", "--overwrite")
 final_loss = pd.read_csv(HERE / "run/metrics.csv")["mean_loss"].iloc[-1]

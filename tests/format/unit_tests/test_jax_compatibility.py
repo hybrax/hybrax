@@ -19,7 +19,6 @@ from hybrax.format import (
     ReactorMedium,
     Volume,
     BioProcess,
-    ProcessVariable,
 )
 
 

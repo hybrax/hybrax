@@ -284,7 +284,7 @@ class PLSdFBAReactionModule(UserReactionModule):
         n_S = _bounded_softplus(raw[4], 1.8)
 
         fba_out = surrogate_fba(jnp.array([qG, n_X, n_M, n_A, n_S]))
-        q_glc, qX, qM, qA, qS = (
+        q_glc, qX, _qM, qA, qS = (
             fba_out[0],
             fba_out[1],
             fba_out[2],

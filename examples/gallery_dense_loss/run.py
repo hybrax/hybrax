@@ -83,7 +83,7 @@ hxt_cli(
     "--overwrite",
 )
 out = hxt_cli("train", "--config", "train-full.json", "--overwrite")
-print([l for l in out.splitlines() if "training complete" in l][-1])
+print([line for line in out.splitlines() if "training complete" in line][-1])
 
 r2 = r2_by_target("run_full")
 min_glucose, curvature = dense_diagnostics("run_full")

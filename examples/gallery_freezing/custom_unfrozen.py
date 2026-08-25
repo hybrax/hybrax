@@ -17,7 +17,6 @@ from hybrax.train import (
     ReactionInputs,
     ReactionOutputs,
     UserReactionModule,
-    frozen_field,
     trainable_field,
 )
 

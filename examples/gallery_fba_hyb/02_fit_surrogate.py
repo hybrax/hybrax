@@ -131,8 +131,12 @@ def fit_flux(g, N, y, tr, d, n_restarts, seed):
         if np.isfinite(r.fun) and r.fun < best_loss:
             best_loss, best = r.fun, r.x
 
-    num = lambda: np.concatenate([rng.normal(0, 1, 4), [rng.normal(0, 0.3)]])
-    den = lambda: np.concatenate([rng.normal(0.3, 0.6, 4), [rng.normal(0.5, 0.5)]])
+    def num():
+        return np.concatenate([rng.normal(0, 1, 4), [rng.normal(0, 0.3)]])
+
+    def den():
+        return np.concatenate([rng.normal(0.3, 0.6, 4), [rng.normal(0.5, 0.5)]])
+
     run(
         np.concatenate(
             [

@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 HERE = Path(__file__).parent
 ENV = {
     **os.environ,
@@ -50,8 +52,6 @@ hxt_cli(
     "run/forward",
     "--overwrite",
 )
-
-import pandas as pd
 
 metrics = pd.read_csv(HERE / "run/metrics.csv")
 print("columns:", ", ".join(metrics.columns))

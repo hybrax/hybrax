@@ -16,7 +16,6 @@ from pathlib import Path
 
 import numpy as np
 
-import hybrax.format as hxf
 from hybrax.train import augmentation, prepare, run_config
 
 HERE = Path(__file__).parent

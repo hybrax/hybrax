@@ -173,9 +173,11 @@ def _init_xavier_zero_bias(model, key):
         if isinstance(layer, eqx.nn.Linear):
             wkey, _ = jax.random.split(key)
             new_w = jax.nn.initializers.glorot_normal()(wkey, layer.weight.shape)
-            layer = eqx.tree_at(lambda l: l.weight, layer, new_w)
+            layer = eqx.tree_at(lambda value: value.weight, layer, new_w)
             if layer.bias is not None:
-                layer = eqx.tree_at(lambda l: l.bias, layer, jnp.zeros_like(layer.bias))
+                layer = eqx.tree_at(
+                    lambda value: value.bias, layer, jnp.zeros_like(layer.bias)
+                )
         return layer
 
     return jax.tree_util.tree_map(
@@ -225,7 +227,7 @@ class FBAHybReactionModule(UserReactionModule):
         n_A = _bounded_softplus(obj[2], 1.8)
 
         fba_out = surrogate_fba(jnp.array([qG, n_X, n_M, n_A, 0.0]))
-        q_glc, qX, qM, qA = fba_out[0], fba_out[1], fba_out[2], fba_out[3]
+        q_glc, qX, _qM, qA = fba_out[0], fba_out[1], fba_out[2], fba_out[3]
 
         RAW_glc = q_glc * MW[0] / 1000.0
         RAW_ace = qA * MW[1] / 1000.0
