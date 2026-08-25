@@ -33,7 +33,8 @@ run/
 ├── model/
 │   ├── params.eqx       trainable parameters only
 │   └── opt_state.eqx    optimizer state, for resuming
-└── checkpoints/step_NNNNN/    the same again, per checkpoint, plus train_state.json
+└── checkpoints/step_NNNNN/    the same again, plus train_state.json and
+                                  holdout_predictions.csv when holdout data exists
 ```
 
 You can copy a run directory to another machine and load it, provided hybrax is
@@ -71,8 +72,13 @@ collection = hxf.serialization.load_process_collection("data.json")
 
 predictions = hxt.model_predict(wrapper, config, collection, grid_n=200)
 export = predictions["run_1"]
-export.t, export.c_species, export.q_rates, export.v_real, export.auxiliary
+export.t, export.prediction_valid, export.c_species, export.q_rates
+export.v_real, export.auxiliary
 ```
+
+`prediction_valid` marks the rows reached by that solve. Canonical floating arrays
+contain `NaN` on invalid rows. Auxiliary arrays retain their native dtype and must
+be ignored wherever `prediction_valid` is false.
 
 **Neither `model_predict` nor the CLI `forward` path re-estimates scales against your
 evaluation data.** Both use exactly the scales the model was trained under. What differs

@@ -179,7 +179,7 @@ such rather than encoding a zero. If they are known, record them.
 **The failure.** `bounds=(0.0, None)` on a concentration looks like a constraint. Nothing
 in hybrax.format or the solver enforces it.
 
-**Why it exists.** Bounds are *metadata*, so downstream consumers (hybrax.train's loss module) can build soft penalties from a declaration you made once in the data.
+**Why it exists.** Bounds are *metadata*, so downstream consumers (`hybrax.train`'s loss module) can build soft penalties from a declaration you made once in the data.
 
 **Fix.** If you want the constraint enforced, write the penalty. See
 [The Loss Module](../train/loss_module.md#adding-a-physical-penalty).
@@ -193,7 +193,7 @@ When a model fits the concentrations but something feels wrong, **plot the rates
 A model can match every measurement with rates that are physically impossible: growth and
 death both far too high, uptake compensating for a missing transport term, formation and
 degradation cancelling. Compensating errors are invisible in a concentration plot and
-obvious in a rate plot. That is why every hybrax.train process figure puts the rates in the
+obvious in a rate plot. That is why every `hybrax.train` process figure puts the rates in the
 right-hand column, and it is the check most people skip.
 
 The other strong one is a **transport-only run**: set the biological rates to zero and

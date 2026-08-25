@@ -153,7 +153,7 @@ component = hxf.ReactorMediumComponent(
 ```
 
 **Bounds are metadata.** Nothing in hybrax.format enforces them, and no solver clips to them.
-They exist so downstream consumers (`hybrax-train`'s loss module in particular) can build
+They exist so downstream consumers (`hybrax.train`'s loss module in particular) can build
 soft penalties from a declaration you made once, in the data, instead of duplicating it
 in every training config.
 
@@ -209,7 +209,7 @@ transform; you never construct it yourself. See
 
 ### `AugmentedBioProcess`
 
-A separate type, not a `BioProcess` field: a fixed shape that `hybrax-train`'s
+A separate type, not a `BioProcess` field: a fixed shape that `hybrax.train`'s
 augmentation and LOO grouping rely on, though nothing in `hybrax-format` produces one
 directly. See [Augmentation](../gallery/augmentation.md) if you are using it.
 

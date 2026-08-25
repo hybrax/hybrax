@@ -148,7 +148,7 @@ Ordering rules: rates keep your insertion order, so a rate vector you build matc
 order you declared. Algebraic names are topologically sorted by dependency. Everything
 else is alphabetical.
 
-hybrax.train consumes this object and never re-derives layout. If you are writing anything
+`hybrax.train` consumes this object and never re-derives layout. If you are writing anything
 that indexes into a state vector, get the names from here rather than assuming.
 
 ## Building the callable
@@ -165,7 +165,7 @@ print("feed composition matrix:", rhs.Cin_controlled_Inflows.shape,
 
 `RhsOde` is a JAX-compatible callable: given time, state, controls and a rate vector it
 returns `d(state)/dt`. It does **not** integrate: hybrax.format has no solver. Handing it to
-a solver is [hybrax.train](../train/index.md)'s job.
+a solver is [`hybrax.train`](../train/index.md)'s job.
 
 Related helpers, for when you are building your own integrator:
 `build_algebraic_func` (evaluate the algebraic block alone), `extract_discrete_events`

@@ -20,7 +20,7 @@ kernelspec:
 Inspired by Helleckes et al. 2024 <a href="#ref-helleckes2024">[1]</a>, whose headline result is
 that pooling data across products, "horizontal knowledge transfer," measurably helps
 a new product with few runs of its own, provided the historical products actually
-resemble it. This page reproduces that qualitative result natively in hybrax.train, on
+resemble it. This page reproduces that qualitative result natively in `hybrax.train`, on
 synthetic data, built on [the GP reaction module](gaussian_process.md). It is not a
 replication of their method (their model is fit by maximum-likelihood estimation on
 a precomputed rate target and pools via one-hot encoding or a PACOH meta-learned
@@ -139,7 +139,7 @@ for `rate_std`, replacing the closed-form single-GP variance from the previous p
 This mirrors Helleckes et al. 2024's <a href="#ref-helleckes2024">[1]</a> own "mean averaging
 ensemble... 30 GP models, each subsampling 50% of the training data experiments,"
 scaled down (5 heads here, not 30) and subsampled at the point level rather than the
-experiment level, both for tractability inside hybrax.train's per-solver-step
+experiment level, both for tractability inside `hybrax.train`'s per-solver-step
 reaction-module call.
 
 ```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py

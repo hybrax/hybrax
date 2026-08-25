@@ -57,7 +57,7 @@ def build_reaction_module(*, seed, **kwargs):
 
 `scale_kwargs` carries the `SCALE_*` axes produced by
 [`estimate_all_scales`](scaling.md). Forward them to `super().__init__`: the reaction
-module is the **single source of truth** for every scale in hybrax.train, and the wrapper,
+module is the **single source of truth** for every scale in `hybrax.train`, and the wrapper,
 trainer and loss module all read them off it.
 
 ## What you get in `ReactionInputs`

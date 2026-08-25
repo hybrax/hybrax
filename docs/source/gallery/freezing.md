@@ -18,7 +18,7 @@ kernelspec:
 
 Every module so far has been entirely trainable. Sometimes you want the opposite: a
 piece you trust and do not want the optimizer to move, alongside a small piece you
-actually want to fit. hybrax.train's answer is two field tags, not a separate optimizer
+actually want to fit. `hybrax.train`'s answer is two field tags, not a separate optimizer
 mechanism: `trainable_field()` and `frozen_field()` on the module's own attributes.
 `partition_trainable` (what the optimizer actually sees) reads these tags straight off
 the module.

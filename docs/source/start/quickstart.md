@@ -77,7 +77,7 @@ Everything below assumes that file is in your working directory.
 
 ## 1. Write two config files
 
-hybrax.train is driven by JSON config files. They are small. This is the whole prepare
+`hybrax.train` is driven by JSON config files. They are small. This is the whole prepare
 config:
 
 ```json

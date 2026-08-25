@@ -51,7 +51,7 @@ details.
 
 **After that, this package provides everything else.** Because the description is complete,
 hybrax.format can assemble the mechanistic right-hand side for you (feed inflow, dilution,
-sample outflow, volume dynamics, discrete event jumps) and hand hybrax.train a
+sample outflow, volume dynamics, discrete event jumps) and hand `hybrax.train` a
 differentiable ODE where the only thing left undetermined are the biological dynamics.
 
 Next, you supply the part that is actually your research question: what do the

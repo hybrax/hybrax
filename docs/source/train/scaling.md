@@ -14,7 +14,7 @@ own error control (`rtol`, `atol`) also applies across a shared state vector, so
 absolute tolerance appropriate for glucose is meaningless for a trace species. Everything
 downstream inherits the conditioning of the worst axis.
 
-So hybrax.train **integrates in scaled (SCL) space**, where every axis is O(1), and converts
+So `hybrax.train` **integrates in scaled (SCL) space**, where every axis is O(1), and converts
 to physical (RAW) units only where the chemistry needs them.
 
 ## Why one linear factor per axis

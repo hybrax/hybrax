@@ -147,7 +147,7 @@ that the weaker half is the 2-point one.
 
 - **No reaction module, no `custom.py`, no training.** The pseudobatch transform and
   spline fitting are hybrax.format's own, and stop being useful to demonstrate the moment
-  hybrax.train enters the picture.
+  `hybrax.train` enters the picture.
 - **A closed-form ground truth.** Every other demo dataset in this site is simulated
   with RK4 and compared to noisy measurements of itself. This one has an exact answer to
   check the fit against, because that is the whole point of the page.

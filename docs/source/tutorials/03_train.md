@@ -52,7 +52,7 @@ def show(text, n=4, match=None):
 
 ## What a hybrid model is here
 
-The ODE hybrax.train solves has two halves:
+The ODE `hybrax.train` solves has two halves:
 
 ```
 d(state)/dt  =  biology(rates)          ← your model predicts this

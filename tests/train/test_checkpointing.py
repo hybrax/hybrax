@@ -163,6 +163,7 @@ def test_checkpoint_writer_keeps_all_and_updates_latest(tmp_path: Path):
     )
     assert jnp.allclose(reloaded.w, module.w)
     assert not list(checkpoints.glob("step_*/predictions.csv"))
+    assert not list(checkpoints.glob("step_*/holdout_predictions.csv"))
 
 
 def test_checkpoint_writer_normalizes_nonfinite_losses(tmp_path: Path):

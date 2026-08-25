@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 class DenseProcessExport:
     """Dense, human-facing per-process export arrays in physical units.
 
+    ``prediction_valid`` marks rows reached by the ODE solve. Canonical floating
+    arrays contain ``NaN`` on invalid rows; auxiliary arrays retain their native
+    dtype and must be ignored wherever ``prediction_valid`` is false.
+
     ``q_rates`` is aligned with ``rhs_ode.name_modeled_rates`` (the modeled
     biological rate vector), not with ``modeled_RMC_names``. Under a
     user-defined ``BiologicalOde`` these orderings differ. Modeled Inflow and
@@ -31,6 +35,7 @@ class DenseProcessExport:
     """
 
     t: np.ndarray
+    prediction_valid: np.ndarray
     c_species: np.ndarray
     v_real: np.ndarray
     b_modeled_cum: np.ndarray
@@ -60,6 +65,9 @@ def aggregate_dense_exports(
             raise ValueError(
                 f"ensemble members have different time grids for process {proc!r}"
             )
+        prediction_valid = np.logical_and.reduce(
+            [export.prediction_valid for export in exports]
+        )
 
         def _mean_std(attr: str) -> tuple[np.ndarray, np.ndarray]:
             stacked = np.stack([getattr(e, attr) for e in exports], axis=0)
@@ -80,6 +88,7 @@ def aggregate_dense_exports(
         } or None
         mean_out[proc] = DenseProcessExport(
             t=t,
+            prediction_valid=prediction_valid,
             c_species=c_m,
             v_real=v_m,
             b_modeled_cum=b_m,
@@ -90,6 +99,7 @@ def aggregate_dense_exports(
         )
         std_out[proc] = DenseProcessExport(
             t=t,
+            prediction_valid=prediction_valid,
             c_species=c_s,
             v_real=v_s,
             b_modeled_cum=b_s,
@@ -106,6 +116,8 @@ def dense_exports_from_save_outputs(
     prediction_save_outputs: SaveOutputs,
     trained_wrapper: HybridOdeWrapper,
     process_names: Sequence[str],
+    *,
+    prediction_valid: jnp.ndarray,
 ) -> dict[str, DenseProcessExport]:
     """Slice one batched forward solve's prediction block into per-process exports.
 
@@ -113,7 +125,9 @@ def dense_exports_from_save_outputs(
     batch (aligned with ``process_names``); un-scale ``SCL_states`` to physical
     and pick the canonical export columns (``c_*``, ``V_real``, cumulative
     modeled Inflows and Outflows, biological ``q_*`` rates, separate modeled
-    Inflow/Outflow rates, and per-key ``auxiliary``).
+    Inflow/Outflow rates, and per-key ``auxiliary``). ``prediction_valid`` stays
+    aligned through sorting and deduplication. Invalid canonical floating outputs
+    are replaced with ``NaN``; auxiliary values retain their native dtype.
     """
     module = trained_wrapper.reaction_module
     # "species" export columns = the [RMCs | PVs] leading state block.
@@ -128,6 +142,7 @@ def dense_exports_from_save_outputs(
         jax.vmap(jax.vmap(module.unscale_state))(prediction_save_outputs.SCL_states)
     )
     t_np = np.asarray(prediction_t)
+    prediction_valid_np = np.asarray(prediction_valid, dtype=bool)
     v_real_np = np.asarray(prediction_save_outputs.RAW_V_export)
     q_np = np.asarray(prediction_save_outputs.RAW_modeled_BiologicalOde_rates)
     inflow_rates_np = np.asarray(prediction_save_outputs.RAW_modeled_Inflows_rates)
@@ -145,6 +160,13 @@ def dense_exports_from_save_outputs(
         t_sorted = t_i[order]
         keep = np.concatenate(([True], np.diff(t_sorted) > 0))
         sel = order[keep]
+        valid_i = prediction_valid_np[i, sel]
+
+        def _mask_invalid(values: np.ndarray) -> np.ndarray:
+            values = np.asarray(values)
+            valid = valid_i.reshape((-1,) + (1,) * (values.ndim - 1))
+            return np.where(valid, values, np.nan)
+
         aux_i = (
             None
             if auxiliary is None
@@ -152,12 +174,15 @@ def dense_exports_from_save_outputs(
         )
         exports[name] = DenseProcessExport(
             t=t_i[sel],
-            c_species=RAW_states[i, sel, :n_species],
-            v_real=v_real_np[i][sel],
-            b_modeled_cum=RAW_states[i, sel, n_species + 1 : n_species + 1 + n_modeled],
-            q_rates=q_np[i][sel],
-            modeled_Inflow_rates=inflow_rates_np[i][sel],
-            modeled_Outflow_rates=outflow_rates_np[i][sel],
+            prediction_valid=valid_i,
+            c_species=_mask_invalid(RAW_states[i, sel, :n_species]),
+            v_real=_mask_invalid(v_real_np[i][sel]),
+            b_modeled_cum=_mask_invalid(
+                RAW_states[i, sel, n_species + 1 : n_species + 1 + n_modeled]
+            ),
+            q_rates=_mask_invalid(q_np[i][sel]),
+            modeled_Inflow_rates=_mask_invalid(inflow_rates_np[i][sel]),
+            modeled_Outflow_rates=_mask_invalid(outflow_rates_np[i][sel]),
             auxiliary=aux_i,
         )
     return exports
@@ -179,7 +204,7 @@ def _predictions_csv_header(
     verbatim.
     """
     return (
-        ["process", "t"]
+        ["process", "t", "prediction_valid"]
         + [f"c_{name}" for name in modeled_RMC_names]
         + [f"c_{name}" for name in modeled_PV_names]
         + ["V_real"]
@@ -483,10 +508,11 @@ def export_predictions_csv(
     output_path: str | Path,
     process_names: tuple[str, ...] | None = None,
 ) -> None:
-    """Write dense predictions.csv from precomputed per-process exports (no solve).
+    """Write predictions from precomputed per-process exports without solving.
 
-    ``dense_exports`` comes from :func:`hybrax.train.harness.compute_dense_exports`
-    (the single batched solve). This function only formats and writes rows.
+    Invalid prediction rows remain present on their original time grid. Their
+    output cells are written as missing values while ``process``, ``t``, and
+    ``prediction_valid`` identify the failed portion of the trajectory.
     """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -551,7 +577,7 @@ def export_predictions_csv(
                 f"{_auxiliary_csv_columns(dense_export.auxiliary)} "
                 f"for process {process_name!r}"
             )
-        ts_rows: list[list[float | str]] = []
+        ts_rows: list[list[Any]] = []
         for i_t in range(len(dense_export.t)):
             aux_cells = (
                 [float("nan")] * len(auxiliary_columns)
@@ -559,7 +585,11 @@ def export_predictions_csv(
                 else _auxiliary_row_values(dense_export.auxiliary, i_t)
             )
             row = (
-                [process_name, float(dense_export.t[i_t])]
+                [
+                    process_name,
+                    float(dense_export.t[i_t]),
+                    bool(dense_export.prediction_valid[i_t]),
+                ]
                 + [float(dense_export.c_species[i_t, j]) for j in range(n_species)]
                 + [float(dense_export.v_real[i_t])]
                 + [float(dense_export.b_modeled_cum[i_t, k]) for k in range(n_modeled)]
@@ -575,9 +605,11 @@ def export_predictions_csv(
                 + aux_cells
             )
             ts_rows.append(row)
-        pd.DataFrame(ts_rows, columns=header).to_csv(
-            output_path, mode="a", header=False, index=False
-        )
+        frame = pd.DataFrame(ts_rows, columns=header)
+        output_columns = header[3:]
+        frame[output_columns] = frame[output_columns].astype(object)
+        frame.loc[~frame["prediction_valid"], output_columns] = np.nan
+        frame.to_csv(output_path, mode="a", header=False, index=False)
 
     logger.info("timeseries csv saved to %s", output_path)
 

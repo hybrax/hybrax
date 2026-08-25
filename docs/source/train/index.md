@@ -1,6 +1,6 @@
 # Overview
 
-> hybrax.train takes a hybrax.format dataset, lets you plug in a model for the biology, and fits
+> `hybrax.train` takes a hybrax.format dataset, lets you plug in a model for the biology, and fits
 > it by differentiating through an ODE solve. For the data side, see
 > [hybrax.format](../format/index.md).
 

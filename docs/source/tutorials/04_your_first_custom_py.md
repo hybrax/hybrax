@@ -17,7 +17,7 @@ kernelspec:
 > Replace the two defaults that matter most (the network that predicts rates, and the
 > scaling) and measure what it bought you.
 
-Everything you customise in hybrax.train lives in one optional file, `custom.py`. hybrax.train
+Everything you customise in `hybrax.train` lives in one optional file, `custom.py`. `hybrax.train`
 looks in it for functions with specific names; anything it does not find falls back to a
 default. There is no registration and no base class to inherit for the file itself: it
 is just a module.
@@ -118,7 +118,7 @@ whole partitioning mechanism: tagged fields are trainable, and **untagged array 
 default to frozen**. There is no separate partition function to write.
 
 **`super().__init__(**scale_kwargs)`** must be called. The reaction module is the single
-source of truth for every scale in hybrax.train (the wrapper, the trainer and the loss
+source of truth for every scale in `hybrax.train` (the wrapper, the trainer and the loss
 module all read them off it) so the base class needs them.
 
 **`SCL_modeled_Inflows_rates=jnp.zeros(0)`** and **`SCL_modeled_Outflows_rates=jnp.zeros(0)`**

@@ -10,7 +10,7 @@ One package, two halves:
   description into a differentiable ODE right-hand side. It knows about dilution,
   feed composition, boluses and sampling, so you don't have to write those terms
   again.
-- **hybrax.train** fits models on top of it. You plug in a reaction module (neural,
+- **`hybrax.train`** fits models on top of it. You plug in a reaction module (neural,
   mechanistic, or both) and a loss module; it runs `prepare → train → forward / loo`
   on JAX + Diffrax.
 
