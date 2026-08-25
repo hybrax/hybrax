@@ -14,19 +14,19 @@ clone `hybrax`, install it, and each page runs top to bottom exactly as shown he
 no rendering required — or run the `examples/` directory directly, no docs build
 needed at all.
 
-## Format demo
+## Format Demo
 
 | Entry | Demonstrates |
 |---|---|
 | [Pseudobatch Splines](pseudobatch_splines.md) | Recovering a smooth curve through a discrete feed jump from just 5 measurements, checked against a known ground truth. |
 
-## Prepare demo
+## Prepare Demo
 
 | Entry | Demonstrates |
 |---|---|
 | [Augmentation](augmentation.md) | Generating synthetic sibling processes from a single run, and controlling what values they carry with `augment_state_values`. |
 
-## Train demo
+## Train Demo
 
 | Entry | Demonstrates |
 |---|---|
@@ -38,13 +38,13 @@ needed at all.
 | [Stateful Models](stateful.md) | A continuous-time LSTM (a reaction module with its own memory, integrated as extra ODE latents) and the opt-in that guards it. |
 | [Glutamine Decay](glutamine_decay.md) | One declared rate feeding two coupled derivatives at once, a sink in one, a source in the other, recovered from data as a single shared number. |
 
-## Loo demo
+## Loo Demo
 
 | Entry | Demonstrates |
 |---|---|
 | [Cross-Validation](loo.md) | A cheap `holdout_processes` check, then a full leave-one-out run: real folds, the corrected config schema, and the files it produces. |
 
-## Paper demo
+## Paper Demo
 
 | Entry | Demonstrates |
 |---|---|

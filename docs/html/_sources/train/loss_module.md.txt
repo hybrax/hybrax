@@ -38,7 +38,7 @@ metrics columns, so they cannot vary between steps.
 
 The total loss for backprop is `mean(named_losses.values())`.
 
-This is deliberate and it matters. hybrax.train clips the **raw** gradient before Adam, so
+This is deliberate and it matters. `hybrax.train` clips the **raw** gradient before Adam, so
 with a sum, adding a loss term scales the gradient by the term count, pushes it past the
 clip threshold, and (because the clip sits before Adam) holds the step size large near
 the optimum. On a stiff neural ODE that overshoots and diverges.

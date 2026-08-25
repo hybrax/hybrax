@@ -66,7 +66,7 @@ importing `hybrax.format` afterwards will flip x64 on underneath you, and float3
 handed to `TimeSeries` will raise rather than silently upcast.
 :::
 
-:::{admonition} hybrax.train decides its device count at import time
+:::{admonition} `hybrax.train` decides its device count at import time
 :class: important
 
 JAX fixes the number of CPU devices when it initializes, so `hybrax.train` resolves the

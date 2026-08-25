@@ -50,6 +50,14 @@ Module Contents
       :type:  jax.Array
 
 
+   .. py:attribute:: measurement_prediction_valid
+      :type:  jax.Array
+
+
+   .. py:attribute:: measurement_save_outputs
+      :type:  hybrax.train.wrapper.SaveOutputs
+
+
    .. py:attribute:: per_target_loss
       :type:  jax.Array
 
@@ -61,6 +69,12 @@ Module Contents
 
 
    .. py:attribute:: prediction_t
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: prediction_valid
       :type:  jax.Array | None
       :value: None
 

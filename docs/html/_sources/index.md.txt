@@ -10,7 +10,7 @@ One package, two halves:
   description into a differentiable ODE right-hand side. It knows about dilution,
   feed composition, boluses and sampling, so you don't have to write those terms
   again.
-- **hybrax.train** fits models on top of it. You plug in a reaction module (neural,
+- **`hybrax.train`** fits models on top of it. You plug in a reaction module (neural,
   mechanistic, or both) and a loss module; it runs `prepare → train → forward / loo`
   on JAX + Diffrax.
 
@@ -101,22 +101,22 @@ train/further_reading
 :caption: Gallery
 :hidden:
 gallery/index
-gallery/fed_batch
-gallery/mechanistic_rates
-gallery/dense_loss
-gallery/stateful
-gallery/freezing
-gallery/loo
-gallery/augmentation
-gallery/gaussian_process
-gallery/knowledge_transfer
-gallery/fba_hyb
-gallery/pls_dfba
-gallery/kan
-gallery/optfed
-gallery/glutamine_decay
-gallery/modeled_pv
-gallery/pseudobatch_splines
+Pseudobatch Splines <gallery/pseudobatch_splines>
+Augmentation <gallery/augmentation>
+Feeds, Boluses, and Samples <gallery/fed_batch>
+Modeled Process Variables <gallery/modeled_pv>
+Freezing Parameters <gallery/freezing>
+Mechanistic Models <gallery/mechanistic_rates>
+Custom Losses <gallery/dense_loss>
+Stateful Models <gallery/stateful>
+Glutamine Decay <gallery/glutamine_decay>
+Cross-Validation <gallery/loo>
+Gaussian Processes <gallery/gaussian_process>
+Knowledge Transfer <gallery/knowledge_transfer>
+FBA-Hyb <gallery/fba_hyb>
+PLS-dFBA <gallery/pls_dfba>
+KAN Models <gallery/kan>
+OptFed Models <gallery/optfed>
 ```
 
 ```{toctree}

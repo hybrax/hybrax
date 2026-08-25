@@ -1,7 +1,7 @@
 # Design Rationale
 
 This document explains the cross-cutting design decisions behind **hybrax.format** and
-**hybrax.train**. Individual module/topic docs reference these sections for context.
+**`hybrax.train`**. Individual module/topic docs reference these sections for context.
 
 Two halves form one stack:
 
@@ -9,10 +9,10 @@ Two halves form one stack:
   bioprocess definition into JAX-compatible data structures and a differentiable ODE
   RHS (`build_rhs_ode(process)` → `RhsOde`), formalizing which species / feeds / process
   variables are *modeled* (dynamic states) vs *controlled* (driven by recorded signals).
-- **hybrax.train** consumes those structures and adds the training machinery: it lets you
+- **`hybrax.train`** consumes those structures and adds the training machinery: it lets you
   plug a neural / mechanistic **reaction module** and a **loss module** in via `custom.py`
   hooks and runs the prepare → train → forward / loo pipeline on JAX + Diffrax + optax.
-  hybrax.train never re-derives layout: `RhsOde` is the single source of truth for axis
+  `hybrax.train` never re-derives layout: `RhsOde` is the single source of truth for axis
   names and ordering.
 
 ---
@@ -31,7 +31,7 @@ Both halves are built on [JAX](https://github.com/google/jax) and
   manual loop code.
 
 **Why Equinox?** Equinox provides `eqx.Module`, a frozen dataclass that registers as a
-JAX pytree. Objects like `TimeSeries`, `ControlSplines`, `RhsOde`, and (in hybrax.train) the
+JAX pytree. Objects like `TimeSeries`, `ControlSplines`, `RhsOde`, and (in `hybrax.train`) the
 reaction module, loss module, controls store, and wrapper can be passed into and out of
 JIT-compiled functions without manual pytree registration. `eqx.filter_jit` automatically
 separates static (non-differentiable) fields from dynamic (array) leaves.
@@ -153,14 +153,14 @@ on the first error. `validate_process()` runs single-process checks;
 
 ---
 
-## hybrax.train
+## `hybrax.train`
 
 ### 1. Built on hybrax.format, JAX, Diffrax, Equinox, optax
 
-hybrax.train consumes the data structures and mechanistic RHS from hybrax.format and adds training:
+`hybrax.train` consumes the data structures and mechanistic RHS from hybrax.format and adds training:
 
 - **hybrax.format** owns the data model and `build_rhs_ode(process)` → `RhsOde` (the single
-  source of truth for axis names and ordering; hybrax.train never re-derives layout).
+  source of truth for axis names and ordering; `hybrax.train` never re-derives layout).
 - **JAX** provides autodiff + JIT for the repeated forward solves.
 - **Diffrax** integrates the ODE with an adaptive solver and adjoint backprop.
 - **Equinox** makes the reaction module, loss module, controls store, and wrapper JAX
@@ -170,7 +170,7 @@ hybrax.train consumes the data structures and mechanistic RHS from hybrax.format
 ### 2. Scaled (SCL) vs physical (RAW) space
 
 Neural-ODE training is numerically fragile when state magnitudes span orders of magnitude
-(biomass ~g/L, volume ~L, cumulative feed ~L). hybrax.train integrates the ODE in **scaled
+(biomass ~g/L, volume ~L, cumulative feed ~L). `hybrax.train` integrates the ODE in **scaled
 space (SCL)** so every axis is O(1) (keeping gradients well-conditioned) then converts
 to **physical space (RAW)** only where the chemistry needs real units.
 
@@ -219,7 +219,7 @@ the `build_optimizer` hook with `optax.masked` / `optax.multi_transform`.
 ### 6. Mean loss aggregation
 
 A loss module returns a dict of **named scalar losses**; the total for backprop is
-`mean(named_losses.values())`, not the sum. hybrax.train clips the **raw** gradient
+`mean(named_losses.values())`, not the sum. `hybrax.train` clips the **raw** gradient
 (`clip_by_global_norm`) *before* Adam. Mean keeps gradient magnitude independent of the
 term count, so a tuned `grad_clip_norm` behaves the same as you add named terms. Sum would
 scale the gradient by the term count, push it past the clip threshold, and (because the
@@ -255,4 +255,4 @@ Training can shard the process batch across CPU cores via `pmap` (~N speedup). T
 **opt-in** and resolved *before* JAX initializes (the device count is fixed at import
 time): set `train.devices: N` (or `"max"`) in the config, or `HYBRAX_TRAIN_DEVICES=N` (the env
 var always wins). `"max"` resolves to `min(n_processes, n_cpus)`. Default is 1 device, so
-hybrax.train never competes for cores with other work. No effect on GPU.
+`hybrax.train` never competes for cores with other work. No effect on GPU.

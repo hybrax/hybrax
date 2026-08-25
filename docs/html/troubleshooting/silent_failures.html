@@ -252,22 +252,22 @@
 <p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/index.html">Overview</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/mechanistic_rates.html">Mechanistic models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/dense_loss.html">Custom losses</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/stateful.html">Stateful models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/freezing.html">Freezing parameters</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/pseudobatch_splines.html">Pseudobatch Splines</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/augmentation.html">Augmentation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/gaussian_process.html">A Gaussian-process model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/fed_batch.html">Feeds, Boluses, and Samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/modeled_pv.html">Modeled Process Variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/freezing.html">Freezing Parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/dense_loss.html">Custom Losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/stateful.html">Stateful Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/loo.html">Cross-Validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/gaussian_process.html">Gaussian Processes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/pls_dfba.html">PLS-dFBA</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/kan.html">A KAN model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/optfed.html">OptFed</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine decay</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/modeled_pv.html">A modeled process variable</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/kan.html">KAN Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/optfed.html">OptFed Models</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
 <ul class="current">
@@ -534,7 +534,7 @@ such rather than encoding a zero. If they are known, record them.</p>
 <h2>9. Bounds that do not bound<a class="headerlink" href="#bounds-that-do-not-bound" title="Link to this heading">¶</a></h2>
 <p><strong>The failure.</strong> <code class="docutils literal notranslate"><span class="pre">bounds=(0.0,</span> <span class="pre">None)</span></code> on a concentration looks like a constraint. Nothing
 in hybrax.format or the solver enforces it.</p>
-<p><strong>Why it exists.</strong> Bounds are <em>metadata</em>, so downstream consumers (hybrax.train’s loss module) can build soft penalties from a declaration you made once in the data.</p>
+<p><strong>Why it exists.</strong> Bounds are <em>metadata</em>, so downstream consumers (<code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s loss module) can build soft penalties from a declaration you made once in the data.</p>
 <p><strong>Fix.</strong> If you want the constraint enforced, write the penalty. See
 <a class="reference internal" href="../train/loss_module.html#adding-a-physical-penalty"><span class="std std-ref">The Loss Module</span></a>.</p>
 </section>
@@ -545,7 +545,7 @@ in hybrax.format or the solver enforces it.</p>
 <p>A model can match every measurement with rates that are physically impossible: growth and
 death both far too high, uptake compensating for a missing transport term, formation and
 degradation cancelling. Compensating errors are invisible in a concentration plot and
-obvious in a rate plot. That is why every hybrax.train process figure puts the rates in the
+obvious in a rate plot. That is why every <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> process figure puts the rates in the
 right-hand column, and it is the check most people skip.</p>
 <p>The other strong one is a <strong>transport-only run</strong>: set the biological rates to zero and
 integrate. Concentrations may then change only through feed composition, dilution and

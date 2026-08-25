@@ -101,22 +101,22 @@ train/further_reading
 :caption: Gallery
 :hidden:
 gallery/index
-gallery/pseudobatch_splines
-gallery/augmentation
-gallery/fed_batch
-gallery/modeled_pv
-gallery/freezing
-gallery/mechanistic_rates
-gallery/dense_loss
-gallery/stateful
-gallery/glutamine_decay
-gallery/loo
-gallery/gaussian_process
-gallery/knowledge_transfer
-gallery/fba_hyb
-gallery/pls_dfba
-gallery/kan
-gallery/optfed
+Pseudobatch Splines <gallery/pseudobatch_splines>
+Augmentation <gallery/augmentation>
+Feeds, Boluses, and Samples <gallery/fed_batch>
+Modeled Process Variables <gallery/modeled_pv>
+Freezing Parameters <gallery/freezing>
+Mechanistic Models <gallery/mechanistic_rates>
+Custom Losses <gallery/dense_loss>
+Stateful Models <gallery/stateful>
+Glutamine Decay <gallery/glutamine_decay>
+Cross-Validation <gallery/loo>
+Gaussian Processes <gallery/gaussian_process>
+Knowledge Transfer <gallery/knowledge_transfer>
+FBA-Hyb <gallery/fba_hyb>
+PLS-dFBA <gallery/pls_dfba>
+KAN Models <gallery/kan>
+OptFed Models <gallery/optfed>
 ```
 
 ```{toctree}

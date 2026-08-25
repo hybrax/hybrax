@@ -130,7 +130,7 @@ or `"devices": "max"`, which resolves to `min(n_processes, n_cpus)`.
 
 :::{admonition} The device count is fixed before JAX initializes
 :class: important
-JAX decides its CPU device count at import. hybrax.train therefore resolves the setting
+JAX decides its CPU device count at import. `hybrax.train` therefore resolves the setting
 *before* that, by scanning the command line and config at import time.
 
 Consequences: **`HYBRAX_TRAIN_DEVICES=N` in the environment always wins** over the config
@@ -138,7 +138,7 @@ file; and if `XLA_FLAGS` already sets `xla_force_host_platform_device_count`, th
 bootstrap is skipped and your value stands.
 :::
 
-The default is **1**: hybrax.train never quietly takes over your machine. `"max"`
+The default is **1**: `hybrax.train` never quietly takes over your machine. `"max"`
 deliberately does not mean "all cores": surplus idle devices can deadlock the `pmap`
 rendezvous on an AllReduce timeout, so it is capped at the process count. Requesting more
 devices than you have cores is capped, with a warning to stderr.

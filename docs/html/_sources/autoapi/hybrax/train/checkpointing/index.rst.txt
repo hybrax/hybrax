@@ -30,7 +30,7 @@ Module Contents
    available) the run's ``config.json``/``custom.py``/prepared data.
 
 
-   .. py:method:: write(*, step, samples_seen, wrapper, opt_state, mean_loss, holdout_loss)
+   .. py:method:: write(*, step, samples_seen, wrapper, opt_state, mean_loss, holdout_loss, holdout_predictions = None)
 
       Write one checkpoint directory and point ``latest`` at it.
 
@@ -43,6 +43,8 @@ Module Contents
                         ``train_state.json``.
       :param holdout_loss: Holdout/validation loss at this step, or ``None``
                            when no holdout was evaluated.
+      :param holdout_predictions: Measurement-grid holdout predictions to write,
+                                  or ``None`` to omit the CSV artifact.
 
       :returns: The checkpoint directory that was written.
 

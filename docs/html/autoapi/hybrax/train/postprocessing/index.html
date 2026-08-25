@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -252,22 +252,22 @@
 <p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/index.html">Overview</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/mechanistic_rates.html">Mechanistic models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/dense_loss.html">Custom losses</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/stateful.html">Stateful models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/freezing.html">Freezing parameters</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pseudobatch_splines.html">Pseudobatch Splines</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/augmentation.html">Augmentation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/gaussian_process.html">A Gaussian-process model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fed_batch.html">Feeds, Boluses, and Samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/modeled_pv.html">Modeled Process Variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/freezing.html">Freezing Parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/dense_loss.html">Custom Losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/stateful.html">Stateful Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/loo.html">Cross-Validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/kan.html">A KAN model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/optfed.html">OptFed</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/glutamine_decay.html">Glutamine decay</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/modeled_pv.html">A modeled process variable</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/kan.html">KAN Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/optfed.html">OptFed Models</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
 <ul>
@@ -417,7 +417,7 @@
 <td><p>Slice one batched forward solve's prediction block into per-process exports.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.postprocessing.export_predictions_csv" title="hybrax.train.postprocessing.export_predictions_csv"><code class="xref py py-obj docutils literal notranslate"><span class="pre">export_predictions_csv</span></code></a>(trained_wrapper, dense_exports, ...)</p></td>
-<td><p>Write dense predictions.csv from precomputed per-process exports (no solve).</p></td>
+<td><p>Write predictions from precomputed per-process exports without solving.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.postprocessing.load_model_metadata" title="hybrax.train.postprocessing.load_model_metadata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_model_metadata</span></code></a>(path)</p></td>
 <td><p>Read a model metadata sidecar; returns {} if the file does not exist.</p></td>
@@ -498,6 +498,9 @@
 <dt class="sig sig-object py" id="hybrax.train.postprocessing.DenseProcessExport">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.postprocessing.</span></span><span class="sig-name descname"><span class="pre">DenseProcessExport</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/postprocessing.html#DenseProcessExport"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.postprocessing.DenseProcessExport" title="Link to this definition">¶</a></dt>
 <dd><p>Dense, human-facing per-process export arrays in physical units.</p>
+<p><code class="docutils literal notranslate"><span class="pre">prediction_valid</span></code> marks rows reached by the ODE solve. Canonical floating
+arrays contain <code class="docutils literal notranslate"><span class="pre">NaN</span></code> on invalid rows; auxiliary arrays retain their native
+dtype and must be ignored wherever <code class="docutils literal notranslate"><span class="pre">prediction_valid</span></code> is false.</p>
 <p><code class="docutils literal notranslate"><span class="pre">q_rates</span></code> is aligned with <code class="docutils literal notranslate"><span class="pre">rhs_ode.name_modeled_rates</span></code> (the modeled
 biological rate vector), not with <code class="docutils literal notranslate"><span class="pre">modeled_RMC_names</span></code>. Under a
 user-defined <code class="docutils literal notranslate"><span class="pre">BiologicalOde</span></code> these orderings differ. Modeled Inflow and
@@ -525,6 +528,11 @@ Outflow rates remain separate physical arrays with their storage signs.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.postprocessing.DenseProcessExport.modeled_Outflow_rates">
 <span class="sig-name descname"><span class="pre">modeled_Outflow_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span></span><a class="headerlink" href="#hybrax.train.postprocessing.DenseProcessExport.modeled_Outflow_rates" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.postprocessing.DenseProcessExport.prediction_valid">
+<span class="sig-name descname"><span class="pre">prediction_valid</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span></span><a class="headerlink" href="#hybrax.train.postprocessing.DenseProcessExport.prediction_valid" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -583,13 +591,15 @@ time grids are rejected before any values are combined.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="hybrax.train.postprocessing.dense_exports_from_save_outputs">
-<span class="sig-prename descclassname"><span class="pre">hybrax.train.postprocessing.</span></span><span class="sig-name descname"><span class="pre">dense_exports_from_save_outputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prediction_t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prediction_save_outputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trained_wrapper</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">process_names</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/postprocessing.html#dense_exports_from_save_outputs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.postprocessing.dense_exports_from_save_outputs" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.postprocessing.</span></span><span class="sig-name descname"><span class="pre">dense_exports_from_save_outputs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prediction_t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prediction_save_outputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trained_wrapper</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">process_names</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prediction_valid</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/postprocessing.html#dense_exports_from_save_outputs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.postprocessing.dense_exports_from_save_outputs" title="Link to this definition">¶</a></dt>
 <dd><p>Slice one batched forward solve’s prediction block into per-process exports.</p>
 <p>Pure reshaping (no ODE solve): the leading axis of every leaf is the process
 batch (aligned with <code class="docutils literal notranslate"><span class="pre">process_names</span></code>); un-scale <code class="docutils literal notranslate"><span class="pre">SCL_states</span></code> to physical
 and pick the canonical export columns (<code class="docutils literal notranslate"><span class="pre">c_*</span></code>, <code class="docutils literal notranslate"><span class="pre">V_real</span></code>, cumulative
 modeled Inflows and Outflows, biological <code class="docutils literal notranslate"><span class="pre">q_*</span></code> rates, separate modeled
-Inflow/Outflow rates, and per-key <code class="docutils literal notranslate"><span class="pre">auxiliary</span></code>).</p>
+Inflow/Outflow rates, and per-key <code class="docutils literal notranslate"><span class="pre">auxiliary</span></code>). <code class="docutils literal notranslate"><span class="pre">prediction_valid</span></code> stays
+aligned through sorting and deduplication. Invalid canonical floating outputs
+are replaced with <code class="docutils literal notranslate"><span class="pre">NaN</span></code>; auxiliary values retain their native dtype.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -597,6 +607,7 @@ Inflow/Outflow rates, and per-key <code class="docutils literal notranslate"><sp
 <li><p><strong>prediction_save_outputs</strong> (<a class="reference internal" href="../wrapper/index.html#hybrax.train.wrapper.SaveOutputs" title="hybrax.train.wrapper.SaveOutputs"><em>hybrax.train.wrapper.SaveOutputs</em></a>)</p></li>
 <li><p><strong>trained_wrapper</strong> (<a class="reference internal" href="../wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper" title="hybrax.train.wrapper.HybridOdeWrapper"><em>hybrax.train.wrapper.HybridOdeWrapper</em></a>)</p></li>
 <li><p><strong>process_names</strong> (<em>Sequence</em><em>[</em><em>str</em><em>]</em>)</p></li>
+<li><p><strong>prediction_valid</strong> (<em>jax.numpy.ndarray</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -608,9 +619,10 @@ Inflow/Outflow rates, and per-key <code class="docutils literal notranslate"><sp
 <dl class="py function">
 <dt class="sig sig-object py" id="hybrax.train.postprocessing.export_predictions_csv">
 <span class="sig-prename descclassname"><span class="pre">hybrax.train.postprocessing.</span></span><span class="sig-name descname"><span class="pre">export_predictions_csv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trained_wrapper</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dense_exports</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">process_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/postprocessing.html#export_predictions_csv"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.postprocessing.export_predictions_csv" title="Link to this definition">¶</a></dt>
-<dd><p>Write dense predictions.csv from precomputed per-process exports (no solve).</p>
-<p><code class="docutils literal notranslate"><span class="pre">dense_exports</span></code> comes from <a class="reference internal" href="../harness/index.html#hybrax.train.harness.compute_dense_exports" title="hybrax.train.harness.compute_dense_exports"><code class="xref py py-func docutils literal notranslate"><span class="pre">hybrax.train.harness.compute_dense_exports()</span></code></a>
-(the single batched solve). This function only formats and writes rows.</p>
+<dd><p>Write predictions from precomputed per-process exports without solving.</p>
+<p>Invalid prediction rows remain present on their original time grid. Their
+output cells are written as missing values while <code class="docutils literal notranslate"><span class="pre">process</span></code>, <code class="docutils literal notranslate"><span class="pre">t</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">prediction_valid</span></code> identify the failed portion of the trajectory.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -832,6 +844,7 @@ and the dense-grid knot density. Writes <code class="docutils literal notranslat
 <li><a class="reference internal" href="#hybrax.train.postprocessing.DenseProcessExport.c_species"><code class="docutils literal notranslate"><span class="pre">DenseProcessExport.c_species</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.postprocessing.DenseProcessExport.modeled_Inflow_rates"><code class="docutils literal notranslate"><span class="pre">DenseProcessExport.modeled_Inflow_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.postprocessing.DenseProcessExport.modeled_Outflow_rates"><code class="docutils literal notranslate"><span class="pre">DenseProcessExport.modeled_Outflow_rates</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.postprocessing.DenseProcessExport.prediction_valid"><code class="docutils literal notranslate"><span class="pre">DenseProcessExport.prediction_valid</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.postprocessing.DenseProcessExport.q_rates"><code class="docutils literal notranslate"><span class="pre">DenseProcessExport.q_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.postprocessing.DenseProcessExport.t"><code class="docutils literal notranslate"><span class="pre">DenseProcessExport.t</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.postprocessing.DenseProcessExport.v_real"><code class="docutils literal notranslate"><span class="pre">DenseProcessExport.v_real</span></code></a></li>

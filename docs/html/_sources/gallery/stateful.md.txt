@@ -23,14 +23,14 @@ the solve, so the rates can depend on where the process has been, not just where
 
 ## Why this is a bigger change than it looks
 
-hybrax.train does not run a discrete recurrent network beside the ODE solver. It **turns the
+`hybrax.train` does not run a discrete recurrent network beside the ODE solver. It **turns the
 recurrent cell into a continuous-time ODE**: the latent state `h` is an extra integrated
 dimension, and its derivative is the discrepancy between `h` and whatever the cell would
 have jumped to next: `d(h)/dt = cell(input, h) - h`. As training pulls the residual to
 zero, `h` tracks the same trajectory the discrete cell would have taken, but now it is a
 proper flow that Diffrax can integrate and differentiate through like any other state.
 
-This is exactly how hybrax.train's own built-in stateful model works: 
+This is exactly how `hybrax.train`'s own built-in stateful model works:
 `DefaultStatefulReactionModule` in `hybrax/train/defaults.py` uses this trick with a GRU
 cell. What follows applies the identical trick to an LSTM, to show it is a general
 pattern, not something specific to GRUs.
@@ -114,7 +114,7 @@ print([l for l in out.splitlines() if "ValueError" in l][-1])
 
 That is deliberate: a latent state changes what the model *is* (it is no longer a pure
 function of the physical state) and that is a large enough change in what "the model"
-means that hybrax.train wants it to be a decision, not a side effect of adding a field.
+means that `hybrax.train` wants it to be a decision, not a side effect of adding a field.
 
 ```json
 { "train": { "allow_stateful_models": true } }

@@ -219,7 +219,7 @@ print(f"prepared augmentation diagnostic: ./{(WORK / 'prepared/augmented-data.pn
   afterward, but check the diagnostic plot for any state where this matters.
 - **Cross-validation must stay group-aware.** A parent and its synthetic children carry
   the same information; splitting them across train and holdout leaks the answer. Use
-  hybrax.train's LOO ([worked example](loo.md)), which handles this for you.
+  `hybrax.train`'s LOO ([worked example](loo.md)), which handles this for you.
 - **This does not manufacture new information.** It resamples and perturbs what one run
   already told you; it cannot substitute for an experiment you have not run.
 

@@ -34,10 +34,14 @@ before writing fresh output.
 | File | Contents |
 |---|---|
 | `losses.csv` | Per-process, per-target loss, with the train/holdout split. Always written. |
-| `predictions.csv` | Dense trajectory per process: `t`, `c_<species>`, `q_<rate>`, `V_real`. Needs `output.predictions`. |
+| `predictions.csv` | Dense trajectory per process: `t`, `prediction_valid`, `c_<species>`, `q_<rate>`, `V_real`. Needs `output.predictions`. |
 | `plots/<process>.png` | Fit, inferred rates, `V_real` and volume events, per process. Needs `output.plots`. |
 | `predictions_std.csv` | Ensembles only: spread across models. |
 | `models/<name>/` | Ensembles only: each member's own predictions and losses. |
+
+`prediction_valid` is false when the solver did not reach that row. The row stays
+on the requested time grid, but its model-output cells are blank. For an ensemble,
+a row is valid only when every member reached it.
 
 ## Why it is separate from training
 
@@ -64,7 +68,7 @@ Useful when the final model overfitted and an earlier one is the one you want.
 
 :::{admonition} TODO: not yet a worked example
 :class: warning
-The `len(models) > 1` path below has no test coverage anywhere in hybrax.train today.
+The `len(models) > 1` path below has no test coverage anywhere in `hybrax.train` today.
 This section stays reference-only (no executed `{code-cell}`) until that is hardened
 and a real worked example can be verified rather than just described.
 :::

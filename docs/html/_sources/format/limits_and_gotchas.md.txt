@@ -90,13 +90,13 @@ numbers.
 - **Importing `hybrax.format` sets `JAX_ENABLE_X64=true` globally**, before JAX loads. If you
   configured JAX yourself first, this changes it underneath you.
 - **`AugmentedBioProcess` is a shape with no producer** in hybrax.format. It exists so
-  hybrax.train's augmentation can rely on it.
+  `hybrax.train`'s augmentation can rely on it.
 - **`DiscreteEvents` is a mirror, not the source of truth.** Events live in
   `volume.volume_changes` with `is_continuous=False`.
 
 ## See also
 
 - [Errors](../troubleshooting/errors.md): message-to-fix index.
-- [Silent failures](../troubleshooting/silent_failures.md): the hybrax.train equivalent of
+- [Silent failures](../troubleshooting/silent_failures.md): the `hybrax.train` equivalent of
   this page's middle section.
 - [Further reading](further_reading.md), where the exhaustive reference lives.

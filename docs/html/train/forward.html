@@ -252,22 +252,22 @@
 <p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/index.html">Overview</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/mechanistic_rates.html">Mechanistic models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/dense_loss.html">Custom losses</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/stateful.html">Stateful models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/freezing.html">Freezing parameters</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/pseudobatch_splines.html">Pseudobatch Splines</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/augmentation.html">Augmentation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/gaussian_process.html">A Gaussian-process model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/fed_batch.html">Feeds, Boluses, and Samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/modeled_pv.html">Modeled Process Variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/freezing.html">Freezing Parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/dense_loss.html">Custom Losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/stateful.html">Stateful Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/loo.html">Cross-Validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/gaussian_process.html">Gaussian Processes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/pls_dfba.html">PLS-dFBA</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/kan.html">A KAN model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/optfed.html">OptFed</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine decay</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/modeled_pv.html">A modeled process variable</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/kan.html">KAN Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/optfed.html">OptFed Models</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
 <ul>
@@ -411,7 +411,7 @@ before writing fresh output.</p>
 <td><p>Per-process, per-target loss, with the train/holdout split. Always written.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">predictions.csv</span></code></p></td>
-<td><p>Dense trajectory per process: <code class="docutils literal notranslate"><span class="pre">t</span></code>, <code class="docutils literal notranslate"><span class="pre">c_&lt;species&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">q_&lt;rate&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">V_real</span></code>. Needs <code class="docutils literal notranslate"><span class="pre">output.predictions</span></code>.</p></td>
+<td><p>Dense trajectory per process: <code class="docutils literal notranslate"><span class="pre">t</span></code>, <code class="docutils literal notranslate"><span class="pre">prediction_valid</span></code>, <code class="docutils literal notranslate"><span class="pre">c_&lt;species&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">q_&lt;rate&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">V_real</span></code>. Needs <code class="docutils literal notranslate"><span class="pre">output.predictions</span></code>.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">plots/&lt;process&gt;.png</span></code></p></td>
 <td><p>Fit, inferred rates, <code class="docutils literal notranslate"><span class="pre">V_real</span></code> and volume events, per process. Needs <code class="docutils literal notranslate"><span class="pre">output.plots</span></code>.</p></td>
@@ -425,6 +425,9 @@ before writing fresh output.</p>
 </tbody>
 </table>
 </div>
+<p><code class="docutils literal notranslate"><span class="pre">prediction_valid</span></code> is false when the solver did not reach that row. The row stays
+on the requested time grid, but its model-output cells are blank. For an ensemble,
+a row is valid only when every member reached it.</p>
 </section>
 <section id="why-it-is-separate-from-training">
 <h2>Why it is separate from training<a class="headerlink" href="#why-it-is-separate-from-training" title="Link to this heading">¶</a></h2>
@@ -448,7 +451,7 @@ self-contained, so both work:</p>
 <h2>Ensembles<a class="headerlink" href="#ensembles" title="Link to this heading">¶</a></h2>
 <div class="warning admonition">
 <p class="admonition-title">TODO: not yet a worked example</p>
-<p>The <code class="docutils literal notranslate"><span class="pre">len(models)</span> <span class="pre">&gt;</span> <span class="pre">1</span></code> path below has no test coverage anywhere in hybrax.train today.
+<p>The <code class="docutils literal notranslate"><span class="pre">len(models)</span> <span class="pre">&gt;</span> <span class="pre">1</span></code> path below has no test coverage anywhere in <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> today.
 This section stays reference-only (no executed <code class="docutils literal notranslate"><span class="pre">{code-cell}</span></code>) until that is hardened
 and a real worked example can be verified rather than just described.</p>
 </div>

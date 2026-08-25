@@ -252,22 +252,22 @@
 <p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/index.html">Overview</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/mechanistic_rates.html">Mechanistic models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/dense_loss.html">Custom losses</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/stateful.html">Stateful models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/freezing.html">Freezing parameters</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/pseudobatch_splines.html">Pseudobatch Splines</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/augmentation.html">Augmentation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/gaussian_process.html">A Gaussian-process model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/fed_batch.html">Feeds, Boluses, and Samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/modeled_pv.html">Modeled Process Variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/freezing.html">Freezing Parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/dense_loss.html">Custom Losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/stateful.html">Stateful Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/loo.html">Cross-Validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/gaussian_process.html">Gaussian Processes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/pls_dfba.html">PLS-dFBA</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/kan.html">A KAN model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/optfed.html">OptFed</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine decay</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/modeled_pv.html">A modeled process variable</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/kan.html">KAN Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/optfed.html">OptFed Models</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
 <ul>
@@ -492,13 +492,13 @@ speedup.</p>
 <p>or <code class="docutils literal notranslate"><span class="pre">&quot;devices&quot;:</span> <span class="pre">&quot;max&quot;</span></code>, which resolves to <code class="docutils literal notranslate"><span class="pre">min(n_processes,</span> <span class="pre">n_cpus)</span></code>.</p>
 <div class="important admonition">
 <p class="admonition-title">The device count is fixed before JAX initializes</p>
-<p>JAX decides its CPU device count at import. hybrax.train therefore resolves the setting
+<p>JAX decides its CPU device count at import. <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> therefore resolves the setting
 <em>before</em> that, by scanning the command line and config at import time.</p>
 <p>Consequences: <strong><code class="docutils literal notranslate"><span class="pre">HYBRAX_TRAIN_DEVICES=N</span></code> in the environment always wins</strong> over the config
 file; and if <code class="docutils literal notranslate"><span class="pre">XLA_FLAGS</span></code> already sets <code class="docutils literal notranslate"><span class="pre">xla_force_host_platform_device_count</span></code>, the whole
 bootstrap is skipped and your value stands.</p>
 </div>
-<p>The default is <strong>1</strong>: hybrax.train never quietly takes over your machine. <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code>
+<p>The default is <strong>1</strong>: <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> never quietly takes over your machine. <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code>
 deliberately does not mean “all cores”: surplus idle devices can deadlock the <code class="docutils literal notranslate"><span class="pre">pmap</span></code>
 rendezvous on an AllReduce timeout, so it is capped at the process count. Requesting more
 devices than you have cores is capped, with a warning to stderr.</p>

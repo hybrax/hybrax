@@ -91,6 +91,10 @@ Module Contents
 
    Dense, human-facing per-process export arrays in physical units.
 
+   ``prediction_valid`` marks rows reached by the ODE solve. Canonical floating
+   arrays contain ``NaN`` on invalid rows; auxiliary arrays retain their native
+   dtype and must be ignored wherever ``prediction_valid`` is false.
+
    ``q_rates`` is aligned with ``rhs_ode.name_modeled_rates`` (the modeled
    biological rate vector), not with ``modeled_RMC_names``. Under a
    user-defined ``BiologicalOde`` these orderings differ. Modeled Inflow and
@@ -116,6 +120,10 @@ Module Contents
 
 
    .. py:attribute:: modeled_Outflow_rates
+      :type:  numpy.ndarray
+
+
+   .. py:attribute:: prediction_valid
       :type:  numpy.ndarray
 
 
@@ -156,7 +164,7 @@ Module Contents
    time grids are rejected before any values are combined.
 
 
-.. py:function:: dense_exports_from_save_outputs(prediction_t, prediction_save_outputs, trained_wrapper, process_names)
+.. py:function:: dense_exports_from_save_outputs(prediction_t, prediction_save_outputs, trained_wrapper, process_names, *, prediction_valid)
 
    Slice one batched forward solve's prediction block into per-process exports.
 
@@ -164,15 +172,18 @@ Module Contents
    batch (aligned with ``process_names``); un-scale ``SCL_states`` to physical
    and pick the canonical export columns (``c_*``, ``V_real``, cumulative
    modeled Inflows and Outflows, biological ``q_*`` rates, separate modeled
-   Inflow/Outflow rates, and per-key ``auxiliary``).
+   Inflow/Outflow rates, and per-key ``auxiliary``). ``prediction_valid`` stays
+   aligned through sorting and deduplication. Invalid canonical floating outputs
+   are replaced with ``NaN``; auxiliary values retain their native dtype.
 
 
 .. py:function:: export_predictions_csv(trained_wrapper, dense_exports, output_path, process_names = None)
 
-   Write dense predictions.csv from precomputed per-process exports (no solve).
+   Write predictions from precomputed per-process exports without solving.
 
-   ``dense_exports`` comes from :func:`hybrax.train.harness.compute_dense_exports`
-   (the single batched solve). This function only formats and writes rows.
+   Invalid prediction rows remain present on their original time grid. Their
+   output cells are written as missing values while ``process``, ``t``, and
+   ``prediction_valid`` identify the failed portion of the trajectory.
 
 
 .. py:function:: load_model_metadata(path)

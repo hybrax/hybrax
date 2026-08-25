@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Freezing parameters" href="freezing.html"><link rel="prev" title="Custom losses" href="dense_loss.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Glutamine decay" href="glutamine_decay.html"><link rel="prev" title="Custom losses" href="dense_loss.html">
         <link rel="prefetch" href="../_static/hybrax_logo.png" as="image">
 
     <link rel="shortcut icon" href="../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -252,22 +252,22 @@
 <p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="index.html">Overview</a></li>
-<li class="toctree-l1"><a class="reference internal" href="fed_batch.html">Feeds, boluses and samples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="mechanistic_rates.html">Mechanistic models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="dense_loss.html">Custom losses</a></li>
-<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Stateful models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="freezing.html">Freezing parameters</a></li>
-<li class="toctree-l1"><a class="reference internal" href="loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pseudobatch_splines.html">Pseudobatch Splines</a></li>
 <li class="toctree-l1"><a class="reference internal" href="augmentation.html">Augmentation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="gaussian_process.html">A Gaussian-process model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="fed_batch.html">Feeds, Boluses, and Samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modeled_pv.html">Modeled Process Variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="freezing.html">Freezing Parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="mechanistic_rates.html">Mechanistic Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dense_loss.html">Custom Losses</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Stateful Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="loo.html">Cross-Validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gaussian_process.html">Gaussian Processes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pls_dfba.html">PLS-dFBA</a></li>
-<li class="toctree-l1"><a class="reference internal" href="kan.html">A KAN model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="optfed.html">OptFed</a></li>
-<li class="toctree-l1"><a class="reference internal" href="glutamine_decay.html">Glutamine decay</a></li>
-<li class="toctree-l1"><a class="reference internal" href="modeled_pv.html">A modeled process variable</a></li>
-<li class="toctree-l1"><a class="reference internal" href="pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+<li class="toctree-l1"><a class="reference internal" href="kan.html">KAN Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="optfed.html">OptFed Models</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
 <ul>
@@ -385,13 +385,13 @@ measured. A <strong>stateful</strong> module relaxes that: it carries its own la
 the solve, so the rates can depend on where the process has been, not just where it is.</p>
 <section id="why-this-is-a-bigger-change-than-it-looks">
 <h2>Why this is a bigger change than it looks<a class="headerlink" href="#why-this-is-a-bigger-change-than-it-looks" title="Link to this heading">¶</a></h2>
-<p>hybrax.train does not run a discrete recurrent network beside the ODE solver. It <strong>turns the
+<p><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> does not run a discrete recurrent network beside the ODE solver. It <strong>turns the
 recurrent cell into a continuous-time ODE</strong>: the latent state <code class="docutils literal notranslate"><span class="pre">h</span></code> is an extra integrated
 dimension, and its derivative is the discrepancy between <code class="docutils literal notranslate"><span class="pre">h</span></code> and whatever the cell would
 have jumped to next: <code class="docutils literal notranslate"><span class="pre">d(h)/dt</span> <span class="pre">=</span> <span class="pre">cell(input,</span> <span class="pre">h)</span> <span class="pre">-</span> <span class="pre">h</span></code>. As training pulls the residual to
 zero, <code class="docutils literal notranslate"><span class="pre">h</span></code> tracks the same trajectory the discrete cell would have taken, but now it is a
 proper flow that Diffrax can integrate and differentiate through like any other state.</p>
-<p>This is exactly how hybrax.train’s own built-in stateful model works:
+<p>This is exactly how <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s own built-in stateful model works:
 <code class="docutils literal notranslate"><span class="pre">DefaultStatefulReactionModule</span></code> in <code class="docutils literal notranslate"><span class="pre">hybrax/train/defaults.py</span></code> uses this trick with a GRU
 cell. What follows applies the identical trick to an LSTM, to show it is a general
 pattern, not something specific to GRUs.</p>
@@ -594,7 +594,7 @@ allowed to train silently:</p>
 </div>
 <p>That is deliberate: a latent state changes what the model <em>is</em> (it is no longer a pure
 function of the physical state) and that is a large enough change in what “the model”
-means that hybrax.train wants it to be a decision, not a side effect of adding a field.</p>
+means that <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> wants it to be a decision, not a side effect of adding a field.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"allow_stateful_models"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
@@ -603,7 +603,7 @@ means that hybrax.train wants it to be a decision, not a side effect of adding a
 <h2>Training it<a class="headerlink" href="#training-it" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-25 11:49:01 INFO __main__: training complete: first_mean_loss=0.228993 last_mean_loss=0.000775314 delta=-0.228217
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-25 16:32:08 INFO __main__: training complete: first_mean_loss=0.228993 last_mean_loss=0.000775314 delta=-0.228217
 run directory: ./source/_data/out/runs/gallery_stateful/run
 </pre></div>
 </div>
@@ -715,12 +715,12 @@ this same pattern.</p></li>
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="freezing.html">
+          <a class="next-page" href="glutamine_decay.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Freezing parameters</div>
+                <div class="title">Glutamine decay</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>

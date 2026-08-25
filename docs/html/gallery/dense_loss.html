@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -252,22 +252,22 @@
 <p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="index.html">Overview</a></li>
-<li class="toctree-l1"><a class="reference internal" href="fed_batch.html">Feeds, boluses and samples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="mechanistic_rates.html">Mechanistic models</a></li>
-<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Custom losses</a></li>
-<li class="toctree-l1"><a class="reference internal" href="stateful.html">Stateful models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="freezing.html">Freezing parameters</a></li>
-<li class="toctree-l1"><a class="reference internal" href="loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pseudobatch_splines.html">Pseudobatch Splines</a></li>
 <li class="toctree-l1"><a class="reference internal" href="augmentation.html">Augmentation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="gaussian_process.html">A Gaussian-process model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="fed_batch.html">Feeds, Boluses, and Samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modeled_pv.html">Modeled Process Variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="freezing.html">Freezing Parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="mechanistic_rates.html">Mechanistic Models</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Custom Losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="stateful.html">Stateful Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="loo.html">Cross-Validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gaussian_process.html">Gaussian Processes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pls_dfba.html">PLS-dFBA</a></li>
-<li class="toctree-l1"><a class="reference internal" href="kan.html">A KAN model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="optfed.html">OptFed</a></li>
-<li class="toctree-l1"><a class="reference internal" href="glutamine_decay.html">Glutamine decay</a></li>
-<li class="toctree-l1"><a class="reference internal" href="modeled_pv.html">A modeled process variable</a></li>
-<li class="toctree-l1"><a class="reference internal" href="pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+<li class="toctree-l1"><a class="reference internal" href="kan.html">KAN Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="optfed.html">OptFed Models</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
 <ul>
@@ -377,7 +377,7 @@
 <blockquote>
 <div><p><strong>Demonstrates.</strong> A loss module that constrains the trajectory <em>between</em>
 measurements (bounds on states and rates, and a smoothness penalty on rate
-curvature) using hybrax.format’s own <code class="docutils literal notranslate"><span class="pre">Bounds</span></code> metadata and hybrax.train’s jump-aware
+curvature) using hybrax.format’s own <code class="docutils literal notranslate"><span class="pre">Bounds</span></code> metadata and <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s jump-aware
 dense-grid helpers.</p>
 </div></blockquote>
 <p>By default, a loss only ever looks at measurement times. Between them, the model is free
@@ -652,7 +652,7 @@ hook:</p>
 </div>
 <p>This is exactly the use hybrax.format’s docs describe for <code class="docutils literal notranslate"><span class="pre">Bounds</span></code>: <em>“pure metadata (not
 enforced inside RhsOde or the integrator; downstream consumers read them off the process
-to build soft-constraint penalties.”</em> Nothing threads these bounds into hybrax.train
+to build soft-constraint penalties.”</em> Nothing threads these bounds into <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>
 automatically) the loss module below reads them itself, once, at construction:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span>            <span class="n">inputs</span><span class="o">.</span><span class="n">dense_t</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">jump_ts</span><span class="p">,</span> <span class="n">jump_epsilon_h</span><span class="o">=</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">dt</span>
 <span class="linenos"> 2</span>        <span class="p">)</span>
@@ -727,7 +727,7 @@ single <code class="docutils literal notranslate"><span class="pre">dt</span></c
 </div>
 <p>A bolus creates a real, physical kink in concentration (and therefore in the inferred
 rate. Penalising curvature there would fight the data. <code class="docutils literal notranslate"><span class="pre">dense_triple_mask_away_from_jumps</span></code>
-is shipped by hybrax.train for exactly this: it excludes any three-point window whose span
+is shipped by <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> for exactly this: it excludes any three-point window whose span
 straddles a jump time, so smoothness is only asked for where the process is actually
 smooth. <code class="docutils literal notranslate"><span class="pre">demo_batch</span></code> has no events, so this mask is a no-op here) see
 <a class="reference internal" href="fed_batch.html"><span class="std std-doc">Fed-batch</span></a> for where it matters.</p>
@@ -736,7 +736,7 @@ smooth. <code class="docutils literal notranslate"><span class="pre">demo_batch<
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-25 11:33:17 INFO __main__: training complete: first_mean_loss=0.136489 last_mean_loss=0.00040269 delta=-0.136086
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-25 16:15:56 INFO __main__: training complete: first_mean_loss=0.136489 last_mean_loss=0.00040269 delta=-0.136086
 run directory: ./source/_data/out/runs/gallery_dense_loss/run_full
 </pre></div>
 </div>

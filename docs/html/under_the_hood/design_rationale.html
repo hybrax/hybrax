@@ -252,22 +252,22 @@
 <p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/index.html">Overview</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/fed_batch.html">Feeds, boluses and samples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/mechanistic_rates.html">Mechanistic models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/dense_loss.html">Custom losses</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/stateful.html">Stateful models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/freezing.html">Freezing parameters</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/loo.html">Cross-validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/pseudobatch_splines.html">Pseudobatch Splines</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/augmentation.html">Augmentation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/gaussian_process.html">A Gaussian-process model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/knowledge_transfer.html">Knowledge transfer</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/fed_batch.html">Feeds, Boluses, and Samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/modeled_pv.html">Modeled Process Variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/freezing.html">Freezing Parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/dense_loss.html">Custom Losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/stateful.html">Stateful Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/loo.html">Cross-Validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/gaussian_process.html">Gaussian Processes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/pls_dfba.html">PLS-dFBA</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/kan.html">A KAN model</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/optfed.html">OptFed</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine decay</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/modeled_pv.html">A modeled process variable</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/pseudobatch_splines.html">Pseudobatch splines through a jump</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/kan.html">KAN Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/optfed.html">OptFed Models</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
 <ul>
@@ -375,17 +375,17 @@
           <section class="tex2jax_ignore mathjax_ignore" id="design-rationale">
 <h1>Design Rationale<a class="headerlink" href="#design-rationale" title="Link to this heading">¶</a></h1>
 <p>This document explains the cross-cutting design decisions behind <strong>hybrax.format</strong> and
-<strong>hybrax.train</strong>. Individual module/topic docs reference these sections for context.</p>
+<strong><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code></strong>. Individual module/topic docs reference these sections for context.</p>
 <p>Two halves form one stack:</p>
 <ul class="simple">
 <li><p><strong>hybrax.format</strong> owns the data model and the mechanistic right-hand side. It turns a
 bioprocess definition into JAX-compatible data structures and a differentiable ODE
 RHS (<code class="docutils literal notranslate"><span class="pre">build_rhs_ode(process)</span></code> → <code class="docutils literal notranslate"><span class="pre">RhsOde</span></code>), formalizing which species / feeds / process
 variables are <em>modeled</em> (dynamic states) vs <em>controlled</em> (driven by recorded signals).</p></li>
-<li><p><strong>hybrax.train</strong> consumes those structures and adds the training machinery: it lets you
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code></strong> consumes those structures and adds the training machinery: it lets you
 plug a neural / mechanistic <strong>reaction module</strong> and a <strong>loss module</strong> in via <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>
 hooks and runs the prepare → train → forward / loo pipeline on JAX + Diffrax + optax.
-hybrax.train never re-derives layout: <code class="docutils literal notranslate"><span class="pre">RhsOde</span></code> is the single source of truth for axis
+<code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> never re-derives layout: <code class="docutils literal notranslate"><span class="pre">RhsOde</span></code> is the single source of truth for axis
 names and ordering.</p></li>
 </ul>
 <hr class="docutils" />
@@ -403,7 +403,7 @@ optimized XLA code, critical for the repeated forward solves in training loops.<
 manual loop code.</p></li>
 </ul>
 <p><strong>Why Equinox?</strong> Equinox provides <code class="docutils literal notranslate"><span class="pre">eqx.Module</span></code>, a frozen dataclass that registers as a
-JAX pytree. Objects like <code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code>, <code class="docutils literal notranslate"><span class="pre">ControlSplines</span></code>, <code class="docutils literal notranslate"><span class="pre">RhsOde</span></code>, and (in hybrax.train) the
+JAX pytree. Objects like <code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code>, <code class="docutils literal notranslate"><span class="pre">ControlSplines</span></code>, <code class="docutils literal notranslate"><span class="pre">RhsOde</span></code>, and (in <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>) the
 reaction module, loss module, controls store, and wrapper can be passed into and out of
 JIT-compiled functions without manual pytree registration. <code class="docutils literal notranslate"><span class="pre">eqx.filter_jit</span></code> automatically
 separates static (non-differentiable) fields from dynamic (array) leaves.</p>
@@ -519,13 +519,13 @@ on the first error. <code class="docutils literal notranslate"><span class="pre"
 </section>
 <hr class="docutils" />
 <section id="hybrax-train">
-<h2>hybrax.train<a class="headerlink" href="#hybrax-train" title="Link to this heading">¶</a></h2>
+<h2><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code><a class="headerlink" href="#hybrax-train" title="Link to this heading">¶</a></h2>
 <section id="built-on-hybrax-format-jax-diffrax-equinox-optax">
 <h3>1. Built on hybrax.format, JAX, Diffrax, Equinox, optax<a class="headerlink" href="#built-on-hybrax-format-jax-diffrax-equinox-optax" title="Link to this heading">¶</a></h3>
-<p>hybrax.train consumes the data structures and mechanistic RHS from hybrax.format and adds training:</p>
+<p><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> consumes the data structures and mechanistic RHS from hybrax.format and adds training:</p>
 <ul class="simple">
 <li><p><strong>hybrax.format</strong> owns the data model and <code class="docutils literal notranslate"><span class="pre">build_rhs_ode(process)</span></code> → <code class="docutils literal notranslate"><span class="pre">RhsOde</span></code> (the single
-source of truth for axis names and ordering; hybrax.train never re-derives layout).</p></li>
+source of truth for axis names and ordering; <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> never re-derives layout).</p></li>
 <li><p><strong>JAX</strong> provides autodiff + JIT for the repeated forward solves.</p></li>
 <li><p><strong>Diffrax</strong> integrates the ODE with an adaptive solver and adjoint backprop.</p></li>
 <li><p><strong>Equinox</strong> makes the reaction module, loss module, controls store, and wrapper JAX
@@ -536,7 +536,7 @@ pytrees that pass through <code class="docutils literal notranslate"><span class
 <section id="scaled-scl-vs-physical-raw-space">
 <h3>2. Scaled (SCL) vs physical (RAW) space<a class="headerlink" href="#scaled-scl-vs-physical-raw-space" title="Link to this heading">¶</a></h3>
 <p>Neural-ODE training is numerically fragile when state magnitudes span orders of magnitude
-(biomass ~g/L, volume ~L, cumulative feed ~L). hybrax.train integrates the ODE in <strong>scaled
+(biomass ~g/L, volume ~L, cumulative feed ~L). <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> integrates the ODE in <strong>scaled
 space (SCL)</strong> so every axis is O(1) (keeping gradients well-conditioned) then converts
 to <strong>physical space (RAW)</strong> only where the chemistry needs real units.</p>
 <p>Scaling is a single linear factor per semantic axis (15 <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code> axes on
@@ -582,7 +582,7 @@ the <code class="docutils literal notranslate"><span class="pre">build_optimizer
 <section id="mean-loss-aggregation">
 <h3>6. Mean loss aggregation<a class="headerlink" href="#mean-loss-aggregation" title="Link to this heading">¶</a></h3>
 <p>A loss module returns a dict of <strong>named scalar losses</strong>; the total for backprop is
-<code class="docutils literal notranslate"><span class="pre">mean(named_losses.values())</span></code>, not the sum. hybrax.train clips the <strong>raw</strong> gradient
+<code class="docutils literal notranslate"><span class="pre">mean(named_losses.values())</span></code>, not the sum. <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> clips the <strong>raw</strong> gradient
 (<code class="docutils literal notranslate"><span class="pre">clip_by_global_norm</span></code>) <em>before</em> Adam. Mean keeps gradient magnitude independent of the
 term count, so a tuned <code class="docutils literal notranslate"><span class="pre">grad_clip_norm</span></code> behaves the same as you add named terms. Sum would
 scale the gradient by the term count, push it past the clip threshold, and (because the
@@ -620,7 +620,7 @@ See <a class="reference internal" href="../train/save_load_predict.html"><span c
 <strong>opt-in</strong> and resolved <em>before</em> JAX initializes (the device count is fixed at import
 time): set <code class="docutils literal notranslate"><span class="pre">train.devices:</span> <span class="pre">N</span></code> (or <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code>) in the config, or <code class="docutils literal notranslate"><span class="pre">HYBRAX_TRAIN_DEVICES=N</span></code> (the env
 var always wins). <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code> resolves to <code class="docutils literal notranslate"><span class="pre">min(n_processes,</span> <span class="pre">n_cpus)</span></code>. Default is 1 device, so
-hybrax.train never competes for cores with other work. No effect on GPU.</p>
+<code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> never competes for cores with other work. No effect on GPU.</p>
 </section>
 </section>
 </section>
@@ -690,7 +690,7 @@ hybrax.train never competes for cores with other work. No effect on GPU.</p>
 <li><a class="reference internal" href="#validation-first-approach">5. Validation-first approach</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#hybrax-train">hybrax.train</a><ul>
+<li><a class="reference internal" href="#hybrax-train"><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code></a><ul>
 <li><a class="reference internal" href="#built-on-hybrax-format-jax-diffrax-equinox-optax">1. Built on hybrax.format, JAX, Diffrax, Equinox, optax</a></li>
 <li><a class="reference internal" href="#scaled-scl-vs-physical-raw-space">2. Scaled (SCL) vs physical (RAW) space</a></li>
 <li><a class="reference internal" href="#bounded-physical-state-solve">3. Bounded physical-state solve</a></li>
