@@ -22,6 +22,7 @@ Mirrors the pattern in Gotsmy & Guillen-Gosalbez's FBA-Hyb method
 genome-scale network -- with freshly-generated data and a freshly-fit
 surrogate rather than reused coefficients.
 """
+
 import cobra
 import numpy as np
 import pandas as pd
@@ -45,10 +46,18 @@ def load_model():
     # vibrio_slim's "remove the ATPM constraint" step.
     model.reactions.get_by_id(ATPM_RID).bounds = (0, 1000)
 
-    xxx_equiv = cobra.Metabolite("xxx_equiv", name="biomass equivalent", compartment="c")
-    atp_equiv = cobra.Metabolite("atp_equiv", name="maintenance equivalent", compartment="c")
-    ace_equiv = cobra.Metabolite("ace_equiv", name="acetate equivalent", compartment="c")
-    suc_equiv = cobra.Metabolite("suc_equiv", name="succinate equivalent", compartment="c")
+    xxx_equiv = cobra.Metabolite(
+        "xxx_equiv", name="biomass equivalent", compartment="c"
+    )
+    atp_equiv = cobra.Metabolite(
+        "atp_equiv", name="maintenance equivalent", compartment="c"
+    )
+    ace_equiv = cobra.Metabolite(
+        "ace_equiv", name="acetate equivalent", compartment="c"
+    )
+    suc_equiv = cobra.Metabolite(
+        "suc_equiv", name="succinate equivalent", compartment="c"
+    )
 
     model.reactions.get_by_id(BIOMASS_RID).add_metabolites({xxx_equiv: 1})
     model.reactions.get_by_id(ATPM_RID).add_metabolites({atp_equiv: 1})
@@ -58,17 +67,21 @@ def load_model():
     return model, xxx_equiv, atp_equiv, ace_equiv, suc_equiv
 
 
-def build_model(qG, n_X, n_M, n_A, n_S, tmp_model, xxx_equiv, atp_equiv, ace_equiv, suc_equiv):
+def build_model(
+    qG, n_X, n_M, n_A, n_S, tmp_model, xxx_equiv, atp_equiv, ace_equiv, suc_equiv
+):
     reaction = cobra.Reaction("combined_obj")
     reaction.name = "combined_obj_function"
     reaction.lower_bound = 0.0
     reaction.upper_bound = 1000.0
-    reaction.add_metabolites({
-        xxx_equiv: -n_X,
-        atp_equiv: -n_M,
-        ace_equiv: -n_A,
-        suc_equiv: -n_S,
-    })
+    reaction.add_metabolites(
+        {
+            xxx_equiv: -n_X,
+            atp_equiv: -n_M,
+            ace_equiv: -n_A,
+            suc_equiv: -n_S,
+        }
+    )
     tmp_model.add_reactions([reaction])
     tmp_model.objective = "combined_obj"
     tmp_model.objective_direction = "max"
@@ -81,7 +94,9 @@ if __name__ == "__main__":
     n_samples = 10_000
     norm_sample = sampler.random(n_samples)
     # dims: qG, n_X, n_M, n_A, n_S
-    scaled_sample = qmc.scale(norm_sample, [0.5, 0.0, 0.0, 0.0, 0.0], [20.0, 2.0, 2.0, 2.0, 2.0])
+    scaled_sample = qmc.scale(
+        norm_sample, [0.5, 0.0, 0.0, 0.0, 0.0], [20.0, 2.0, 2.0, 2.0, 2.0]
+    )
 
     model, xxx_equiv, atp_equiv, ace_equiv, suc_equiv = load_model()
 
@@ -89,18 +104,26 @@ if __name__ == "__main__":
     n_fail = 0
     for qG, n_X, n_M, n_A, n_S in scaled_sample:
         with model as tmp:
-            tmp = build_model(qG, n_X, n_M, n_A, n_S, tmp, xxx_equiv, atp_equiv, ace_equiv, suc_equiv)
+            tmp = build_model(
+                qG, n_X, n_M, n_A, n_S, tmp, xxx_equiv, atp_equiv, ace_equiv, suc_equiv
+            )
             try:
                 sol = cobra.flux_analysis.pfba(tmp)
-                rows.append(np.concatenate([
-                    np.array([qG, n_X, n_M, n_A, n_S]),
-                    sol.fluxes.values.flatten(),
-                ]))
+                rows.append(
+                    np.concatenate(
+                        [
+                            np.array([qG, n_X, n_M, n_A, n_S]),
+                            sol.fluxes.values.flatten(),
+                        ]
+                    )
+                )
             except Exception:
                 n_fail += 1
 
     with model as tmp:
-        tmp = build_model(1, 1, 1, 1, 1, tmp, xxx_equiv, atp_equiv, ace_equiv, suc_equiv)
+        tmp = build_model(
+            1, 1, 1, 1, 1, tmp, xxx_equiv, atp_equiv, ace_equiv, suc_equiv
+        )
         columns = ["qG", "n_X", "n_M", "n_A", "n_S"] + [r.id for r in tmp.reactions]
 
     df = pd.DataFrame(rows, columns=columns)

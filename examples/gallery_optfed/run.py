@@ -22,13 +22,22 @@ import hybrax.format as hxf
 import hybrax.train as hxt
 
 HERE = Path(__file__).parent
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
-       "MPLBACKEND": "Agg"}
+ENV = {
+    **os.environ,
+    "JAX_PLATFORMS": "cpu",
+    "HYBRAX_TRAIN_DEVICES": "1",
+    "MPLBACKEND": "Agg",
+}
 
 
 def hxt_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
-                          cwd=HERE, env=ENV, capture_output=True, text=True)
+    proc = subprocess.run(
+        [sys.executable, "-m", "hybrax.train.cli", *args],
+        cwd=HERE,
+        env=ENV,
+        capture_output=True,
+        text=True,
+    )
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
@@ -60,16 +69,28 @@ def r2_by_target(run_dir):
     return out
 
 
-hxt_cli("prepare", "--config", "prepare-config.json",
-        "--output-dir", "prepared", "--overwrite")
+hxt_cli(
+    "prepare",
+    "--config",
+    "prepare-config.json",
+    "--output-dir",
+    "prepared",
+    "--overwrite",
+)
 hxt_cli("train", "--config", "train-config.json", "--overwrite")
 
 r2 = r2_by_target("run")
 for name, value in r2.items():
     print(f"{name:10s} R2 = {value:.4f}")
 
-hxt_cli("forward", "--config", "forward-config.json",
-        "--output-dir", "run/forward", "--overwrite")
+hxt_cli(
+    "forward",
+    "--config",
+    "forward-config.json",
+    "--output-dir",
+    "run/forward",
+    "--overwrite",
+)
 print(f"forward plot (T_high): {HERE / 'run/forward/forward-results/plots/T_high.png'}")
 
 wrapper, cfg = hxt.model_load(str(HERE / "run"))
@@ -78,10 +99,14 @@ fitted_Teq_K = 290.0 + 40.0 * jax.nn.sigmoid(m.eyring_raw_Teq)
 fitted_Teq_C = np.asarray(fitted_Teq_K) - 273.15
 
 truth = json.loads((HERE / "ground_truth.json").read_text())
-true_Teq_C = [truth["eyring_deg"]["Teq"] - 273.15,
-              truth["eyring_pi"]["Teq"] - 273.15,
-              truth["eyring_alpha"]["Teq"] - 273.15]
+true_Teq_C = [
+    truth["eyring_deg"]["Teq"] - 273.15,
+    truth["eyring_pi"]["Teq"] - 273.15,
+    truth["eyring_alpha"]["Teq"] - 273.15,
+]
 
 print(f"{'rate':10s} {'fitted Teq':>12s} {'true Teq':>10s}")
-for name, fit, true in zip(("uptake", "production", "maintenance"), fitted_Teq_C, true_Teq_C):
+for name, fit, true in zip(
+    ("uptake", "production", "maintenance"), fitted_Teq_C, true_Teq_C
+):
     print(f"{name:10s} {fit:11.1f}C {true:9.1f}C")

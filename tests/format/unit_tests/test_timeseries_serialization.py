@@ -165,7 +165,10 @@ def test_roundtrip_uses_canonical_timeseries_shape() -> None:
     assert biomass.concentration.times.shape == (3,)
     assert biomass.pseudobatch_concentration is not None
     assert biomass.pseudobatch_concentration.values.shape == (3,)
-    assert biomass.pseudobatch_concentration.metadata["fit_strategy"] == "smoothing_bspline"
+    assert (
+        biomass.pseudobatch_concentration.metadata["fit_strategy"]
+        == "smoothing_bspline"
+    )
     assert sample.values.times.shape == (2,)
     assert total_volume is not None
     assert total_volume.times.shape == (3,)

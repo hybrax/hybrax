@@ -405,7 +405,9 @@ class AffineScaler(Scaler):
         return tuple(self.scale.shape)
 
     def astype(self, dtype: jnp.dtype) -> "AffineScaler":
-        """Return an :class:`AffineScaler` with ``scale``/``offset`` cast to ``dtype``."""
+        """Return an :class:`AffineScaler` with ``scale``/``offset`` cast to
+        ``dtype``.
+        """
         return AffineScaler(
             jnp.asarray(self.scale, dtype=dtype),
             jnp.asarray(self.offset, dtype=dtype),
@@ -937,13 +939,17 @@ class UserReactionModule(eqx.Module):
         return self.SCALE_modeled_Inflows_Cin.unscale_value(SCL_modeled_Inflows_Cin)
 
     def scale_modeled_BiologicalOde_rates(self, RAW_modeled_BiologicalOde_rates):
-        """RAW -> SCL for modeled ``biological_ode`` rates (offset-free derivative op)."""
+        """RAW -> SCL for modeled ``biological_ode`` rates (offset-free
+        derivative op).
+        """
         return self.SCALE_modeled_BiologicalOde_rates.scale_derivative(
             RAW_modeled_BiologicalOde_rates
         )
 
     def unscale_modeled_BiologicalOde_rates(self, SCL_modeled_BiologicalOde_rates):
-        """SCL -> RAW for modeled ``biological_ode`` rates (offset-free derivative op)."""
+        """SCL -> RAW for modeled ``biological_ode`` rates (offset-free
+        derivative op).
+        """
         return self.SCALE_modeled_BiologicalOde_rates.unscale_derivative(
             SCL_modeled_BiologicalOde_rates
         )

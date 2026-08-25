@@ -1,17 +1,18 @@
 """Two cheap contracts of the segment scan that are easy to regress silently.
 
 1. ``done`` collapse — the scan always runs ``max_events`` iterations. A lane that has
-   consumed every preset and reached ``t1`` must collapse its remaining iterations to
-   ZERO length. Without it each leftover iteration gets ``segment_t1 = t_current + tol``
-   from the clamp, i.e. a tolerance-length (not zero-length) segment that diffrax runs at
-   >= 1 accepted step. Those steps cost a full 6-stage Tsit5 evaluation each AND they
-   accumulate into the ``max_steps`` budget, so a caller could lose ~10% of its trajectory
-   budget to iterations that integrate nothing -- reintroducing the grid-dependence the
-   budget exists to remove.
+   consumed every preset and reached ``t1`` must collapse its remaining iterations
+   to ZERO length. Without it each leftover iteration gets
+   ``segment_t1 = t_current + tol`` from the clamp, i.e. a tolerance-length (not
+   zero-length) segment that diffrax runs at >= 1 accepted step. Those steps cost a
+   full 6-stage Tsit5 evaluation each AND they accumulate into the ``max_steps``
+   budget, so a caller could lose ~10% of its trajectory budget to iterations that
+   integrate nothing -- reintroducing the grid-dependence the budget exists to remove.
 
-2. Empty preset times — a ``PresetTimeCallback`` may legitimately carry a zero-length
-   ``times`` array (a collection with no bolus and no sample events; the padded widths are
-   collection-wide maxima and are legitimately 0). ``has_presets`` counts CALLBACKS, so
+2. Empty preset times — a ``PresetTimeCallback`` may legitimately carry a
+   zero-length ``times`` array (a collection with no bolus and no sample events; the
+   padded widths are collection-wide maxima and are legitimately 0).
+   ``has_presets`` counts CALLBACKS, so
    such a callback used to reach ``_find_next_preset_time`` and ``jnp.argmin`` an empty
    array -- a hard trace-time error.
 """

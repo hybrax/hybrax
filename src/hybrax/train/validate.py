@@ -307,7 +307,8 @@ def ensure_prepared_training_semantics(
                 _check_result(
                     "PASS",
                     "feed_medium_populated",
-                    f"feed {change_name!r} has feed-medium component metadata after prep",
+                    f"feed {change_name!r} has feed-medium component "
+                    "metadata after prep",
                 )
             )
 

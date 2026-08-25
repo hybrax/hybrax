@@ -14,12 +14,16 @@ See docs/source/gallery/pseudobatch_splines.md for the narrated version.
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
 import hybrax.format as hxf
-from hybrax.format.splines import build_backtransform_spline, build_pseudobatch_transform
+from hybrax.format.splines import (
+    build_backtransform_spline,
+    build_pseudobatch_transform,
+)
 
 HERE = Path(__file__).parent
 
@@ -64,8 +68,14 @@ meas_v = np.asarray(solute.concentration.values)
 
 fig, ax = plt.subplots(figsize=(7, 4.5))
 ax.plot(dense_t, truth, color="black", lw=1.5, label="ground truth")
-ax.plot(dense_t, recovered, color="tab:blue", lw=1.5, ls="--",
-        label="recovered (fit + backtransform)")
+ax.plot(
+    dense_t,
+    recovered,
+    color="tab:blue",
+    lw=1.5,
+    ls="--",
+    label="recovered (fit + backtransform)",
+)
 ax.scatter(meas_t, meas_v, color="tab:red", zorder=5, label="5 measurements")
 ax.axvline(SJ_T_JUMP, color="gray", lw=0.8, ls=":")
 ax.set_xlabel("t (h)")
@@ -82,5 +92,7 @@ post = np.linspace(SJ_T_JUMP + 1.0, SJ_T_END, 200)
 for label, grid in [("pre-jump [0, 9]", pre), ("post-jump [11, 17]", post)]:
     rec = np.asarray(back(grid))
     rel = np.abs(rec - spline_jump_truth(grid)) / spline_jump_truth(grid)
-    print(f"{label}: max relative error {rel.max() * 100:4.1f}%   "
-          f"mean {rel.mean() * 100:4.1f}%")
+    print(
+        f"{label}: max relative error {rel.max() * 100:4.1f}%   "
+        f"mean {rel.mean() * 100:4.1f}%"
+    )

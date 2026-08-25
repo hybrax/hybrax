@@ -278,7 +278,7 @@ class TimeSeries(eqx.Module):
         if self.breaks is None or self.coeffs is None:
             return None
         return PPoly(self.breaks, self.coeffs, continuity_side=self.continuity_side)
-    
+
     def lin_interp(self, t):
         """Linearly interpolate the discrete samples at time ``t``."""
         if self.times is None or self.values is None:
@@ -303,7 +303,9 @@ class TimeSeries(eqx.Module):
         return poly(ts_arr, side=side)
 
     def deriv(self, order: int = 1):
-        """Return a derived TimeSeries holding the spline derivative of the given order."""
+        """Return a derived TimeSeries holding the spline derivative of the
+        given order.
+        """
         order = int(order)
         poly = self.poly
         if poly is None:

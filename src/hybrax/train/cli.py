@@ -75,7 +75,9 @@ def _build_parser() -> argparse.ArgumentParser:
     # ---- prepare ----
     prepare_parser = subparsers.add_parser(
         "prepare",
-        help="Transform a raw hybrax.format process collection into a prepared artifact.",
+        help=(
+            "Transform a raw hybrax.format process collection into a prepared artifact."
+        ),
     )
     prepare_parser.add_argument(
         "--config",

@@ -440,7 +440,9 @@ class ControlSplines(eqx.Module):
     _splines: tuple[PPoly, ...]
 
     def __call__(self, t: jnp.ndarray) -> jnp.ndarray:
-        """Evaluate all controlled signals at ``t``; see the class docstring for layout."""
+        """Evaluate all controlled signals at ``t``; see the class
+        docstring for layout.
+        """
         if not self._splines:
             return jnp.zeros(jnp.shape(t) + (0,))
         n_flows = len(self.name_controlled_Inflows) + len(self.name_controlled_Outflows)
@@ -854,7 +856,9 @@ def extract_discrete_events(
                         "reasonable way to fabricate an entire medium's "
                         "identity from nothing. Define feed_medium explicitly."
                     )
-                Cin_event = _build_cin(process, (vc_name,), ordering.name_modeled_RMCs)[0]
+                Cin_event = _build_cin(process, (vc_name,), ordering.name_modeled_RMCs)[
+                    0
+                ]
                 events.append(
                     dict(
                         t=float(t_event),

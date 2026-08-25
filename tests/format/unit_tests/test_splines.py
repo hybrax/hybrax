@@ -594,9 +594,9 @@ def test_evaluate_pseudobatch_transform_supports_static_cstar():
     proc = _make_process_continuous_only()
     zero_ts = make_constant_spline(0.0, 0.0, 20.0)
     one_ts = make_constant_spline(1.0, 0.0, 20.0)
-    proc.reactor_medium.components["glucose"].pseudobatch_concentration = StaticVariable(
-        value=3.0
-    )
+    proc.reactor_medium.components[
+        "glucose"
+    ].pseudobatch_concentration = StaticVariable(value=3.0)
     proc.pseudobatch_transform = PseudobatchTransform(
         adf=one_ts,
         feed_corrections={"glucose": zero_ts},
@@ -1451,7 +1451,9 @@ def test_build_pseudobatch_transform_rejects_already_transformed_carrier():
     proc.pseudobatch_transform = transform
     proc.reactor_medium.components[
         "glucose"
-    ].concentration = proc.reactor_medium.components["glucose"].pseudobatch_concentration
+    ].concentration = proc.reactor_medium.components[
+        "glucose"
+    ].pseudobatch_concentration
 
     with pytest.raises(ValueError, match="already carries pseudobatch"):
         build_pseudobatch_transform(proc, ["glucose"])
@@ -1471,7 +1473,9 @@ def test_pseudobatch_spline_json_roundtrip():
     transform = _build_single_species_transform(proc, "glucose")
     proc.pseudobatch_transform = transform
 
-    cs = BioProcessCollection(case_id="cs", organism="CHO", citation="test", processes={"p": proc})
+    cs = BioProcessCollection(
+        case_id="cs", organism="CHO", citation="test", processes={"p": proc}
+    )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "test_pb.json"

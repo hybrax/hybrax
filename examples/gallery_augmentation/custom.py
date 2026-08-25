@@ -23,12 +23,14 @@ def transform_process_collection(collection, config):
     for process in collection.processes.values():
         for component in process.reactor_medium.components.values():
             component.concentration = fit_timeseries_spline(
-                component.concentration, smoothing_s=0.0)
+                component.concentration, smoothing_s=0.0
+            )
     return collection
 
 
-def augment_state_values(*, parent_name, child_name, state_name, times,
-                         base_values, augmented_values, config):
+def augment_state_values(
+    *, parent_name, child_name, state_name, times, base_values, augmented_values, config
+):
     del parent_name, child_name, times, base_values, config
     if state_name != "product":
         return augmented_values

@@ -699,7 +699,8 @@ def _validate_control_partition(
 ) -> None:
     """Re-derive the control layout from the parents and reject a stored mismatch.
 
-    Loading ``.npy`` arrays straight into :class:`~hybrax.train.controls_store.ControlsStore`
+    Loading ``.npy`` arrays straight into
+    :class:`~hybrax.train.controls_store.ControlsStore`
     bypasses its ``__post_init__``, so these statics are otherwise taken on trust.
     """
     partition = derive_control_partition(parent_collection)

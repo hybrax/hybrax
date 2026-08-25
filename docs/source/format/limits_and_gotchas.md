@@ -12,11 +12,15 @@ them, you need to know now rather than halfway through.
 | Limit | Detail |
 |---|---|
 | **Time-varying feed composition** | A `FeedMediumComponent` concentration may be a `TimeSeries` in the schema, but `build_rhs_ode` raises `NotImplementedError`. Use `StaticVariable`; split genuinely changing feeds into separate streams. |
-| **Perfusion / cell retention** | The vessel model is a well-mixed CSTR. There is no mechanism for retaining cells while removing liquid. A perfusion process cannot be described correctly. |
-| **Evaporation with solute retention** | Same reason: removing solvent while keeping solutes is not representable. |
+| **Declarative level-controlled outflow** | There is no built-in overflow or level-controller object that derives an `Outflow` from reactor volume. Store a known outflow as a controlled cumulative trace, or compute a modeled outflow rate in a custom reaction module. |
 | **Pseudobatch on a continuous `Outflow`** | `build_pseudobatch_transform` raises `NotImplementedError` for any continuous `Outflow` (perfusion, continuous harvest), retention or not. Its closed-form ADF assumes volume only grows from `Inflow`s. Only `Inflow` and discrete `Outflow` (sampling) are supported. See [The pseudobatch transform](pseudobatch_transform.md). |
 | **Rate inversion** | There is no facility for computing rates analytically from measured concentrations. Rates come from a model. |
 | **Unit conversion** | Units are free-form strings. Nothing is parsed and nothing is converted. |
+
+Continuous `Outflow`s can assign a fixed per-component retention fraction. This
+supports, for example, cell retention in perfusion and solute retention during
+evaporation. Missing components have zero retention and leave at the well-mixed bulk
+concentration.
 
 The last one deserves emphasis: units are used for exactly two checks, that quantities
 you *add* in a `biological_ode` expression share a unit, and that processes in a case

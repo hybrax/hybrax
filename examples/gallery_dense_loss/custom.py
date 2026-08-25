@@ -45,7 +45,10 @@ class BatchReactionModule(UserReactionModule):
         self.mlp = eqx.nn.MLP(
             in_size=self.n_modeled_RMCs,
             out_size=self.n_modeled_BiologicalOde_rates,
-            width_size=32, depth=3, activation=jax.nn.tanh, key=key,
+            width_size=32,
+            depth=3,
+            activation=jax.nn.tanh,
+            key=key,
         )
 
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
@@ -93,7 +96,8 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
-            max(runtime_data.initial_volume(i) for i in range(n_processes))),
+            max(runtime_data.initial_volume(i) for i in range(n_processes))
+        ),
         SCALE_modeled_Inflows_cumulative=empty,
         SCALE_modeled_Inflows_rates=empty,
         SCALE_modeled_Outflows_cumulative=empty,
@@ -104,9 +108,11 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=empty,
         SCALE_controlled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0
+        ),
         SCALE_modeled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0
+        ),
     )
 
 
@@ -151,48 +157,57 @@ class PhysicalConstraintsLoss(DefaultLossModule):
 
     @property
     def dense_grid_n(self):
-        return 200   # opt in: populates every dense_* field on LossInputs
+        return 200  # opt in: populates every dense_* field on LossInputs
 
     def __call__(self, inputs: LossInputs) -> LossOutputs:
         residual = inputs.SCL_target_pred - jnp.where(
-            inputs.mask_measured, inputs.SCL_target_measured, 0.0)
+            inputs.mask_measured, inputs.SCL_target_measured, 0.0
+        )
         per_target = self.residual_reduction(residual, inputs.mask_measured)
 
-        valid = inputs.dense_valid_time   # post-solver-failure mask
+        valid = inputs.dense_valid_time  # post-solver-failure mask
 
         def hinge(value, lo, hi):
             # -inf / +inf bounds fall out of the clip naturally: no branching.
-            return (jnp.clip(lo - value, min=0.0) ** 2
-                    + jnp.clip(value - hi, min=0.0) ** 2)
+            return (
+                jnp.clip(lo - value, min=0.0) ** 2 + jnp.clip(value - hi, min=0.0) ** 2
+            )
 
         # State bounds: dense_RAW_states is [modeled RMCs | modeled PVs | V];
         # slice to just the RMC axes our bounds were built for.
         n_state_bounds = self.state_lo.shape[0]
-        state_penalty = hinge(inputs.dense_RAW_states[:, :n_state_bounds],
-                              self.state_lo, self.state_hi)
-        rate_penalty = hinge(inputs.dense_RAW_modeled_BiologicalOde_rates,
-                             self.rate_lo, self.rate_hi)
-        bounds = (jnp.sum(state_penalty * valid[:, None])
-                 + jnp.sum(rate_penalty * valid[:, None])) \
-                / jnp.maximum(jnp.sum(valid), 1.0)
+        state_penalty = hinge(
+            inputs.dense_RAW_states[:, :n_state_bounds], self.state_lo, self.state_hi
+        )
+        rate_penalty = hinge(
+            inputs.dense_RAW_modeled_BiologicalOde_rates, self.rate_lo, self.rate_hi
+        )
+        bounds = (
+            jnp.sum(state_penalty * valid[:, None])
+            + jnp.sum(rate_penalty * valid[:, None])
+        ) / jnp.maximum(jnp.sum(valid), 1.0)
 
         # Smoothness: central second difference of each rate trajectory.
         # dense_t is a uniform linspace, so a fixed dt is valid.
         dt = inputs.dense_t[1] - inputs.dense_t[0]
         rates = inputs.dense_RAW_modeled_BiologicalOde_rates
-        curvature = (rates[2:] - 2.0 * rates[1:-1] + rates[:-2]) / (dt ** 2)
+        curvature = (rates[2:] - 2.0 * rates[1:-1] + rates[:-2]) / (dt**2)
         # A bolus/sample creates a REAL kink; do not penalise curvature there.
         # hybrax.train ships this exact helper for that purpose.
         triple_mask = all_triple(valid) & dense_triple_mask_away_from_jumps(
-            inputs.dense_t, inputs.jump_ts, jump_epsilon_h=2.0 * dt)
-        smoothness = jnp.sum(jnp.square(curvature) * triple_mask[:, None]) \
-                    / jnp.maximum(jnp.sum(triple_mask), 1.0)
+            inputs.dense_t, inputs.jump_ts, jump_epsilon_h=2.0 * dt
+        )
+        smoothness = jnp.sum(
+            jnp.square(curvature) * triple_mask[:, None]
+        ) / jnp.maximum(jnp.sum(triple_mask), 1.0)
 
-        return LossOutputs(named_losses={
-            **{name: per_target[i] for i, name in enumerate(self.target_names)},
-            "bounds": self.bounds_weight * bounds,
-            "smoothness": self.smoothness_weight * smoothness,
-        })
+        return LossOutputs(
+            named_losses={
+                **{name: per_target[i] for i, name in enumerate(self.target_names)},
+                "bounds": self.bounds_weight * bounds,
+                "smoothness": self.smoothness_weight * smoothness,
+            }
+        )
 
 
 def build_loss_module(*, target_names, training_parent_collection, **kwargs):
@@ -205,10 +220,13 @@ def build_loss_module(*, target_names, training_parent_collection, **kwargs):
         lo, hi = bounds
         return (-jnp.inf if lo is None else lo), (jnp.inf if hi is None else hi)
 
-    state_bounds = [as_pair(process.reactor_medium.components[n].bounds)
-                    for n in rhs.name_modeled_RMCs]
-    rate_bounds = [as_pair(process.biological_ode.rates[n])
-                   for n in rhs.name_modeled_rates]
+    state_bounds = [
+        as_pair(process.reactor_medium.components[n].bounds)
+        for n in rhs.name_modeled_RMCs
+    ]
+    rate_bounds = [
+        as_pair(process.biological_ode.rates[n]) for n in rhs.name_modeled_rates
+    ]
 
     return PhysicalConstraintsLoss(
         target_names=list(target_names),

@@ -32,21 +32,26 @@ class FedBatchModule(UserReactionModule):
         self.mlp = eqx.nn.MLP(
             in_size=n_in,
             out_size=self.n_modeled_BiologicalOde_rates,
-            width_size=32, depth=3, activation=jax.nn.tanh, key=key,
+            width_size=32,
+            depth=3,
+            activation=jax.nn.tanh,
+            key=key,
         )
 
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t
         # The feed rate and DO are real biological inputs here, not just
         # transport bookkeeping: the model is allowed to respond to them.
-        features = jnp.concatenate([
-            inputs.SCL_modeled_RMCs,
-            inputs.SCL_controlled_Inflows_rates,
-            inputs.SCL_controlled_PVs,
-        ])
+        features = jnp.concatenate(
+            [
+                inputs.SCL_modeled_RMCs,
+                inputs.SCL_controlled_Inflows_rates,
+                inputs.SCL_controlled_PVs,
+            ]
+        )
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.mlp(features),
-            SCL_modeled_Inflows_rates=jnp.zeros(0),   # no MODELED feeds here
+            SCL_modeled_Inflows_rates=jnp.zeros(0),  # no MODELED feeds here
             SCL_modeled_Outflows_rates=jnp.zeros(0),  # no MODELED outflows here
         )
 
@@ -98,11 +103,14 @@ def estimate_all_scales(runtime_data, target_names, config):
         t_start, t_end = runtime_data.time_bounds(i)
         for t in np.linspace(t_start + 1e-3, t_end - 1e-3, 50):
             inflow_rate_samples.append(
-                np.asarray(per_process.eval_controlled_Inflows_rates(float(t), None)))
+                np.asarray(per_process.eval_controlled_Inflows_rates(float(t), None))
+            )
             outflow_rate_samples.append(
-                np.asarray(per_process.eval_controlled_Outflows_rates(float(t), None)))
+                np.asarray(per_process.eval_controlled_Outflows_rates(float(t), None))
+            )
             pv_samples.append(
-                np.asarray(per_process.eval_controlled_PVs(float(t), None)))
+                np.asarray(per_process.eval_controlled_PVs(float(t), None))
+            )
 
     def axis_scale(samples, n_axis):
         arr = np.stack(samples, axis=0) if samples else np.ones((1, n_axis))
@@ -113,18 +121,25 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
-            max(runtime_data.initial_volume(i) for i in range(n_processes))),
+            max(runtime_data.initial_volume(i) for i in range(n_processes))
+        ),
         SCALE_modeled_Inflows_cumulative=empty,
         SCALE_modeled_Inflows_rates=empty,
         SCALE_modeled_Outflows_cumulative=empty,
         SCALE_modeled_Outflows_rates=empty,
         SCALE_controlled_Inflows_cumulative=jnp.ones(n_inflows),
-        SCALE_controlled_Inflows_rates=jnp.asarray(axis_scale(inflow_rate_samples, n_inflows)),
+        SCALE_controlled_Inflows_rates=jnp.asarray(
+            axis_scale(inflow_rate_samples, n_inflows)
+        ),
         SCALE_controlled_Outflows_cumulative=jnp.ones(n_outflows),
-        SCALE_controlled_Outflows_rates=jnp.asarray(axis_scale(outflow_rate_samples, n_outflows)),
+        SCALE_controlled_Outflows_rates=jnp.asarray(
+            axis_scale(outflow_rate_samples, n_outflows)
+        ),
         SCALE_controlled_PVs=jnp.asarray(axis_scale(pv_samples, n_PV)),
         SCALE_controlled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0
+        ),
         SCALE_modeled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0
+        ),
     )

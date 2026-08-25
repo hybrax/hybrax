@@ -263,7 +263,7 @@ effect, check the spelling first. See
 
 ## What's next
 
-Run the tutorial yourself at `./source/_data/out/runs/tutorial_04/`.
+You can run the full tutorial at `examples/tutorial_04_your_first_custom_py/run.py`.
 
 - **[Tutorial 5](05_predict.md)**: use the trained model.
 - Real kinetics instead of a bare MLP: [Gallery: mechanistic models](../gallery/mechanistic_rates.md).

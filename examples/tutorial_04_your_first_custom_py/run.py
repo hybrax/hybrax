@@ -20,13 +20,22 @@ import hybrax.format as hxf
 import hybrax.train as hxt
 
 HERE = Path(__file__).parent
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
-       "MPLBACKEND": "Agg"}
+ENV = {
+    **os.environ,
+    "JAX_PLATFORMS": "cpu",
+    "HYBRAX_TRAIN_DEVICES": "1",
+    "MPLBACKEND": "Agg",
+}
 
 
 def hxt_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
-                          cwd=HERE, env=ENV, capture_output=True, text=True)
+    proc = subprocess.run(
+        [sys.executable, "-m", "hybrax.train.cli", *args],
+        cwd=HERE,
+        env=ENV,
+        capture_output=True,
+        text=True,
+    )
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
@@ -53,8 +62,14 @@ def r2_by_target(run_dir):
     return {k: float(np.mean(v)) for k, v in per_target.items()}
 
 
-hxt_cli("prepare", "--config", "prepare-config.json",
-        "--output-dir", "prepared", "--overwrite")
+hxt_cli(
+    "prepare",
+    "--config",
+    "prepare-config.json",
+    "--output-dir",
+    "prepared",
+    "--overwrite",
+)
 hxt_cli("train", "--config", "train-default.json", "--overwrite")
 hxt_cli("train", "--config", "train-custom.json", "--overwrite")
 
@@ -65,8 +80,14 @@ print(f"{'target':10s} {'defaults':>10s} {'custom.py':>10s}")
 for name in ("biomass", "glucose", "product"):
     print(f"{name:10s} {r2_default[name]:10.4f} {r2_custom[name]:10.4f}")
 
-hxt_cli("forward", "--config", "forward-config.json",
-        "--output-dir", "run_custom/forward", "--overwrite")
+hxt_cli(
+    "forward",
+    "--config",
+    "forward-config.json",
+    "--output-dir",
+    "run_custom/forward",
+    "--overwrite",
+)
 print(f"forward plot: {HERE / 'run_custom/forward/forward-results/plots/run_1.png'}")
 
 wrapper, cfg = hxt.model_load(str(HERE / "run_custom"))

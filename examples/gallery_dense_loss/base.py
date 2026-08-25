@@ -31,8 +31,9 @@ class BatchReactionModule(UserReactionModule):
         # The base class stores every SCALE_* axis; always forward them.
         super().__init__(**scale_kwargs)
         self.mlp = eqx.nn.MLP(
-            in_size=self.n_modeled_RMCs,                    # biomass, glucose, product
-            out_size=self.n_modeled_BiologicalOde_rates,    # q_biomass, q_glucose, q_product
+            in_size=self.n_modeled_RMCs,  # biomass, glucose, product
+            out_size=self.n_modeled_BiologicalOde_rates,  # q_biomass, q_glucose,
+            # q_product
             width_size=32,
             depth=3,
             # Use a SMOOTH activation. eqx.nn.MLP defaults to relu, which makes
@@ -76,7 +77,7 @@ def estimate_all_scales(runtime_data, target_names, config):
             _, values = runtime_data.raw_state_trace(i, name)
             if values.size:
                 best = max(best, float(np.max(np.abs(values))))
-        return max(best, 1e-6)   # floor: never divide by zero
+        return max(best, 1e-6)  # floor: never divide by zero
 
     rmc_scale = {name: max_abs_state(name) for name in rhs.name_modeled_RMCs}
 
@@ -96,12 +97,13 @@ def estimate_all_scales(runtime_data, target_names, config):
 
     rate_scale = [rate_scale_for(name[2:]) for name in rhs.name_modeled_rates]
 
-    empty = jnp.zeros(0)   # demo_batch has no feeds and no process variables
+    empty = jnp.zeros(0)  # demo_batch has no feeds and no process variables
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
-            max(runtime_data.initial_volume(i) for i in range(n_processes))),
+            max(runtime_data.initial_volume(i) for i in range(n_processes))
+        ),
         SCALE_modeled_Inflows_cumulative=empty,
         SCALE_modeled_Inflows_rates=empty,
         SCALE_modeled_Outflows_cumulative=empty,
@@ -112,7 +114,9 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=empty,
         SCALE_controlled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0
+        ),
         SCALE_modeled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0
+        ),
     )

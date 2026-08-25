@@ -27,14 +27,17 @@ class ModeledPVModule(UserReactionModule):
         self.log_r_glyco_frac = jnp.log(jnp.asarray(0.1))
 
     def __call__(self, t, inputs) -> ReactionOutputs:
-        del t, inputs   # every rate here is a plain constant, no state read
-        RAW_rates = jnp.array([
-            jnp.exp(self.log_q_biomass),
-            jnp.exp(self.log_r_glyco_frac),
-        ])
+        del t, inputs  # every rate here is a plain constant, no state read
+        RAW_rates = jnp.array(
+            [
+                jnp.exp(self.log_q_biomass),
+                jnp.exp(self.log_r_glyco_frac),
+            ]
+        )
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=self.scale_modeled_BiologicalOde_rates(
-                RAW_rates),
+                RAW_rates
+            ),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
         )
@@ -42,15 +45,18 @@ class ModeledPVModule(UserReactionModule):
 
 def build_reaction_module(**kwargs):
     return ModeledPVModule(
-        **{k: v for k, v in kwargs.items() if k.startswith("SCALE_")})
+        **{k: v for k, v in kwargs.items() if k.startswith("SCALE_")}
+    )
 
 
 def estimate_all_scales(runtime_data, target_names, config):
     del target_names, config
     rhs = runtime_data.rhs_ode
     n_processes = len(runtime_data.process_order)
-    span = max(end - start for start, end in
-              (runtime_data.time_bounds(i) for i in range(n_processes)))
+    span = max(
+        end - start
+        for start, end in (runtime_data.time_bounds(i) for i in range(n_processes))
+    )
 
     def max_abs_state(name):
         best = 0.0
@@ -66,7 +72,7 @@ def estimate_all_scales(runtime_data, target_names, config):
     empty = jnp.zeros(0)
 
     def rate_scale(rate_name):
-        state_name = rate_name[2:]   # strip "q_" or "r_"
+        state_name = rate_name[2:]  # strip "q_" or "r_"
         if state_name in rmc_scale:
             return rmc_scale[state_name] / (biomass * span)
         return pv_scale[state_name] / span
@@ -75,9 +81,11 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
         SCALE_modeled_PVs=jnp.asarray([pv_scale[n] for n in rhs.name_modeled_PVs]),
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(
-            [rate_scale(n) for n in rhs.name_modeled_rates]),
+            [rate_scale(n) for n in rhs.name_modeled_rates]
+        ),
         SCALE_V_in_cumulative=jnp.asarray(
-            max(runtime_data.initial_volume(i) for i in range(n_processes))),
+            max(runtime_data.initial_volume(i) for i in range(n_processes))
+        ),
         SCALE_modeled_Inflows_cumulative=empty,
         SCALE_modeled_Inflows_rates=empty,
         SCALE_modeled_Outflows_cumulative=empty,
@@ -88,7 +96,9 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=empty,
         SCALE_controlled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0
+        ),
         SCALE_modeled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0
+        ),
     )

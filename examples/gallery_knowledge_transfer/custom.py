@@ -42,7 +42,9 @@ def transform_process_collection(collection, config):
         is_new = 1.0 if name.startswith("T_") else 0.0
         times = process.reactor_medium.components["biomass"].concentration.times
         process.process_variables["is_new_product"] = hxf.ProcessVariable(
-            name="is_new_product", unit="-", is_controlled=True,
+            name="is_new_product",
+            unit="-",
+            is_controlled=True,
             values=TimeSeries(times=times, values=np.full(times.shape, is_new)),
             bounds=(0.0, 1.0),
         )
@@ -50,11 +52,11 @@ def transform_process_collection(collection, config):
 
 
 class EnsembleGPReactionModule(UserReactionModule):
-    centers: jax.Array = frozen_field()               # (K, M, n_features), REAL data
-    log_lengthscale: jax.Array = trainable_field()     # (K, n_features)
-    log_output_scale: jax.Array = trainable_field()    # (K,)
-    log_noise: jax.Array = trainable_field()           # (K,)
-    pseudo_targets: jax.Array = trainable_field()      # (K, M, n_rates), still learned:
+    centers: jax.Array = frozen_field()  # (K, M, n_features), REAL data
+    log_lengthscale: jax.Array = trainable_field()  # (K, n_features)
+    log_output_scale: jax.Array = trainable_field()  # (K,)
+    log_noise: jax.Array = trainable_field()  # (K,)
+    pseudo_targets: jax.Array = trainable_field()  # (K, M, n_rates), still learned:
     #   rates are never directly observed, only inferred through the ODE fit,
     #   unlike the real X locations, which are real measured states.
 
@@ -74,22 +76,28 @@ class EnsembleGPReactionModule(UserReactionModule):
             centers_list.append(data_pool[chosen])
         # Pad every member to the same M (repeat last row) so they stack into one array.
         max_m = max(c.shape[0] for c in centers_list)
-        padded = [np.concatenate([c, np.repeat(c[-1:], max_m - c.shape[0], axis=0)], axis=0)
-                  for c in centers_list]
+        padded = [
+            np.concatenate([c, np.repeat(c[-1:], max_m - c.shape[0], axis=0)], axis=0)
+            for c in centers_list
+        ]
         self.centers = jnp.asarray(np.stack(padded, axis=0))
 
         key_y = jax.random.split(key, 1)[0]
         self.log_lengthscale = jnp.zeros((n_members, n_features))
         self.log_output_scale = jnp.zeros(n_members)
         self.log_noise = jnp.full((n_members,), -2.0)
-        self.pseudo_targets = jax.random.normal(key_y, (n_members, max_m, n_rates)) * 0.1
+        self.pseudo_targets = (
+            jax.random.normal(key_y, (n_members, max_m, n_rates)) * 0.1
+        )
 
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t
         x_phys = jnp.concatenate([inputs.SCL_modeled_RMCs, inputs.SCL_controlled_PVs])
 
         def per_member(centers_k, log_ls_k, log_out_k, log_noise_k, targets_k):
-            diff_zz = (centers_k[:, None, :] - centers_k[None, :, :]) / jnp.exp(log_ls_k)
+            diff_zz = (centers_k[:, None, :] - centers_k[None, :, :]) / jnp.exp(
+                log_ls_k
+            )
             k_zz = jnp.exp(log_out_k) * jnp.exp(-0.5 * jnp.sum(diff_zz**2, axis=-1))
             k_zz = k_zz + jnp.exp(log_noise_k) * jnp.eye(centers_k.shape[0])
             diff_xz = (x_phys[None, :] - centers_k) / jnp.exp(log_ls_k)
@@ -98,8 +106,12 @@ class EnsembleGPReactionModule(UserReactionModule):
             return k_xz @ jsl.cho_solve(chol, targets_k)
 
         means = jax.vmap(per_member)(
-            self.centers, self.log_lengthscale, self.log_output_scale,
-            self.log_noise, self.pseudo_targets)
+            self.centers,
+            self.log_lengthscale,
+            self.log_output_scale,
+            self.log_noise,
+            self.pseudo_targets,
+        )
         mean = jnp.mean(means, axis=0)
         rate_std = jnp.std(means, axis=0)
         return ReactionOutputs(
@@ -119,17 +131,23 @@ def build_reaction_module(*, seed, training_parent_collection, **kwargs):
 
     pool = []
     for name, process in training_parent_collection.processes.items():
-        traces = [(np.asarray(process.reactor_medium.components[n].concentration.times),
-                   np.asarray(process.reactor_medium.components[n].concentration.values))
-                  for n in rmc_names]
-        values = np.stack([tr[1] for tr in traces], axis=1)   # RAW, (n_t, n_rmc)
+        traces = [
+            (
+                np.asarray(process.reactor_medium.components[n].concentration.times),
+                np.asarray(process.reactor_medium.components[n].concentration.values),
+            )
+            for n in rmc_names
+        ]
+        values = np.stack([tr[1] for tr in traces], axis=1)  # RAW, (n_t, n_rmc)
         scl_values = np.asarray(scaler.scale_value(jnp.asarray(values)))
         is_new = 1.0 if name.startswith("T_") else 0.0
         pv_col = np.full((scl_values.shape[0], 1), is_new)
         pool.append(np.concatenate([scl_values, pv_col], axis=1))
     pool = np.concatenate(pool, axis=0)
 
-    return EnsembleGPReactionModule(key=jax.random.key(seed), data_pool=pool, **scale_kwargs)
+    return EnsembleGPReactionModule(
+        key=jax.random.key(seed), data_pool=pool, **scale_kwargs
+    )
 
 
 def estimate_all_scales(runtime_data, target_names, config):
@@ -165,7 +183,8 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
-            max(runtime_data.initial_volume(i) for i in range(n_processes))),
+            max(runtime_data.initial_volume(i) for i in range(n_processes))
+        ),
         SCALE_modeled_Inflows_cumulative=empty,
         SCALE_modeled_Inflows_rates=empty,
         SCALE_modeled_Outflows_cumulative=empty,
@@ -176,7 +195,9 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=jnp.ones(n_PV),
         SCALE_controlled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0
+        ),
         SCALE_modeled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0
+        ),
     )

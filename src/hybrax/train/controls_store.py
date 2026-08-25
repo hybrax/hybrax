@@ -637,24 +637,32 @@ class PerProcessControls(eqx.Module):
         return self._eval_values(t_arr)[..., :n_inflows]
 
     def eval_controlled_Inflows_rates(self, t_arr, states) -> jax.Array:
-        """RAW controlled Inflow rate at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
+        """RAW controlled Inflow rate at ``t_arr``. See
+        :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+        """
         n_inflows = len(self.name_controlled_Inflows)
         return self._eval_derivatives(t_arr)[..., :n_inflows]
 
     def eval_controlled_Outflows_cumulative(self, t_arr, states) -> jax.Array:
-        """RAW cumulative controlled Outflow volume at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
+        """RAW cumulative controlled Outflow volume at ``t_arr``. See
+        :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+        """
         n_inflows = len(self.name_controlled_Inflows)
         n_outflows = len(self.name_controlled_Outflows)
         return self._eval_values(t_arr)[..., n_inflows : n_inflows + n_outflows]
 
     def eval_controlled_Outflows_rates(self, t_arr, states) -> jax.Array:
-        """RAW controlled Outflow rate at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
+        """RAW controlled Outflow rate at ``t_arr``. See
+        :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+        """
         n_inflows = len(self.name_controlled_Inflows)
         n_outflows = len(self.name_controlled_Outflows)
         return self._eval_derivatives(t_arr)[..., n_inflows : n_inflows + n_outflows]
 
     def eval_controlled_PVs(self, t_arr, states) -> jax.Array:
-        """RAW controlled process-variable value at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
+        """RAW controlled process-variable value at ``t_arr``. See
+        :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+        """
         n_inflows = len(self.name_controlled_Inflows)
         n_outflows = len(self.name_controlled_Outflows)
         n_pvs = len(self.name_controlled_PVs)
@@ -748,7 +756,8 @@ class BatchControls(eqx.Module):
     # Semantic, non-overlapping per-axis accessors (RAW values). ``states`` is a
     # placeholder for future state-dependent controls and is currently unused.
     def eval_controlled_Inflows_cumulative(self, row_idx, t_arr, states) -> jax.Array:
-        """RAW cumulative controlled Inflow volume for batch row ``row_idx`` at ``t_arr``.
+        """RAW cumulative controlled Inflow volume for batch row ``row_idx`` at
+        ``t_arr``.
 
         Args:
             row_idx: Batch row index.
@@ -763,12 +772,17 @@ class BatchControls(eqx.Module):
         return self._eval_values(row_idx, t_arr)[..., :n_inflows]
 
     def eval_controlled_Inflows_rates(self, row_idx, t_arr, states) -> jax.Array:
-        """RAW controlled Inflow rate for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
+        """RAW controlled Inflow rate for batch row ``row_idx`` at ``t_arr``.
+        See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+        """
         n_inflows = len(self.name_controlled_Inflows)
         return self._eval_derivatives(row_idx, t_arr)[..., :n_inflows]
 
     def eval_controlled_Outflows_cumulative(self, row_idx, t_arr, states) -> jax.Array:
-        """RAW cumulative controlled Outflow volume for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
+        """RAW cumulative controlled Outflow volume for batch row ``row_idx``
+        at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the
+        arguments.
+        """
         n_inflows = len(self.name_controlled_Inflows)
         n_outflows = len(self.name_controlled_Outflows)
         return self._eval_values(row_idx, t_arr)[
@@ -776,7 +790,9 @@ class BatchControls(eqx.Module):
         ]
 
     def eval_controlled_Outflows_rates(self, row_idx, t_arr, states) -> jax.Array:
-        """RAW controlled Outflow rate for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
+        """RAW controlled Outflow rate for batch row ``row_idx`` at ``t_arr``.
+        See :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+        """
         n_inflows = len(self.name_controlled_Inflows)
         n_outflows = len(self.name_controlled_Outflows)
         return self._eval_derivatives(row_idx, t_arr)[
@@ -784,7 +800,10 @@ class BatchControls(eqx.Module):
         ]
 
     def eval_controlled_PVs(self, row_idx, t_arr, states) -> jax.Array:
-        """RAW controlled process-variable value for batch row ``row_idx`` at ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the arguments."""
+        """RAW controlled process-variable value for batch row ``row_idx`` at
+        ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the
+        arguments.
+        """
         n_inflows = len(self.name_controlled_Inflows)
         n_outflows = len(self.name_controlled_Outflows)
         n_pvs = len(self.name_controlled_PVs)
@@ -973,7 +992,9 @@ class ControlsStore(eqx.Module):
         cls,
         collection: BioProcessCollection,
     ) -> ControlsStore:
-        """Build a JAX-backed runtime store from a prepared :class:`~hybrax.format.dataclasses.BioProcessCollection`."""
+        """Build a JAX-backed runtime store from a prepared
+        :class:`~hybrax.format.dataclasses.BioProcessCollection`.
+        """
         metadata = dict(collection.metadata or {})
         process_order = cls._process_order(collection, metadata, METADATA_NAMESPACE)
         train_metadata = dict(metadata.get(METADATA_NAMESPACE, {}))

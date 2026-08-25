@@ -1,4 +1,6 @@
-"""Producer-side collection views handed to scale-estimation and training-parent hooks."""
+"""Producer-side collection views handed to scale-estimation and
+training-parent hooks.
+"""
 
 from __future__ import annotations
 
@@ -268,7 +270,9 @@ class RuntimeDataContext:
 
     @property
     def rhs_ode(self):
-        """The shared ``RhsOde`` of every training parent; see ``training_data.rhs_ode``."""
+        """The shared ``RhsOde`` of every training parent; see
+        ``training_data.rhs_ode``.
+        """
         return self.training_data.rhs_ode
 
     @property

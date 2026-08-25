@@ -25,22 +25,30 @@ from hybrax.train import (
 
 
 class KANLayer(eqx.Module):
-    base_w: jax.Array = trainable_field()      # (out, in)
-    spline_c: jax.Array = trainable_field()    # (out, in, grid)
-    centers: jax.Array = frozen_field()        # (grid,)
+    base_w: jax.Array = trainable_field()  # (out, in)
+    spline_c: jax.Array = trainable_field()  # (out, in, grid)
+    centers: jax.Array = frozen_field()  # (grid,)
     inv_h2: float = eqx.field(static=True)
 
     def __init__(self, in_dim, out_dim, grid, key, out_scale):
         kb, ks = jax.random.split(key)
-        self.base_w = out_scale * jax.random.normal(kb, (out_dim, in_dim)) / max(in_dim, 1) ** 0.5
-        self.spline_c = out_scale * jax.random.normal(ks, (out_dim, in_dim, grid)) / max(in_dim, 1) ** 0.5
+        self.base_w = (
+            out_scale * jax.random.normal(kb, (out_dim, in_dim)) / max(in_dim, 1) ** 0.5
+        )
+        self.spline_c = (
+            out_scale
+            * jax.random.normal(ks, (out_dim, in_dim, grid))
+            / max(in_dim, 1) ** 0.5
+        )
         self.centers = jnp.linspace(-2.0, 2.0, grid)
         spacing = 4.0 / max(grid - 1, 1)
         self.inv_h2 = 1.0 / (spacing * spacing)
 
     def __call__(self, x):
         xb = jnp.tanh(x)  # bound inputs onto the RBF grid
-        rbf = jnp.exp(-self.inv_h2 * (xb[:, None] - self.centers[None, :]) ** 2)  # (in, grid)
+        rbf = jnp.exp(
+            -self.inv_h2 * (xb[:, None] - self.centers[None, :]) ** 2
+        )  # (in, grid)
         spline = jnp.einsum("oig,ig->o", self.spline_c, rbf)
         base = self.base_w @ jax.nn.silu(xb)
         return spline + base
@@ -107,7 +115,8 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
         SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
-            max(runtime_data.initial_volume(i) for i in range(n_processes))),
+            max(runtime_data.initial_volume(i) for i in range(n_processes))
+        ),
         SCALE_modeled_Inflows_cumulative=empty,
         SCALE_modeled_Inflows_rates=empty,
         SCALE_modeled_Outflows_cumulative=empty,
@@ -118,7 +127,9 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_controlled_Outflows_rates=empty,
         SCALE_controlled_PVs=empty,
         SCALE_controlled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_controlled_Inflows)), 1.0
+        ),
         SCALE_modeled_Inflows_Cin=jnp.maximum(
-            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0),
+            jnp.abs(jnp.asarray(rhs.Cin_modeled_Inflows)), 1.0
+        ),
     )

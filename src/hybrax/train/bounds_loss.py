@@ -1,4 +1,6 @@
-"""Optional state/rate bound-violation penalty on top of the default measurement loss."""
+"""Optional state/rate bound-violation penalty on top of the default
+measurement loss.
+"""
 
 from __future__ import annotations
 
@@ -86,7 +88,9 @@ class BoundsViolationLossModule(DefaultLossModule):
 
     @property
     def dense_grid_n(self) -> int | None:
-        """Dense-grid opt-in set at construction; see :attr:`UserLossModule.dense_grid_n`."""
+        """Dense-grid opt-in set at construction; see
+        :attr:`UserLossModule.dense_grid_n`.
+        """
         return self._dense_grid_n
 
     @property

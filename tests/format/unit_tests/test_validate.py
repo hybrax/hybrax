@@ -86,7 +86,9 @@ def _make_process(
 def _find(results, contains: str):
     """Return the single (ok, message) entry whose message contains *contains*."""
     matches = [r for r in results if contains in r[1]]
-    assert len(matches) == 1, f"expected exactly one match for {contains!r}, got {matches}"
+    assert len(matches) == 1, (
+        f"expected exactly one match for {contains!r}, got {matches}"
+    )
     return matches[0]
 
 
@@ -666,18 +668,14 @@ class TestValidateOutflowRetention:
         with pytest.raises(ValueError, match="biomass"):
             _make_process(
                 reactor_components={"biomass": self._reactor_comp("biomass")},
-                volume_changes={
-                    "sample": self._outflow(retention={"biomass": 1.5})
-                },
+                volume_changes={"sample": self._outflow(retention={"biomass": 1.5})},
             )
 
     def test_construction_rejects_unknown_component_retention(self):
         with pytest.raises(ValueError, match="typo_name"):
             _make_process(
                 reactor_components={"biomass": self._reactor_comp("biomass")},
-                volume_changes={
-                    "sample": self._outflow(retention={"typo_name": 0.5})
-                },
+                volume_changes={"sample": self._outflow(retention={"typo_name": 0.5})},
             )
 
     def test_construction_rejects_discrete_retention(self):
@@ -855,9 +853,7 @@ class TestValidateInitialStateAlignment:
         all_valid, results = validate_process(process)
 
         assert all_valid is False
-        assert any(
-            not ok and "initial_state_alignment" in msg for ok, msg in results
-        )
+        assert any(not ok and "initial_state_alignment" in msg for ok, msg in results)
 
 
 # ---------------------------------------------------------------------------
@@ -989,8 +985,7 @@ class TestValidateProcess:
 
         assert all_valid is False
         assert any(
-            not ok and "strictly monotonically increasing" in msg
-            for ok, msg in results
+            not ok and "strictly monotonically increasing" in msg for ok, msg in results
         )
 
     def test_empty_measured_total_volume_fails_process(self):
@@ -1756,7 +1751,9 @@ class TestValidateAugmentedParentRefs:
         all_valid, report = validate_for_publication(cs)
         assert all_valid is False
         assert "__augmented__" in report
-        assert any("unknown parent_process" in msg for _, msg in report["__augmented__"])
+        assert any(
+            "unknown parent_process" in msg for _, msg in report["__augmented__"]
+        )
 
 
 # ---------------------------------------------------------------------------

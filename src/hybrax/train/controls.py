@@ -22,7 +22,9 @@ from hybrax.format.time_series.spline_ops import rebase_to_breaks
 
 @dataclass
 class SignalSource:
-    """One controlled signal (Inflow, Outflow, or PV) as a hybrid spline/linear evaluator."""
+    """One controlled signal (Inflow, Outflow, or PV) as a hybrid
+    spline/linear evaluator.
+    """
 
     name: str
     kind: str

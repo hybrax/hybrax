@@ -398,7 +398,9 @@ def _continuous_outflow_process(*, retention):
     )
 
 
-@pytest.mark.parametrize("retention", [{}, {"glucose": 0.5}], ids=["sigma=0", "sigma>0"])
+@pytest.mark.parametrize(
+    "retention", [{}, {"glucose": 0.5}], ids=["sigma=0", "sigma>0"]
+)
 def test_continuous_outflow_raises_not_implemented(retention):
     """A continuous Outflow breaks pseudobatch's exact closed-form ADF
     construction regardless of retention (the obstruction is is_continuous,

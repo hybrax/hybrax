@@ -15,7 +15,7 @@ kernelspec:
 
 
 > Turn a CSV of experimental measurements into a hybrax.format
-> `BioProcessCollection` you can save, share and train on.
+> `BioProcessCollection` that you can save, share and train on.
 
 
 `Hybrax` only requires you to import your training data once into its JSON format. Everything downstream 
@@ -27,6 +27,12 @@ changes. However, the `Hybrax` data format is designed to accomodate a diverse s
 * [chemical decay rates](../gallery/glutamine_decay.md), and
 * [modeled process variables](../gallery/glutamine_decay.md).
 
+
+```{code-cell} ipython3
+:tags: [remove-cell]
+
+%matplotlib inline
+```
 
 ## 1.1 Example data
 
@@ -55,6 +61,19 @@ run_1 = (
 print(len(run_1), "samples from", run_1["time"].iloc[0], "to", run_1["time"].iloc[-1], "h")
 ```
 
+```{code-cell} ipython3
+import matplotlib.pyplot as plt
+
+fig, axes = plt.subplots(3, 1, sharex=True, figsize=(6, 7))
+for ax, name in zip(axes, ("biomass", "glucose", "product")):
+    ax.plot(run_1["time"], run_1[name], marker="o", label=name)
+    ax.set_ylabel(f"{name} (g/L)")
+    ax.legend()
+axes[-1].set_xlabel("time (h)")
+fig.suptitle("run_1 measurements")
+fig.tight_layout()
+```
+
 ## 1.2 Measurements become `TimeSeries`
 
 Every time-varying quantity in hybrax.format is a `TimeSeries` which pairs `times` and `values`.
@@ -75,6 +94,9 @@ biomass
 :class: note
 - Each measured species is its own `TimeSeries` naturally enabling irregular sampling.
 - The `times` vector must be **strictly increasing**.
+- `jump_times` (optional) represent discontinuities in the data (e.g. volume
+  jump due to bolus feed). This is important for `hybrax.train` later as it
+  tells the ODE solver where to split the integration into continuous segments.
 - For a quantity that genuinely does not change, use `hxf.StaticVariable(value)` instead.
 :::
 
@@ -106,7 +128,9 @@ reactor_medium = hxf.ReactorMedium(
     density_unit="kg/L",
     components=components,
 )
-list(reactor_medium.components)
+
+from pprint import pprint
+pprint(reactor_medium.components)
 ```
 
 :::{admonition} Notes
@@ -163,7 +187,7 @@ print("derivatives:", process.biological_ode.derivatives)
 ```
 
 Each species gets a specific rate `q_<species>`, and its derivative is
-`q_<species> * biomass`. Those rates are exactly what a model will later predict.
+`q_<species> * biomass`. Those rates are exactly what a model will predict later.
 
 :::{admonition} This is why a component must be called `biomass`
 :class: warning
@@ -175,15 +199,14 @@ immediately. If your data has no biomass, or you want different dynamics, write
 
 ## 1.6 Collect and save
 
-Setting `case_id`/`organism`/`citation` on a `BioProcessCollection` marks it as a full
-case study, one publication or campaign. `case_id` is also the natural grouping for
-cross-validation later. Leaving them unset (the default) is fine too: that is raw or
-intermediate data with no case-study identity yet, the same container either way.
+Setting `case_id`/`organism`/`citation` on a `BioProcessCollection` marks it as
+a full case study, i.e. all experiments pertaining to a certain publication or
+process development campaign. `case_id` is also the natural grouping for
+cross-validation later. Leaving those unset (the default) is fine too: this
+means raw or intermediate data with no case-study identity yet, the same
+container either way.
 
 ```{code-cell} ipython3
-import contextlib
-import io
-
 collection = hxf.BioProcessCollection(
     case_id="my_first_dataset",
     organism="Escherichia coli",
@@ -193,13 +216,19 @@ collection = hxf.BioProcessCollection(
 
 out = Path("../_data/out/runs/tutorial_01").resolve()
 out.mkdir(parents=True, exist_ok=True)
-with contextlib.redirect_stdout(io.StringIO()):
-    hxf.serialization.save_process_collection(collection, out / "data.json")
+hxf.serialization.save_process_collection(collection, out / "data.json")
 print(f"./{(out / 'data.json').relative_to(out.parents[4])}")
 ```
 
-Note the import path: the save/load functions live on `hxf.serialization`, not on the
-package root.
+Note: save/load functions live on `hxf.serialization`, not on the package root.
+
+Now we can have a look at the full JSON file describing the dataset we just created:
+
+:::{dropdown} Full `data.json`
+```{literalinclude} ../_data/out/runs/tutorial_01/data.json
+:language: json
+```
+:::
 
 ## 1.7 Check the round trip
 
@@ -222,7 +251,7 @@ print("first 3 X   :", np.asarray(run.reactor_medium.components["biomass"].conce
 
 ## What's next
 
-Run the tutorial yourself at `./source/_data/out/runs/tutorial_01/`.
+You can run the full tutorial at `examples/tutorial_01_your_first_dataset/run.py`.
 
 - **[Tutorial 2](02_look_at_it.md)**: check that the package understood your data the
   way you meant it.

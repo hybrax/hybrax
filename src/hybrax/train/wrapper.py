@@ -1,4 +1,6 @@
-"""``HybridOdeWrapper``: RAW physical-state ODE wrapper around a user reaction module."""
+"""``HybridOdeWrapper``: RAW physical-state ODE wrapper around a user
+reaction module.
+"""
 
 from __future__ import annotations
 

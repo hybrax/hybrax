@@ -1,4 +1,5 @@
-"""The training and forward-evaluation harness: the layer above ``trainer.py``'s single batch step.
+"""The training and forward-evaluation harness: the layer above
+``trainer.py``'s single batch step.
 
 This module provides:
 

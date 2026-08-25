@@ -19,13 +19,22 @@ import pandas as pd
 import hybrax.format as hxf
 
 HERE = Path(__file__).parent
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
-       "MPLBACKEND": "Agg"}
+ENV = {
+    **os.environ,
+    "JAX_PLATFORMS": "cpu",
+    "HYBRAX_TRAIN_DEVICES": "1",
+    "MPLBACKEND": "Agg",
+}
 
 
 def hxt_cli(*args):
-    proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],
-                          cwd=HERE, env=ENV, capture_output=True, text=True)
+    proc = subprocess.run(
+        [sys.executable, "-m", "hybrax.train.cli", *args],
+        cwd=HERE,
+        env=ENV,
+        capture_output=True,
+        text=True,
+    )
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
@@ -65,10 +74,16 @@ def dense_diagnostics(run_dir):
     return min_glucose, {k: float(np.mean(v)) for k, v in curvature.items()}
 
 
-hxt_cli("prepare", "--config", "prepare-config.json",
-        "--output-dir", "prepared", "--overwrite")
+hxt_cli(
+    "prepare",
+    "--config",
+    "prepare-config.json",
+    "--output-dir",
+    "prepared",
+    "--overwrite",
+)
 out = hxt_cli("train", "--config", "train-full.json", "--overwrite")
-print([l for l in out.splitlines() if "training complete" in l][-1])
+print([line for line in out.splitlines() if "training complete" in line][-1])
 
 r2 = r2_by_target("run_full")
 min_glucose, curvature = dense_diagnostics("run_full")
@@ -85,9 +100,21 @@ print(f"{'target':10s} {'no penalty':>12s} {'with penalty':>14s}")
 for name in ("biomass", "glucose", "product"):
     print(f"{name:10s} {r2_base[name]:12.4f} {r2[name]:14.4f}")
 print(f"{'min glucose':10s} {min_glucose_base:12.4f} {min_glucose:14.4f}")
-print(f"{'curv(q_X)':10s} {curvature_base['q_biomass']:12.4f} {curvature['q_biomass']:14.4f}")
-print(f"{'curv(q_S)':10s} {curvature_base['q_glucose']:12.4f} {curvature['q_glucose']:14.4f}")
+print(
+    f"{'curv(q_X)':10s} {curvature_base['q_biomass']:12.4f} "
+    f"{curvature['q_biomass']:14.4f}"
+)
+print(
+    f"{'curv(q_S)':10s} {curvature_base['q_glucose']:12.4f} "
+    f"{curvature['q_glucose']:14.4f}"
+)
 
-hxt_cli("forward", "--config", "forward-config.json",
-        "--output-dir", "run_full/forward", "--overwrite")
+hxt_cli(
+    "forward",
+    "--config",
+    "forward-config.json",
+    "--output-dir",
+    "run_full/forward",
+    "--overwrite",
+)
 print(f"forward plot: {HERE / 'run_full/forward/forward-results/plots/run_1.png'}")

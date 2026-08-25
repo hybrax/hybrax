@@ -234,7 +234,9 @@ def test_train_cli_info_logs_reach_output_by_default(tmp_path: Path, capsys):
     # epoch summaries) regardless of --log-level.
     prepared = _write_prepared(tmp_path / "prepared.json")
     run_dir = tmp_path / "run"
-    config = _write_config(tmp_path / "config.json", prepared=prepared, run_dir=run_dir, epochs=1)
+    config = _write_config(
+        tmp_path / "config.json", prepared=prepared, run_dir=run_dir, epochs=1
+    )
 
     assert main(["train", "--config", str(config)]) == 0
 

@@ -22,7 +22,8 @@ def _bundle_prepared_gz(src: Path, dst: Path) -> None:
 
 
 class CheckpointWriter:
-    """Writes self-contained ``checkpoints/step_NNNNN/`` directories and updates ``latest``.
+    """Writes self-contained ``checkpoints/step_NNNNN/`` directories and
+    updates ``latest``.
 
     Each checkpoint bundles everything needed to resume or reload the run:
     trained params, optimizer state, training-progress metadata, and (when
