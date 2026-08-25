@@ -1,0 +1,22 @@
+{
+  "data": {
+    "prepared": "prepared",
+    "targets": ["biomass", "glucose"],
+    "target_source": "reactor_components"
+  },
+  "custom_py": "custom.py",
+  "custom": {
+    "model": "ann"
+  },
+  "train": {
+    "epochs": 1,
+    "seed": 0,
+    "learning_rate": 0.03
+  },
+  "checkpoint": {
+    "every": 0
+  },
+  "output": {
+    "dir": "run_ann_early"
+  }
+}

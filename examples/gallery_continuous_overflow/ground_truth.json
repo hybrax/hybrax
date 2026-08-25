@@ -1,0 +1,15 @@
+{
+  "initial_volume": 0.5,
+  "overflow_volume": 1.0,
+  "initial_biomass": 0.5,
+  "initial_glucose": 5.0,
+  "feed_glucose": 50.0,
+  "flow_rate": 0.1,
+  "yield_xs": 0.5,
+  "mu_max": 0.5,
+  "Ks": 0.5,
+  "batch_end": 3.58351893845611,
+  "feed_start": 4.58351893845611,
+  "overflow_start": 9.583518938456109,
+  "end_time": 40.0
+}
