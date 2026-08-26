@@ -349,6 +349,9 @@ class TrainHarnessConfig:
     prepared_path: Path | None = None
     # Optional LOO holdout set, evaluated whenever a checkpoint is written.
     holdout_processes: tuple[str, ...] | None = None
+    # Non-augmented holdout processes whose existing evaluation trajectories are
+    # written with checkpoints.
+    holdout_prediction_processes: tuple[str, ...] | None = None
     holdout_label: str = "holdout"
 
 
@@ -1964,6 +1967,12 @@ def train_collection(
                 f"holdout_processes contains unknown names: {unknown}; "
                 f"available={tuple(store.process_order)}"
             )
+        if cfg.holdout_prediction_processes is not None and not set(
+            cfg.holdout_prediction_processes
+        ).issubset(set(cfg.holdout_processes)):
+            raise ValueError(
+                "holdout_prediction_processes must be a subset of holdout_processes"
+            )
 
     def _evaluate_holdout(step: int):
         if not cfg.holdout_processes:
@@ -1998,24 +2007,32 @@ def train_collection(
             per_sample_per_target_parts.append(
                 np.asarray(per_sample_per_target[:valid])
             )
-            dense_exports.update(
-                dense_exports_from_save_outputs(
-                    measurement_t[:valid],
-                    jtu.tree_map(
-                        lambda leaf, n_valid=valid: leaf[:n_valid],
-                        measurement_save_outputs,
-                    ),
-                    wrapper,
-                    valid_names,
-                    prediction_valid=measurement_prediction_valid[:valid],
-                )
+            export_indices = np.asarray(
+                [
+                    i
+                    for i, name in enumerate(valid_names)
+                    if name in (cfg.holdout_prediction_processes or ())
+                ]
             )
+            if export_indices.size:
+                dense_exports.update(
+                    dense_exports_from_save_outputs(
+                        measurement_t[export_indices],
+                        jtu.tree_map(
+                            lambda leaf, idcs=export_indices: leaf[idcs],
+                            measurement_save_outputs,
+                        ),
+                        wrapper,
+                        tuple(valid_names[i] for i in export_indices),
+                        prediction_valid=measurement_prediction_valid[export_indices],
+                    )
+                )
         per_sample_total = np.concatenate(per_sample_total_parts)
         per_sample_per_target = np.concatenate(per_sample_per_target_parts)
         return (
             float(np.mean(per_sample_total)),
             tuple(float(value) for value in np.mean(per_sample_per_target, axis=0)),
-            dense_exports,
+            dense_exports or None,
         )
 
     with RunLogger(
@@ -2240,7 +2257,22 @@ def _prepare_training_from_selected_parents(
     _log_train_hooks(custom_module)
     process_order = tuple(store.process_order)
     selected_processes = _ensure_process_names(store, config.process_names)
-    train_cfg = dataclasses.replace(config, process_names=selected_processes)
+    parent_process_names = original_parent_processes(
+        process_order, augmentation_parents
+    )
+    # if we got holdout processes and they contain a parent (i.e. non-augmented,
+    # original process), we want to write predictions of parent holdout processes to CSV
+    # at each checkpoint for easier post-train results evaluation
+    holdout_prediction_processes = None
+    if config.holdout_processes is not None and parent_process_names:
+        holdout_prediction_processes = tuple(
+            name for name in parent_process_names if name in config.holdout_processes
+        )
+    train_cfg = dataclasses.replace(
+        config,
+        process_names=selected_processes,
+        holdout_prediction_processes=holdout_prediction_processes,
+    )
     expected_parents = canonical_training_parents(
         process_order, augmentation_parents, selected_processes
     )
@@ -2270,9 +2302,7 @@ def _prepare_training_from_selected_parents(
         loss_module=loss_module,
         config=train_cfg,
         optimizer=optimizer,
-        prediction_parent_process_names=original_parent_processes(
-            process_order, augmentation_parents
-        ),
+        prediction_parent_process_names=parent_process_names,
     )
 
 
