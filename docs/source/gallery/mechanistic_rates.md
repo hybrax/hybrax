@@ -190,5 +190,5 @@ Run the example yourself at `./source/_data/out/runs/gallery_structured_rates/`.
   problem, for comparison.
 - [Dense losses](dense_loss.md): bounds and smoothness as an alternative way to encode
   what you know about the biology.
-- [Glutamine decay](glutamine_decay.md): a single declared rate feeding two coupled
+- [Glutamine degradation](glutamine_decay.md): a single declared rate feeding two coupled
   derivatives at once, the same "did it recover the true parameters" check.

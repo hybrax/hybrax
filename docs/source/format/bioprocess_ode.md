@@ -118,7 +118,7 @@ states, algebraic quantities, or declared rates. Two or more states added togeth
 from that check: `-q_a * a - r_b * b` is fine even when `a` and `b` differ, since each
 rate is trusted to carry whatever unit bridges its own term, the same trust already
 extended to a lone `rate * state` product. See [Gallery: glutamine
-decay](../gallery/glutamine_decay.md) for a worked example: one rate feeding two
+degradation](../gallery/glutamine_decay.md) for a worked example: one rate feeding two
 derivatives across a `g/L` state and a `mol/L` state.
 
 ## Layout: `ProcessOrdering`
@@ -189,7 +189,7 @@ Related helpers, for when you are building your own integrator:
 - [The Reaction Module](../train/reaction_module.md): what supplies the rates.
 - [Gallery: mechanistic models](../gallery/mechanistic_rates.md): real kinetics in place
   of a bare network.
-- [Gallery: glutamine decay](../gallery/glutamine_decay.md): one declared rate feeding
+- [Gallery: glutamine degradation](../gallery/glutamine_decay.md): one declared rate feeding
   two coupled derivatives at once.
 - [Gallery: a modeled process variable](../gallery/modeled_pv.md): a dynamic process
   variable's own rate, `r_p`, and why it is never diluted the way a component's `q_c` is.

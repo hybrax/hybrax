@@ -1,4 +1,4 @@
-# Gallery: Glutamine decay
+# Gallery: Glutamine degradation
 
 One physical rate, `r_Gln`, declared once in `biological_ode.rates`, feeds
 two derivatives at once: a sink in Gln, a source in NH4. The value is

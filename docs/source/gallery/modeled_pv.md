@@ -234,7 +234,7 @@ reaction module controls at all.
 - **A `UserReactionModule` with modeled process variables must return
   `SCALE_modeled_PVs` from `estimate_all_scales`.** It is not required for a
   PV-free dataset (it defaults to an empty scaler), so a reaction module copied from a
-  page like [Glutamine decay](glutamine_decay.md) that never had one will raise a
+  page like [Glutamine degradation](glutamine_decay.md) that never had one will raise a
   shape-mismatch error the moment a modeled PV is added; add the axis explicitly, as
   this page's `custom.py` does.
 - **Dilution reaching a modeled process variable is not a silent possibility to guard

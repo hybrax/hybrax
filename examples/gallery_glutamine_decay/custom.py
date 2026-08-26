@@ -1,4 +1,4 @@
-"""Glutamine decay rate law: three constant specific rates, no kinetic
+"""Glutamine degradation rate law: three constant specific rates, no kinetic
 structure at all. The point of this page is entirely in the dataset's own
 biological_ode block (one shared rate feeding two derivatives), not in this
 reaction module.

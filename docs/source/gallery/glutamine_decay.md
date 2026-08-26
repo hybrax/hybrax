@@ -10,7 +10,7 @@ kernelspec:
   name: python3
 ---
 
-# Glutamine decay
+# Glutamine degradation
 
 > **Demonstrates.** One physical rate, declared once in `biological_ode.rates`,
 > feeding two different derivatives at once, a sink in one, a source in the other,
@@ -30,7 +30,7 @@ Two things are reduced from the paper's own version, disclosed plainly:
 
 - NH4's own balance (Eq. 20) has three source terms: metabolic production tied to
   glutamine consumption (`qNH4 * VCC`, where `qNH4 = YNH4/gln * qgln`, Eq. 10), release
-  from a feed component's own decay, and the chemical decomposition of glutamine
+  from a feed component's own degradation, and the chemical decomposition of glutamine
   (`YNH4,gln * rNH4,gln * cgln`). This page keeps only the third: that is the one rate
   this page is actually about, and the other two would add unrelated terms on top of
   the point being made.
@@ -137,7 +137,7 @@ print("matches the real declared biological_ode:", glutamine_ode == process.biol
 ```
 
 `Gln`'s derivative has two terms: `-q_Gln * biomass`, ordinary uptake tied to growth,
-and `-r_Gln * Gln`, the chemical decay this page is about. `NH4`'s derivative is just
+and `-r_Gln * Gln`, the chemical degradation this page is about. `NH4`'s derivative is just
 `r_Gln * Gln`, the same `r_Gln` symbol, reused verbatim. There is no wiring connecting
 the two beyond that shared name: `hybrax.format` parses each expression independently, so
 whatever value training settles on for `r_Gln` has to simultaneously explain

@@ -37,7 +37,7 @@ needed at all.
 | [Mechanistic Models](mechanistic_rates.md) | Mechanistic kinetics (Monod, Luedeking-Piret) instead of a bare MLP; recovering physical parameters, and where they trade off against each other. |
 | [Custom Losses](dense_loss.md) | A loss module that constrains the trajectory *between* measurements: bounds on states and rates read from hybrax.format's own metadata, plus a rate-smoothness penalty. |
 | [Stateful Models](stateful.md) | A continuous-time LSTM (a reaction module with its own memory, integrated as extra ODE latents) and the opt-in that guards it. |
-| [Glutamine Decay](glutamine_decay.md) | One declared rate feeding two coupled derivatives at once, a sink in one, a source in the other, recovered from data as a single shared number. |
+| [Glutamine Degradation](glutamine_decay.md) | One declared rate feeding two coupled derivatives at once, a sink in one, a source in the other, recovered from data as a single shared number. |
 
 ## Loo Demo
 
