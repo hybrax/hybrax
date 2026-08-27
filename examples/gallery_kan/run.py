@@ -24,6 +24,7 @@ import pandas as pd
 
 import hybrax.format as hxf
 import hybrax.train as hxt
+from shape_match import best_match
 
 HERE = Path(__file__).parent
 ENV = {
@@ -107,23 +108,97 @@ def edge_curve(o, i, xs_scl):
     return spline + base
 
 
+out = HERE / "out"
+out.mkdir(exist_ok=True)
+
 fig, axes = plt.subplots(1, 3, figsize=(11, 3))
+edge_rows = []
 for ax, species in zip(axes, names):
     i = names.index(species)
     vals = df[f"c_{species}"].to_numpy()
     lo, hi = max(float(vals.min()), 0.0), float(vals.max())
     xs_raw = np.linspace(lo, hi, 60)
     xs_scl = jnp.asarray(xs_raw / scale[i])
-    spreads = [
-        float(jnp.ptp(edge_curve(o, i, xs_scl))) for o in range(l1.base_w.shape[0])
-    ]
-    o = int(np.argmax(spreads))
-    ys = np.asarray(edge_curve(o, i, xs_scl))
-    ax.plot(xs_raw, ys)
+    curves = [np.asarray(edge_curve(o, i, xs_scl)) for o in range(l1.base_w.shape[0])]
+    for o, ys in enumerate(curves):
+        m = best_match(xs_raw, ys)
+        edge_rows.append((species, o, m["best"], m["r2"]))
+    o = int(np.argmax([float(np.ptp(ys)) for ys in curves]))
+    match = best_match(xs_raw, curves[o])
+    ax.plot(xs_raw, curves[o])
     ax.set_xlabel(f"{species} (g/L)")
-    ax.set_title(f"edge: {species} -> hidden {o}")
+    ax.set_title(f"edge: {species} -> hidden {o}\n({match['best']})")
 fig.tight_layout()
-out = HERE / "out"
-out.mkdir(exist_ok=True)
 fig.savefig(out / "edges.png")
 print(f"wrote {out / 'edges.png'}")
+
+pd.DataFrame(edge_rows, columns=["input", "hidden_unit", "shape", "r2"]).to_csv(
+    out / "edge_shapes.csv", index=False
+)
+print(f"wrote {out / 'edge_shapes.csv'} (all {len(edge_rows)} of l1's edges)")
+
+
+# --- equation recovery: does the trained model's own behavior match the
+# real process that generated its training data (hybrax/docs/source/_data/
+# generate.py, build_demo_batch)? ---
+
+TRUE = {"mu_max": 0.45, "Ks": 0.05, "Y_XS": 0.45, "m_s": 0.02, "alpha": 0.08, "beta": 0.006}
+TRUE_SCALE = {
+    "q_biomass": TRUE["mu_max"],
+    "q_glucose": -(TRUE["mu_max"] / TRUE["Y_XS"] + TRUE["m_s"]),
+    "q_product": TRUE["alpha"] * TRUE["mu_max"] + TRUE["beta"],
+}
+
+
+def eval_reaction_module(state_raw):
+    scl = jnp.asarray(np.asarray(state_raw) / scale)
+    h = kan.l1(scl)
+    return np.asarray(kan.l2(h) + kan.prod_a(h[0:1]) * kan.prod_b(h[1:2]))
+
+
+pooled = {n: [] for n in names}
+for process in _collection.processes.values():
+    for species in names:
+        comp = process.reactor_medium.components[species].concentration
+        pooled[species].append(np.asarray(comp.values))
+pooled = {n: np.concatenate(v) for n, v in pooled.items()}
+ranges = {n: (max(float(pooled[n].min()), 0.0), float(pooled[n].max())) for n in names}
+fixed = {n: float(np.median(pooled[n])) for n in names}
+
+print("\nequation recovery: real rates only depend on glucose (Ks=0.05 g/L); does the model agree?")
+eq_rows = []
+for out_idx, rate in enumerate(["q_biomass", "q_glucose", "q_product"]):
+    sweeps = {}
+    for species in names:
+        lo, hi = ranges[species]
+        xs = np.linspace(lo, hi, 40)
+        ys = []
+        for x in xs:
+            state = [fixed[n] for n in names]
+            state[names.index(species)] = x
+            ys.append(eval_reaction_module(state)[out_idx])
+        sweeps[species] = (xs, np.array(ys), None)
+    glucose_spread = float(np.ptp(sweeps["glucose"][1]))
+    for species in names:
+        xs, ys, _ = sweeps[species]
+        m = best_match(xs, ys)
+        spread = float(np.ptp(ys))
+        if species == "glucose":
+            note = f"shape={m['best']} (closest={m['closest']}, R2={m['r2']:.2f})"
+        else:
+            rel = spread / glucose_spread if glucose_spread > 1e-12 else 0.0
+            note = f"{'negligible' if rel < 0.10 else 'not negligible'} ({rel * 100:.1f}% of glucose's effect)"
+        eq_rows.append((rate, species, spread, note))
+        print(f"  {rate:10s} vs {species:8s}: spread={spread:.5f}  {note}")
+    fit = best_match(*sweeps["glucose"][:2])
+    if fit["closest"] == "saturating":
+        a_fit, k_fit, c_fit = fit["fits"]["saturating"]["params"]
+        print(
+            f"    recovered a*S/(Ks+S)+c: a={a_fit:.3f} (true {TRUE_SCALE[rate]:.3f}), "
+            f"Ks={k_fit:.3f} (true {TRUE['Ks']}), c={c_fit:.3f} (true 0)"
+        )
+
+pd.DataFrame(eq_rows, columns=["rate", "swept_input", "spread", "note"]).to_csv(
+    out / "equation_recovery.csv", index=False
+)
+print(f"wrote {out / 'equation_recovery.csv'}")

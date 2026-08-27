@@ -649,6 +649,13 @@ def build_demo_products() -> None:
                 meas[species][0] = truth[species][0]
             run_name = f"{key}_run_{r + 1}"
             processes[run_name] = _products_process(run_name, meas, sample_times, end)
+            processes[run_name].process_variables["is_new_product"] = hxf.ProcessVariable(
+                name="is_new_product",
+                unit="-",
+                is_controlled=True,
+                values=hxf.StaticVariable(1.0 if key == "T" else 0.0),
+                bounds=(0.0, 1.0),
+            )
 
     collection = hxf.BioProcessCollection(
         case_id="demo_products",
@@ -1118,7 +1125,9 @@ def _optfed_rates(
     X: float, P: float, G: float, T_K: float
 ) -> tuple[float, float, float]:
     """(q_biomass, q_product, q_glucose), per unit active biomass except
-    q_glucose (per unit total biomass, matching Eq. 1c's own X multiplier)."""
+    q_glucose (per unit total biomass). A deliberate simplification: see
+    gallery/optfed.md's "The reaction module" section for why this is not a
+    literal reading of the paper's Eq. 1c."""
     px = P / max(X, 1e-9)
 
     gdeg_max = _optfed_eyring(T_K, **OPTFED_E_DEG)

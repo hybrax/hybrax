@@ -479,6 +479,8 @@ needed at all.</p>
 </section>
 <section id="paper-demo">
 <h2>Paper Demo<a class="headerlink" href="#paper-demo" title="Link to this heading">¶</a></h2>
+<p>Each entry below borrows its shape from a real published hybrid model and rebuilds it inside
+hybrax’s own architecture and training loop, as closely as that allows.</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
@@ -500,7 +502,7 @@ needed at all.</p>
 <td><p>FBA-Hyb extended with an actual PLS-shaped component (linear, low-rank, no neural network) that reads media composition alongside state.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="kan.html"><span class="std std-doc">KAN Models</span></a></p></td>
-<td><p>Learnable univariate functions on edges, summed at nodes, occupying a reaction module’s slot instead of a neural network, with each edge’s learned curve read out directly after training.</p></td>
+<td><p>Learnable univariate functions on edges, mostly summed but partly combined multiplicatively at nodes, occupying a reaction module’s slot instead of a neural network, with each edge’s learned curve matched against a shape library after training.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="optfed.html"><span class="std std-doc">OptFed Models</span></a></p></td>
 <td><p>A real, published non-competitive-inhibition Michaelis-Menten rate law with Eyring-equation temperature dependence, <code class="docutils literal notranslate"><span class="pre">temperature</span></code> feeding straight into the kinetics as a controlled process variable.</p></td>

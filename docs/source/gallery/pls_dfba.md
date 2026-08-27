@@ -120,7 +120,7 @@ constant-valued controlled process variable does the job instead, the same mecha
 ```{literalinclude} ../../../examples/gallery_pls_dfba/custom.py
 :language: python
 :linenos:
-:lines: 46-56
+:lines: 46-58
 ```
 
 ## The PLS component
@@ -128,7 +128,7 @@ constant-valued controlled process variable does the job instead, the same mecha
 ```{literalinclude} ../../../examples/gallery_pls_dfba/custom.py
 :language: python
 :linenos:
-:lines: 83-109
+:lines: 237-262
 ```
 
 `W` compresses `n_in` predictors (state + `media_blend_fraction`) down to
@@ -140,7 +140,7 @@ collinear predictors in the first place, rather than just more capacity.
 ```{literalinclude} ../../../examples/gallery_pls_dfba/custom.py
 :language: python
 :linenos:
-:lines: 112-118
+:lines: 265-310
 ```
 
 The rest of the reaction module (surrogate call, unit conversion, scaling) is

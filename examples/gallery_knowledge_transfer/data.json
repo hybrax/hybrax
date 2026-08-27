@@ -194,7 +194,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -404,7 +418,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -614,7 +642,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -824,7 +866,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -1034,7 +1090,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -1244,7 +1314,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -1454,7 +1538,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -1664,7 +1762,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -1874,7 +1986,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -2084,7 +2210,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -2294,7 +2434,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -2504,7 +2658,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -2714,7 +2882,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -2924,7 +3106,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -3134,7 +3330,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -3344,7 +3554,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -3554,7 +3778,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -3764,7 +4002,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -3974,7 +4226,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -4184,7 +4450,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -4394,7 +4674,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -4604,7 +4898,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -4814,7 +5122,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -5024,7 +5346,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -5234,7 +5570,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 1.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -5444,7 +5794,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 1.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -5654,7 +6018,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 1.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -5864,7 +6242,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 1.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",

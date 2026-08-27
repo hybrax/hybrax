@@ -164,11 +164,16 @@ next since it uses `gamma_deg` as one of its own activation variables (the
 paper's real coupling: more total uptake activates more maintenance), then
 `gamma_pi` (production) saturates in `gamma_deg - gamma_alpha`. `X_active`
 (declared in the dataset's `biological_ode` block as `biomass - product`)
-does the rest: because every rate here is *specific* (per unit active
-biomass, except `q_glucose`, which the paper's own Eq. 1c multiplies by total
-biomass), no manual `Xr/X` correction is needed inside `__call__` at all,
-`X_active` in the declared derivative strings does that division-then
--multiplication implicitly and exactly.
+does the rest for every rate except `q_glucose`. `q_biomass` and `q_product` are
+*specific* (per unit active biomass), so no manual `Xr/X` correction is needed inside
+`__call__` for them. `X_active` in the declared derivative strings does that
+division-then-multiplication implicitly and exactly. `q_glucose` is the one rate that
+stays scaled by total `biomass` instead. That is not a literal reading of the paper's
+Eq. 1c: substituting the paper's own Eq. 1f (γ° = γX/Xr) into Eq. 1c shows the fitted
+quantity `q_glucose` (≈ γ°) should scale with active biomass like every other rate
+here. It is a deliberate simplification instead, the same one
+[the data generator](../_data/generate.py) applies when it forward-simulates this
+page's training data, so the model and its own ground truth stay self-consistent.
 
 ## Training
 

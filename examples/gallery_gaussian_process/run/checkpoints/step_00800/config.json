@@ -1,0 +1,70 @@
+{
+  "status": "running",
+  "started_at": "2026-08-26T12:48:09+0200",
+  "cli_argv": [
+    "/home/mgotsmy/code/bpbench/hybrax/src/hybrax/train/cli.py",
+    "train",
+    "--config",
+    "train-config.json",
+    "--overwrite"
+  ],
+  "config": {
+    "data": {
+      "prepared": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_gaussian_process/prepared/prepared.json",
+      "processes": null,
+      "targets": null,
+      "target_source": "auto"
+    },
+    "custom_py": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_gaussian_process/custom.py",
+    "train": {
+      "epochs": 800,
+      "seed": 0,
+      "optimizer": "adam",
+      "learning_rate": 0.01,
+      "grad_clip_norm": 1000.0,
+      "batch_size": null,
+      "shuffle": true,
+      "batch_seed": null,
+      "devices": 1,
+      "allow_stateful_models": false
+    },
+    "solver": {
+      "max_steps": 2048,
+      "rtol": 1e-05,
+      "atol": 1e-07,
+      "jump_ts": true
+    },
+    "checkpoint": {
+      "every": 0.0
+    },
+    "output": {
+      "dir": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_gaussian_process/run",
+      "predictions": "parents"
+    },
+    "logging": {
+      "decimals": 4
+    },
+    "prepare": null,
+    "custom": null,
+    "loo": null
+  },
+  "inputs": {
+    "prepared_input": {
+      "path": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_gaussian_process/prepared/prepared.json",
+      "content_hash": "sha256:45b4e78e44b6076830face7941bd04c19669c8b588ad0a62d2184aa6ecb7fea5"
+    },
+    "custom_py": {
+      "bundled": "custom.py",
+      "file_hash": "sha256:0a495a9f66bcf27245861d82bac053133925d20c2d0f44e5215e1fa437208c7e"
+    }
+  },
+  "environment": {
+    "python": "3.13.5",
+    "hybrax": "0.1.0",
+    "jax": "0.10.0",
+    "optax": "0.2.8",
+    "equinox": "0.13.8",
+    "diffrax": "0.7.2",
+    "pydantic": "2.13.4"
+  }
+}

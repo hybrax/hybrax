@@ -1,0 +1,25 @@
+input,hidden_unit,shape,r2
+biomass,0,no clean match,0.8406744869522739
+biomass,1,saturating,0.9974571449553904
+biomass,2,power,0.9972890480288524
+biomass,3,saturating,0.9925774737639717
+biomass,4,saturating,0.9986069770270684
+biomass,5,power,0.9969096891693785
+biomass,6,saturating,0.9621823040523594
+biomass,7,exponential,0.9996259680794299
+glucose,0,saturating,0.9924582055480162
+glucose,1,no clean match,0.8344054277084277
+glucose,2,saturating,0.997793189094289
+glucose,3,saturating,0.9917813746168601
+glucose,4,power,0.9799997093721255
+glucose,5,saturating,0.9979652598903452
+glucose,6,saturating,0.9971355763294526
+glucose,7,saturating,0.9971597642942074
+product,0,saturating,0.9986588771221112
+product,1,power,0.96942713074074
+product,2,saturating,0.998826972965055
+product,3,saturating,0.9985060115673741
+product,4,saturating,0.998437556626916
+product,5,power,0.9824753502303892
+product,6,saturating,0.9434575367135434
+product,7,saturating,0.9912224036345145

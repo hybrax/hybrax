@@ -47,13 +47,16 @@ needed at all.
 
 ## Paper Demo
 
+Each entry below borrows its shape from a real published hybrid model and rebuilds it inside
+hybrax's own architecture and training loop, as closely as that allows.
+
 | Entry | Demonstrates |
 |---|---|
 | [Gaussian Processes](gaussian_process.md) | A closed-form sparse-GP posterior, mean and variance, occupying a reaction module's slot instead of a neural network. |
 | [Knowledge Transfer](knowledge_transfer.md) | Pooling data across products to help a data-poor new one, using a controlled process variable as a product-identity feature. |
 | [FBA-Hyb](fba_hyb.md) | A frozen, pole-free surrogate of a real flux-balance-analysis solution inside a reaction module, so no LP solve ever happens during training. |
 | [PLS-dFBA](pls_dfba.md) | FBA-Hyb extended with an actual PLS-shaped component (linear, low-rank, no neural network) that reads media composition alongside state. |
-| [KAN Models](kan.md) | Learnable univariate functions on edges, summed at nodes, occupying a reaction module's slot instead of a neural network, with each edge's learned curve read out directly after training. |
+| [KAN Models](kan.md) | Learnable univariate functions on edges, mostly summed but partly combined multiplicatively at nodes, occupying a reaction module's slot instead of a neural network, with each edge's learned curve matched against a shape library after training. |
 | [OptFed Models](optfed.md) | A real, published non-competitive-inhibition Michaelis-Menten rate law with Eyring-equation temperature dependence, `temperature` feeding straight into the kinetics as a controlled process variable. |
 
 ## See also

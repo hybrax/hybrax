@@ -93,19 +93,21 @@ distinguishable cell lines, not re-seeded noise: see
 `ReactionInputs` has no "which process produced this state" field, by design: the
 same reaction module applies uniformly regardless of source process. A constant
 controlled process variable does exactly this job instead, using only existing,
-unmodified hybrax machinery:
+unmodified hybrax machinery. [The data generator](../_data/generate.py)'s
+`build_demo_products()` attaches it directly, once, when it builds each process:
 
-```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
+```{literalinclude} ../_data/generate.py
 :language: python
 :linenos:
-:lines: 39-49
+:lines: 651-658
+:dedent: 12
 ```
 
-`is_new_product` is `0.0` for every timepoint of every historical run, `1.0` for the
-target's: a one-hot product-identity feature, concatenated onto the physiological
-state before the kernel sees it (below). Attaching it via `transform_process_collection`
-means `demo_products` itself carries no such column: the page's own setup mutates a
-working copy.
+`is_new_product` is `0.0` for every historical run's process, `1.0` for the target's:
+a one-hot product-identity feature, concatenated onto the physiological state before
+the kernel sees it (below). It ships as a `StaticVariable`-valued controlled process
+variable in `data.json` itself: `demo_products` carries the column already, no
+prepare-time hook needed to attach it.
 
 ## The ensemble
 
@@ -120,7 +122,7 @@ free vectors.
 ```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
 :language: python
 :linenos:
-:lines: 52-85
+:lines: 36-69
 ```
 
 `centers` is a `frozen_field()`: real `(state, is_new_product)` pairs pulled from
@@ -131,7 +133,7 @@ through the ODE fit, unlike the real state locations.
 ```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
 :language: python
 :linenos:
-:lines: 87-110
+:lines: 71-94
 ```
 
 The final prediction is the mean across heads; the **spread across heads** stands in
@@ -145,7 +147,7 @@ reaction-module call.
 ```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
 :language: python
 :linenos:
-:lines: 113-132
+:lines: 97-116
 ```
 
 `build_reaction_module` is the piece that changed shape from every other gallery
@@ -181,12 +183,9 @@ products actually cover.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-sys.path.insert(0, str(WORK))
-from custom import transform_process_collection
 import hybrax.train as hxt
 
-_heldout_raw = hxf.serialization.load_process_collection(WORK / "heldout.json")
-_heldout = transform_process_collection(_heldout_raw, config=None)
+_heldout = hxf.serialization.load_process_collection(WORK / "heldout.json")
 
 def r2_by_target(run_dir):
     wrapper, cfg = hxt.model_load(str(WORK / run_dir))
@@ -271,10 +270,6 @@ measured trajectory throughout.
   interpolation problem any flexible model solves easily with a couple of examples.
   Test on conditions the training runs did not cover, the way real "few experiments
   for a new product" data actually looks.
-- **`prepare-config.json` needs `custom_py` at the top level**, not just the train
-  config. Omit it and `transform_process_collection` silently never runs: no error,
-  no warning, `is_new_product` just never gets attached. See
-  [Prepare](../train/prepare.md#configuration).
 - **A constant-valued controlled PV does not scale to many products without a real
   embedding.** One-hot works for a handful of products; Hutter et al. <a href="#ref-hutter2021">[2]</a>
   use a learned embedding instead once the product count grows.

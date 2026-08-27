@@ -24,7 +24,6 @@ import numpy as np
 
 import hybrax.format as hxf
 import hybrax.train as hxt
-from custom import transform_process_collection
 
 HERE = Path(__file__).parent
 ENV = {
@@ -75,8 +74,7 @@ for variant in ("local", "pooled"):
     )
     hxt_cli("train", "--config", f"train-{variant}.json", "--overwrite")
 
-_heldout_raw = hxf.serialization.load_process_collection(HERE / "heldout.json")
-_heldout = transform_process_collection(_heldout_raw, config=None)
+_heldout = hxf.serialization.load_process_collection(HERE / "heldout.json")
 
 
 def r2_by_target(run_dir):

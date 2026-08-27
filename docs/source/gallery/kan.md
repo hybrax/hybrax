@@ -17,9 +17,12 @@ kernelspec:
 > **Demonstrates.** A Kolmogorov-Arnold Network (KAN) occupying the reaction module's
 > slot: every edge between an input and a hidden or output node carries its own
 > learnable univariate function (a SiLU base term plus a small Gaussian
-> radial-basis expansion), summed at each node, instead of an MLP's fixed
-> activation with learned linear weights. Trained end to end by `hybrax.train`'s own
-> optimizer; each edge's learned curve can be read out directly after training.
+> radial-basis expansion). Most nodes sum their incoming edges; each of the three
+> output rates also combines two of them multiplicatively, instead of an MLP's
+> fixed activation with learned linear weights. Trained end to end by
+> `hybrax.train`'s own optimizer; each edge's learned curve can be matched against
+> a small shape library after training, and the trained model's overall behavior
+> can be checked against the real process that generated its training data.
 
 Inspired by Bühler & Guillén-Gosálbez 2026 <a href="#ref-srkan">[1]</a>, whose
 SR-KAN framework builds on Kolmogorov-Arnold Networks
@@ -27,7 +30,7 @@ SR-KAN framework builds on Kolmogorov-Arnold Networks
 interpretable kinetic rate laws for a batch fermentation of biomass, substrate
 and product, a system whose shape lines up closely with `demo_batch`'s own
 biomass/glucose/product state. This page reproduces the core architectural idea
-(learnable univariate functions on edges, summed at nodes, in place of an MLP)
+(learnable univariate functions on edges, combined at nodes, in place of an MLP)
 as a live `hybrax.train` reaction module, using a Gaussian radial-basis edge function
 in place of B-splines, an equivalent formulation per Li 2024
 <a href="#ref-rbf">[3]</a>, the same reasoning SR-KAN itself uses to justify
@@ -41,14 +44,17 @@ derivatives from noisy measurements, then those derivatives are symbolically
 regressed offline. Nothing here reproduces the Neural CDE stage; hybrax.format's own
 ODE integration already provides a differentiable trajectory directly.
 
-This page also does not reproduce SR-KAN's post-hoc symbolic-extraction pipeline
-(matching each trained edge's curve against a closed-form function library via
-BFGS, with entropy/sparsity regularization and separability/symmetry detection,
-to arrive at a literal equation). The KAN below stays a trained numerical model:
-a reader can look directly at each edge's learned curve (below, in
-[What each edge learned](#what-each-edge-learned)), which is the practical core
-of SR-KAN's own interpretability pitch, but nothing here distills that curve
-into a symbolic formula.
+This page does take one step from SR-KAN's own post-hoc symbolic-extraction
+pipeline: after training, each of `l1`'s edges gets matched against a small
+library of simple shapes (flat, linear, power, saturating, exponential), scored
+by fit quality rather than assumed (below, in
+[What each edge learned](#what-each-edge-learned)). What stays out of scope is
+the harder remainder of SR-KAN's pipeline: entropy/sparsity regularization,
+separability/symmetry detection, and composing matched edges across both layers
+into one closed-form right-hand side for the whole ODE.
+[Recovering the real rate law](#recovering-the-real-rate-law) below checks the
+trained model's overall behavior against the real process that generated its
+training data directly, without needing that composition step.
 
 The walkthrough below shows the file in pieces, next to the reasoning for each one. For
 the whole thing at once: to copy, diff against your own, or just read top to bottom:
@@ -74,6 +80,8 @@ WORK.mkdir(parents=True)
 EXAMPLE = Path("../../../examples/gallery_kan").resolve()
 shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
 shutil.copy(EXAMPLE / "custom.py", WORK / "custom.py")
+shutil.copy(EXAMPLE / "shape_match.py", WORK / "shape_match.py")
+sys.path.insert(0, str(WORK))
 
 ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
@@ -96,6 +104,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import hybrax.format as hxf
 import hybrax.train as hxt
+from shape_match import best_match
 
 _collection = hxf.serialization.load_process_collection(WORK / "data.json")
 
@@ -120,7 +129,7 @@ def r2_by_target(run_dir):
 ```{literalinclude} ../../../examples/gallery_kan/custom.py
 :language: python
 :linenos:
-:lines: 27-46
+:lines: 29-47
 ```
 
 Per edge `(i, o)`: `base_w[o,i]·SiLU(x_i)` plus `Σ_g spline_c[o,i,g]·rbf_g(x_i)`, a
@@ -137,16 +146,36 @@ range it was actually fit over.
 ```{literalinclude} ../../../examples/gallery_kan/custom.py
 :language: python
 :linenos:
-:lines: 49-76
+:lines: 59-90
 ```
 
 Two stacked `KANLayer`s, both genuinely KAN-shaped, no plain linear or MLP layer
-anywhere in between. `_features` is just the raw `SCL_modeled_RMCs`
+anywhere in between. The input is just the raw `SCL_modeled_RMCs`
 (biomass, glucose, product): no hand-engineered saturation term is fed in
 alongside it, so any Monod-like or threshold shape the model ends up using has
 to be discovered from state alone. `l2`'s near-zero initialization keeps the ODE
 flat at the very first step while `l1` still receives real gradient, the same
 cold-start pattern other reaction modules in this gallery use.
+
+Each of the three output rates also gets one small multiplicative term,
+`prod_a(h0) * prod_b(h1)`, added on top of `l2`'s sum. `h0` and `h1` are the
+first two of `l1`'s eight hidden units, picked arbitrarily since none of them
+carry individual meaning. SR-KAN's own bioprocess case study states plainly
+that pure summation was not enough to model its kinetics, and needed
+multiplicative units alongside additive ones; this term borrows that same
+idea. It is worth saying plainly that this gallery's own training data does not
+actually need it: every rate this page fits turns out to depend on glucose
+alone, through a single saturating curve, with nothing multiplicative in the
+real process (see [Recovering the real rate law](#recovering-the-real-rate-law)
+below). The term stays in as a demonstration that the model has this option
+available, the same way SR-KAN's own model does, not because this particular
+system requires it.
+
+`prod_a` and `prod_b` start at ordinary, non-zero values, unlike every other
+weight in `l2`, which starts at zero. A product of two values that both start
+at zero can never move away from zero under gradient descent, since nudging
+one side still leaves the other at zero: multiplication needs a non-zero
+starting point the way addition does not.
 
 `estimate_all_scales` is unchanged from [Tutorial 4](../tutorials/04_your_first_custom_py.md).
 
@@ -207,30 +236,138 @@ def edge_curve(o, i, xs_scl):
     return spline + base
 
 fig, axes = plt.subplots(1, 3, figsize=(11, 3))
+edge_rows = []
 for ax, species in zip(axes, names):
     i = names.index(species)
     vals = df[f"c_{species}"].to_numpy()
     lo, hi = max(float(vals.min()), 0.0), float(vals.max())
     xs_raw = np.linspace(lo, hi, 60)
     xs_scl = jnp.asarray(xs_raw / scale[i])
-    spreads = [float(jnp.ptp(edge_curve(o, i, xs_scl))) for o in range(l1.base_w.shape[0])]
-    o = int(np.argmax(spreads))
-    ys = np.asarray(edge_curve(o, i, xs_scl))
-    ax.plot(xs_raw, ys)
+    curves = [np.asarray(edge_curve(o, i, xs_scl)) for o in range(l1.base_w.shape[0])]
+    for o, ys in enumerate(curves):
+        m = best_match(xs_raw, ys)
+        edge_rows.append((species, o, m["best"], m["r2"]))
+    o = int(np.argmax([float(np.ptp(ys)) for ys in curves]))
+    match = best_match(xs_raw, curves[o])
+    ax.plot(xs_raw, curves[o])
     ax.set_xlabel(f"{species} (g/L)")
-    ax.set_title(f"edge: {species} -> hidden {o}")
+    ax.set_title(f"edge: {species} -> hidden {o}\n({match['best']})")
 fig.tight_layout()
 ```
 
 Each panel is one edge, `φ_oi(x_i)`, evaluated directly over that input's own
 observed range and picked as the widest-swinging edge from that input (the
-most visually informative one, out of `l1`'s `hidden` edges per input). None of
-these are flat or noisy: each shows genuine curvature, rising or falling then
-leveling off, the shape a saturating uptake or a fading effect would actually
-have. Reading a curve like this straight off the trained module is the honest,
-scoped-down version of SR-KAN's own interpretability pitch: this page stops at
-the curve itself, it does not fit that curve to a symbolic function library the
-way SR-KAN's own extraction pipeline does.
+most visually informative one, out of `l1`'s `hidden` edges per input), labeled
+with its best match against a small shape library (flat, linear, power,
+saturating, exponential), scored by fit quality with a threshold below which a
+curve is reported as no clean match rather than forced onto the nearest shape.
+None of the three panels above are flat or noisy: each shows genuine curvature,
+rising or falling then leveling off, the shape a saturating uptake or a fading
+effect would actually have.
+
+```{code-cell} ipython3
+:tags: [remove-input]
+
+n_clean = sum(1 for row in edge_rows if row[2] != "no clean match")
+print(f"{n_clean} of l1's {len(edge_rows)} edges matched one of the 5 shapes cleanly (R2 >= 0.9)")
+```
+
+## Recovering the real rate law
+
+This page's training data (`data.json`) is not arbitrary: it comes from
+`hybrax/docs/source/_data/generate.py`'s `build_demo_batch`, a real,
+known kinetic model (Monod growth, fixed biomass yield plus maintenance,
+Luedeking-Piret product formation). hybrax multiplies each of the model's
+three predicted numbers by the current biomass automatically, outside the
+reaction module entirely, so what the KAN itself needs to learn is a
+per-biomass rate, not the full rate of change. Written that way, all three
+true rates reduce to one shape:
+
+    (a fixed number) x S / (Ks + S)
+
+a single saturating (Michaelis-Menten) curve in glucose (`S`) alone, with the
+same `Ks = 0.05 g/L` in all three and nothing depending on biomass or
+product. This gives a direct check: feed the trained model made-up
+combinations of the three inputs (not real measured points, just numbers
+picked to isolate one input at a time), and see whether its own behavior
+matches.
+
+```{code-cell} ipython3
+:tags: [remove-input]
+
+TRUE = {"mu_max": 0.45, "Ks": 0.05, "Y_XS": 0.45, "m_s": 0.02, "alpha": 0.08, "beta": 0.006}
+TRUE_SCALE = {
+    "q_biomass": TRUE["mu_max"],
+    "q_glucose": -(TRUE["mu_max"] / TRUE["Y_XS"] + TRUE["m_s"]),
+    "q_product": TRUE["alpha"] * TRUE["mu_max"] + TRUE["beta"],
+}
+
+def eval_reaction_module(state_raw):
+    scl = jnp.asarray(np.asarray(state_raw) / scale)
+    h = kan.l1(scl)
+    return np.asarray(kan.l2(h) + kan.prod_a(h[0:1]) * kan.prod_b(h[1:2]))
+
+pooled = {n: [] for n in names}
+for process in _collection.processes.values():
+    for species in names:
+        comp = process.reactor_medium.components[species].concentration
+        pooled[species].append(np.asarray(comp.values))
+pooled = {n: np.concatenate(v) for n, v in pooled.items()}
+ranges = {n: (max(float(pooled[n].min()), 0.0), float(pooled[n].max())) for n in names}
+fixed = {n: float(np.median(pooled[n])) for n in names}
+
+rows, recovered = [], []
+for out_idx, rate in enumerate(["q_biomass", "q_glucose", "q_product"]):
+    sweeps = {}
+    for species in names:
+        lo, hi = ranges[species]
+        xs = np.linspace(lo, hi, 40)
+        ys = np.array([
+            eval_reaction_module([x if n == species else fixed[n] for n in names])[out_idx]
+            for x in xs
+        ])
+        sweeps[species] = (xs, ys, best_match(xs, ys))
+    glucose_spread = float(np.ptp(sweeps["glucose"][1]))
+    for species in names:
+        xs, ys, m = sweeps[species]
+        rel = float(np.ptp(ys)) / glucose_spread if glucose_spread > 1e-12 else 0.0
+        rows.append({"rate": rate, "swept input": species,
+                      "% of glucose's effect": round(rel * 100, 1), "shape": m["best"]})
+    fit = sweeps["glucose"][2]
+    if fit["closest"] == "saturating":
+        a_fit, k_fit, _ = fit["fits"]["saturating"]["params"]
+        recovered.append({"rate": rate, "recovered a": round(a_fit, 2), "true a": TRUE_SCALE[rate],
+                            "recovered Ks": round(k_fit, 2), "true Ks": TRUE["Ks"]})
+
+pd.DataFrame(rows)
+```
+
+```{code-cell} ipython3
+:tags: [remove-input]
+
+pd.DataFrame(recovered)
+```
+
+Sweeping biomass or product moves each rate by only a few percent of what
+sweeping glucose does: the model correctly learned that biomass and product
+barely matter, matching the real process. Sweeping glucose traces a clean
+saturating curve for all three rates, the right shape. The recovered scale
+and half-saturation numbers, though, land well off the real ones above: right
+shape, not the same numbers.
+
+That gap is expected, not a failure to paper over. Training sees only 3
+processes here (15 timepoints each, `BATCH_RUNS` in `generate.py`), and the
+sweep above evaluates the model at input combinations that never occur
+together along any single real trajectory, off the narrow path training
+actually walked. Forster et al. report a comparable result on a similarly
+small, similarly shaped bioprocess dataset: their own symbolic-regression
+model picked up an inhibiting effect of product concentration on biomass
+growth that the real process did not have, and noted "slight numerical
+discrepancies" between its recovered growth surface and the real one, even
+after correctly capturing the overall trend
+<a href="#ref-forster">[4]</a>. This page is not attempting to match SR-KAN's
+own hyperparameter-tuned pipeline point for point; the aim is to show that a
+comparable check runs, end to end, inside `hybrax.train`.
 
 ## Gotchas
 
@@ -247,6 +384,10 @@ way SR-KAN's own extraction pipeline does.
   width. Too few edges or basis functions and the model cannot represent the
   trajectory; too many and every edge pays for a wider, mostly redundant
   radial-basis expansion.
+- **`prod_a`/`prod_b` break perfectly-flat-at-step-0 for all three rates**,
+  not just the two hidden units they read from. They start non-zero on
+  purpose (see above), so each rate starts very close to flat rather than
+  exactly flat.
 
 ## See also
 
@@ -273,3 +414,7 @@ Run the example yourself at `./source/_data/out/runs/gallery_kan/`.
 3. <a id="ref-rbf"></a>Li, Z. (2024). Kolmogorov-Arnold Networks are Radial
    Basis Function Networks. *arXiv*.
    [https://arxiv.org/abs/2405.06721](https://arxiv.org/abs/2405.06721)
+4. <a id="ref-forster"></a>Forster, T., Vázquez, D., Müller, C., &
+   Guillén-Gosálbez, G. (2024). Machine learning uncovers analytical kinetic
+   models of bioprocesses. *Chemical Engineering Science*, 300, 120606.
+   [https://doi.org/10.1016/j.ces.2024.120606](https://doi.org/10.1016/j.ces.2024.120606)

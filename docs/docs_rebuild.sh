@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PYTHON="uv run --extra docs python"
+PYTHON="/home/mgotsmy/code/bpbench/hybrax/.venv/bin/python"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # hybrax/docs/
 SRC="$ROOT/source"; OUT="$ROOT/html"; SCRATCH="$ROOT/_scratch"
 JUPYTER_EXECUTE="$ROOT/jupyter_execute"

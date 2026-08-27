@@ -1,0 +1,10 @@
+rate,swept_input,spread,note
+q_biomass,biomass,0.0435751478075006,negligible (1.8% of glucose's effect)
+q_biomass,glucose,2.4612062511066926,"shape=saturating (closest=saturating, R2=0.96)"
+q_biomass,product,0.14842076798531423,negligible (6.0% of glucose's effect)
+q_glucose,biomass,0.07179408225237349,negligible (3.6% of glucose's effect)
+q_glucose,glucose,1.9700504481316106,"shape=saturating (closest=saturating, R2=0.94)"
+q_glucose,product,0.33762657425611575,not negligible (17.1% of glucose's effect)
+q_product,biomass,0.08320422333320066,negligible (4.1% of glucose's effect)
+q_product,glucose,2.052238382167416,"shape=saturating (closest=saturating, R2=0.92)"
+q_product,product,0.19224810327850905,negligible (9.4% of glucose's effect)

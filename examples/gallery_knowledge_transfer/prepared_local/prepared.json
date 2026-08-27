@@ -1,0 +1,1839 @@
+{
+  "metadata": {
+    "hybrax.train": {
+      "prepared_at": "2026-08-26T13:22:24.721820+00:00",
+      "source_input_path": "../local.json",
+      "source_input_sha256": "bc9873026303be008a8459489d8a6fceb4010b07d43fd9ba3b10b4b38456aa22",
+      "custom_py_sha256": "a19dc084ccd11b22e16ca7c5e9a70cbe8e8d56cca14f929327ccba31a00e910a",
+      "transform_hooks": {
+        "transform_process_collection": "default_transform_process_collection"
+      },
+      "dynamic_volume": true,
+      "format_validation": {
+        "T_run_1": {
+          "ok": true,
+          "messages": [
+            [
+              true,
+              "SKIP discrete_events: process.discrete_events is None: timing/label checks skipped"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'biomass': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'glucose': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'product': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS time_axis: [0.0, 24.0] h"
+            ],
+            [
+              true,
+              "PASS timestamp_bounds: all timestamps within [0.0, 24.0] h"
+            ],
+            [
+              true,
+              "PASS volume_units: volume changes use volume unit 'L'"
+            ],
+            [
+              true,
+              "PASS biomass_in_reactor_medium: biomass found in reactor medium as 'biomass'"
+            ],
+            [
+              true,
+              "PASS initial_state_alignment: all dynamic reactor-medium components and process variables have a measurement at time_axis.start=0, consistent with volume.initial_volume"
+            ],
+            [
+              true,
+              "SKIP measurement_sampling_alignment: no sampling events found"
+            ],
+            [
+              true,
+              "PASS bounds: lo <= hi holds for reactor components, process variables, volume"
+            ],
+            [
+              true,
+              "PASS bounds_against_data: all measured datapoints with declared bounds fall within them"
+            ],
+            [
+              true,
+              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+            ]
+          ]
+        },
+        "T_run_2": {
+          "ok": true,
+          "messages": [
+            [
+              true,
+              "SKIP discrete_events: process.discrete_events is None: timing/label checks skipped"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'biomass': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'glucose': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'product': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS time_axis: [0.0, 24.0] h"
+            ],
+            [
+              true,
+              "PASS timestamp_bounds: all timestamps within [0.0, 24.0] h"
+            ],
+            [
+              true,
+              "PASS volume_units: volume changes use volume unit 'L'"
+            ],
+            [
+              true,
+              "PASS biomass_in_reactor_medium: biomass found in reactor medium as 'biomass'"
+            ],
+            [
+              true,
+              "PASS initial_state_alignment: all dynamic reactor-medium components and process variables have a measurement at time_axis.start=0, consistent with volume.initial_volume"
+            ],
+            [
+              true,
+              "SKIP measurement_sampling_alignment: no sampling events found"
+            ],
+            [
+              true,
+              "PASS bounds: lo <= hi holds for reactor components, process variables, volume"
+            ],
+            [
+              true,
+              "PASS bounds_against_data: all measured datapoints with declared bounds fall within them"
+            ],
+            [
+              true,
+              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+            ]
+          ]
+        },
+        "__consistency__": {
+          "ok": true,
+          "messages": [
+            [
+              true,
+              "PASS cross_process_consistency: structure matches 'T_run_1' across 2 processes"
+            ]
+          ]
+        }
+      },
+      "format_validation_raw": {
+        "T_run_1": {
+          "ok": true,
+          "messages": [
+            [
+              true,
+              "SKIP discrete_events: process.discrete_events is None: timing/label checks skipped"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'biomass': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'glucose': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'product': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS time_axis: [0.0, 24.0] h"
+            ],
+            [
+              true,
+              "PASS timestamp_bounds: all timestamps within [0.0, 24.0] h"
+            ],
+            [
+              true,
+              "PASS volume_units: volume changes use volume unit 'L'"
+            ],
+            [
+              true,
+              "PASS biomass_in_reactor_medium: biomass found in reactor medium as 'biomass'"
+            ],
+            [
+              true,
+              "PASS initial_state_alignment: all dynamic reactor-medium components and process variables have a measurement at time_axis.start=0, consistent with volume.initial_volume"
+            ],
+            [
+              true,
+              "SKIP measurement_sampling_alignment: no sampling events found"
+            ],
+            [
+              true,
+              "PASS bounds: lo <= hi holds for reactor components, process variables, volume"
+            ],
+            [
+              true,
+              "PASS bounds_against_data: all measured datapoints with declared bounds fall within them"
+            ],
+            [
+              true,
+              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+            ]
+          ]
+        },
+        "T_run_2": {
+          "ok": true,
+          "messages": [
+            [
+              true,
+              "SKIP discrete_events: process.discrete_events is None: timing/label checks skipped"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'biomass': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'glucose': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'product': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS time_axis: [0.0, 24.0] h"
+            ],
+            [
+              true,
+              "PASS timestamp_bounds: all timestamps within [0.0, 24.0] h"
+            ],
+            [
+              true,
+              "PASS volume_units: volume changes use volume unit 'L'"
+            ],
+            [
+              true,
+              "PASS biomass_in_reactor_medium: biomass found in reactor medium as 'biomass'"
+            ],
+            [
+              true,
+              "PASS initial_state_alignment: all dynamic reactor-medium components and process variables have a measurement at time_axis.start=0, consistent with volume.initial_volume"
+            ],
+            [
+              true,
+              "SKIP measurement_sampling_alignment: no sampling events found"
+            ],
+            [
+              true,
+              "PASS bounds: lo <= hi holds for reactor components, process variables, volume"
+            ],
+            [
+              true,
+              "PASS bounds_against_data: all measured datapoints with declared bounds fall within them"
+            ],
+            [
+              true,
+              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+            ]
+          ]
+        },
+        "__consistency__": {
+          "ok": true,
+          "messages": [
+            [
+              true,
+              "PASS cross_process_consistency: structure matches 'T_run_1' across 2 processes"
+            ]
+          ]
+        }
+      },
+      "format_validation_prepared": {
+        "T_run_1": {
+          "ok": true,
+          "messages": [
+            [
+              true,
+              "SKIP discrete_events: process.discrete_events is None: timing/label checks skipped"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'biomass': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'glucose': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'product': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS time_axis: [0.0, 24.0] h"
+            ],
+            [
+              true,
+              "PASS timestamp_bounds: all timestamps within [0.0, 24.0] h"
+            ],
+            [
+              true,
+              "PASS volume_units: volume changes use volume unit 'L'"
+            ],
+            [
+              true,
+              "PASS biomass_in_reactor_medium: biomass found in reactor medium as 'biomass'"
+            ],
+            [
+              true,
+              "PASS initial_state_alignment: all dynamic reactor-medium components and process variables have a measurement at time_axis.start=0, consistent with volume.initial_volume"
+            ],
+            [
+              true,
+              "SKIP measurement_sampling_alignment: no sampling events found"
+            ],
+            [
+              true,
+              "PASS bounds: lo <= hi holds for reactor components, process variables, volume"
+            ],
+            [
+              true,
+              "PASS bounds_against_data: all measured datapoints with declared bounds fall within them"
+            ],
+            [
+              true,
+              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+            ]
+          ]
+        },
+        "T_run_2": {
+          "ok": true,
+          "messages": [
+            [
+              true,
+              "SKIP discrete_events: process.discrete_events is None: timing/label checks skipped"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'biomass': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'glucose': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS timeseries_shape: TimeSeries 'product': 1-D, equal-length, strictly increasing times"
+            ],
+            [
+              true,
+              "PASS time_axis: [0.0, 24.0] h"
+            ],
+            [
+              true,
+              "PASS timestamp_bounds: all timestamps within [0.0, 24.0] h"
+            ],
+            [
+              true,
+              "PASS volume_units: volume changes use volume unit 'L'"
+            ],
+            [
+              true,
+              "PASS biomass_in_reactor_medium: biomass found in reactor medium as 'biomass'"
+            ],
+            [
+              true,
+              "PASS initial_state_alignment: all dynamic reactor-medium components and process variables have a measurement at time_axis.start=0, consistent with volume.initial_volume"
+            ],
+            [
+              true,
+              "SKIP measurement_sampling_alignment: no sampling events found"
+            ],
+            [
+              true,
+              "PASS bounds: lo <= hi holds for reactor components, process variables, volume"
+            ],
+            [
+              true,
+              "PASS bounds_against_data: all measured datapoints with declared bounds fall within them"
+            ],
+            [
+              true,
+              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+            ]
+          ]
+        },
+        "__consistency__": {
+          "ok": true,
+          "messages": [
+            [
+              true,
+              "PASS cross_process_consistency: structure matches 'T_run_1' across 2 processes"
+            ]
+          ]
+        }
+      },
+      "prepared_semantics_validation": {
+        "T_run_1": {
+          "ok": true,
+          "messages": [
+            [
+              true,
+              "PASS reactor_medium_components_present: 3 reactor-medium component(s) present after prep"
+            ],
+            [
+              true,
+              "PASS biomass_component_present: reactor medium defines a biomass component after prep"
+            ]
+          ],
+          "summary": {
+            "reactor_component_names": [
+              "biomass",
+              "glucose",
+              "product"
+            ],
+            "reactor_component_details": {
+              "biomass": {
+                "name": "biomass",
+                "unit": "g/L",
+                "concentration": {
+                  "kind": "timeseries",
+                  "times": [
+                    0.0,
+                    1.5,
+                    3.0,
+                    4.5,
+                    6.0,
+                    7.5,
+                    9.0,
+                    10.5,
+                    12.0,
+                    13.5,
+                    15.0,
+                    16.5,
+                    18.0,
+                    19.5,
+                    21.0,
+                    22.5,
+                    24.0
+                  ],
+                  "values": [
+                    0.1,
+                    0.12614755018363583,
+                    0.1565995145919891,
+                    0.1949379493525317,
+                    0.267729002658359,
+                    0.3252122214580606,
+                    0.3781439895234532,
+                    0.4562249564098323,
+                    0.5936717534892163,
+                    0.6849149972314593,
+                    0.9594176095316128,
+                    1.1317804079999894,
+                    1.3203545868938062,
+                    1.5660148062701522,
+                    2.168050603398912,
+                    2.6982587593009018,
+                    3.3642553664731794
+                  ]
+                }
+              },
+              "glucose": {
+                "name": "glucose",
+                "unit": "g/L",
+                "concentration": {
+                  "kind": "timeseries",
+                  "times": [
+                    0.0,
+                    1.5,
+                    3.0,
+                    4.5,
+                    6.0,
+                    7.5,
+                    9.0,
+                    10.5,
+                    12.0,
+                    13.5,
+                    15.0,
+                    16.5,
+                    18.0,
+                    19.5,
+                    21.0,
+                    22.5,
+                    24.0
+                  ],
+                  "values": [
+                    12.0,
+                    11.999338959910308,
+                    12.244362867277436,
+                    11.403536198901994,
+                    10.692130031107505,
+                    12.326938300162704,
+                    10.855244367752773,
+                    10.875413137163754,
+                    9.687707379003616,
+                    9.484948859549702,
+                    8.08749064647818,
+                    7.693515296842341,
+                    6.475951861594035,
+                    5.512942488869544,
+                    4.22803761315033,
+                    1.927935046685486,
+                    0.11682856293301812
+                  ]
+                }
+              },
+              "product": {
+                "name": "product",
+                "unit": "g/L",
+                "concentration": {
+                  "kind": "timeseries",
+                  "times": [
+                    0.0,
+                    1.5,
+                    3.0,
+                    4.5,
+                    6.0,
+                    7.5,
+                    9.0,
+                    10.5,
+                    12.0,
+                    13.5,
+                    15.0,
+                    16.5,
+                    18.0,
+                    19.5,
+                    21.0,
+                    22.5,
+                    24.0
+                  ],
+                  "values": [
+                    0.0,
+                    0.007801200299770246,
+                    0.01513822182371612,
+                    0.030952698533515278,
+                    0.046996640798693666,
+                    0.07026176062402134,
+                    0.08588421590830121,
+                    0.12615377748117046,
+                    0.1499774509665686,
+                    0.19235021050570225,
+                    0.26470430511131193,
+                    0.3348841559211413,
+                    0.4101461833927853,
+                    0.4729907449497509,
+                    0.6136078807822186,
+                    0.7665825683594182,
+                    0.8635731759037768
+                  ]
+                }
+              }
+            },
+            "has_biomass": true,
+            "feed_component_names_by_change": {},
+            "feed_component_details_by_change": {},
+            "feed_medium_present_by_change": {},
+            "all_feed_changes": [],
+            "positive_feed_changes": []
+          }
+        },
+        "T_run_2": {
+          "ok": true,
+          "messages": [
+            [
+              true,
+              "PASS reactor_medium_components_present: 3 reactor-medium component(s) present after prep"
+            ],
+            [
+              true,
+              "PASS biomass_component_present: reactor medium defines a biomass component after prep"
+            ]
+          ],
+          "summary": {
+            "reactor_component_names": [
+              "biomass",
+              "glucose",
+              "product"
+            ],
+            "reactor_component_details": {
+              "biomass": {
+                "name": "biomass",
+                "unit": "g/L",
+                "concentration": {
+                  "kind": "timeseries",
+                  "times": [
+                    0.0,
+                    1.5,
+                    3.0,
+                    4.5,
+                    6.0,
+                    7.5,
+                    9.0,
+                    10.5,
+                    12.0,
+                    13.5,
+                    15.0,
+                    16.5,
+                    18.0,
+                    19.5,
+                    21.0,
+                    22.5,
+                    24.0
+                  ],
+                  "values": [
+                    0.09,
+                    0.1076677101395564,
+                    0.136690616654695,
+                    0.168944200913511,
+                    0.21608498821714542,
+                    0.28142136412298946,
+                    0.3052695197116658,
+                    0.4392022893747651,
+                    0.5780740825620365,
+                    0.6642797410109677,
+                    0.8374572776466142,
+                    1.0254729421133562,
+                    1.3112355719469935,
+                    1.6125796686159115,
+                    2.100495382196487,
+                    2.6747530372295287,
+                    2.7462497132110006
+                  ]
+                }
+              },
+              "glucose": {
+                "name": "glucose",
+                "unit": "g/L",
+                "concentration": {
+                  "kind": "timeseries",
+                  "times": [
+                    0.0,
+                    1.5,
+                    3.0,
+                    4.5,
+                    6.0,
+                    7.5,
+                    9.0,
+                    10.5,
+                    12.0,
+                    13.5,
+                    15.0,
+                    16.5,
+                    18.0,
+                    19.5,
+                    21.0,
+                    22.5,
+                    24.0
+                  ],
+                  "values": [
+                    14.0,
+                    14.269405121430632,
+                    14.038624619734657,
+                    14.188361596663848,
+                    14.638731637562989,
+                    12.445178047081324,
+                    12.79091942178939,
+                    13.032252901610635,
+                    13.532555820884971,
+                    11.919902852451505,
+                    12.62653069917193,
+                    9.497312569131909,
+                    9.219221642203651,
+                    7.901878767243198,
+                    6.3966226432485085,
+                    4.730731049482137,
+                    2.453320016482609
+                  ]
+                }
+              },
+              "product": {
+                "name": "product",
+                "unit": "g/L",
+                "concentration": {
+                  "kind": "timeseries",
+                  "times": [
+                    0.0,
+                    1.5,
+                    3.0,
+                    4.5,
+                    6.0,
+                    7.5,
+                    9.0,
+                    10.5,
+                    12.0,
+                    13.5,
+                    15.0,
+                    16.5,
+                    18.0,
+                    19.5,
+                    21.0,
+                    22.5,
+                    24.0
+                  ],
+                  "values": [
+                    0.0,
+                    0.0069226707752727875,
+                    0.01641566443126868,
+                    0.027720679377105116,
+                    0.04270642681782461,
+                    0.05481590037152214,
+                    0.07544710922459613,
+                    0.1131473484800502,
+                    0.13649708139885752,
+                    0.2021056630667907,
+                    0.221792465124208,
+                    0.27602859379015315,
+                    0.3658341814805015,
+                    0.47923486461912423,
+                    0.5883562897371539,
+                    0.7256406253262971,
+                    0.8965278766057817
+                  ]
+                }
+              }
+            },
+            "has_biomass": true,
+            "feed_component_names_by_change": {},
+            "feed_component_details_by_change": {},
+            "feed_medium_present_by_change": {},
+            "all_feed_changes": [],
+            "positive_feed_changes": []
+          }
+        }
+      },
+      "semantics_provenance": {
+        "processes": {
+          "T_run_1": {
+            "raw": {
+              "reactor_component_names": [
+                "biomass",
+                "glucose",
+                "product"
+              ],
+              "reactor_component_details": {
+                "biomass": {
+                  "name": "biomass",
+                  "unit": "g/L",
+                  "concentration": {
+                    "kind": "timeseries",
+                    "times": [
+                      0.0,
+                      1.5,
+                      3.0,
+                      4.5,
+                      6.0,
+                      7.5,
+                      9.0,
+                      10.5,
+                      12.0,
+                      13.5,
+                      15.0,
+                      16.5,
+                      18.0,
+                      19.5,
+                      21.0,
+                      22.5,
+                      24.0
+                    ],
+                    "values": [
+                      0.1,
+                      0.12614755018363583,
+                      0.1565995145919891,
+                      0.1949379493525317,
+                      0.267729002658359,
+                      0.3252122214580606,
+                      0.3781439895234532,
+                      0.4562249564098323,
+                      0.5936717534892163,
+                      0.6849149972314593,
+                      0.9594176095316128,
+                      1.1317804079999894,
+                      1.3203545868938062,
+                      1.5660148062701522,
+                      2.168050603398912,
+                      2.6982587593009018,
+                      3.3642553664731794
+                    ]
+                  }
+                },
+                "glucose": {
+                  "name": "glucose",
+                  "unit": "g/L",
+                  "concentration": {
+                    "kind": "timeseries",
+                    "times": [
+                      0.0,
+                      1.5,
+                      3.0,
+                      4.5,
+                      6.0,
+                      7.5,
+                      9.0,
+                      10.5,
+                      12.0,
+                      13.5,
+                      15.0,
+                      16.5,
+                      18.0,
+                      19.5,
+                      21.0,
+                      22.5,
+                      24.0
+                    ],
+                    "values": [
+                      12.0,
+                      11.999338959910308,
+                      12.244362867277436,
+                      11.403536198901994,
+                      10.692130031107505,
+                      12.326938300162704,
+                      10.855244367752773,
+                      10.875413137163754,
+                      9.687707379003616,
+                      9.484948859549702,
+                      8.08749064647818,
+                      7.693515296842341,
+                      6.475951861594035,
+                      5.512942488869544,
+                      4.22803761315033,
+                      1.927935046685486,
+                      0.11682856293301812
+                    ]
+                  }
+                },
+                "product": {
+                  "name": "product",
+                  "unit": "g/L",
+                  "concentration": {
+                    "kind": "timeseries",
+                    "times": [
+                      0.0,
+                      1.5,
+                      3.0,
+                      4.5,
+                      6.0,
+                      7.5,
+                      9.0,
+                      10.5,
+                      12.0,
+                      13.5,
+                      15.0,
+                      16.5,
+                      18.0,
+                      19.5,
+                      21.0,
+                      22.5,
+                      24.0
+                    ],
+                    "values": [
+                      0.0,
+                      0.007801200299770246,
+                      0.01513822182371612,
+                      0.030952698533515278,
+                      0.046996640798693666,
+                      0.07026176062402134,
+                      0.08588421590830121,
+                      0.12615377748117046,
+                      0.1499774509665686,
+                      0.19235021050570225,
+                      0.26470430511131193,
+                      0.3348841559211413,
+                      0.4101461833927853,
+                      0.4729907449497509,
+                      0.6136078807822186,
+                      0.7665825683594182,
+                      0.8635731759037768
+                    ]
+                  }
+                }
+              },
+              "has_biomass": true,
+              "feed_component_names_by_change": {},
+              "feed_component_details_by_change": {},
+              "feed_medium_present_by_change": {},
+              "all_feed_changes": [],
+              "positive_feed_changes": []
+            },
+            "prepared": {
+              "reactor_component_names": [
+                "biomass",
+                "glucose",
+                "product"
+              ],
+              "reactor_component_details": {
+                "biomass": {
+                  "name": "biomass",
+                  "unit": "g/L",
+                  "concentration": {
+                    "kind": "timeseries",
+                    "times": [
+                      0.0,
+                      1.5,
+                      3.0,
+                      4.5,
+                      6.0,
+                      7.5,
+                      9.0,
+                      10.5,
+                      12.0,
+                      13.5,
+                      15.0,
+                      16.5,
+                      18.0,
+                      19.5,
+                      21.0,
+                      22.5,
+                      24.0
+                    ],
+                    "values": [
+                      0.1,
+                      0.12614755018363583,
+                      0.1565995145919891,
+                      0.1949379493525317,
+                      0.267729002658359,
+                      0.3252122214580606,
+                      0.3781439895234532,
+                      0.4562249564098323,
+                      0.5936717534892163,
+                      0.6849149972314593,
+                      0.9594176095316128,
+                      1.1317804079999894,
+                      1.3203545868938062,
+                      1.5660148062701522,
+                      2.168050603398912,
+                      2.6982587593009018,
+                      3.3642553664731794
+                    ]
+                  }
+                },
+                "glucose": {
+                  "name": "glucose",
+                  "unit": "g/L",
+                  "concentration": {
+                    "kind": "timeseries",
+                    "times": [
+                      0.0,
+                      1.5,
+                      3.0,
+                      4.5,
+                      6.0,
+                      7.5,
+                      9.0,
+                      10.5,
+                      12.0,
+                      13.5,
+                      15.0,
+                      16.5,
+                      18.0,
+                      19.5,
+                      21.0,
+                      22.5,
+                      24.0
+                    ],
+                    "values": [
+                      12.0,
+                      11.999338959910308,
+                      12.244362867277436,
+                      11.403536198901994,
+                      10.692130031107505,
+                      12.326938300162704,
+                      10.855244367752773,
+                      10.875413137163754,
+                      9.687707379003616,
+                      9.484948859549702,
+                      8.08749064647818,
+                      7.693515296842341,
+                      6.475951861594035,
+                      5.512942488869544,
+                      4.22803761315033,
+                      1.927935046685486,
+                      0.11682856293301812
+                    ]
+                  }
+                },
+                "product": {
+                  "name": "product",
+                  "unit": "g/L",
+                  "concentration": {
+                    "kind": "timeseries",
+                    "times": [
+                      0.0,
+                      1.5,
+                      3.0,
+                      4.5,
+                      6.0,
+                      7.5,
+                      9.0,
+                      10.5,
+                      12.0,
+                      13.5,
+                      15.0,
+                      16.5,
+                      18.0,
+                      19.5,
+                      21.0,
+                      22.5,
+                      24.0
+                    ],
+                    "values": [
+                      0.0,
+                      0.007801200299770246,
+                      0.01513822182371612,
+                      0.030952698533515278,
+                      0.046996640798693666,
+                      0.07026176062402134,
+                      0.08588421590830121,
+                      0.12615377748117046,
+                      0.1499774509665686,
+                      0.19235021050570225,
+                      0.26470430511131193,
+                      0.3348841559211413,
+                      0.4101461833927853,
+                      0.4729907449497509,
+                      0.6136078807822186,
+                      0.7665825683594182,
+                      0.8635731759037768
+                    ]
+                  }
+                }
+              },
+              "has_biomass": true,
+              "feed_component_names_by_change": {},
+              "feed_component_details_by_change": {},
+              "feed_medium_present_by_change": {},
+              "all_feed_changes": [],
+              "positive_feed_changes": []
+            },
+            "changed_by_hooks": [],
+            "reactor_components_added": [],
+            "reactor_components_modified": [],
+            "feed_components_added": {},
+            "feed_components_modified": {}
+          },
+          "T_run_2": {
+            "raw": {
+              "reactor_component_names": [
+                "biomass",
+                "glucose",
+                "product"
+              ],
+              "reactor_component_details": {
+                "biomass": {
+                  "name": "biomass",
+                  "unit": "g/L",
+                  "concentration": {
+                    "kind": "timeseries",
+                    "times": [
+                      0.0,
+                      1.5,
+                      3.0,
+                      4.5,
+                      6.0,
+                      7.5,
+                      9.0,
+                      10.5,
+                      12.0,
+                      13.5,
+                      15.0,
+                      16.5,
+                      18.0,
+                      19.5,
+                      21.0,
+                      22.5,
+                      24.0
+                    ],
+                    "values": [
+                      0.09,
+                      0.1076677101395564,
+                      0.136690616654695,
+                      0.168944200913511,
+                      0.21608498821714542,
+                      0.28142136412298946,
+                      0.3052695197116658,
+                      0.4392022893747651,
+                      0.5780740825620365,
+                      0.6642797410109677,
+                      0.8374572776466142,
+                      1.0254729421133562,
+                      1.3112355719469935,
+                      1.6125796686159115,
+                      2.100495382196487,
+                      2.6747530372295287,
+                      2.7462497132110006
+                    ]
+                  }
+                },
+                "glucose": {
+                  "name": "glucose",
+                  "unit": "g/L",
+                  "concentration": {
+                    "kind": "timeseries",
+                    "times": [
+                      0.0,
+                      1.5,
+                      3.0,
+                      4.5,
+                      6.0,
+                      7.5,
+                      9.0,
+                      10.5,
+                      12.0,
+                      13.5,
+                      15.0,
+                      16.5,
+                      18.0,
+                      19.5,
+                      21.0,
+                      22.5,
+                      24.0
+                    ],
+                    "values": [
+                      14.0,
+                      14.269405121430632,
+                      14.038624619734657,
+                      14.188361596663848,
+                      14.638731637562989,
+                      12.445178047081324,
+                      12.79091942178939,
+                      13.032252901610635,
+                      13.532555820884971,
+                      11.919902852451505,
+                      12.62653069917193,
+                      9.497312569131909,
+                      9.219221642203651,
+                      7.901878767243198,
+                      6.3966226432485085,
+                      4.730731049482137,
+                      2.453320016482609
+                    ]
+                  }
+                },
+                "product": {
+                  "name": "product",
+                  "unit": "g/L",
+                  "concentration": {
+                    "kind": "timeseries",
+                    "times": [
+                      0.0,
+                      1.5,
+                      3.0,
+                      4.5,
+                      6.0,
+                      7.5,
+                      9.0,
+                      10.5,
+                      12.0,
+                      13.5,
+                      15.0,
+                      16.5,
+                      18.0,
+                      19.5,
+                      21.0,
+                      22.5,
+                      24.0
+                    ],
+                    "values": [
+                      0.0,
+                      0.0069226707752727875,
+                      0.01641566443126868,
+                      0.027720679377105116,
+                      0.04270642681782461,
+                      0.05481590037152214,
+                      0.07544710922459613,
+                      0.1131473484800502,
+                      0.13649708139885752,
+                      0.2021056630667907,
+                      0.221792465124208,
+                      0.27602859379015315,
+                      0.3658341814805015,
+                      0.47923486461912423,
+                      0.5883562897371539,
+                      0.7256406253262971,
+                      0.8965278766057817
+                    ]
+                  }
+                }
+              },
+              "has_biomass": true,
+              "feed_component_names_by_change": {},
+              "feed_component_details_by_change": {},
+              "feed_medium_present_by_change": {},
+              "all_feed_changes": [],
+              "positive_feed_changes": []
+            },
+            "prepared": {
+              "reactor_component_names": [
+                "biomass",
+                "glucose",
+                "product"
+              ],
+              "reactor_component_details": {
+                "biomass": {
+                  "name": "biomass",
+                  "unit": "g/L",
+                  "concentration": {
+                    "kind": "timeseries",
+                    "times": [
+                      0.0,
+                      1.5,
+                      3.0,
+                      4.5,
+                      6.0,
+                      7.5,
+                      9.0,
+                      10.5,
+                      12.0,
+                      13.5,
+                      15.0,
+                      16.5,
+                      18.0,
+                      19.5,
+                      21.0,
+                      22.5,
+                      24.0
+                    ],
+                    "values": [
+                      0.09,
+                      0.1076677101395564,
+                      0.136690616654695,
+                      0.168944200913511,
+                      0.21608498821714542,
+                      0.28142136412298946,
+                      0.3052695197116658,
+                      0.4392022893747651,
+                      0.5780740825620365,
+                      0.6642797410109677,
+                      0.8374572776466142,
+                      1.0254729421133562,
+                      1.3112355719469935,
+                      1.6125796686159115,
+                      2.100495382196487,
+                      2.6747530372295287,
+                      2.7462497132110006
+                    ]
+                  }
+                },
+                "glucose": {
+                  "name": "glucose",
+                  "unit": "g/L",
+                  "concentration": {
+                    "kind": "timeseries",
+                    "times": [
+                      0.0,
+                      1.5,
+                      3.0,
+                      4.5,
+                      6.0,
+                      7.5,
+                      9.0,
+                      10.5,
+                      12.0,
+                      13.5,
+                      15.0,
+                      16.5,
+                      18.0,
+                      19.5,
+                      21.0,
+                      22.5,
+                      24.0
+                    ],
+                    "values": [
+                      14.0,
+                      14.269405121430632,
+                      14.038624619734657,
+                      14.188361596663848,
+                      14.638731637562989,
+                      12.445178047081324,
+                      12.79091942178939,
+                      13.032252901610635,
+                      13.532555820884971,
+                      11.919902852451505,
+                      12.62653069917193,
+                      9.497312569131909,
+                      9.219221642203651,
+                      7.901878767243198,
+                      6.3966226432485085,
+                      4.730731049482137,
+                      2.453320016482609
+                    ]
+                  }
+                },
+                "product": {
+                  "name": "product",
+                  "unit": "g/L",
+                  "concentration": {
+                    "kind": "timeseries",
+                    "times": [
+                      0.0,
+                      1.5,
+                      3.0,
+                      4.5,
+                      6.0,
+                      7.5,
+                      9.0,
+                      10.5,
+                      12.0,
+                      13.5,
+                      15.0,
+                      16.5,
+                      18.0,
+                      19.5,
+                      21.0,
+                      22.5,
+                      24.0
+                    ],
+                    "values": [
+                      0.0,
+                      0.0069226707752727875,
+                      0.01641566443126868,
+                      0.027720679377105116,
+                      0.04270642681782461,
+                      0.05481590037152214,
+                      0.07544710922459613,
+                      0.1131473484800502,
+                      0.13649708139885752,
+                      0.2021056630667907,
+                      0.221792465124208,
+                      0.27602859379015315,
+                      0.3658341814805015,
+                      0.47923486461912423,
+                      0.5883562897371539,
+                      0.7256406253262971,
+                      0.8965278766057817
+                    ]
+                  }
+                }
+              },
+              "has_biomass": true,
+              "feed_component_names_by_change": {},
+              "feed_component_details_by_change": {},
+              "feed_medium_present_by_change": {},
+              "all_feed_changes": [],
+              "positive_feed_changes": []
+            },
+            "changed_by_hooks": [],
+            "reactor_components_added": [],
+            "reactor_components_modified": [],
+            "feed_components_added": {},
+            "feed_components_modified": {}
+          }
+        }
+      },
+      "process_order": [
+        "T_run_1",
+        "T_run_2"
+      ],
+      "processes": {
+        "T_run_1": {
+          "name_controlled_Inflows": [],
+          "name_controlled_Outflows": [],
+          "name_controlled_PVs": [
+            "is_new_product"
+          ],
+          "control_metadata": {
+            "is_new_product": {
+              "source": "static"
+            }
+          }
+        },
+        "T_run_2": {
+          "name_controlled_Inflows": [],
+          "name_controlled_Outflows": [],
+          "name_controlled_PVs": [
+            "is_new_product"
+          ],
+          "control_metadata": {
+            "is_new_product": {
+              "source": "static"
+            }
+          }
+        }
+      },
+      "provenance": {
+        "prepared_at": "2026-08-26T13:22:24.721883+00:00",
+        "prepare_config": {
+          "raw_input": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_knowledge_transfer/local.json",
+          "augmentation": null,
+          "strict_format_validation": false,
+          "required_control_names": [],
+          "require_consistent_controls": true,
+          "process_rename_map": {},
+          "diagnostics": true
+        },
+        "custom_py_file_hash": "sha256:a19dc084ccd11b22e16ca7c5e9a70cbe8e8d56cca14f929327ccba31a00e910a",
+        "raw_input_sha256": "sha256:bc9873026303be008a8459489d8a6fceb4010b07d43fd9ba3b10b4b38456aa22",
+        "environment": {
+          "python": "3.13.5",
+          "hybrax": "0.1.0",
+          "jax": "0.10.0",
+          "optax": "0.2.8",
+          "equinox": "0.13.8",
+          "diffrax": "0.7.2",
+          "pydantic": "2.13.4"
+        },
+        "content_hash": "sha256:971144479ffba403c19a239c3098a42e60c2a98eb38c7b7f7e6c199525fbbea0"
+      }
+    }
+  },
+  "processes": {
+    "T_run_1": {
+      "metadata": {
+        "name": "T_run_1",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 24.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.1,
+                  0.12614755018363583,
+                  0.1565995145919891,
+                  0.1949379493525317,
+                  0.267729002658359,
+                  0.3252122214580606,
+                  0.3781439895234532,
+                  0.4562249564098323,
+                  0.5936717534892163,
+                  0.6849149972314593,
+                  0.9594176095316128,
+                  1.1317804079999894,
+                  1.3203545868938062,
+                  1.5660148062701522,
+                  2.168050603398912,
+                  2.6982587593009018,
+                  3.3642553664731794
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  12.0,
+                  11.999338959910308,
+                  12.244362867277436,
+                  11.403536198901994,
+                  10.692130031107505,
+                  12.326938300162704,
+                  10.855244367752773,
+                  10.875413137163754,
+                  9.687707379003616,
+                  9.484948859549702,
+                  8.08749064647818,
+                  7.693515296842341,
+                  6.475951861594035,
+                  5.512942488869544,
+                  4.22803761315033,
+                  1.927935046685486,
+                  0.11682856293301812
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.007801200299770246,
+                  0.01513822182371612,
+                  0.030952698533515278,
+                  0.046996640798693666,
+                  0.07026176062402134,
+                  0.08588421590830121,
+                  0.12615377748117046,
+                  0.1499774509665686,
+                  0.19235021050570225,
+                  0.26470430511131193,
+                  0.3348841559211413,
+                  0.4101461833927853,
+                  0.4729907449497509,
+                  0.6136078807822186,
+                  0.7665825683594182,
+                  0.8635731759037768
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 1.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    },
+    "T_run_2": {
+      "metadata": {
+        "name": "T_run_2",
+        "process_type": "batch",
+        "notes": "Simulated batch culture (documentation demo, knowledge transfer)."
+      },
+      "time_axis": {
+        "unit": "h",
+        "start": 0.0,
+        "end": 24.0,
+        "time_reference": "inoculation"
+      },
+      "reactor_medium": {
+        "name": "defined_medium",
+        "density": 1.0,
+        "density_unit": "kg/L",
+        "components": {
+          "biomass": {
+            "name": "biomass",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.09,
+                  0.1076677101395564,
+                  0.136690616654695,
+                  0.168944200913511,
+                  0.21608498821714542,
+                  0.28142136412298946,
+                  0.3052695197116658,
+                  0.4392022893747651,
+                  0.5780740825620365,
+                  0.6642797410109677,
+                  0.8374572776466142,
+                  1.0254729421133562,
+                  1.3112355719469935,
+                  1.6125796686159115,
+                  2.100495382196487,
+                  2.6747530372295287,
+                  2.7462497132110006
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "glucose": {
+            "name": "glucose",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  14.0,
+                  14.269405121430632,
+                  14.038624619734657,
+                  14.188361596663848,
+                  14.638731637562989,
+                  12.445178047081324,
+                  12.79091942178939,
+                  13.032252901610635,
+                  13.532555820884971,
+                  11.919902852451505,
+                  12.62653069917193,
+                  9.497312569131909,
+                  9.219221642203651,
+                  7.901878767243198,
+                  6.3966226432485085,
+                  4.730731049482137,
+                  2.453320016482609
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          },
+          "product": {
+            "name": "product",
+            "unit": "g/L",
+            "concentration": {
+              "times": {
+                "__ndarray__": [
+                  0.0,
+                  1.5,
+                  3.0,
+                  4.5,
+                  6.0,
+                  7.5,
+                  9.0,
+                  10.5,
+                  12.0,
+                  13.5,
+                  15.0,
+                  16.5,
+                  18.0,
+                  19.5,
+                  21.0,
+                  22.5,
+                  24.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  0.0,
+                  0.0069226707752727875,
+                  0.01641566443126868,
+                  0.027720679377105116,
+                  0.04270642681782461,
+                  0.05481590037152214,
+                  0.07544710922459613,
+                  0.1131473484800502,
+                  0.13649708139885752,
+                  0.2021056630667907,
+                  0.221792465124208,
+                  0.27602859379015315,
+                  0.3658341814805015,
+                  0.47923486461912423,
+                  0.5883562897371539,
+                  0.7256406253262971,
+                  0.8965278766057817
+                ],
+                "dtype": "float64"
+              },
+              "type": "TimeSeries",
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            }
+          }
+        }
+      },
+      "process_variables": {
+        "is_new_product": {
+          "name": "is_new_product",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 1.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
+      "volume": {
+        "initial_volume": 1.0,
+        "unit": "L",
+        "volume_changes": {}
+      },
+      "biological_ode": {
+        "algebraic": {},
+        "rates": {
+          "q_biomass": null,
+          "q_glucose": null,
+          "q_product": null
+        },
+        "derivatives": {
+          "biomass": "q_biomass * biomass",
+          "glucose": "q_glucose * biomass",
+          "product": "q_product * biomass"
+        }
+      }
+    }
+  }
+}

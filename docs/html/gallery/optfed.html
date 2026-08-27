@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -746,17 +746,22 @@ next since it uses <code class="docutils literal notranslate"><span class="pre">
 paper’s real coupling: more total uptake activates more maintenance), then
 <code class="docutils literal notranslate"><span class="pre">gamma_pi</span></code> (production) saturates in <code class="docutils literal notranslate"><span class="pre">gamma_deg</span> <span class="pre">-</span> <span class="pre">gamma_alpha</span></code>. <code class="docutils literal notranslate"><span class="pre">X_active</span></code>
 (declared in the dataset’s <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> block as <code class="docutils literal notranslate"><span class="pre">biomass</span> <span class="pre">-</span> <span class="pre">product</span></code>)
-does the rest: because every rate here is <em>specific</em> (per unit active
-biomass, except <code class="docutils literal notranslate"><span class="pre">q_glucose</span></code>, which the paper’s own Eq. 1c multiplies by total
-biomass), no manual <code class="docutils literal notranslate"><span class="pre">Xr/X</span></code> correction is needed inside <code class="docutils literal notranslate"><span class="pre">__call__</span></code> at all,
-<code class="docutils literal notranslate"><span class="pre">X_active</span></code> in the declared derivative strings does that division-then
--multiplication implicitly and exactly.</p>
+does the rest for every rate except <code class="docutils literal notranslate"><span class="pre">q_glucose</span></code>. <code class="docutils literal notranslate"><span class="pre">q_biomass</span></code> and <code class="docutils literal notranslate"><span class="pre">q_product</span></code> are
+<em>specific</em> (per unit active biomass), so no manual <code class="docutils literal notranslate"><span class="pre">Xr/X</span></code> correction is needed inside
+<code class="docutils literal notranslate"><span class="pre">__call__</span></code> for them. <code class="docutils literal notranslate"><span class="pre">X_active</span></code> in the declared derivative strings does that
+division-then-multiplication implicitly and exactly. <code class="docutils literal notranslate"><span class="pre">q_glucose</span></code> is the one rate that
+stays scaled by total <code class="docutils literal notranslate"><span class="pre">biomass</span></code> instead. That is not a literal reading of the paper’s
+Eq. 1c: substituting the paper’s own Eq. 1f (γ° = γX/Xr) into Eq. 1c shows the fitted
+quantity <code class="docutils literal notranslate"><span class="pre">q_glucose</span></code> (≈ γ°) should scale with active biomass like every other rate
+here. It is a deliberate simplification instead, the same one
+<a class="reference download internal" download="" href="../_downloads/0d8a528685aba25cca4f8af1bdd7c58b/generate.py"><span class="xref download myst">the data generator</span></a> applies when it forward-simulates this
+page’s training data, so the model and its own ground truth stay self-consistent.</p>
 </section>
 <section id="training">
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-25 19:00:03 INFO __main__: training complete: first_mean_loss=0.551404 last_mean_loss=0.000265368 delta=-0.551138
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-26 20:23:23 INFO __main__: training complete: first_mean_loss=0.551404 last_mean_loss=0.00026526 delta=-0.551138
 run directory: ./source/_data/out/runs/gallery_optfed/run
 </pre></div>
 </div>
@@ -773,7 +778,7 @@ product    R2 = 0.9971
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/6832cbcbfac7e4ffbe6bff5541a522119a91ca83443b64ab04498c346ce5c8a7.png" src="../_images/6832cbcbfac7e4ffbe6bff5541a522119a91ca83443b64ab04498c346ce5c8a7.png" />
+<img alt="../_images/5ebbfe888b1761ec5b4a712498e501ee864528c790cb87b0fab59cb0414d5a0a.png" src="../_images/5ebbfe888b1761ec5b4a712498e501ee864528c790cb87b0fab59cb0414d5a0a.png" />
 </div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">T_high</span></code> (40°C, the hottest of this page’s six runs) is worth looking at
@@ -786,7 +791,7 @@ high temperature, not a fixed rate blind to <code class="docutils literal notran
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>rate         fitted Teq   true Teq
-uptake            31.7C      35.9C
+uptake            31.6C      35.9C
 production        33.0C      32.9C
 maintenance        32.1C      46.9C
 </pre></div>

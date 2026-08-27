@@ -1,0 +1,70 @@
+{
+  "status": "running",
+  "started_at": "2026-08-26T15:22:26+0200",
+  "cli_argv": [
+    "/home/mgotsmy/code/bpbench/hybrax/src/hybrax/train/cli.py",
+    "train",
+    "--config",
+    "train-local.json",
+    "--overwrite"
+  ],
+  "config": {
+    "data": {
+      "prepared": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_knowledge_transfer/prepared_local/prepared.json",
+      "processes": null,
+      "targets": null,
+      "target_source": "auto"
+    },
+    "custom_py": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_knowledge_transfer/custom.py",
+    "train": {
+      "epochs": 400,
+      "seed": 0,
+      "optimizer": "adam",
+      "learning_rate": 0.01,
+      "grad_clip_norm": 1000.0,
+      "batch_size": null,
+      "shuffle": true,
+      "batch_seed": null,
+      "devices": 1,
+      "allow_stateful_models": false
+    },
+    "solver": {
+      "max_steps": 2048,
+      "rtol": 1e-05,
+      "atol": 1e-07,
+      "jump_ts": true
+    },
+    "checkpoint": {
+      "every": 0.0
+    },
+    "output": {
+      "dir": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_knowledge_transfer/run_local",
+      "predictions": "none"
+    },
+    "logging": {
+      "decimals": 4
+    },
+    "prepare": null,
+    "custom": null,
+    "loo": null
+  },
+  "inputs": {
+    "prepared_input": {
+      "path": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_knowledge_transfer/prepared_local/prepared.json",
+      "content_hash": "sha256:971144479ffba403c19a239c3098a42e60c2a98eb38c7b7f7e6c199525fbbea0"
+    },
+    "custom_py": {
+      "bundled": "custom.py",
+      "file_hash": "sha256:a19dc084ccd11b22e16ca7c5e9a70cbe8e8d56cca14f929327ccba31a00e910a"
+    }
+  },
+  "environment": {
+    "python": "3.13.5",
+    "hybrax": "0.1.0",
+    "jax": "0.10.0",
+    "optax": "0.2.8",
+    "equinox": "0.13.8",
+    "diffrax": "0.7.2",
+    "pydantic": "2.13.4"
+  }
+}
