@@ -342,11 +342,12 @@ class TrainHarnessConfig:
     # Checkpointing. ``checkpoint_every`` is measured in epochs; None selects an
     # automatic cadence of at least five epochs and at most 20 checkpoints. Zero
     # disables periodic writes, while a final checkpoint remains mandatory when
-    # configured. ``prepared_path`` is the resolved prepared.json(.gz) bundled
-    # into every checkpoint so each is self-contained.
+    # configured. ``bundle_prepared`` controls whether ``prepared_path`` is
+    # bundled into every checkpoint to make it self-contained.
     checkpoint_dir: Path | None = None
     checkpoint_every: float | None = None
     prepared_path: Path | None = None
+    bundle_prepared: bool = True
     # Optional LOO holdout set, evaluated whenever a checkpoint is written.
     holdout_processes: tuple[str, ...] | None = None
     # Non-augmented holdout processes whose existing evaluation trajectories are
@@ -1950,7 +1951,7 @@ def train_collection(
     checkpoint_writer = (
         CheckpointWriter(
             Path(cfg.checkpoint_dir),
-            prepared_src=cfg.prepared_path,
+            prepared_src=cfg.prepared_path if cfg.bundle_prepared else None,
         )
         if cfg.checkpoint_dir is not None
         else None
@@ -2462,6 +2463,7 @@ def train_harness_config_from_run_config(
         checkpoint_dir=Path(run_dir) / "checkpoints",
         checkpoint_every=cfg.checkpoint.every,
         prepared_path=cfg.data.prepared if cfg.data is not None else None,
+        bundle_prepared=cfg.checkpoint.bundle_prepared,
         allow_stateful_models=cfg.train.allow_stateful_models,
     )
 

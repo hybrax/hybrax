@@ -365,13 +365,17 @@ def test_forward_plots_require_prediction_exports():
     assert config.output.plots
 
 
-def test_checkpoint_every_defaults_to_auto_and_accepts_explicit_cadence():
+def test_checkpoint_config_defaults_to_bundled_prepared_data_and_accepts_opt_out():
     assert RunConfig().checkpoint.every is None
+    assert RunConfig().checkpoint.bundle_prepared
     assert (
         RunConfig.model_validate({"checkpoint": {"every": None}}).checkpoint.every
         is None
     )
     assert RunConfig.model_validate({"checkpoint": {"every": 5}}).checkpoint.every == 5
+    assert not RunConfig.model_validate(
+        {"checkpoint": {"bundle_prepared": False}}
+    ).checkpoint.bundle_prepared
 
 
 @pytest.mark.parametrize("value", [float("inf"), float("nan"), -0.1])

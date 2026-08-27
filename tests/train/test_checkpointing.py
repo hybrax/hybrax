@@ -276,6 +276,8 @@ def _run_train(
     checkpoint_every: float | None,
     epochs: int,
     metrics_csv: str | None = None,
+    prepared_path: Path | None = None,
+    bundle_prepared: bool = True,
 ):
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
@@ -295,6 +297,8 @@ def _run_train(
             checkpoint_dir=checkpoint_dir,
             checkpoint_every=checkpoint_every,
             metrics_csv=metrics_csv,
+            prepared_path=prepared_path,
+            bundle_prepared=bundle_prepared,
         ),
     )
 
@@ -316,6 +320,28 @@ def test_train_collection_keeps_periodic_and_final_checkpoints(tmp_path: Path):
     ]
     assert (checkpoints / "latest").resolve().name == "step_00005"
     assert not (checkpoints / "best").exists()
+
+
+def test_training_can_omit_prepared_data_from_checkpoints(tmp_path: Path):
+    prepared = tmp_path / "prepared.json"
+    prepared.write_text('{"source": "prepared"}', encoding="utf-8")
+
+    _run_train(
+        checkpoint_dir=tmp_path / "bundled",
+        checkpoint_every=1,
+        epochs=1,
+        prepared_path=prepared,
+    )
+    _run_train(
+        checkpoint_dir=tmp_path / "unbundled",
+        checkpoint_every=1,
+        epochs=1,
+        prepared_path=prepared,
+        bundle_prepared=False,
+    )
+
+    assert (tmp_path / "bundled" / "latest" / "prepared.json.gz").is_file()
+    assert not (tmp_path / "unbundled" / "latest" / "prepared.json.gz").exists()
 
 
 def test_training_writes_run_level_training_plots(tmp_path: Path):
