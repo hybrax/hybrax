@@ -203,7 +203,8 @@ class ProducerCollectionData:
             )
             state_traces.append(
                 tuple(
-                    _raw_state_trace(process, name, start, end) for name in state_names
+                    _raw_state_trace(process, process_name, name, start, end)
+                    for name in state_names
                 )
             )
             sample_traces.append(_sample_volume_events(process, process_name))
@@ -448,14 +449,16 @@ def rhs_ode_from_training_parents(
     return build_rhs_ode(next(iter(collection.processes.values())))
 
 
-def _raw_state_trace(process, name: str, start: float, end: float) -> RawTrace:
+def _raw_state_trace(
+    process, process_name: str, name: str, start: float, end: float
+) -> RawTrace:
     if name in process.reactor_medium.components:
         value = process.reactor_medium.components[name].concentration
     else:
         value = process.process_variables[name].values
     if isinstance(value, StaticVariable):
         return _readonly_trace([start, end], [value.value, value.value])
-    return _trace(value, process.metadata.name, f"modeled state {name!r}")
+    return _trace(value, process_name, f"modeled state {name!r}")
 
 
 def _sample_volume_events(process, process_name: str) -> RawTrace:

@@ -148,6 +148,26 @@ def _runtime_data(
     return collection, ProducerCollectionData.from_collection(store, collection)
 
 
+def test_runtime_data_accepts_missing_process_metadata():
+    process = _process(
+        "metadata-name",
+        feed_end=1.0,
+        feed_cin=10.0,
+        temperature=300.0,
+    )
+    process.metadata = None
+    collection = BioProcessCollection(processes={"collection-key": process})
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+
+    producer = ProducerCollectionData.from_collection(store, collection)
+
+    assert producer.process_order == ("collection-key",)
+
+
 def test_original_parent_processes_keeps_all_non_augmented_processes():
     order = ("P0", "P0_aug", "P1", "P2")
     parents = (None, "P0", None, None)
@@ -235,9 +255,9 @@ def test_rich_traces_are_extracted_only_for_canonical_parents(monkeypatch):
         traced_processes.append(process_name)
         return original_trace(value, process_name, description)
 
-    def recording_raw_state_trace(process, name, start, end):
-        state_processes.append(process.metadata.name)
-        return original_raw_state_trace(process, name, start, end)
+    def recording_raw_state_trace(process, process_name, name, start, end):
+        state_processes.append(process_name)
+        return original_raw_state_trace(process, process_name, name, start, end)
 
     def recording_sample_volume_events(process, process_name):
         sample_processes.append(process_name)

@@ -38,7 +38,8 @@ def default_transform_process_collection(collection, config: RunConfig):
         new_name = process_name
         if process_name in rename_map:
             new_name = str(rename_map[process_name])
-            process.metadata.name = new_name
+            if process.metadata is not None:
+                process.metadata.name = new_name
         if new_name in renamed_processes:
             raise ValueError(f"duplicate renamed process key: {new_name}")
         renamed_processes[new_name] = process
