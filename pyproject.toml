@@ -8,20 +8,23 @@ version = "0.1.0"
 description = "Bioprocess Benchmarking Dataset Structure - JAX-compatible framework for standardized bioprocess data"
 readme = "README.md"
 requires-python = ">=3.12"
-license = {text = "MIT"}
-authors = [
-    {name = "Mathias Gotsmy"},
-    {name = "Julian Libiseller-Egger"},
+license = "MIT"
+authors = [{ name = "Mathias Gotsmy" }, { name = "Julian Libiseller-Egger" }]
+keywords = [
+    "bioprocess",
+    "hybrid modeling",
+    "jax",
+    "neural ODE",
+    "UDE",
+    "universal differential equations",
+    "data structures",
 ]
-keywords = ["bioprocess", "benchmarking", "jax", "machine-learning", "data-structure"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering",
-    "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
 
 dependencies = [
@@ -73,18 +76,15 @@ docs = [
 Homepage = "https://github.com/hybrax/hybrax"
 Repository = "https://github.com/hybrax/hybrax"
 
+[tool.ruff.lint]
+extend-select = ["E501"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.black]
-line-length = 100
-target-version = ["py312"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = [
-    "integration: end-to-end tests that exercise the training pipeline",
-]
+markers = ["integration: end-to-end tests that exercise the training pipeline"]
 filterwarnings = [
     "ignore:jax.core.mapped_aval is deprecated:DeprecationWarning",
     "ignore:jax.core.unmapped_aval is deprecated:DeprecationWarning",
