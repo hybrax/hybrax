@@ -10,29 +10,19 @@ kernelspec:
   name: python3
 ---
 
-# A Gaussian-process model
+# A Gaussian-Process Model
 
-> **Demonstrates.** A Gaussian process, mean and variance both, occupying the reaction
-> module's slot instead of a neural network. `centers` and `targets` hold real
-> measured data. The kernel hyperparameters are fit by a genuine marginal-likelihood
-> loss term, running alongside the trajectory loss inside `hybrax.train`'s own
-> training loop. The predictive uncertainty is read out through
-> `ReactionOutputs.auxiliary`.
+> This page replaces the neural network with a Gaussian process, a model that reports
+> its own confidence alongside every prediction. It learns from real measured data, and
+> hybrax trains it the same way it trains every other model in this gallery.
 
-Inspired by Helleckes et al. 2024 <a href="#ref-helleckes2024">[1]</a>, who fit a GP-based
-hybrid model for bioprocess rates. The kernel, the real training data, and the
-marginal-likelihood objective for the kernel hyperparameters all match their paper. What
-still doesn't: their kernel hyperparameters are fit by likelihood alone, once, then frozen
-for prediction. Here they're fit by likelihood and trajectory error together, continuously,
-so the fitted values differ from what a pure-likelihood fit would find. See
-[Knowledge transfer](knowledge_transfer.md) for the paper's other headline result, pooling
-data across products, reproduced the same way.
-
-This page also draws on Cruz-Bournazou et al. 2022 <a href="#ref-cruz2022">[2]</a>. Their
-core idea, training a GP on a smooth curve's derivative instead of a raw difference between
-two points, is what builds the real rate targets below. Their further step, iteratively
-refitting that curve against the GP's own predictions, isn't reproduced: the trajectory loss
-plays a comparable role here, through real continuous integration instead.
+This page is inspired by two papers. Helleckes et al. 2024 <a href="#ref-helleckes2024">[1]</a>
+fit a Gaussian process to real bioprocess measurements to predict reaction rates.
+Cruz-Bournazou et al. 2022 <a href="#ref-cruz2022">[2]</a> showed that training a
+Gaussian process on a smooth curve's derivative works better than using the raw
+difference between two measurements. This page builds a Gaussian process reaction
+module that combines both ideas. See [How This Compares to the Papers](#how-this-compares-to-the-papers)
+at the end of this page for exactly where it matches each paper and where it departs.
 
 The walkthrough below shows the file in pieces, next to the reasoning for each one. For
 the whole thing at once: to copy, diff against your own, or just read top to bottom:
@@ -97,7 +87,7 @@ def r2_by_target(run_dir):
     return {k: float(np.mean(v)) for k, v in per_target.items()}
 ```
 
-## The kernel
+## The Kernel
 
 A squared-exponential kernel with automatic relevance determination (ARD): one
 lengthscale per input feature, so the module can learn that some state axes matter
@@ -111,11 +101,11 @@ more than others to "how similar are these two states."
 
 `centers` are real states (`Z` in the usual GP notation), one per real measurement,
 built by `build_reaction_module` below. `targets` are the real rate estimates at those
-same states (`y`). Both are `frozen_field()`: real data, never adjusted by gradient
-descent. `log_lengthscale`, `log_output_scale`, and `log_noise` stay
-`trainable_field()`: they're what training actually fits.
+same states (`y`). Both are `frozen_field()`: real data, held fixed through training.
+`log_lengthscale`, `log_output_scale`, and `log_noise` stay `trainable_field()`: they
+are what training actually fits.
 
-## The posterior
+## The Posterior
 
 ```{literalinclude} ../../../examples/gallery_gaussian_process/custom.py
 :language: python
@@ -123,18 +113,17 @@ descent. `log_lengthscale`, `log_output_scale`, and `log_noise` stay
 :lines: 59-78
 ```
 
-`jax.scipy.linalg.cho_factor`/`cho_solve` over the real, full kernel matrix give a real
-closed-form GP posterior: `mean` is the predictive mean (what gets returned as the
-rate), `var` is the predictive variance at the current state. This isn't an RBF
-network only mimicking a GP's mean. It's the actual posterior computation, over the
-model's real training data.
+`jax.scipy.linalg.cho_factor`/`cho_solve` over the real, full kernel matrix give a
+genuine closed-form GP posterior, over the model's real training data: `mean` is the
+predictive mean (what gets returned as the rate), `var` is the predictive variance at
+the current state.
 
 The predictive std goes straight into `auxiliary`, which `hybrax.train` threads into
 `predictions.csv` as extra columns: no new plumbing needed.
 
 `estimate_all_scales` is unchanged from [Tutorial 4](../tutorials/04_your_first_custom_py.md).
 
-## Real data, not free parameters
+## The Training Data
 
 ```{literalinclude} ../../../examples/gallery_gaussian_process/custom.py
 :language: python
@@ -142,24 +131,24 @@ The predictive std goes straight into `auxiliary`, which `hybrax.train` threads 
 :lines: 96-135
 ```
 
-For every process, `build_pseudobatch_transform` and `build_backtransform_spline`
-(existing `hybrax.format.splines` functions) fit a smooth spline through the real
-measured concentrations. Calling `.derivative()` on that spline gives the real `dc/dt`
-at every real measurement time. Dividing by the real biomass value at that time turns
-it into a specific rate, matching the declared ODE: `biomass' = q_biomass * biomass`.
+For every process, {py:func}`hybrax.format.splines.build_pseudobatch_transform` and
+{py:func}`hybrax.format.splines.build_backtransform_spline` fit a smooth spline through
+the real measured concentrations. Calling `.derivative()` on that spline gives the real
+`dc/dt` at every real measurement time. Dividing by the real biomass value at that time
+turns it into a specific rate, matching the declared ODE: `biomass' = q_biomass * biomass`.
 
 This is Cruz-Bournazou et al. 2022's core idea <a href="#ref-cruz2022">[2]</a>: a
-smooth curve's derivative, not a raw finite difference between two points, is the
-better rate estimate. The pseudobatch spline is the general form of that curve: it
-fits the dilution-corrected concentration first, so a bolus or sampling event's jump
-never distorts the fit. This gallery's data has no such event, but the same code
-handles one correctly either way.
+smooth curve's derivative is a better rate estimate than a raw finite difference
+between two points. The pseudobatch spline is the general form of that curve: it fits
+the dilution-corrected concentration first, so a bolus or sampling event's jump never
+distorts the fit. This gallery's data has no such event, but the same code handles one
+correctly either way.
 
-`rmc_scaler.scale_value` converts a real state to SCL space. `rate_scaler.scale_derivative`
-does the same for a real rate: the derivative-specific method, not `scale_value`, since
-subtracting a value-space offset from a derivative would silently corrupt it.
+`rmc_scaler.scale_value` converts a real state to SCL space. A rate needs the
+derivative-specific method instead, `rate_scaler.scale_derivative`: subtracting a
+value-space offset from a derivative would silently corrupt it.
 
-## Fitting the kernel by marginal likelihood
+## Fitting the Kernel by Marginal Likelihood
 
 ```{literalinclude} ../../../examples/gallery_gaussian_process/custom.py
 :language: python
@@ -182,9 +171,9 @@ MSE terms `DefaultLossModule` already provides. `inputs.reaction_module` is the 
 reaction-module instance, so `marginal_nll()` is reachable directly from inside the
 loss. Both terms drive the same gradient step: the trajectory loss keeps the whole
 model anchored to the real measured concentrations, and `gp_nll` fits the kernel
-hyperparameters the way a real GP does. `nll_weight` scales `gp_nll` down, since
-`hybrax.train` averages named losses and an unscaled new term would either get drowned
-out or dominate.
+hyperparameters the way a real GP does. `nll_weight` scales `gp_nll` down to keep it
+in the same rough range as the trajectory terms, since `hybrax.train` averages named
+losses and a much larger term would dominate the average.
 
 ## Training
 
@@ -207,9 +196,8 @@ for name, value in r2.items():
     print(f"{name:10s} R2 = {value:.4f}")
 ```
 
-The GP's inductive bias, smoothness via the kernel, is a reasonable prior here: the
-R² values above are what that prior achieves against this page's own data, which is
-the question this page sets out to answer.
+These R² values measure how well the trained GP's trajectory matches the real
+measurements.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -222,9 +210,9 @@ Image(filename=str(WORK / "run/forward/plots/run_1.png"))
 
 Left column: measured points against the integrated trajectory. Right column: the
 rates the GP actually predicted along the way, `q_biomass`/`q_glucose`/`q_product`,
-which never enter the trajectory loss directly, only their integral does.
+which enter the trajectory loss only through their integral.
 
-## What the GP actually learned
+## What the GP Actually Learned
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -239,12 +227,12 @@ print(f"output_scale (exp)  = {float(jnp.exp(gp.log_output_scale)):.3f}")
 print(f"noise (exp)         = {float(jnp.exp(gp.log_noise)):.3f}")
 ```
 
-`centers`' spread reflects the real training data, not something training moved: a
-`frozen_field()` never changes. Lengthscales that stay the same order of magnitude as
-the state itself (roughly 1, since states are in SCL space) mean the kernel is using
-genuine spatial structure, not memorizing individual points (lengthscale near zero) or
-ignoring the input entirely (lengthscale huge). Those lengthscale, output-scale, and
-noise values are what `gp_nll` actually fit.
+`centers`' spread reflects the real training data: a `frozen_field()` stays fixed
+through training. Lengthscales near the same order of magnitude as the state itself
+(roughly 1, since states are in SCL space) mean the kernel uses genuine spatial
+structure. A lengthscale near zero means the kernel is memorizing individual points; a
+huge lengthscale means it is ignoring that input entirely. Those lengthscale,
+output-scale, and noise values are what `gp_nll` actually fit.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -256,11 +244,10 @@ gp_nll = metrics["per_target_loss"].apply(lambda row: float(row.split(";")[gp_nl
 print(f"gp_nll: first = {gp_nll.iloc[0]:.4f}, last = {gp_nll.iloc[-1]:.4f}")
 ```
 
-`gp_nll` falling over training is the marginal-likelihood term actually doing its job:
-the kernel hyperparameters are moving toward a better fit to the real training pairs,
-not just riding along with the trajectory loss.
+`gp_nll` falling over training shows the marginal-likelihood term actually moving the
+kernel hyperparameters toward a better fit to the real training pairs.
 
-## Reading out the uncertainty
+## Reading Out the Uncertainty
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -285,30 +272,48 @@ fig.tight_layout()
 
 `aux_rate_std_0/1/2` are `ReactionOutputs.auxiliary["rate_std"]`, one column per rate,
 written out with no extra code on top of what every other page already does. All three
-bands are identical width at a given timestep: the kernel is shared across every rate
-output, so only `targets` differs between them, meaning the predictive variance does
-not either. That is a real simplification, not a bug: an independent kernel per rate
-is a natural next step, not built here. The band narrows noticeably over the
-trajectory here, roughly halving between `t=0` and the final measurement: a real
-signal from the closed-form posterior, not a fixed constant dressed up as
-uncertainty.
+bands are identical width at a given timestep, since the kernel is shared across every
+rate output and only `targets` differs between them. That is a real simplification: an
+independent kernel per rate is a natural next step, left for later.
+
+The band widens somewhat around the middle of the trajectory and narrows again toward
+the end. That shape comes directly from the kernel: `rate_std` grows where `run_1`'s
+own state is farther from the pooled real training states across all three runs, and
+shrinks where it sits close to them.
 
 ## Gotchas
 
 - **The kernel is shared across all rate outputs.** `rate_std` is one number per
   timestep, not one per rate: read it as "how confident is the model here," not
   "how confident is the model about *this specific* rate."
-- **The kernel hyperparameters are fit by two objectives at once, not by likelihood
-  alone.** `gp_nll` and the trajectory loss both move `log_lengthscale`,
-  `log_output_scale`, and `log_noise` every step. A textbook GP maximizes marginal
-  likelihood only. The fitted values here are a compromise between the two, weighted
-  by `nll_weight`, not a pure maximum-likelihood solution.
+- **Two objectives fit the kernel hyperparameters together.** `gp_nll` and the
+  trajectory loss both move `log_lengthscale`, `log_output_scale`, and `log_noise`
+  every step. A textbook GP maximizes marginal likelihood alone; the fitted values here
+  are a compromise between the two, weighted by `nll_weight`.
 - **`nll_weight` needs tuning if you change the data or the epoch budget.**
-  `hybrax.train` averages named losses, so an unscaled `gp_nll` would either get
-  drowned out by the per-target MSE terms or dominate them. Watch `gp_nll` in
-  `metrics.csv`: it should fall steadily, not stay flat or blow up.
+  `hybrax.train` averages named losses, so an unscaled `gp_nll` can either get drowned
+  out by the per-target MSE terms or dominate them. Watch `gp_nll` and the per-target
+  losses together in `metrics.csv`: both should fall steadily, together, through
+  training.
 
-## See also
+## How This Compares to the Papers
+
+The kernel, the real training data, and the marginal-likelihood objective for the
+kernel hyperparameters all match Helleckes et al. 2024's paper
+<a href="#ref-helleckes2024">[1]</a>. Their kernel hyperparameters are fit by
+likelihood alone, once, then held fixed for prediction. Here they are fit by
+likelihood and trajectory error together, continuously, so the fitted values differ
+from what a pure-likelihood fit would find. See
+[Knowledge transfer](knowledge_transfer.md) for the paper's other headline result,
+pooling data across products, reproduced the same way.
+
+Cruz-Bournazou et al. 2022's core idea <a href="#ref-cruz2022">[2]</a>, training a GP
+on a smooth curve's derivative instead of a raw difference between two points, builds
+the real rate targets above. Their further step, iteratively refitting that curve
+against the GP's own predictions, stays out of scope here: the trajectory loss plays a
+comparable role, through real continuous integration.
+
+## See Also
 
 Run the example yourself at `./source/_data/out/runs/gallery_gaussian_process/`.
 

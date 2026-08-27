@@ -1,6 +1,6 @@
 {
   "status": "running",
-  "started_at": "2026-08-26T12:48:09+0200",
+  "started_at": "2026-08-27T11:58:09+0200",
   "cli_argv": [
     "/home/mgotsmy/code/bpbench/hybrax/src/hybrax/train/cli.py",
     "train",
@@ -55,7 +55,7 @@
     },
     "custom_py": {
       "bundled": "custom.py",
-      "file_hash": "sha256:0a495a9f66bcf27245861d82bac053133925d20c2d0f44e5215e1fa437208c7e"
+      "file_hash": "sha256:cefd5f226bb3c32281311536d8b8b0ffca233c82b1ad64a46e5e1f3f1e1f59a6"
     }
   },
   "environment": {

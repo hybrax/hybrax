@@ -1,5 +1,5 @@
 {
-  "prepared_at": "2026-08-26T10:48:03.428307+00:00",
+  "prepared_at": "2026-08-27T09:58:07.850224+00:00",
   "source_input_path": "../data.json",
   "source_input_sha256": "5cc39f9430726e78c39d778ceedd2472d62d50e5001838b988b10920b4edbd19",
   "custom_py_sha256": null,
@@ -1887,7 +1887,7 @@
     }
   },
   "provenance": {
-    "prepared_at": "2026-08-26T10:48:03.428410+00:00",
+    "prepared_at": "2026-08-27T09:58:07.850294+00:00",
     "prepare_config": {
       "raw_input": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_gaussian_process/data.json",
       "augmentation": null,

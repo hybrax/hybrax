@@ -69,12 +69,16 @@ class GPReactionModule(UserReactionModule):
         mean = (k_xz @ jsl.cho_solve(chol, self.targets))[0]
         v = jsl.cho_solve(chol, k_xz[0])
         var = jnp.exp(self.log_output_scale) - k_xz[0] @ v
-        rate_std = jnp.sqrt(jnp.clip(var, 1e-12)) * jnp.ones_like(mean)
+        SCL_rate_std = jnp.sqrt(jnp.clip(var, 1e-12)) * jnp.ones_like(mean)
+        # predictions.csv reports q_* in RAW units (RAW_modeled_BiologicalOde_rates),
+        # but auxiliary values pass through unscaled: convert here so rate_std is
+        # comparable to q_* in the same file, not left in SCL units next to RAW ones.
+        RAW_rate_std = self.unscale_modeled_BiologicalOde_rates(SCL_rate_std)
         return ReactionOutputs(
             SCL_modeled_BiologicalOde_rates=mean,
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
-            auxiliary={"rate_std": rate_std},
+            auxiliary={"rate_std": RAW_rate_std},
         )
 
     def marginal_nll(self) -> jax.Array:
@@ -142,7 +146,7 @@ class GPLossModule(DefaultLossModule):
 
     nll_weight: float = eqx.field(static=True)
 
-    def __init__(self, *, target_names, nll_weight=0.05):
+    def __init__(self, *, target_names, nll_weight=0.0005):
         super().__init__(target_names=target_names)
         self.nll_weight = nll_weight
 
