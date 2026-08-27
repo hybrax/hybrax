@@ -1,8 +1,8 @@
 {
-  "prepared_at": "2026-08-26T13:22:52.068687+00:00",
+  "prepared_at": "2026-08-27T13:19:31.042881+00:00",
   "source_input_path": "../pooled.json",
   "source_input_sha256": "c43c89c9d18582042a0e44faabeaf0379b9f78ee5ab2bd64878bbd68bdce3b32",
-  "custom_py_sha256": "a19dc084ccd11b22e16ca7c5e9a70cbe8e8d56cca14f929327ccba31a00e910a",
+  "custom_py_sha256": "bad9ead75f67a55a2f78c3e79fdb2c37a879b3505778960a3c961b358bd28dc7",
   "transform_hooks": {
     "transform_process_collection": "default_transform_process_collection"
   },
@@ -17055,7 +17055,7 @@
     }
   },
   "provenance": {
-    "prepared_at": "2026-08-26T13:22:52.068774+00:00",
+    "prepared_at": "2026-08-27T13:19:31.042978+00:00",
     "prepare_config": {
       "raw_input": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_knowledge_transfer/pooled.json",
       "augmentation": null,
@@ -17065,7 +17065,7 @@
       "process_rename_map": {},
       "diagnostics": true
     },
-    "custom_py_file_hash": "sha256:a19dc084ccd11b22e16ca7c5e9a70cbe8e8d56cca14f929327ccba31a00e910a",
+    "custom_py_file_hash": "sha256:bad9ead75f67a55a2f78c3e79fdb2c37a879b3505778960a3c961b358bd28dc7",
     "raw_input_sha256": "sha256:c43c89c9d18582042a0e44faabeaf0379b9f78ee5ab2bd64878bbd68bdce3b32",
     "environment": {
       "python": "3.13.5",

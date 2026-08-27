@@ -1,6 +1,6 @@
 {
   "status": "complete",
-  "started_at": "2026-08-26T15:22:55+0200",
+  "started_at": "2026-08-27T15:19:34+0200",
   "cli_argv": [
     "/home/mgotsmy/code/bpbench/hybrax/src/hybrax/train/cli.py",
     "train",
@@ -55,7 +55,7 @@
     },
     "custom_py": {
       "bundled": "custom.py",
-      "file_hash": "sha256:a19dc084ccd11b22e16ca7c5e9a70cbe8e8d56cca14f929327ccba31a00e910a"
+      "file_hash": "sha256:bad9ead75f67a55a2f78c3e79fdb2c37a879b3505778960a3c961b358bd28dc7"
     }
   },
   "environment": {
@@ -67,7 +67,7 @@
     "diffrax": "0.7.2",
     "pydantic": "2.13.4"
   },
-  "finished_at": "2026-08-26T15:24:23+0200",
+  "finished_at": "2026-08-27T15:20:59+0200",
   "updates_completed": 400,
-  "final_mean_loss": 0.006171859766114264
+  "final_mean_loss": 0.007386241759074488
 }

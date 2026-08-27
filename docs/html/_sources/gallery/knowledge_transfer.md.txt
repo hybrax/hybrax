@@ -14,18 +14,17 @@ kernelspec:
 
 > **Demonstrates.** Pooling data from several products to help a data-poor new one,
 > using a constant-valued controlled process variable as a one-hot product-identity
-> feature, and an ensemble of GPs anchored to real training data instead of one GP
-> with free-floating inducing points.
+> feature, and an ensemble of GPs anchored to real training data.
 
 Inspired by Helleckes et al. 2024 <a href="#ref-helleckes2024">[1]</a>, whose headline result is
 that pooling data across products, "horizontal knowledge transfer," measurably helps
 a new product with few runs of its own, provided the historical products actually
-resemble it. This page reproduces that qualitative result natively in `hybrax.train`, on
-synthetic data, built on [the GP reaction module](gaussian_process.md). It is not a
-replication of their method (their model is fit by maximum-likelihood estimation on
-a precomputed rate target and pools via one-hot encoding or a PACOH meta-learned
-prior; this page trains by gradient descent through the ODE solve and pools via a
-controlled process variable), only of the finding.
+resemble it. This page reproduces that qualitative result natively in `hybrax.train`,
+on synthetic data, using an ensemble version of [Gaussian process](gaussian_process.md)'s
+`GPReactionModule`. It is not a replication of their method (their model is fit by
+maximum-likelihood estimation on a precomputed rate target and pools via one-hot
+encoding or a PACOH meta-learned prior; this page trains by gradient descent through
+the ODE solve and pools via a controlled process variable), only of the finding.
 
 The walkthrough below shows the file in pieces, next to the reasoning for each one. For
 the whole thing at once: to copy, diff against your own, or just read top to bottom:
@@ -90,10 +89,9 @@ similar kinetics (slow growth, low glucose affinity, product-forming) but are
 distinguishable cell lines, not re-seeded noise: see
 [the data generator](../_data/generate.py) for the exact numbers.
 
-`ReactionInputs` has no "which process produced this state" field, by design: the
-same reaction module applies uniformly regardless of source process. A constant
-controlled process variable does exactly this job instead, using only existing,
-unmodified hybrax machinery. [The data generator](../_data/generate.py)'s
+A constant controlled process variable gives the reaction module a
+"which product produced this state" signal, using only existing, unmodified
+hybrax machinery. [The data generator](../_data/generate.py)'s
 `build_demo_products()` attaches it directly, once, when it builds each process:
 
 ```{literalinclude} ../_data/generate.py
@@ -105,55 +103,80 @@ unmodified hybrax machinery. [The data generator](../_data/generate.py)'s
 
 `is_new_product` is `0.0` for every historical run's process, `1.0` for the target's:
 a one-hot product-identity feature, concatenated onto the physiological state before
-the kernel sees it (below). It ships as a `StaticVariable`-valued controlled process
-variable in `data.json` itself: `demo_products` carries the column already, no
-prepare-time hook needed to attach it.
+the model sees it (below). It ships as a `StaticVariable`-valued controlled process
+variable in `data.json` itself.
 
 ## The ensemble
 
-Pooling several products' data behind one model raises a specific risk for the
-data-poor target: with free-floating trainable inducing points shared across the
-whole pooled set, capacity can get spent wherever gradient descent happens to push
-it, not necessarily where the target needs it. `EnsembleGPReactionModule` addresses
-this two ways: several independent GP heads instead of one, and every head's
-inducing points anchored to a real bootstrap subsample of training data instead of
-free vectors.
+`EnsembleGPReactionModule` extends [Gaussian process](gaussian_process.md)'s
+`GPReactionModule` to K heads, each anchored to a bootstrap subsample of the same
+real `(centers, targets)` pairs, not free trainable vectors.
 
 ```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
 :language: python
 :linenos:
-:lines: 36-69
+:lines: 47-84
 ```
 
-`centers` is a `frozen_field()`: real `(state, is_new_product)` pairs pulled from
-`training_parent_collection` at construction time via `build_reaction_module`, never trained.
-`pseudo_targets` stays trainable: rates are never directly observed, only inferred
-through the ODE fit, unlike the real state locations.
+`centers` pairs real `(state, is_new_product)` locations with `targets`, the real
+rate estimate at that same state, bootstrap-resampled *together* per head so a
+center never gets separated from its own target. Only the kernel hyperparameters
+(`log_lengthscale`, `log_output_scale`, `log_noise`) are trained.
 
 ```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
 :language: python
 :linenos:
-:lines: 71-94
+:lines: 86-119
 ```
 
-The final prediction is the mean across heads; the **spread across heads** stands in
-for `rate_std`, replacing the closed-form single-GP variance from the previous page.
-This mirrors Helleckes et al. 2024's <a href="#ref-helleckes2024">[1]</a> own "mean averaging
-ensemble... 30 GP models, each subsampling 50% of the training data experiments,"
-scaled down (5 heads here, not 30) and subsampled at the point level rather than the
-experiment level, both for tractability inside `hybrax.train`'s per-solver-step
-reaction-module call.
+Each head runs the same closed-form GP posterior `GPReactionModule` does, vmapped
+across all K heads at once. The final prediction is the mean across heads; the
+**spread across heads** stands in for `rate_std`. This mirrors Helleckes et al.
+2024's <a href="#ref-helleckes2024">[1]</a> own "mean averaging ensemble... 30 GP
+models, each subsampling 50% of the training data experiments," scaled down (5
+heads here, not 30) for tractability.
+
+## Fitting the ensemble
 
 ```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
 :language: python
 :linenos:
-:lines: 97-116
+:lines: 144-198
 ```
 
-`build_reaction_module` is the piece that changed shape from every other gallery
-page: it reads real training data through `training_parent_collection` *before* the
-module exists, using the reaction module's own `Scaler.scale_value()` to convert RAW
-states to the same SCL space the module will see at call time.
+For every process, {py:func}`hybrax.format.splines.build_pseudobatch_transform` and
+{py:func}`hybrax.format.splines.build_backtransform_spline` fit a smooth spline
+through the real measured concentrations, the same real-rate-estimation machinery
+`GPReactionModule` uses. Calling `.derivative()` and dividing by the real biomass
+value turns it into a real specific rate, matching the declared ODE. The first 3
+(of 17) samples of every process get dropped first: biomass is still near its
+small inoculum value there, and a derivative divided by a small denominator is
+unreliable. `is_new_product` becomes one more `centers` column.
+
+```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
+:language: python
+:linenos:
+:lines: 121-141
+```
+
+`marginal_nll` is the standard GP negative log marginal likelihood, computed
+per-head from that head's own real `centers` and `targets`, then averaged across
+the K heads. It's the quantity a textbook GP fit maximizes, reusing the same
+`_chol` every head's own posterior already computes.
+
+```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
+:language: python
+:linenos:
+:lines: 201-227
+```
+
+`EnsembleGPLossModule` adds one more named loss, `gp_nll`, to the usual per-target
+trajectory MSE terms, exactly like `GPReactionModule`'s own loss module. Both
+terms drive the same gradient step: the trajectory loss keeps the whole ensemble
+anchored to the real measured concentrations, and `gp_nll` fits every head's
+kernel hyperparameters the way a real GP does. `nll_weight` scales `gp_nll` down
+to keep it in the same rough range as the trajectory terms, since `hybrax.train`
+averages named losses.
 
 ## Local vs. pooled
 
@@ -171,7 +194,7 @@ print(f"run directory: ./{(WORK).relative_to(WORK.parents[4])}")
 
 Both runs use the identical architecture, epoch budget and learning rate: only the
 training data differs. `local` sees `T`'s 2 training runs alone; `pooled` sees those
-plus all 24 historical runs.
+plus all 24 historical runs (4 products × 6 runs each).
 
 ## Evaluating on the held-out runs
 
@@ -212,14 +235,12 @@ for name in ("biomass", "glucose", "product"):
     print(f"{name:10s} {r2_local[name]:10.4f} {r2_pooled[name]:10.4f}")
 ```
 
-`local`'s R² is strongly negative on `biomass`: not a bug, a real extrapolation
-failure. Trained only on `S0` 12-14 g/L, it never saw glucose run out at the held-out
-run's lower `S0`, so it keeps extrapolating the exponential growth phase it learned
-instead of saturating. `pooled` recovers because the historical products, sampled
-across the full design space, give the shared kernel real information about what
-happens at both extremes, even though their exact kinetics differ from `T`'s: the
-general shape (growth decelerates as glucose depletes) transfers across products even
-when the precise rate does not.
+`local`'s R² is strongly negative: not a bug, a real extrapolation failure. Trained
+only on `S0` 12-14 g/L, it never saw glucose run out at the held-out run's lower
+`S0`, so it keeps extrapolating the exponential growth phase it learned instead of
+saturating. `pooled` recovers because the historical products, sampled across the
+full design space, give the model real information about what happens at both
+extremes, even though their exact kinetics differ from `T`'s.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -257,26 +278,19 @@ measured trajectory throughout.
 ## Gotchas
 
 - **Pooling only helps if the historical products actually resemble the target.**
-  With dissimilar kinetics, a shared kernel has to reconcile mostly-unrelated
-  products, and a fixed, small set of real-data anchors per ensemble head is not
-  enough to resolve multiple regimes at once: pooled can end up *worse* than local,
-  not better. This matches Helleckes et al. 2024's <a href="#ref-helleckes2024">[1]</a> own
-  finding: "in case the historical data are more heterogeneous... OHE models
-  performed more similarly to local models," i.e. pooling's benefit shrinks toward
-  zero as similarity drops.
+  With dissimilar kinetics, one model has to reconcile mostly-unrelated products:
+  pooled can end up *worse* than local, not better. This matches Helleckes et al.
+  2024's <a href="#ref-helleckes2024">[1]</a> own finding: "in case the historical
+  data are more heterogeneous... OHE models performed more similarly to local
+  models," i.e. pooling's benefit shrinks toward zero as similarity drops.
 - **A fair "local" baseline needs held-out data outside its training coverage.** If a
   data-poor model's held-out runs are drawn from the same narrow initial-condition
-  range as its training runs, it can look deceptively good: a low-dimensional, smooth
-  interpolation problem any flexible model solves easily with a couple of examples.
-  Test on conditions the training runs did not cover, the way real "few experiments
-  for a new product" data actually looks.
+  range as its training runs, it can look deceptively good. Test on conditions the
+  training runs did not cover, the way real "few experiments for a new product"
+  data actually looks.
 - **A constant-valued controlled PV does not scale to many products without a real
   embedding.** One-hot works for a handful of products; Hutter et al. <a href="#ref-hutter2021">[2]</a>
   use a learned embedding instead once the product count grows.
-- **More training epochs is not a reliable fix for a pooled model stuck above
-  local's loss floor.** Watch for held-out R² getting *worse* while training loss
-  keeps (barely) improving with more epochs: a sign of overfitting the
-  majority-product data, not under-convergence.
 - **`build_reaction_module` needing `training_parent_collection`** (to pull real
   anchor data) is the one place this page's hook signature differs from every
   simpler gallery page's `(*, seed, **kwargs)`.
@@ -285,12 +299,12 @@ measured trajectory throughout.
 
 Run the example yourself at `./source/_data/out/runs/gallery_knowledge_transfer/`.
 
-- [Gaussian process reaction module](gaussian_process.md): the single-GP version this
-  builds on.
+- [Gaussian process](gaussian_process.md): the single-GP version this builds on.
 - [Fed-batch](fed_batch.md): another reaction module reading a controlled PV as a real
   input, the same mechanism `is_new_product` uses here.
-- [Scaling](../train/scaling.md): `Scaler.scale_value()`, used inside
-  `build_reaction_module` here to convert real training data to SCL space.
+- [Scaling](../train/scaling.md): `Scaler.scale_value()`/`scale_derivative()`, used
+  inside `build_reaction_module` here to convert real states and real rate estimates
+  to SCL space.
 
 ## References
 
