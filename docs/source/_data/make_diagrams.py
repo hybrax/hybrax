@@ -20,6 +20,8 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 from matplotlib.font_manager import FontProperties
 
+matplotlib.rcParams["svg.hashsalt"] = "hybrax"
+
 OUT = Path(__file__).parent.parent / "_static"
 
 BRAND_LIGHT = "#2563eb"  # matches conf.py html_theme_options light accent
@@ -51,7 +53,12 @@ def _save(fig, name, theme):
         ax.patch.set_alpha(0)
     path = OUT / f"{name}_{theme}.svg"
     fig.savefig(
-        path, format="svg", transparent=True, bbox_inches="tight", pad_inches=0.15
+        path,
+        format="svg",
+        transparent=True,
+        bbox_inches="tight",
+        pad_inches=0.15,
+        metadata={"Date": None},
     )
     plt.close(fig)
     print("wrote", path)
