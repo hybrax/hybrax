@@ -231,7 +231,7 @@ def make_shape_diagram(theme, annotate_files):
     # only difference is whether it's held out and scored per fold. The
     # ensemble-vs-single distinction lives in prose elsewhere, not here.
     main_labels = [
-        "hybrax-format",
+        "hybrax.format",
         "hybrax\nprepare",
         "hybrax\ntrain / loo",
         "hybrax\nforward",
@@ -300,9 +300,9 @@ def make_shape_diagram(theme, annotate_files):
         config_x = main_x + stage_w + ARROW_LEN
         configs = [
             (ys[0], "import.py"),
-            (ys[1], "prepare-\nconfig.json"),
+            (ys[1], "prepare-config.json"),
             (ys[2], "train-config.json,\nloo-config.json"),
-            (ys[3], "forward-\nconfig.json"),
+            (ys[3], "forward-config.json"),
         ]
         for y, label in configs:
             cy = y + stage_h / 2
