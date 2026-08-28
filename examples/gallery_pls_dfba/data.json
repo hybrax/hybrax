@@ -271,7 +271,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -554,7 +554,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -837,7 +837,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -1120,7 +1120,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,

@@ -1,10 +1,10 @@
 {
   "metadata": {
     "hybrax.train": {
-      "prepared_at": "2026-08-27T13:19:31.042881+00:00",
+      "prepared_at": "2026-08-28T16:43:09.146045+00:00",
       "source_input_path": "../pooled.json",
-      "source_input_sha256": "c43c89c9d18582042a0e44faabeaf0379b9f78ee5ab2bd64878bbd68bdce3b32",
-      "custom_py_sha256": "bad9ead75f67a55a2f78c3e79fdb2c37a879b3505778960a3c961b358bd28dc7",
+      "source_input_sha256": "823f55c8cb88926fe04d618af6483a1ef2bddfe4294b93988475c51d04d3a44d",
+      "custom_py_sha256": "00aa06c163f44d756c08853bdff6e51d422b06cea0dde495a69a6ae62422a2a3",
       "transform_hooks": {
         "transform_process_collection": "default_transform_process_collection"
       },
@@ -63,7 +63,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -120,7 +120,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -177,7 +177,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -234,7 +234,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -291,7 +291,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -348,7 +348,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -405,7 +405,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -462,7 +462,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -519,7 +519,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -576,7 +576,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -633,7 +633,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -690,7 +690,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -747,7 +747,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -804,7 +804,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -861,7 +861,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -918,7 +918,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -975,7 +975,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1032,7 +1032,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1089,7 +1089,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1146,7 +1146,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1203,7 +1203,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1260,7 +1260,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1317,7 +1317,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1374,7 +1374,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1431,7 +1431,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1488,7 +1488,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1556,7 +1556,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1613,7 +1613,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1670,7 +1670,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1727,7 +1727,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1784,7 +1784,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1841,7 +1841,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1898,7 +1898,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -1955,7 +1955,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2012,7 +2012,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2069,7 +2069,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2126,7 +2126,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2183,7 +2183,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2240,7 +2240,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2297,7 +2297,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2354,7 +2354,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2411,7 +2411,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2468,7 +2468,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2525,7 +2525,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2582,7 +2582,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2639,7 +2639,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2696,7 +2696,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2753,7 +2753,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2810,7 +2810,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2867,7 +2867,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2924,7 +2924,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -2981,7 +2981,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3049,7 +3049,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3106,7 +3106,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3163,7 +3163,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3220,7 +3220,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3277,7 +3277,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3334,7 +3334,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3391,7 +3391,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3448,7 +3448,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3505,7 +3505,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3562,7 +3562,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3619,7 +3619,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3676,7 +3676,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3733,7 +3733,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3790,7 +3790,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3847,7 +3847,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3904,7 +3904,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -3961,7 +3961,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -4018,7 +4018,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -4075,7 +4075,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -4132,7 +4132,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -4189,7 +4189,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -4246,7 +4246,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -4303,7 +4303,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -4360,7 +4360,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -4417,7 +4417,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -4474,7 +4474,7 @@
             ],
             [
               true,
-              "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+              "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
             ]
           ]
         },
@@ -17057,9 +17057,9 @@
         }
       },
       "provenance": {
-        "prepared_at": "2026-08-27T13:19:31.042978+00:00",
+        "prepared_at": "2026-08-28T16:43:09.147147+00:00",
         "prepare_config": {
-          "raw_input": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_knowledge_transfer/pooled.json",
+          "raw_input": "/work/4df3ff1316cf/hybrax/examples/gallery_knowledge_transfer/pooled.json",
           "augmentation": null,
           "strict_format_validation": false,
           "required_control_names": [],
@@ -17067,10 +17067,10 @@
           "process_rename_map": {},
           "diagnostics": true
         },
-        "custom_py_file_hash": "sha256:bad9ead75f67a55a2f78c3e79fdb2c37a879b3505778960a3c961b358bd28dc7",
-        "raw_input_sha256": "sha256:c43c89c9d18582042a0e44faabeaf0379b9f78ee5ab2bd64878bbd68bdce3b32",
+        "custom_py_file_hash": "sha256:00aa06c163f44d756c08853bdff6e51d422b06cea0dde495a69a6ae62422a2a3",
+        "raw_input_sha256": "sha256:823f55c8cb88926fe04d618af6483a1ef2bddfe4294b93988475c51d04d3a44d",
         "environment": {
-          "python": "3.13.5",
+          "python": "3.13.14",
           "hybrax": "0.1.0",
           "jax": "0.10.0",
           "optax": "0.2.8",
@@ -17078,7 +17078,7 @@
           "diffrax": "0.7.2",
           "pydantic": "2.13.4"
         },
-        "content_hash": "sha256:8b5bfa510a798075d87ab5227ddcef72069efeef001b158ea52435bd16037968"
+        "content_hash": "sha256:9f54afc14e7a5b155266ccce59be06a8900349f34f49e55f868b94632c1f1cc9"
       }
     }
   },
@@ -17293,7 +17293,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -17517,7 +17517,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -17741,7 +17741,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -17965,7 +17965,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -18189,7 +18189,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -18413,7 +18413,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -18637,7 +18637,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -18861,7 +18861,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -19085,7 +19085,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -19309,7 +19309,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -19533,7 +19533,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -19757,7 +19757,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -19981,7 +19981,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -20205,7 +20205,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -20429,7 +20429,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -20653,7 +20653,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -20877,7 +20877,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -21101,7 +21101,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -21325,7 +21325,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -21549,7 +21549,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -21773,7 +21773,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -21997,7 +21997,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -22221,7 +22221,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -22445,7 +22445,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -22669,7 +22669,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,
@@ -22893,7 +22893,7 @@
         "unit": "L",
         "volume_changes": {}
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "q_biomass": null,

@@ -12272,7 +12272,7 @@
           }
         }
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {
           "X_active": "biomass - product_intracellular"
         },

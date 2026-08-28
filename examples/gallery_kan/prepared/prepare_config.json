@@ -1,7 +1,7 @@
 {
-  "prepared_at": "2026-08-26T11:32:57.984193+00:00",
+  "prepared_at": "2026-08-28T16:43:09.045924+00:00",
   "source_input_path": "../data.json",
-  "source_input_sha256": "5cc39f9430726e78c39d778ceedd2472d62d50e5001838b988b10920b4edbd19",
+  "source_input_sha256": "7eeec4f764c569d2c49a2cd952c0c499791cee246dc7728269677367f3a944c5",
   "custom_py_sha256": null,
   "transform_hooks": {
     "transform_process_collection": "default_transform_process_collection"
@@ -61,7 +61,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -118,7 +118,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -175,7 +175,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -243,7 +243,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -300,7 +300,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -357,7 +357,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -425,7 +425,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -482,7 +482,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -539,7 +539,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -1887,9 +1887,9 @@
     }
   },
   "provenance": {
-    "prepared_at": "2026-08-26T11:32:57.984327+00:00",
+    "prepared_at": "2026-08-28T16:43:09.046325+00:00",
     "prepare_config": {
-      "raw_input": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_kan/data.json",
+      "raw_input": "/work/4df3ff1316cf/hybrax/examples/gallery_kan/data.json",
       "augmentation": null,
       "strict_format_validation": false,
       "required_control_names": [],
@@ -1898,9 +1898,9 @@
       "diagnostics": true
     },
     "custom_py_file_hash": null,
-    "raw_input_sha256": "sha256:5cc39f9430726e78c39d778ceedd2472d62d50e5001838b988b10920b4edbd19",
+    "raw_input_sha256": "sha256:7eeec4f764c569d2c49a2cd952c0c499791cee246dc7728269677367f3a944c5",
     "environment": {
-      "python": "3.13.5",
+      "python": "3.13.14",
       "hybrax": "0.1.0",
       "jax": "0.10.0",
       "optax": "0.2.8",
@@ -1908,6 +1908,6 @@
       "diffrax": "0.7.2",
       "pydantic": "2.13.4"
     },
-    "content_hash": "sha256:45b4e78e44b6076830face7941bd04c19669c8b588ad0a62d2184aa6ecb7fea5"
+    "content_hash": "sha256:143ab5f4cfdba14574ad97eacb74bca707f82368d171d52d3e6ccdf9e9ca4568"
   }
 }

@@ -148,7 +148,7 @@
           }
         }
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "k_solute": {

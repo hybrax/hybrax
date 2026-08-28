@@ -1,8 +1,8 @@
 {
-  "prepared_at": "2026-08-27T13:19:03.419507+00:00",
+  "prepared_at": "2026-08-28T16:43:08.520153+00:00",
   "source_input_path": "../local.json",
-  "source_input_sha256": "bc9873026303be008a8459489d8a6fceb4010b07d43fd9ba3b10b4b38456aa22",
-  "custom_py_sha256": "bad9ead75f67a55a2f78c3e79fdb2c37a879b3505778960a3c961b358bd28dc7",
+  "source_input_sha256": "250c5d8d6a16cd3bc4e916efa7579bdfd526556143f771bf008fbe761a7bfe63",
+  "custom_py_sha256": "00aa06c163f44d756c08853bdff6e51d422b06cea0dde495a69a6ae62422a2a3",
   "transform_hooks": {
     "transform_process_collection": "default_transform_process_collection"
   },
@@ -61,7 +61,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -118,7 +118,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -186,7 +186,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -243,7 +243,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -311,7 +311,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -368,7 +368,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -1359,9 +1359,9 @@
     }
   },
   "provenance": {
-    "prepared_at": "2026-08-27T13:19:03.419570+00:00",
+    "prepared_at": "2026-08-28T16:43:08.520565+00:00",
     "prepare_config": {
-      "raw_input": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_knowledge_transfer/local.json",
+      "raw_input": "/work/4df3ff1316cf/hybrax/examples/gallery_knowledge_transfer/local.json",
       "augmentation": null,
       "strict_format_validation": false,
       "required_control_names": [],
@@ -1369,10 +1369,10 @@
       "process_rename_map": {},
       "diagnostics": true
     },
-    "custom_py_file_hash": "sha256:bad9ead75f67a55a2f78c3e79fdb2c37a879b3505778960a3c961b358bd28dc7",
-    "raw_input_sha256": "sha256:bc9873026303be008a8459489d8a6fceb4010b07d43fd9ba3b10b4b38456aa22",
+    "custom_py_file_hash": "sha256:00aa06c163f44d756c08853bdff6e51d422b06cea0dde495a69a6ae62422a2a3",
+    "raw_input_sha256": "sha256:250c5d8d6a16cd3bc4e916efa7579bdfd526556143f771bf008fbe761a7bfe63",
     "environment": {
-      "python": "3.13.5",
+      "python": "3.13.14",
       "hybrax": "0.1.0",
       "jax": "0.10.0",
       "optax": "0.2.8",
@@ -1380,6 +1380,6 @@
       "diffrax": "0.7.2",
       "pydantic": "2.13.4"
     },
-    "content_hash": "sha256:971144479ffba403c19a239c3098a42e60c2a98eb38c7b7f7e6c199525fbbea0"
+    "content_hash": "sha256:d555e49a7cba83ebe64b09dba6910baf6528972e61d2de6f16535283a90eff47"
   }
 }

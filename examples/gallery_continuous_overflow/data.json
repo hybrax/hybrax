@@ -324,7 +324,7 @@
         ],
         "metadata": null
       },
-      "biological_ode": {
+      "reaction_ode": {
         "algebraic": {},
         "rates": {
           "mu": null

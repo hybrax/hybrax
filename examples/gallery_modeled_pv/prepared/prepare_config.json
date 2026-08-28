@@ -1,7 +1,7 @@
 {
-  "prepared_at": "2026-08-25T09:50:07.934536+00:00",
+  "prepared_at": "2026-08-28T16:43:09.004766+00:00",
   "source_input_path": "../data.json",
-  "source_input_sha256": "c649cd2e2a638f448df99cfd816bd82e163704f5aa57ce8785b2d2c473881e9d",
+  "source_input_sha256": "586fb4e637d1c33b716b598f04777c6b48b73830cf53dac1d8d06504bf0f32e7",
   "custom_py_sha256": null,
   "transform_hooks": {
     "transform_process_collection": "default_transform_process_collection"
@@ -73,7 +73,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -142,7 +142,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -211,7 +211,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -291,7 +291,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -360,7 +360,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -429,7 +429,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -509,7 +509,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -578,7 +578,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -647,7 +647,7 @@
         ],
         [
           true,
-          "PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
+          "PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units"
         ]
       ]
     },
@@ -711,7 +711,7 @@
                 0.4298518270145345,
                 0.2254822840289992,
                 0.2976956925364234,
-                0.4163891972650861,
+                0.4163891972650862,
                 0.5257131361663794,
                 0.746747616813204,
                 0.9965869946466699
@@ -798,7 +798,7 @@
                 0.6358411645909887,
                 0.3586412551577466,
                 0.45486726528029037,
-                0.6221119672213463,
+                0.6221119672213465,
                 0.816715846903697,
                 1.0937721797145425,
                 1.5399741346394935
@@ -885,7 +885,7 @@
                 0.35417229945160184,
                 0.17650861014922842,
                 0.22706750266112416,
-                0.32481555850004135,
+                0.3248155585000414,
                 0.43049135897123647,
                 0.6456976114006381,
                 0.7939760971413802
@@ -960,7 +960,7 @@
                   0.4298518270145345,
                   0.2254822840289992,
                   0.2976956925364234,
-                  0.4163891972650861,
+                  0.4163891972650862,
                   0.5257131361663794,
                   0.746747616813204,
                   0.9965869946466699
@@ -1030,7 +1030,7 @@
                   0.4298518270145345,
                   0.2254822840289992,
                   0.2976956925364234,
-                  0.4163891972650861,
+                  0.4163891972650862,
                   0.5257131361663794,
                   0.746747616813204,
                   0.9965869946466699
@@ -1107,7 +1107,7 @@
                   0.6358411645909887,
                   0.3586412551577466,
                   0.45486726528029037,
-                  0.6221119672213463,
+                  0.6221119672213465,
                   0.816715846903697,
                   1.0937721797145425,
                   1.5399741346394935
@@ -1177,7 +1177,7 @@
                   0.6358411645909887,
                   0.3586412551577466,
                   0.45486726528029037,
-                  0.6221119672213463,
+                  0.6221119672213465,
                   0.816715846903697,
                   1.0937721797145425,
                   1.5399741346394935
@@ -1254,7 +1254,7 @@
                   0.35417229945160184,
                   0.17650861014922842,
                   0.22706750266112416,
-                  0.32481555850004135,
+                  0.3248155585000414,
                   0.43049135897123647,
                   0.6456976114006381,
                   0.7939760971413802
@@ -1324,7 +1324,7 @@
                   0.35417229945160184,
                   0.17650861014922842,
                   0.22706750266112416,
-                  0.32481555850004135,
+                  0.3248155585000414,
                   0.43049135897123647,
                   0.6456976114006381,
                   0.7939760971413802
@@ -1395,9 +1395,9 @@
     }
   },
   "provenance": {
-    "prepared_at": "2026-08-25T09:50:07.934603+00:00",
+    "prepared_at": "2026-08-28T16:43:09.005137+00:00",
     "prepare_config": {
-      "raw_input": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_modeled_pv/data.json",
+      "raw_input": "/work/4df3ff1316cf/hybrax/examples/gallery_modeled_pv/data.json",
       "augmentation": null,
       "strict_format_validation": false,
       "required_control_names": [],
@@ -1406,9 +1406,9 @@
       "diagnostics": true
     },
     "custom_py_file_hash": null,
-    "raw_input_sha256": "sha256:c649cd2e2a638f448df99cfd816bd82e163704f5aa57ce8785b2d2c473881e9d",
+    "raw_input_sha256": "sha256:586fb4e637d1c33b716b598f04777c6b48b73830cf53dac1d8d06504bf0f32e7",
     "environment": {
-      "python": "3.13.13",
+      "python": "3.13.14",
       "hybrax": "0.1.0",
       "jax": "0.10.0",
       "optax": "0.2.8",
@@ -1416,6 +1416,6 @@
       "diffrax": "0.7.2",
       "pydantic": "2.13.4"
     },
-    "content_hash": "sha256:33140e402206a37b82d4974b2732464c494553a8eeff3234942c5700b43f4b0b"
+    "content_hash": "sha256:353cc341beeacc1b8e79783af1260e39a177bc8229a48865548fcc8e293adf40"
   }
 }
