@@ -14,57 +14,23 @@ kernelspec:
 # A KAN model
 <!-- UNLOCK -->
 
-> **Demonstrates.** A Kolmogorov-Arnold Network (KAN) occupying the reaction module's
-> slot: every edge between an input and a hidden or output node carries its own
-> learnable univariate function (a SiLU base term plus a small Gaussian
-> radial-basis expansion). Most nodes sum their incoming edges; each of the three
-> output rates also combines two of them multiplicatively, instead of an MLP's
-> fixed activation with learned linear weights. Trained end to end by
-> `hybrax.train`'s own optimizer; each edge's learned curve can be matched against
-> a small shape library after training, and the trained model's overall behavior
-> can be checked against the real process that generated its training data.
+> A Kolmogorov-Arnold Network (KAN) occupying the reaction module's slot: each edge
+> between two nodes carries its own learnable curve, instead of a neural network's
+> fixed activation with learned weights. After training, each edge's curve is matched
+> against a small shape library and checked against the real process that generated the
+> training data.
 
-Inspired by Bühler & Guillén-Gosálbez 2026 <a href="#ref-srkan">[1]</a>, whose
-SR-KAN framework builds on Kolmogorov-Arnold Networks
-<a href="#ref-kan">[2]</a> and, in their own bioprocess case study, recovers
-interpretable kinetic rate laws for a batch fermentation of biomass, substrate
-and product, a system whose shape lines up closely with `demo_batch`'s own
-biomass/glucose/product state. This page reproduces the core architectural idea
-(learnable univariate functions on edges, combined at nodes, in place of an MLP)
-as a live `hybrax.train` reaction module, using a Gaussian radial-basis edge function
-in place of B-splines, an equivalent formulation per Li 2024
-<a href="#ref-rbf">[3]</a>, the same reasoning SR-KAN itself uses to justify
-swapping B-splines for a different fast, localized basis.
+Inspired by Bühler & Guillén-Gosálbez 2026 <a href="#ref-srkan">[1]</a>, whose SR-KAN
+framework builds on Kolmogorov-Arnold Networks <a href="#ref-kan">[2]</a> to recover
+interpretable kinetic rate laws from a batch fermentation case study similar to this
+page's own biomass, glucose, and product data. This page reproduces the core idea,
+learnable curves on edges in place of a neural network's fixed activations, as a single
+reaction module trained directly inside `hybrax.train`'s own loop rather than the
+paper's own two-stage pipeline. It also reuses the paper's post-training step of
+matching each learned edge against a small library of simple curves, stopping short of
+the paper's further step of composing those matches into one closed-form rate law.
 
-**Two pieces worth being explicit about.** This page trains the KAN as the live
-reaction module inside `hybrax.train`'s own Diffrax-integrated, end-to-end
-differentiable training loop. SR-KAN's own bioprocess case study is a two-stage
-pipeline instead: a Neural Controlled Differential Equation first fits smooth
-derivatives from noisy measurements, then those derivatives are symbolically
-regressed offline. Nothing here reproduces the Neural CDE stage; hybrax.format's own
-ODE integration already provides a differentiable trajectory directly.
-
-This page does take one step from SR-KAN's own post-hoc symbolic-extraction
-pipeline: after training, each of `l1`'s edges gets matched against a small
-library of simple shapes (flat, linear, power, saturating, exponential), scored
-by fit quality rather than assumed (below, in
-[What each edge learned](#what-each-edge-learned)). What stays out of scope is
-the harder remainder of SR-KAN's pipeline: entropy/sparsity regularization,
-separability/symmetry detection, and composing matched edges across both layers
-into one closed-form right-hand side for the whole ODE.
-[Recovering the real rate law](#recovering-the-real-rate-law) below checks the
-trained model's overall behavior against the real process that generated its
-training data directly, without needing that composition step.
-
-The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:
-
-:::{dropdown} Full `custom.py`
-```{literalinclude} ../../../examples/gallery_kan/custom.py
-:language: python
-:linenos:
-```
-:::
+The walkthrough below shows the file in pieces, next to the reasoning for each one.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -124,7 +90,7 @@ def r2_by_target(run_dir):
     return {k: float(np.mean(v)) for k, v in per_target.items()}
 ```
 
-## The KAN layer
+## The KAN Layer
 
 ```{literalinclude} ../../../examples/gallery_kan/custom.py
 :language: python
@@ -137,11 +103,11 @@ small Gaussian radial-basis expansion centered on a fixed grid
 <a href="#ref-rbf">[3]</a>. A node's output is the sum over its incoming edges'
 curves, `Σ_i φ_oi(x_i)`, the defining property that makes this a KAN
 <a href="#ref-kan">[2]</a> rather than an MLP: the learnable function lives on
-the edge, not folded into a fixed node activation. `x` is `tanh`-bounded before
+the edge, separate from a fixed node activation. `x` is `tanh`-bounded before
 hitting the grid, so every edge's spline term always sees an input inside the
 range it was actually fit over.
 
-## The reaction module
+## The Reaction Module
 
 ```{literalinclude} ../../../examples/gallery_kan/custom.py
 :language: python
@@ -168,8 +134,7 @@ actually need it: every rate this page fits turns out to depend on glucose
 alone, through a single saturating curve, with nothing multiplicative in the
 real process (see [Recovering the real rate law](#recovering-the-real-rate-law)
 below). The term stays in as a demonstration that the model has this option
-available, the same way SR-KAN's own model does, not because this particular
-system requires it.
+available, the same way SR-KAN's own model does.
 
 `prod_a` and `prod_b` start at ordinary, non-zero values, unlike every other
 weight in `l2`, which starts at zero. A product of two values that both start
@@ -215,7 +180,7 @@ column: the rates the KAN actually predicted along the way,
 `q_biomass`/`q_glucose`/`q_product`, which never enter the loss directly, only
 their integral does.
 
-## What each edge learned
+## What Each Edge Learned
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -272,25 +237,24 @@ n_clean = sum(1 for row in edge_rows if row[2] != "no clean match")
 print(f"{n_clean} of l1's {len(edge_rows)} edges matched one of the 5 shapes cleanly (R2 >= 0.9)")
 ```
 
-## Recovering the real rate law
+## Recovering the Real Rate Law
 
-This page's training data (`data.json`) is not arbitrary: it comes from
+This page's training data (`data.json`) comes from
 `hybrax/docs/source/_data/generate.py`'s `build_demo_batch`, a real,
 known kinetic model (Monod growth, fixed biomass yield plus maintenance,
 Luedeking-Piret product formation). hybrax multiplies each of the model's
 three predicted numbers by the current biomass automatically, outside the
 reaction module entirely, so what the KAN itself needs to learn is a
-per-biomass rate, not the full rate of change. Written that way, all three
+per-biomass rate. Written that way, all three
 true rates reduce to one shape:
 
     (a fixed number) x S / (Ks + S)
 
 a single saturating (Michaelis-Menten) curve in glucose (`S`) alone, with the
 same `Ks = 0.05 g/L` in all three and nothing depending on biomass or
-product. This gives a direct check: feed the trained model made-up
-combinations of the three inputs (not real measured points, just numbers
-picked to isolate one input at a time), and see whether its own behavior
-matches.
+product. This gives a direct check: feed the trained model synthetic
+combinations of the three inputs, picked to isolate one input at a time, and see
+whether its own behavior matches.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -316,7 +280,7 @@ pooled = {n: np.concatenate(v) for n, v in pooled.items()}
 ranges = {n: (max(float(pooled[n].min()), 0.0), float(pooled[n].max())) for n in names}
 fixed = {n: float(np.median(pooled[n])) for n in names}
 
-rows, recovered = [], []
+other_effect, equations = [], []
 for out_idx, rate in enumerate(["q_biomass", "q_glucose", "q_product"]):
     sweeps = {}
     for species in names:
@@ -328,34 +292,29 @@ for out_idx, rate in enumerate(["q_biomass", "q_glucose", "q_product"]):
         ])
         sweeps[species] = (xs, ys, best_match(xs, ys))
     glucose_spread = float(np.ptp(sweeps["glucose"][1]))
-    for species in names:
-        xs, ys, m = sweeps[species]
+    for species in ("biomass", "product"):
+        xs, ys, _ = sweeps[species]
         rel = float(np.ptp(ys)) / glucose_spread if glucose_spread > 1e-12 else 0.0
-        rows.append({"rate": rate, "swept input": species,
-                      "% of glucose's effect": round(rel * 100, 1), "shape": m["best"]})
+        other_effect.append(rel)
     fit = sweeps["glucose"][2]
     if fit["closest"] == "saturating":
         a_fit, k_fit, _ = fit["fits"]["saturating"]["params"]
-        recovered.append({"rate": rate, "recovered a": round(a_fit, 2), "true a": TRUE_SCALE[rate],
-                            "recovered Ks": round(k_fit, 2), "true Ks": TRUE["Ks"]})
+        a_true, k_true = TRUE_SCALE[rate], TRUE["Ks"]
+        equations.append(
+            f"{rate:10s}  learned: {a_fit:+.3f} * S / ({k_fit:.3f} + S)"
+            f"   true: {a_true:+.3f} * S / ({k_true:.3f} + S)"
+        )
 
-pd.DataFrame(rows)
+print(f"Biomass and product together move each rate by at most "
+      f"{max(other_effect) * 100:.1f}% of what glucose does.\n")
+print("\n".join(equations))
 ```
 
-```{code-cell} ipython3
-:tags: [remove-input]
+Biomass and product barely move any rate, matching the real process. Glucose alone
+traces a clean saturating curve for all three rates, the right shape. The learned
+scale and half-saturation numbers above land only roughly near the real ones.
 
-pd.DataFrame(recovered)
-```
-
-Sweeping biomass or product moves each rate by only a few percent of what
-sweeping glucose does: the model correctly learned that biomass and product
-barely matter, matching the real process. Sweeping glucose traces a clean
-saturating curve for all three rates, the right shape. The recovered scale
-and half-saturation numbers, though, land well off the real ones above: right
-shape, not the same numbers.
-
-That gap is expected, not a failure to paper over. Training sees only 3
+That gap is expected. Training sees only 3
 processes here (15 timepoints each, `BATCH_RUNS` in `generate.py`), and the
 sweep above evaluates the model at input combinations that never occur
 together along any single real trajectory, off the narrow path training
@@ -365,9 +324,9 @@ model picked up an inhibiting effect of product concentration on biomass
 growth that the real process did not have, and noted "slight numerical
 discrepancies" between its recovered growth surface and the real one, even
 after correctly capturing the overall trend
-<a href="#ref-forster">[4]</a>. This page is not attempting to match SR-KAN's
-own hyperparameter-tuned pipeline point for point; the aim is to show that a
-comparable check runs, end to end, inside `hybrax.train`.
+<a href="#ref-forster">[4]</a>. The aim here is to show that a comparable check runs,
+end to end, inside `hybrax.train`, at a smaller scale than SR-KAN's own
+hyperparameter-tuned pipeline.
 
 ## Gotchas
 
@@ -377,28 +336,30 @@ comparable check runs, end to end, inside `hybrax.train`.
 - **`centers` is a `frozen_field()`, never trained.** The grid is fixed; only
   `base_w` and `spline_c`, the edge functions' actual shape, move under
   gradient descent.
-- **`l2`'s near-zero initialization is what keeps the ODE flat at step 0**,
-  not a small learning rate or a warmup schedule. Removing it does not error,
-  it just starts training from a wild, effectively random rate prediction.
+- **`l2`'s near-zero initialization is what keeps the ODE flat at step 0.**
+  Removing it does not error, it just starts training from a wild, effectively
+  random rate prediction.
 - **`hidden` and `grid` are real capacity knobs**, exactly like a network's
   width. Too few edges or basis functions and the model cannot represent the
   trajectory; too many and every edge pays for a wider, mostly redundant
   radial-basis expansion.
 - **`prod_a`/`prod_b` break perfectly-flat-at-step-0 for all three rates**,
-  not just the two hidden units they read from. They start non-zero on
+  since every rate reads through `l2`'s shared sum. They start non-zero on
   purpose (see above), so each rate starts very close to flat rather than
   exactly flat.
 
-## See also
+## See Also
 
-Run the example yourself at `./source/_data/out/runs/gallery_kan/`.
+The full, runnable example (`custom.py`, configs, data) lives in
+`examples/gallery_kan/` at the repo root, no docs build required. This page's own
+executed run is at `./source/_data/out/runs/gallery_kan/`.
 
 - [The Reaction Module](../train/reaction_module.md): `auxiliary`, and
   everything else a `UserReactionModule` can return.
 - [Gaussian process reaction module](gaussian_process.md): another
   reaction-module architecture, with its own way of reading out what it
   learned.
-- [Mechanistic models](mechanistic_rates.md): a reaction module built from
+- [Mechanistic Models](mechanistic_rates.md): a reaction module built from
   explicit kinetics instead.
 
 ## References

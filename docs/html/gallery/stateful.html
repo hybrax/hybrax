@@ -3,15 +3,15 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Glutamine decay" href="glutamine_decay.html"><link rel="prev" title="Custom losses" href="dense_loss.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Glutamine Decay" href="glutamine_decay.html"><link rel="prev" title="Custom Losses" href="dense_loss.html">
         <link rel="prefetch" href="../_static/hybrax_logo.png" as="image">
 
     <link rel="shortcut icon" href="../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Stateful models - Bioprocess Modeling with Hybrax</title>
+        <title>Stateful Models - Bioprocess Modeling with Hybrax</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -374,18 +374,17 @@
         </div>
         <article role="main" id="furo-main-content">
           <section class="tex2jax_ignore mathjax_ignore" id="stateful-models">
-<h1>Stateful models<a class="headerlink" href="#stateful-models" title="Link to this heading">¶</a></h1>
+<h1>Stateful Models<a class="headerlink" href="#stateful-models" title="Link to this heading">¶</a></h1>
 <blockquote>
-<div><p><strong>Demonstrates.</strong> A reaction module with its own memory (a continuous-time LSTM whose
-hidden and cell state are integrated as extra ODE dimensions) and the opt-in that
-guards it.</p>
+<div><p>A reaction module with its own memory: a continuous-time LSTM whose hidden and cell
+state are integrated as extra ODE dimensions, plus the opt-in that guards it.</p>
 </div></blockquote>
 <p>Every module so far predicts rates from the <em>current</em> state alone. That is a real
 modeling assumption: it says the biology has no memory beyond what is currently
 measured. A <strong>stateful</strong> module relaxes that: it carries its own latent state through
-the solve, so the rates can depend on where the process has been, not just where it is.</p>
+the solve, so the rates can depend on the whole history of where the process has been.</p>
 <section id="why-this-is-a-bigger-change-than-it-looks">
-<h2>Why this is a bigger change than it looks<a class="headerlink" href="#why-this-is-a-bigger-change-than-it-looks" title="Link to this heading">¶</a></h2>
+<h2>Why This Is a Bigger Change Than It Looks<a class="headerlink" href="#why-this-is-a-bigger-change-than-it-looks" title="Link to this heading">¶</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> does not run a discrete recurrent network beside the ODE solver. It <strong>turns the
 recurrent cell into a continuous-time ODE</strong>: the latent state <code class="docutils literal notranslate"><span class="pre">h</span></code> is an extra integrated
 dimension, and its derivative is the discrepancy between <code class="docutils literal notranslate"><span class="pre">h</span></code> and whatever the cell would
@@ -395,144 +394,11 @@ proper flow that Diffrax can integrate and differentiate through like any other 
 <p>This is exactly how <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s own built-in stateful model works:
 <code class="docutils literal notranslate"><span class="pre">DefaultStatefulReactionModule</span></code> in <code class="docutils literal notranslate"><span class="pre">hybrax/train/defaults.py</span></code> uses this trick with a GRU
 cell. What follows applies the identical trick to an LSTM, to show it is a general
-pattern, not something specific to GRUs.</p>
-<p>The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:</p>
-<details class="sd-sphinx-override sd-dropdown sd-card sd-mb-3">
-<summary class="sd-summary-title sd-card-header">
-<span class="sd-summary-text">Full <code class="docutils literal notranslate"><span class="pre">custom.py</span></code></span><span class="sd-summary-state-marker sd-summary-chevron-right"><svg version="1.1" width="1.5em" height="1.5em" class="sd-octicon sd-octicon-chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.72 18.78a.75.75 0 0 1 0-1.06L14.44 12 8.72 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0Z"></path></svg></span></summary><div class="sd-summary-content sd-card-body docutils">
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">  1</span><span class="sd">"""A stateful reaction module: a continuous-time LSTM.</span>
-<span class="linenos">  2</span>
-<span class="linenos">  3</span><span class="sd">Every reaction module so far has been memoryless: its rates depend only on</span>
-<span class="linenos">  4</span><span class="sd">the CURRENT state. A stateful module (``n_latent &gt; 0``) adds its own hidden</span>
-<span class="linenos">  5</span><span class="sd">state, integrated as extra ODE dimensions alongside the physical ones, so the</span>
-<span class="linenos">  6</span><span class="sd">rates can depend on the process's recent history too.</span>
-<span class="linenos">  7</span>
-<span class="linenos">  8</span><span class="sd">hybrax.train's own default stateful module uses a GRU cell (see</span>
-<span class="linenos">  9</span><span class="sd">``DefaultStatefulReactionModule`` in ``hybrax/train/defaults.py``); this one uses</span>
-<span class="linenos"> 10</span><span class="sd">an LSTM cell instead, to show the same trick applies to any recurrent cell</span>
-<span class="linenos"> 11</span><span class="sd">with a fixed-size hidden state.</span>
-<span class="linenos"> 12</span><span class="sd">"""</span>
-<span class="linenos"> 13</span>
-<span class="linenos"> 14</span><span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
-<span class="linenos"> 15</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
-<span class="linenos"> 16</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
-<span class="linenos"> 17</span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="linenos"> 18</span>
-<span class="linenos"> 19</span><span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.train</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<span class="linenos"> 20</span>    <span class="n">EstimatedScales</span><span class="p">,</span>
-<span class="linenos"> 21</span>    <span class="n">ReactionInputs</span><span class="p">,</span>
-<span class="linenos"> 22</span>    <span class="n">ReactionOutputs</span><span class="p">,</span>
-<span class="linenos"> 23</span>    <span class="n">UserReactionModule</span><span class="p">,</span>
-<span class="linenos"> 24</span>    <span class="n">trainable_field</span><span class="p">,</span>
-<span class="linenos"> 25</span><span class="p">)</span>
-<span class="linenos"> 26</span>
-<span class="linenos"> 27</span>
-<span class="linenos"> 28</span><span class="k">class</span><span class="w"> </span><span class="nc">LSTMReactionModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
-<span class="linenos"> 29</span><span class="w">    </span><span class="sd">"""Cell state and hidden state are both integrated ODE latents, each</span>
-<span class="linenos"> 30</span><span class="sd">    pulled toward the LSTM cell's discrete target at every solver step."""</span>
-<span class="linenos"> 31</span>
-<span class="linenos"> 32</span>    <span class="n">lstm_cell</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">LSTMCell</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 33</span>    <span class="n">rate_head</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 34</span>    <span class="n">n_hidden</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="linenos"> 35</span>
-<span class="linenos"> 36</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">n_hidden</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
-<span class="linenos"> 37</span>        <span class="c1"># SCL_latent holds [hidden | cell], so its width is 2 * n_hidden.</span>
-<span class="linenos"> 38</span>        <span class="n">scale_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">,</span> <span class="s2">"SCALE_latent"</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">n_hidden</span><span class="p">)}</span>
-<span class="linenos"> 39</span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
-<span class="linenos"> 40</span>        <span class="bp">self</span><span class="o">.</span><span class="n">n_hidden</span> <span class="o">=</span> <span class="n">n_hidden</span>
-<span class="linenos"> 41</span>        <span class="n">key_cell</span><span class="p">,</span> <span class="n">key_head</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
-<span class="linenos"> 42</span>        <span class="bp">self</span><span class="o">.</span><span class="n">lstm_cell</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">LSTMCell</span><span class="p">(</span>
-<span class="linenos"> 43</span>            <span class="n">input_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span><span class="p">,</span> <span class="n">hidden_size</span><span class="o">=</span><span class="n">n_hidden</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">key_cell</span>
-<span class="linenos"> 44</span>        <span class="p">)</span>
-<span class="linenos"> 45</span>        <span class="bp">self</span><span class="o">.</span><span class="n">rate_head</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span>
-<span class="linenos"> 46</span>            <span class="n">in_features</span><span class="o">=</span><span class="n">n_hidden</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span><span class="p">,</span>
-<span class="linenos"> 47</span>            <span class="n">out_features</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_BiologicalOde_rates</span><span class="p">,</span>
-<span class="linenos"> 48</span>            <span class="n">key</span><span class="o">=</span><span class="n">key_head</span><span class="p">,</span>
-<span class="linenos"> 49</span>        <span class="p">)</span>
-<span class="linenos"> 50</span>
-<span class="linenos"> 51</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">ReactionInputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
-<span class="linenos"> 52</span>        <span class="k">del</span> <span class="n">t</span>
-<span class="linenos"> 53</span>        <span class="n">h</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_latent</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
-<span class="linenos"> 54</span>        <span class="n">h_new</span><span class="p">,</span> <span class="n">c_new</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lstm_cell</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">,</span> <span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">c</span><span class="p">))</span>
-<span class="linenos"> 55</span>        <span class="c1"># The continuous-time-RNN trick: an ODE derivative that pulls the</span>
-<span class="linenos"> 56</span>        <span class="c1"># latent toward the cell's one-step target, rather than the discrete</span>
-<span class="linenos"> 57</span>        <span class="c1"># jump an LSTM normally takes. At convergence h tracks h_new.</span>
-<span class="linenos"> 58</span>        <span class="n">latent_derivative</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">h_new</span><span class="p">,</span> <span class="n">c_new</span><span class="p">])</span> <span class="o">-</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_latent</span>
-<span class="linenos"> 59</span>        <span class="c1"># Read out from h (not h_new): the CURRENT hidden state, consistent</span>
-<span class="linenos"> 60</span>        <span class="c1"># with every other input the reaction module receives at time t.</span>
-<span class="linenos"> 61</span>        <span class="n">readout</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">h</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">])</span>
-<span class="linenos"> 62</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos"> 63</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">rate_head</span><span class="p">(</span><span class="n">readout</span><span class="p">),</span>
-<span class="linenos"> 64</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos"> 65</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos"> 66</span>            <span class="n">SCL_latent_derivative</span><span class="o">=</span><span class="n">latent_derivative</span><span class="p">,</span>
-<span class="linenos"> 67</span>        <span class="p">)</span>
-<span class="linenos"> 68</span>
-<span class="linenos"> 69</span>
-<span class="linenos"> 70</span><span class="k">def</span><span class="w"> </span><span class="nf">build_reaction_module</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">seed</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<span class="linenos"> 71</span>    <span class="n">scale_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"SCALE_"</span><span class="p">)}</span>
-<span class="linenos"> 72</span>    <span class="k">return</span> <span class="n">LSTMReactionModule</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">key</span><span class="p">(</span><span class="n">seed</span><span class="p">),</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
-<span class="linenos"> 73</span>
-<span class="linenos"> 74</span>
-<span class="linenos"> 75</span><span class="k">def</span><span class="w"> </span><span class="nf">estimate_all_scales</span><span class="p">(</span><span class="n">runtime_data</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
-<span class="linenos"> 76</span>    <span class="k">del</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span>
-<span class="linenos"> 77</span>    <span class="n">rhs</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">rhs_ode</span>
-<span class="linenos"> 78</span>    <span class="n">n_processes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
-<span class="linenos"> 79</span>
-<span class="linenos"> 80</span>    <span class="k">def</span><span class="w"> </span><span class="nf">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
-<span class="linenos"> 81</span>        <span class="n">best</span> <span class="o">=</span> <span class="mf">0.0</span>
-<span class="linenos"> 82</span>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">):</span>
-<span class="linenos"> 83</span>            <span class="n">_</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
-<span class="linenos"> 84</span>            <span class="k">if</span> <span class="n">values</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
-<span class="linenos"> 85</span>                <span class="n">best</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">values</span><span class="p">))))</span>
-<span class="linenos"> 86</span>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">)</span>
-<span class="linenos"> 87</span>
-<span class="linenos"> 88</span>    <span class="n">rmc_scale</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">}</span>
-<span class="linenos"> 89</span>
-<span class="linenos"> 90</span>    <span class="k">def</span><span class="w"> </span><span class="nf">rate_scale_for</span><span class="p">(</span><span class="n">species</span><span class="p">):</span>
-<span class="linenos"> 91</span>        <span class="n">per_process</span> <span class="o">=</span> <span class="p">[]</span>
-<span class="linenos"> 92</span>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">):</span>
-<span class="linenos"> 93</span>            <span class="n">c_times</span><span class="p">,</span> <span class="n">c_values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">species</span><span class="p">)</span>
-<span class="linenos"> 94</span>            <span class="n">x_times</span><span class="p">,</span> <span class="n">x_values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="s2">"biomass"</span><span class="p">)</span>
-<span class="linenos"> 95</span>            <span class="n">exposure</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trapezoid</span><span class="p">(</span><span class="n">x_values</span><span class="p">,</span> <span class="n">x_times</span><span class="p">)</span>
-<span class="linenos"> 96</span>            <span class="n">per_process</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">c_values</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">c_values</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">exposure</span><span class="p">,</span> <span class="mf">1e-9</span><span class="p">))</span>
-<span class="linenos"> 97</span>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">per_process</span><span class="p">),</span> <span class="mf">1e-9</span><span class="p">)</span>
-<span class="linenos"> 98</span>
-<span class="linenos"> 99</span>    <span class="n">rate_scale</span> <span class="o">=</span> <span class="p">[</span><span class="n">rate_scale_for</span><span class="p">(</span><span class="n">name</span><span class="p">[</span><span class="mi">2</span><span class="p">:])</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_rates</span><span class="p">]</span>
-<span class="linenos">100</span>
-<span class="linenos">101</span>    <span class="c1"># Note: no SCALE_latent here. LSTMReactionModule.__init__ sizes and sets</span>
-<span class="linenos">102</span>    <span class="c1"># it itself from n_hidden, since the latent has no physical counterpart</span>
-<span class="linenos">103</span>    <span class="c1"># in the data for this hook to estimate a magnitude from.</span>
-<span class="linenos">104</span>    <span class="n">empty</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos">105</span>    <span class="k">return</span> <span class="n">EstimatedScales</span><span class="p">(</span>
-<span class="linenos">106</span>        <span class="n">SCALE_modeled_RMCs</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">rmc_scale</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">]),</span>
-<span class="linenos">107</span>        <span class="n">SCALE_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rate_scale</span><span class="p">),</span>
-<span class="linenos">108</span>        <span class="n">SCALE_V_in_cumulative</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
-<span class="linenos">109</span>            <span class="nb">max</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">initial_volume</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">))</span>
-<span class="linenos">110</span>        <span class="p">),</span>
-<span class="linenos">111</span>        <span class="n">SCALE_modeled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">112</span>        <span class="n">SCALE_modeled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">113</span>        <span class="n">SCALE_modeled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">114</span>        <span class="n">SCALE_modeled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">115</span>        <span class="n">SCALE_controlled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">116</span>        <span class="n">SCALE_controlled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">117</span>        <span class="n">SCALE_controlled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">118</span>        <span class="n">SCALE_controlled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">119</span>        <span class="n">SCALE_controlled_PVs</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">120</span>        <span class="n">SCALE_controlled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos">121</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
-<span class="linenos">122</span>        <span class="p">),</span>
-<span class="linenos">123</span>        <span class="n">SCALE_modeled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos">124</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
-<span class="linenos">125</span>        <span class="p">),</span>
-<span class="linenos">126</span>    <span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</details></section>
+pattern that works for any recurrent cell.</p>
+<p>The walkthrough below shows the file in pieces, next to the reasoning for each one.</p>
+</section>
 <section id="the-module">
-<h2>The module<a class="headerlink" href="#the-module" title="Link to this heading">¶</a></h2>
+<h2>The Module<a class="headerlink" href="#the-module" title="Link to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="w">    </span><span class="sd">"""Cell state and hidden state are both integrated ODE latents, each</span>
 <span class="linenos"> 2</span><span class="sd">    pulled toward the LSTM cell's discrete target at every solver step."""</span>
 <span class="linenos"> 3</span>
@@ -573,17 +439,17 @@ the whole thing at once: to copy, diff against your own, or just read top to bot
 <span class="linenos">38</span>            <span class="n">SCL_latent_derivative</span><span class="o">=</span><span class="n">latent_derivative</span><span class="p">,</span>
 </pre></div>
 </div>
-<p>An LSTM cell has <em>two</em> pieces of memory, not one (the hidden state and the cell state)
-so <code class="docutils literal notranslate"><span class="pre">SCL_latent</span></code> here holds both, concatenated. Everything else is the same trick as
+<p>An LSTM cell has <em>two</em> pieces of memory (the hidden state and the cell state), so
+<code class="docutils literal notranslate"><span class="pre">SCL_latent</span></code> here holds both, concatenated. Everything else is the same trick as
 above: compute where the cell would jump to, emit the difference as the derivative, and
-read the rates out of the <em>current</em> hidden state (not the target) so the module stays
+read the rates out of the <em>current</em> hidden state so the module stays
 consistent with every other input it receives at time <code class="docutils literal notranslate"><span class="pre">t</span></code>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">ReactionOutputs</span></code> gains a field we have not used before, <code class="docutils literal notranslate"><span class="pre">SCL_latent_derivative</span></code>, aligned
 with <code class="docutils literal notranslate"><span class="pre">SCL_latent</span></code>. It defaults to an empty array: every non-stateful module in these docs
 has been quietly relying on that default.</p>
 </section>
 <section id="the-opt-in">
-<h2>The opt-in<a class="headerlink" href="#the-opt-in" title="Link to this heading">¶</a></h2>
+<h2>The Opt-in<a class="headerlink" href="#the-opt-in" title="Link to this heading">¶</a></h2>
 <p>Declaring a nonzero <code class="docutils literal notranslate"><span class="pre">SCALE_latent</span></code> is enough to make <code class="docutils literal notranslate"><span class="pre">n_latent</span> <span class="pre">&gt;</span> <span class="pre">0</span></code>, and that alone is not
 allowed to train silently:</p>
 <div class="cell tag_remove-input docutils container">
@@ -595,16 +461,16 @@ allowed to train silently:</p>
 </div>
 <p>That is deliberate: a latent state changes what the model <em>is</em> (it is no longer a pure
 function of the physical state) and that is a large enough change in what “the model”
-means that <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> wants it to be a decision, not a side effect of adding a field.</p>
+means that <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> wants it to be a deliberate decision on your part.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"allow_stateful_models"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
 </section>
 <section id="training-it">
-<h2>Training it<a class="headerlink" href="#training-it" title="Link to this heading">¶</a></h2>
+<h2>Training It<a class="headerlink" href="#training-it" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 13:14:57 INFO __main__: training complete: first_mean_loss=0.228993 last_mean_loss=0.000775314 delta=-0.228217
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:05:27 INFO __main__: training complete: first_mean_loss=0.228993 last_mean_loss=0.000775314 delta=-0.228217
 run directory: ./source/_data/out/runs/gallery_stateful/run
 </pre></div>
 </div>
@@ -617,7 +483,7 @@ run directory: ./source/_data/out/runs/gallery_stateful/run
 </div>
 </section>
 <section id="checking-the-latent-dimension-actually-registered">
-<h2>Checking the latent dimension actually registered<a class="headerlink" href="#checking-the-latent-dimension-actually-registered" title="Link to this heading">¶</a></h2>
+<h2>Checking the Latent Dimension Actually Registered<a class="headerlink" href="#checking-the-latent-dimension-actually-registered" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>n_latent = 8
@@ -673,7 +539,7 @@ run directory: ./source/_data/out/runs/gallery_stateful/run
 and the readout head show up as trainable, exactly like any other reaction module.</p>
 </section>
 <section id="when-this-is-worth-the-extra-machinery">
-<h2>When this is worth the extra machinery<a class="headerlink" href="#when-this-is-worth-the-extra-machinery" title="Link to this heading">¶</a></h2>
+<h2>When This Is Worth the Extra Machinery<a class="headerlink" href="#when-this-is-worth-the-extra-machinery" title="Link to this heading">¶</a></h2>
 <p>Not on <code class="docutils literal notranslate"><span class="pre">demo_batch</span></code>: a memoryless module already fits this data well, because nothing
 about a simple batch culture actually depends on history beyond the current state. A
 latent state earns its cost when the biology genuinely has memory the current
@@ -687,23 +553,25 @@ to reach for this.</p>
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
 <ul class="simple">
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">allow_stateful_models:</span> <span class="pre">true</span></code> is required</strong>, or training raises before it starts.</p></li>
-<li><p><strong>Read out from the current latent, not the target</strong>: using <code class="docutils literal notranslate"><span class="pre">h_new</span></code> instead of <code class="docutils literal notranslate"><span class="pre">h</span></code> in
+<li><p><strong>Read out from the current latent</strong>: using <code class="docutils literal notranslate"><span class="pre">h_new</span></code> instead of <code class="docutils literal notranslate"><span class="pre">h</span></code> in
 the rate head quietly changes the model’s causal structure (the rate would depend on
 information from the <em>next</em> step).</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">SCL_latent_derivative</span></code> has a default of empty.</strong> Forgetting to set it on a stateful
-module is a shape mismatch, not a silent zero.</p></li>
+module raises a shape mismatch.</p></li>
 <li><p><strong>This adds real parameters and real integration cost.</strong> Confirm a memoryless module
 actually underfits before reaching for this: see <a class="reference internal" href="../tutorials/03_train.html"><span class="std std-doc">Tutorial 3</span></a>
 and <a class="reference internal" href="../tutorials/04_your_first_custom_py.html"><span class="std std-doc">4</span></a> for the memoryless baseline.</p></li>
 </ul>
 </section>
 <section id="see-also">
-<h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
-<p>Run the example yourself at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_stateful/</span></code>.</p>
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
+<code class="docutils literal notranslate"><span class="pre">examples/gallery_stateful/</span></code> at the repo root, no docs build required. This page’s own
+executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_stateful/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: the general contract this module
 follows.</p></li>
-<li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic models</span></a>: a reaction module built from explicit
+<li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic Models</span></a>: a reaction module built from explicit
 kinetics, no latent state at all.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">DefaultStatefulReactionModule</span></code> in <code class="docutils literal notranslate"><span class="pre">hybrax/train/defaults.py</span></code>: the built-in GRU version of
 this same pattern.</p></li>
@@ -721,7 +589,7 @@ this same pattern.</p></li>
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Glutamine decay</div>
+                <div class="title">Glutamine Decay</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -732,7 +600,7 @@ this same pattern.</p></li>
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Custom losses</div>
+                <div class="title">Custom Losses</div>
                 
               </div>
             </a>
@@ -766,15 +634,15 @@ this same pattern.</p></li>
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Stateful models</a><ul>
-<li><a class="reference internal" href="#why-this-is-a-bigger-change-than-it-looks">Why this is a bigger change than it looks</a></li>
-<li><a class="reference internal" href="#the-module">The module</a></li>
-<li><a class="reference internal" href="#the-opt-in">The opt-in</a></li>
-<li><a class="reference internal" href="#training-it">Training it</a></li>
-<li><a class="reference internal" href="#checking-the-latent-dimension-actually-registered">Checking the latent dimension actually registered</a></li>
-<li><a class="reference internal" href="#when-this-is-worth-the-extra-machinery">When this is worth the extra machinery</a></li>
+<li><a class="reference internal" href="#">Stateful Models</a><ul>
+<li><a class="reference internal" href="#why-this-is-a-bigger-change-than-it-looks">Why This Is a Bigger Change Than It Looks</a></li>
+<li><a class="reference internal" href="#the-module">The Module</a></li>
+<li><a class="reference internal" href="#the-opt-in">The Opt-in</a></li>
+<li><a class="reference internal" href="#training-it">Training It</a></li>
+<li><a class="reference internal" href="#checking-the-latent-dimension-actually-registered">Checking the Latent Dimension Actually Registered</a></li>
+<li><a class="reference internal" href="#when-this-is-worth-the-extra-machinery">When This Is Worth the Extra Machinery</a></li>
 <li><a class="reference internal" href="#gotchas">Gotchas</a></li>
-<li><a class="reference internal" href="#see-also">See also</a></li>
+<li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>
 </ul>

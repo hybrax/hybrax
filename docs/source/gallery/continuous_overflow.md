@@ -10,18 +10,16 @@ kernelspec:
   name: python3
 ---
 
-# Continuous culture with controlled overflow
+# Continuous Culture with Controlled Overflow
 
-> **Demonstrates.** One process moving through batch, a pause, fed-batch filling,
-> and continuous culture; equal continuous inflow and outflow traces; and the same
-> growth law learned as either two Monod parameters or a 33-parameter neural network.
+> This example follows one process through batch, a pause, fed-batch filling, and
+> continuous culture, with matched continuous inflow and outflow. The same growth law
+> is then learned two ways: as two Monod parameters or as a small neural network.
 
-A continuous process is not a separate solver mode in Hybrax. It is an ordinary
-physical-space process whose volume description contains continuous inflows and
-outflows. This example makes that concrete, then asks how much kinetics can be learned
-from just 21 noiseless biomass measurements and 21 noiseless glucose measurements.
-
-The complete runnable example lives in `examples/gallery_continuous_overflow/`.
+A continuous process is an ordinary physical-space process in Hybrax whose volume
+description contains continuous inflows and outflows. This example makes that concrete,
+then asks how much kinetics can be learned from just 21 noiseless biomass measurements
+and 21 noiseless glucose measurements.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -46,7 +44,7 @@ ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
        "MPLBACKEND": "Agg"}
 ```
 
-## From batch to continuous operation
+## From Batch to Continuous Operation
 
 The run starts with 0.5 L containing 0.5 g/L biomass and 5 g/L glucose. Its four phases
 are:
@@ -68,13 +66,12 @@ for name, change in process.volume.volume_changes.items():
 ```
 
 Both volume changes are **controlled**: their cumulative-volume traces are known inputs.
-The outflow is the realized trace of a passive overflow, not a declarative level
-controller. Hybrax does not infer when a dip tube begins spilling from the simulated
-volume. Here the start time is known, and equal prescribed rates make the level balance
-exact after the vessel reaches 1 L.
+The outflow is the realized trace of a passive overflow. Hybrax does not infer when a
+dip tube begins spilling from the simulated volume. Here the start time is known, and
+equal prescribed rates make the level balance exact after the vessel reaches 1 L.
 
-`process_type="continuous"` is useful metadata, but it does not create this behavior.
-The `Inflow`, `Outflow`, and their time series do.
+`process_type="continuous"` is useful metadata, while the `Inflow`, `Outflow`, and their
+time series are what actually create this behavior.
 
 The biological ODE declares one specific rate, growth (`mu`). Transport terms for feed,
 outflow, and changing volume are assembled separately from the process description:
@@ -83,7 +80,7 @@ outflow, and changing volume are assembled separately from the process descripti
 hxf.print_rhs_ode(process)
 ```
 
-## Synthetic measurements
+## Synthetic Measurements
 
 The ground truth is a Monod growth law,
 
@@ -128,7 +125,7 @@ once the two flow rates match. The dashed horizontal biomass and glucose lines a
 analytic chemostat steady state. At 40 h the process is close, but not yet exactly at
 that asymptote.
 
-## Two representations of the same rate
+## Two Representations of the Same Rate
 
 The mechanistic candidate has only two trainable values, `mu_max` and `Ks`. Their logs
 are trained so both physical parameters remain positive. They start at 1.0 h⁻¹ and
@@ -159,7 +156,7 @@ training targets, ODE wrapper, and physical transport terms remain unchanged.
 :pyobject: build_reaction_module
 ```
 
-## What training learns
+## What Training Learns
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -167,9 +164,9 @@ training targets, ODE wrapper, and physical transport terms remain unchanged.
 Image(filename=str(WORK / "training.png"))
 ```
 
-The upper panels inspect the learned rate itself, not just its integrated trajectory.
-That distinction matters: a trajectory can look plausible while its local rate law is
-wrong. The lower panels show how those rates accumulate into biomass over all four
+The upper panels inspect the learned rate itself, separately from its integrated
+trajectory. That distinction matters: a trajectory can look plausible while its local
+rate law is wrong. The lower panels show how those rates accumulate into biomass over all four
 operating phases. Black lines are dense simulator references; training still sees only
 the 21 timestamps per measured trace.
 
@@ -192,7 +189,7 @@ The mechanistic law carries a saturation assumption outside the data; the ANN do
 That is the central tradeoff here: more structural prior and directly interpretable
 parameters versus a more flexible learned rate.
 
-## Practical takeaways
+## Practical Takeaways
 
 - A controlled continuous `Outflow` is supported in physical-space training and
   prediction just like a controlled `Inflow`.
@@ -204,15 +201,16 @@ parameters versus a more flexible learned rate.
 - Sparse, noiseless data are enough for this small demonstration. Real experiments need
   noise-aware validation across independent processes.
 
-## See also
+## See Also
 
-Run the example yourself at
-`./source/_data/out/runs/gallery_continuous_overflow/`.
+The full, runnable example (`custom.py`, configs, data) lives in
+`examples/gallery_continuous_overflow/` at the repo root, no docs build required. This
+page's own executed run is at `./source/_data/out/runs/gallery_continuous_overflow/`.
 
 - [Volume, feeds and events](../format/volume_feeds_events.md): how inflows, outflows,
   feed composition, and cumulative-volume traces are represented.
 - [The Reaction Module](../train/reaction_module.md): the scaled input/output contract
   used by both candidates.
-- [Mechanistic models](mechanistic_rates.md): more structured rate laws and parameter
+- [Mechanistic Models](mechanistic_rates.md): more structured rate laws and parameter
   identifiability.
 - [Feeds, boluses and samples](fed_batch.md): controlled inputs in a fed-batch process.

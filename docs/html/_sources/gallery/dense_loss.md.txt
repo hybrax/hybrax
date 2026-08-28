@@ -10,12 +10,12 @@ kernelspec:
   name: python3
 ---
 
-# Custom losses
+# Custom Losses
 
-> **Demonstrates.** A loss module that constrains the trajectory *between*
-> measurements (bounds on states and rates, and a smoothness penalty on rate
-> curvature) using hybrax.format's own `Bounds` metadata and `hybrax.train`'s jump-aware
-> dense-grid helpers.
+> This example builds a loss module that constrains the trajectory between
+> measurements, adding bounds on states and rates plus a smoothness penalty on rate
+> curvature. It uses hybrax.format's `Bounds` metadata and hybrax.train's jump-aware
+> dense-grid helpers to do this.
 
 By default, a loss only ever looks at measurement times. Between them, the model is free
 to do anything that reproduces the endpoints: including going negative, or oscillating
@@ -24,18 +24,10 @@ gap: opt in, and the trainer also saves on a uniform time linspace, which the lo
 then penalise.
 
 This example adds three terms on top of [Tutorial 4](../tutorials/04_your_first_custom_py.md)'s
-reaction module and scales, none of which change the fit: they change what the model is
-*allowed* to do while fitting.
+reaction module and scales; each term changes what the model is *allowed* to do while
+fitting.
 
-The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:
-
-:::{dropdown} Full `custom.py`
-```{literalinclude} ../../../examples/gallery_dense_loss/custom.py
-:language: python
-:linenos:
-```
-:::
+The walkthrough below shows the file in pieces, next to the reasoning for each one.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -102,7 +94,7 @@ def dense_diagnostics(run_dir):
     return min_glucose, {k: float(np.mean(v)) for k, v in curvature.items()}
 ```
 
-## 1. Bounds, from the data itself
+## 1. Bounds, from the Data Itself
 
 `ReactorMediumComponent.bounds` is metadata hybrax.format already carries: `demo_batch`
 declares `(0.0, None)` on every species, because a concentration cannot be negative. But
@@ -117,9 +109,9 @@ hook:
 ```
 
 This is exactly the use hybrax.format's docs describe for `Bounds`: *"pure metadata (not
-enforced inside RhsOde or the integrator; downstream consumers read them off the process
+enforced inside RhsOde or the integrator); downstream consumers read them off the process
 to build soft-constraint penalties."* Nothing threads these bounds into `hybrax.train`
-automatically) the loss module below reads them itself, once, at construction:
+automatically: the loss module below reads them itself, once, at construction:
 
 ```{literalinclude} ../../../examples/gallery_dense_loss/custom.py
 :language: python
@@ -127,7 +119,7 @@ automatically) the loss module below reads them itself, once, at construction:
 :lines: 198-219
 ```
 
-## 2. The hinge penalty, on the dense grid
+## 2. The Hinge Penalty, on the Dense Grid
 
 ```{literalinclude} ../../../examples/gallery_dense_loss/custom.py
 :language: python
@@ -141,7 +133,7 @@ branching on which bounds are set. The penalty is evaluated on `dense_RAW_states
 only mean something in physical units) and masked by `dense_valid_time`, the dense
 grid's own post-solver-failure mask.
 
-## 3. Smoothness, without penalising real jumps
+## 3. Smoothness, without Penalising Real Jumps
 
 ```{literalinclude} ../../../examples/gallery_dense_loss/custom.py
 :language: python
@@ -158,10 +150,10 @@ triple_mask = all_triple(valid) & dense_triple_mask_away_from_jumps(
 ```
 
 A bolus creates a real, physical kink in concentration (and therefore in the inferred
-rate. Penalising curvature there would fight the data. `dense_triple_mask_away_from_jumps`
+rate). Penalising curvature there would fight the data. `dense_triple_mask_away_from_jumps`
 is shipped by `hybrax.train` for exactly this: it excludes any three-point window whose span
 straddles a jump time, so smoothness is only asked for where the process is actually
-smooth. `demo_batch` has no events, so this mask is a no-op here) see
+smooth. `demo_batch` has no events, so this mask is a no-op here; see
 [Fed-batch](fed_batch.md) for where it matters.
 
 ## Training
@@ -177,7 +169,7 @@ print(lines[0] if lines else "training complete")
 print(f"run directory: ./{(WORK / 'run_full').relative_to(WORK.parents[4])}")
 ```
 
-## Did it cost anything?
+## Did It Cost Anything?
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -235,9 +227,11 @@ from IPython.display import Image
 Image(filename=str(WORK / "run_full/forward/plots/run_1.png"))
 ```
 
-## See also
+## See Also
 
-Run the example yourself at `./source/_data/out/runs/gallery_dense_loss/`.
+The full, runnable example (`custom.py`, configs, data) lives in
+`examples/gallery_dense_loss/` at the repo root, no docs build required. This page's own
+executed run is at `./source/_data/out/runs/gallery_dense_loss/`.
 
 - [The Loss Module](../train/loss_module.md#the-dense-grid): `dense_grid_n` and every
   `dense_*` field.

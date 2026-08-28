@@ -162,15 +162,10 @@ def build_reaction_module(*, seed, training_parent_collection, **kwargs):
         }
         biomass = values["biomass"]
 
-        # q_biomass/q_glucose/q_product are all specific rates: the declared
-        # ODE is "<species>' = q_<species> * biomass" for every one of them.
-        # Drop the first 3 (of 17) samples: biomass is still near its small
-        # inoculum value there, and a spline derivative divided by a small
-        # denominator is a genuinely fragile quantity right at that boundary
-        # -- glucose's rate estimate blows up by 1-2 orders of magnitude at
-        # early samples of several processes otherwise (checked directly:
-        # |rate| std drops 8.3 -> 2.5 dropping these 3, vs. 4.4 dropping just
-        # the first; a 4th sample barely moves it further).
+        # Specific rates: "<species>' = q_<species> * biomass". Drop the first 3
+        # (of 17) samples: near the small inoculum, a derivative over a near-zero
+        # biomass is fragile (rate std drops 8.3 -> 2.5 dropping these 3, vs. 4.4
+        # dropping just the first).
         n_drop = 3
         raw_state = np.stack([values[name][n_drop:] for name in rmc_names], axis=1)
         raw_rate = np.stack(
@@ -182,9 +177,8 @@ def build_reaction_module(*, seed, training_parent_collection, **kwargs):
         pv_col = np.full((scl_state.shape[0], 1), is_new)
         centers_list.append(np.concatenate([scl_state, pv_col], axis=1))
 
-        # A rate is a derivative, not a value: scale_derivative, not
-        # scale_value, so an affine scaler's offset (if any) is never
-        # subtracted from it.
+        # A rate is a derivative, so it uses scale_derivative: an affine
+        # scaler's offset (if any) is never subtracted from it.
         targets_list.append(np.asarray(rate_scaler.scale_derivative(jnp.asarray(raw_rate))))
 
     centers_pool = np.concatenate(centers_list, axis=0)

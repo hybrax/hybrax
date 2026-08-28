@@ -10,14 +10,14 @@ kernelspec:
   name: python3
 ---
 
-# Cross-validation
+# Cross-Validation
 
-> **Demonstrates.** A cheap holdout check with no fold loop, then a full leave-one-out
-> run: real folds, the corrected `per_fold_holdout_sets` schema, and the files it
+> This page runs a quick holdout check with no fold loop, then a full leave-one-out
+> cross-validation over real folds. It also shows the files each training run
 > produces.
 
 Neither of these needs a custom reaction module: the point here is the cross-validation
-machinery, not the model, so this page trains the plain default MLP throughout.
+machinery itself, so this page trains the plain default MLP throughout.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -51,7 +51,7 @@ hxt_cli("prepare", "--config", "prepare-config.json",
 Everything below runs in `WORK`, printed at the end: inspect, copy or modify the real
 files it produced.
 
-## A cheap first check: `holdout_processes`
+## A Cheap First Check: `holdout_processes`
 
 Before committing to N full trainings, hold out one process inside a single run. This
 is Python-API-only (see [Cross-Validation](../train/loo.md#holdout-without-cross-validation)):
@@ -98,10 +98,11 @@ fig.tight_layout()
 ```
 
 Train and holdout track each other closely here: on this small, easy dataset, one
-held-out run generalises about as well as the training set fits. That is a real result,
-not a given, and it is the first thing to check before trusting a model further.
+held-out run generalises about as well as the training set fits. That is a genuine
+result worth confirming, and it is the first thing to check before trusting a model
+further.
 
-## Full leave-one-out
+## Full Leave-One-Out
 
 One fold per process, via the CLI. The config is a train config plus a `loo` section:
 
@@ -137,7 +138,7 @@ lines = [l for l in out.splitlines() if "LOO complete" in l]
 print(lines[0] if lines else "LOO complete")
 ```
 
-## What it produced
+## What It Produced
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -159,8 +160,8 @@ from IPython.display import Image
 Image(filename=str(WORK / "loo_run/loo_loss_curves.png"))
 ```
 
-Read the **spread across folds**, not just the mean: one fold noticeably worse than the
-others usually means that process is different in a way the model does not capture,
+Read the **spread across folds** as well as the mean: one fold noticeably worse than
+the others usually means that process is different in a way the model does not capture,
 which is more informative than an averaged score.
 
 ```{code-cell} ipython3
@@ -176,7 +177,7 @@ plotting all work on it exactly like any other trained run.
 
 ## Gotchas
 
-- **`per_fold_holdout_sets` entries are objects, not bare lists.** `["run_1", "run_2"]`
+- **`per_fold_holdout_sets` entries must be objects.** `["run_1", "run_2"]`
   fails validation; `{"test": ["run_1", "run_2"]}` is the shape.
 - **N folds means N trainings.** Get one fold converging well first (or use
   `holdout_processes` above) before multiplying everything, mistakes included.
@@ -189,9 +190,11 @@ plotting all work on it exactly like any other trained run.
 - **`--resume` re-runs only incomplete folds** and ignores config changes; a fresh run
   is what you want if you edited the config.
 
-## See also
+## See Also
 
-Run the example yourself at `./source/_data/out/runs/gallery_loo/`.
+The full example (configs, data) lives in `examples/gallery_loo/` at the repo root, no
+docs build required. This page's own executed run is at
+`./source/_data/out/runs/gallery_loo/`.
 
 - [Cross-Validation](../train/loo.md): the full reference, including parallelism and
   resuming.

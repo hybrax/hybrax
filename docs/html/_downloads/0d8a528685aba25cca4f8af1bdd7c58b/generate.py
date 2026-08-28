@@ -1056,6 +1056,13 @@ def build_demo_ecoli_blend() -> None:
                 components=components,
             ),
         )
+        processes[name].process_variables["media_blend_fraction"] = hxf.ProcessVariable(
+            name="media_blend_fraction",
+            unit="-",
+            is_controlled=True,
+            values=hxf.StaticVariable(blend),
+            bounds=(0.0, 1.0),
+        )
 
     collection = hxf.BioProcessCollection(
         case_id="demo_ecoli_blend",

@@ -10,11 +10,11 @@ kernelspec:
   name: python3
 ---
 
-# Pseudobatch splines through a jump
+# Pseudobatch Splines Through a Jump
 
-> **Demonstrates.** Recovering a smooth concentration curve from just 5 noisy
-> measurements straddling a discrete feed jump, checked against a known ground truth.
-> hybrax.format only: no reaction module, no training.
+> Recovering a smooth concentration curve from just 5 noisy measurements straddling a
+> discrete feed jump, checked against a known ground truth. Uses hybrax.format only,
+> with no reaction module or training involved.
 
 The other gallery entries fit a model. This one fits a curve: it exercises
 [the pseudobatch transform](../format/pseudobatch_transform.md) and
@@ -35,12 +35,11 @@ WORK.mkdir(parents=True)
 shutil.copy(Path("../../../examples/gallery_pseudobatch_splines/data.json").resolve(), WORK / "data.json")
 ```
 
-## The setup
+## The Setup
 
 One species (`solute`), first-order decay, and one feed bolus part-way through that
 jumps mass and volume together. Both phases are closed-form exponential decay at
-constant volume, so the dense curve below is the exact ground truth, not a numerical
-approximation of it:
+constant volume, so the dense curve below is the exact ground truth:
 
 ```{literalinclude} ../_data/generate.py
 :language: python
@@ -67,10 +66,9 @@ print("measured values   :", np.round(np.asarray(solute.concentration.values), 3
 ```
 
 Two measurements land inside 1 h of the jump on either side (9 h and 11 h), and the raw
-value nearly quintuples between them: that jump is the feed bolus adding mass, not the
-solute suddenly reappearing.
+value nearly quintuples between them: that jump is the feed bolus adding mass.
 
-## Fit and backtransform
+## Fit and Backtransform
 
 ```{code-cell} ipython3
 from hybrax.format.splines import build_pseudobatch_transform, build_backtransform_spline
@@ -84,11 +82,11 @@ recovered = np.asarray(back(dense_t))
 
 `build_pseudobatch_transform` removes the physical jump before fitting a spline to it;
 `build_backtransform_spline` then wraps that fit so evaluating it returns real
-concentration, not the intermediate `pseudobatch_concentration`. The result is a single
-spline, valid on both sides of the jump, that `back` maps to real concentration wherever
-you evaluate it.
+concentration directly, skipping the intermediate `pseudobatch_concentration`. The
+result is a single spline, valid on both sides of the jump, that `back` maps to real
+concentration wherever you evaluate it.
 
-## Recovered curve versus ground truth
+## Recovered Curve Versus Ground Truth
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -119,7 +117,7 @@ Image(filename=str(WORK / "recovery.png"))
 
 ```{code-cell} ipython3
 # Error only where a segment actually has data on both sides. Evaluating a
-# 2-point segment beyond its own last measurement is extrapolation, not recovery.
+# 2-point segment beyond its own last measurement is pure extrapolation.
 pre = np.linspace(0.0, SJ_T_JUMP - 1.0, 200)
 post = np.linspace(SJ_T_JUMP + 1.0, SJ_T_END, 200)
 for label, grid in [("pre-jump [0, 9]", pre), ("post-jump [11, 17]", post)]:
@@ -131,7 +129,7 @@ for label, grid in [("pre-jump [0, 9]", pre), ("post-jump [11, 17]", post)]:
 
 A real, honest fit: within roughly 14% of the true curve at its worst, both before and
 after the jump, from 5 points total. The dashed curve tracks the true decay's shape
-closely, including its curvature, not just its two endpoints.
+closely, including its curvature between the two endpoints.
 
 :::{admonition} Why the post-jump segment is the weaker fit
 :class: note
@@ -139,11 +137,11 @@ The pre-jump segment has 3 measurements (0, 4, 9 h); the post-jump segment has o
 (11, 17 h). `fit_timeseries_spline` needs at least 4 points per segment for its smoothing
 B-spline path, so both segments here fall back to natural cubic interpolation, and 2
 points pin a natural cubic down to very nearly a straight line. That line still tracks
-an honestly-curved exponential decay to within ~14% here, but it is not a coincidence
-that the weaker half is the 2-point one.
+an honestly-curved exponential decay to within ~14% here, and the weaker half is the
+2-point one for exactly that reason.
 :::
 
-## What made this example different
+## What Made This Example Different
 
 - **No reaction module, no `custom.py`, no training.** The pseudobatch transform and
   spline fitting are hybrax.format's own, and stop being useful to demonstrate the moment
@@ -151,13 +149,15 @@ that the weaker half is the 2-point one.
 - **A closed-form ground truth.** Every other demo dataset in this site is simulated
   with RK4 and compared to noisy measurements of itself. This one has an exact answer to
   check the fit against, because that is the whole point of the page.
-- **5 points is not a comfortable number.** One of the two segments this jump creates
+- **5 points is a tight budget.** One of the two segments this jump creates
   is forced into the 2-point, near-linear fallback. That the fit still tracks a real,
   curved decay to ~14% is the actual demonstration.
 
-## See also
+## See Also
 
-Run the example yourself at `./source/_data/out/runs/gallery_pseudobatch_splines/`.
+The full example (configs, data) lives in `examples/gallery_pseudobatch_splines/` at the
+repo root, no docs build required. This page's own executed run is at
+`./source/_data/out/runs/gallery_pseudobatch_splines/`.
 
 - [The pseudobatch transform](../format/pseudobatch_transform.md): what
   `build_pseudobatch_transform` and `build_backtransform_spline` actually compute.

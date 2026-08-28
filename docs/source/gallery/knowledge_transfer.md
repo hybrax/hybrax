@@ -10,31 +10,23 @@ kernelspec:
   name: python3
 ---
 
-# Knowledge transfer
+# Knowledge Transfer
 
-> **Demonstrates.** Pooling data from several products to help a data-poor new one,
-> using a constant-valued controlled process variable as a one-hot product-identity
-> feature, and an ensemble of GPs anchored to real training data.
+> Pooling data from several products to help a data-poor new one, using a
+> constant-valued controlled process variable to mark which product each run belongs
+> to. An ensemble of Gaussian processes, anchored to real training data, does the
+> pooling.
 
 Inspired by Helleckes et al. 2024 <a href="#ref-helleckes2024">[1]</a>, whose headline result is
 that pooling data across products, "horizontal knowledge transfer," measurably helps
 a new product with few runs of its own, provided the historical products actually
 resemble it. This page reproduces that qualitative result natively in `hybrax.train`,
 on synthetic data, using an ensemble version of [Gaussian process](gaussian_process.md)'s
-`GPReactionModule`. It is not a replication of their method (their model is fit by
-maximum-likelihood estimation on a precomputed rate target and pools via one-hot
-encoding or a PACOH meta-learned prior; this page trains by gradient descent through
-the ODE solve and pools via a controlled process variable), only of the finding.
+`GPReactionModule`, trained by gradient descent through the ODE solve and pooled through
+a controlled process variable rather than the paper's own maximum-likelihood fit and
+one-hot or learned-embedding pooling.
 
-The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:
-
-:::{dropdown} Full `custom.py`
-```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
-:language: python
-:linenos:
-```
-:::
+The walkthrough below shows the file in pieces, next to the reasoning for each one.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -81,13 +73,12 @@ for variant in ("local", "pooled"):
     shutil.copy(EXAMPLE / f"train-{variant}.json", WORK / f"train-{variant}.json")
 ```
 
-## Two products, one shared identity feature
+## Two Products, One Shared Identity Feature
 
 `demo_products` has five products: four "historical" (`H1`-`H4`) with 6 runs each,
 and one "target" (`T`) with only 4, held data-poor on purpose. All five share
-similar kinetics (slow growth, low glucose affinity, product-forming) but are
-distinguishable cell lines, not re-seeded noise: see
-[the data generator](../_data/generate.py) for the exact numbers.
+similar kinetics (slow growth, low glucose affinity, product-forming) as distinguishable
+cell lines: see [the data generator](../_data/generate.py) for the exact numbers.
 
 A constant controlled process variable gives the reaction module a
 "which product produced this state" signal, using only existing, unmodified
@@ -106,22 +97,15 @@ a one-hot product-identity feature, concatenated onto the physiological state be
 the model sees it (below). It ships as a `StaticVariable`-valued controlled process
 variable in `data.json` itself.
 
-## The ensemble
+## The Ensemble
 
 `EnsembleGPReactionModule` extends [Gaussian process](gaussian_process.md)'s
 `GPReactionModule` to K heads, each anchored to a bootstrap subsample of the same
-real `(centers, targets)` pairs, not free trainable vectors.
-
-```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
-:language: python
-:linenos:
-:lines: 47-84
-```
-
-`centers` pairs real `(state, is_new_product)` locations with `targets`, the real
-rate estimate at that same state, bootstrap-resampled *together* per head so a
-center never gets separated from its own target. Only the kernel hyperparameters
-(`log_lengthscale`, `log_output_scale`, `log_noise`) are trained.
+real `(centers, targets)` pairs. `centers` pairs real `(state, is_new_product)`
+locations with `targets`, the real rate estimate at that same state,
+bootstrap-resampled *together* per head so a center never gets separated from its own
+target. Only the kernel hyperparameters (`log_lengthscale`, `log_output_scale`,
+`log_noise`) are trained.
 
 ```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
 :language: python
@@ -133,15 +117,15 @@ Each head runs the same closed-form GP posterior `GPReactionModule` does, vmappe
 across all K heads at once. The final prediction is the mean across heads; the
 **spread across heads** stands in for `rate_std`. This mirrors Helleckes et al.
 2024's <a href="#ref-helleckes2024">[1]</a> own "mean averaging ensemble... 30 GP
-models, each subsampling 50% of the training data experiments," scaled down (5
-heads here, not 30) for tractability.
+models, each subsampling 50% of the training data experiments," scaled down to 5
+heads here for tractability.
 
-## Fitting the ensemble
+## Fitting the Ensemble
 
 ```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
 :language: python
 :linenos:
-:lines: 144-198
+:lines: 144-192
 ```
 
 For every process, {py:func}`hybrax.format.splines.build_pseudobatch_transform` and
@@ -167,7 +151,7 @@ the K heads. It's the quantity a textbook GP fit maximizes, reusing the same
 ```{literalinclude} ../../../examples/gallery_knowledge_transfer/custom.py
 :language: python
 :linenos:
-:lines: 201-227
+:lines: 195-221
 ```
 
 `EnsembleGPLossModule` adds one more named loss, `gp_nll`, to the usual per-target
@@ -178,7 +162,7 @@ kernel hyperparameters the way a real GP does. `nll_weight` scales `gp_nll` down
 to keep it in the same rough range as the trajectory terms, since `hybrax.train`
 averages named losses.
 
-## Local vs. pooled
+## Local vs. Pooled
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -196,7 +180,7 @@ Both runs use the identical architecture, epoch budget and learning rate: only t
 training data differs. `local` sees `T`'s 2 training runs alone; `pooled` sees those
 plus all 24 historical runs (4 products × 6 runs each).
 
-## Evaluating on the held-out runs
+## Evaluating on the Held-Out Runs
 
 The real test is `T`'s 2 held-out runs, never seen by either model. `T`'s training
 runs sit in a narrow initial-condition slice (`S0` 12-14 g/L); its held-out runs sit
@@ -235,7 +219,7 @@ for name in ("biomass", "glucose", "product"):
     print(f"{name:10s} {r2_local[name]:10.4f} {r2_pooled[name]:10.4f}")
 ```
 
-`local`'s R² is strongly negative: not a bug, a real extrapolation failure. Trained
+`local`'s R² is strongly negative, a real extrapolation failure. Trained
 only on `S0` 12-14 g/L, it never saw glucose run out at the held-out run's lower
 `S0`, so it keeps extrapolating the exponential growth phase it learned instead of
 saturating. `pooled` recovers because the historical products, sampled across the
@@ -279,7 +263,7 @@ measured trajectory throughout.
 
 - **Pooling only helps if the historical products actually resemble the target.**
   With dissimilar kinetics, one model has to reconcile mostly-unrelated products:
-  pooled can end up *worse* than local, not better. This matches Helleckes et al.
+  pooled can end up *worse* than local. This matches Helleckes et al.
   2024's <a href="#ref-helleckes2024">[1]</a> own finding: "in case the historical
   data are more heterogeneous... OHE models performed more similarly to local
   models," i.e. pooling's benefit shrinks toward zero as similarity drops.
@@ -295,9 +279,11 @@ measured trajectory throughout.
   anchor data) is the one place this page's hook signature differs from every
   simpler gallery page's `(*, seed, **kwargs)`.
 
-## See also
+## See Also
 
-Run the example yourself at `./source/_data/out/runs/gallery_knowledge_transfer/`.
+The full, runnable example (`custom.py`, configs, data) lives in
+`examples/gallery_knowledge_transfer/` at the repo root, no docs build required. This
+page's own executed run is at `./source/_data/out/runs/gallery_knowledge_transfer/`.
 
 - [Gaussian process](gaussian_process.md): the single-GP version this builds on.
 - [Fed-batch](fed_batch.md): another reaction module reading a controlled PV as a real

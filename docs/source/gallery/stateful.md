@@ -10,18 +10,17 @@ kernelspec:
   name: python3
 ---
 
-# Stateful models
+# Stateful Models
 
-> **Demonstrates.** A reaction module with its own memory (a continuous-time LSTM whose
-> hidden and cell state are integrated as extra ODE dimensions) and the opt-in that
-> guards it.
+> A reaction module with its own memory: a continuous-time LSTM whose hidden and cell
+> state are integrated as extra ODE dimensions, plus the opt-in that guards it.
 
 Every module so far predicts rates from the *current* state alone. That is a real
 modeling assumption: it says the biology has no memory beyond what is currently
 measured. A **stateful** module relaxes that: it carries its own latent state through
-the solve, so the rates can depend on where the process has been, not just where it is.
+the solve, so the rates can depend on the whole history of where the process has been.
 
-## Why this is a bigger change than it looks
+## Why This Is a Bigger Change Than It Looks
 
 `hybrax.train` does not run a discrete recurrent network beside the ODE solver. It **turns the
 recurrent cell into a continuous-time ODE**: the latent state `h` is an extra integrated
@@ -33,17 +32,9 @@ proper flow that Diffrax can integrate and differentiate through like any other 
 This is exactly how `hybrax.train`'s own built-in stateful model works:
 `DefaultStatefulReactionModule` in `hybrax/train/defaults.py` uses this trick with a GRU
 cell. What follows applies the identical trick to an LSTM, to show it is a general
-pattern, not something specific to GRUs.
+pattern that works for any recurrent cell.
 
-The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:
-
-:::{dropdown} Full `custom.py`
-```{literalinclude} ../../../examples/gallery_stateful/custom.py
-:language: python
-:linenos:
-```
-:::
+The walkthrough below shows the file in pieces, next to the reasoning for each one.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -75,7 +66,7 @@ hxt_cli("prepare", "--config", "prepare-config.json",
          "--output-dir", "prepared", "--overwrite")
 ```
 
-## The module
+## The Module
 
 ```{literalinclude} ../../../examples/gallery_stateful/custom.py
 :language: python
@@ -83,17 +74,17 @@ hxt_cli("prepare", "--config", "prepare-config.json",
 :lines: 29-66
 ```
 
-An LSTM cell has *two* pieces of memory, not one (the hidden state and the cell state) 
-so `SCL_latent` here holds both, concatenated. Everything else is the same trick as
+An LSTM cell has *two* pieces of memory (the hidden state and the cell state), so
+`SCL_latent` here holds both, concatenated. Everything else is the same trick as
 above: compute where the cell would jump to, emit the difference as the derivative, and
-read the rates out of the *current* hidden state (not the target) so the module stays
+read the rates out of the *current* hidden state so the module stays
 consistent with every other input it receives at time `t`.
 
 `ReactionOutputs` gains a field we have not used before, `SCL_latent_derivative`, aligned
 with `SCL_latent`. It defaults to an empty array: every non-stateful module in these docs
 has been quietly relying on that default.
 
-## The opt-in
+## The Opt-in
 
 Declaring a nonzero `SCALE_latent` is enough to make `n_latent > 0`, and that alone is not
 allowed to train silently:
@@ -114,13 +105,13 @@ print([l for l in out.splitlines() if "ValueError" in l][-1])
 
 That is deliberate: a latent state changes what the model *is* (it is no longer a pure
 function of the physical state) and that is a large enough change in what "the model"
-means that `hybrax.train` wants it to be a decision, not a side effect of adding a field.
+means that `hybrax.train` wants it to be a deliberate decision on your part.
 
 ```json
 { "train": { "allow_stateful_models": true } }
 ```
 
-## Training it
+## Training It
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -147,7 +138,7 @@ from IPython.display import Image
 Image(filename=str(WORK / "run/forward/plots/run_1.png"))
 ```
 
-## Checking the latent dimension actually registered
+## Checking the Latent Dimension Actually Registered
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -162,7 +153,7 @@ hxt.print_trainable_structure(wrapper)
 `n_latent` is `2 * n_hidden` (hidden and cell state together) and both the LSTM's gates
 and the readout head show up as trainable, exactly like any other reaction module.
 
-## When this is worth the extra machinery
+## When This Is Worth the Extra Machinery
 
 Not on `demo_batch`: a memoryless module already fits this data well, because nothing
 about a simple batch culture actually depends on history beyond the current state. A
@@ -176,22 +167,24 @@ to reach for this.
 ## Gotchas
 
 - **`allow_stateful_models: true` is required**, or training raises before it starts.
-- **Read out from the current latent, not the target**: using `h_new` instead of `h` in
+- **Read out from the current latent**: using `h_new` instead of `h` in
   the rate head quietly changes the model's causal structure (the rate would depend on
   information from the *next* step).
 - **`SCL_latent_derivative` has a default of empty.** Forgetting to set it on a stateful
-  module is a shape mismatch, not a silent zero.
+  module raises a shape mismatch.
 - **This adds real parameters and real integration cost.** Confirm a memoryless module
   actually underfits before reaching for this: see [Tutorial 3](../tutorials/03_train.md)
   and [4](../tutorials/04_your_first_custom_py.md) for the memoryless baseline.
 
-## See also
+## See Also
 
-Run the example yourself at `./source/_data/out/runs/gallery_stateful/`.
+The full, runnable example (`custom.py`, configs, data) lives in
+`examples/gallery_stateful/` at the repo root, no docs build required. This page's own
+executed run is at `./source/_data/out/runs/gallery_stateful/`.
 
 - [The Reaction Module](../train/reaction_module.md): the general contract this module
   follows.
-- [Mechanistic models](mechanistic_rates.md): a reaction module built from explicit
+- [Mechanistic Models](mechanistic_rates.md): a reaction module built from explicit
   kinetics, no latent state at all.
 - `DefaultStatefulReactionModule` in `hybrax/train/defaults.py`: the built-in GRU version of
   this same pattern.

@@ -10,28 +10,21 @@ kernelspec:
   name: python3
 ---
 
-# Freezing parameters
+# Freezing Parameters
 
-> **Demonstrates.** `trainable_field()` / `frozen_field()`: splitting a reaction module
-> into a part the optimizer must not touch and a part it should, checked before training
-> with `print_trainable_structure`, and what freezing actually costs.
+> This page splits a reaction module into a frozen part the optimizer must not touch and
+> a trainable part it should, using `trainable_field()` and `frozen_field()`. It checks
+> the split before training with `print_trainable_structure` and shows what freezing
+> actually costs.
 
 Every module so far has been entirely trainable. Sometimes you want the opposite: a
 piece you trust and do not want the optimizer to move, alongside a small piece you
-actually want to fit. `hybrax.train`'s answer is two field tags, not a separate optimizer
-mechanism: `trainable_field()` and `frozen_field()` on the module's own attributes.
+actually want to fit. `hybrax.train`'s answer is two field tags on the module's own
+attributes: `trainable_field()` and `frozen_field()`.
 `partition_trainable` (what the optimizer actually sees) reads these tags straight off
 the module.
 
-The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:
-
-:::{dropdown} Full `custom.py`
-```{literalinclude} ../../../examples/gallery_freezing/custom.py
-:language: python
-:linenos:
-```
-:::
+The walkthrough below shows the file in pieces, next to the reasoning for each one.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -67,9 +60,9 @@ hxt_cli("prepare", "--config", "prepare-config.json",
 ```
 
 The real files this page produces (data, config, `custom.py`, the trained run) are
-printed at the end, under "Everything this produced": inspect, copy or modify them.
+printed at the end, under "Everything This Produced": inspect, copy or modify them.
 
-## The split
+## The Split
 
 ```{literalinclude} ../../../examples/gallery_freezing/custom.py
 :language: python
@@ -100,9 +93,9 @@ from IPython.display import Image
 Image(filename=str(WORK / "run/forward/plots/run_1.png"))
 ```
 
-## Checking the split actually took
+## Checking the Split Actually Took
 
-Field tags are easy to get backwards silently, so check the trained model, not just the
+Field tags are easy to get backwards silently, so check the trained model as well as the
 source:
 
 ```{code-cell} ipython3
@@ -119,7 +112,7 @@ leaf reads `trainable`. This is the same printer used in
 [Stateful reaction modules](stateful.md), and worth running on any custom split before
 trusting a long run to it.
 
-## What freezing costs
+## What Freezing Costs
 
 The encoder above was never trained: it is a fixed random projection. For comparison,
 here is the identical architecture with `encoder` also tagged `trainable_field()`,
@@ -157,13 +150,13 @@ print(f"trainable encoder final mean_loss = {final_loss('run_unfrozen'):.5f}")
 ```
 
 A ~100x gap, from the same architecture and the same budget. A frozen, untrained random
-projection is a real constraint on capacity, not a free simplification. Freezing pays
+projection is a real constraint on capacity. Freezing pays
 off when what you freeze is already informative: parameters carried over from a
 previous run, a sub-model you have independently validated, constants a domain expert
-already trusts (as in [Mechanistic models](mechanistic_rates.md), which trains what this
+already trusts (as in [Mechanistic Models](mechanistic_rates.md), which trains what this
 page freezes). Freezing arbitrary, never-trained weights just removes capacity.
 
-## Everything this produced
+## Everything This Produced
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -180,18 +173,20 @@ print(f"comparison run: ./{(WORK / 'run_unfrozen').relative_to(root)}")
   `encoder` and `head`.
 - **Untagged array leaves default to frozen.** Forgetting `trainable_field()` on a new
   attribute does not raise; it silently stops training that piece.
-- **Check the split before training**, not after: `print_trainable_structure` is cheap,
-  a wasted training run is not.
-- **Freezing costs capacity.** Only freeze parts you have reason to trust; an untrained
-  frozen sub-module is not a shortcut.
+- **Check the split before training.** `print_trainable_structure` is cheap; a wasted
+  training run is expensive.
+- **Freezing costs capacity.** Only freeze parts you have reason to trust: an untrained
+  frozen sub-module still costs capacity.
 
-## See also
+## See Also
 
-Run the example yourself at `./source/_data/out/runs/gallery_freezing/`.
+The full, runnable example (`custom.py`, configs, data) lives in
+`examples/gallery_freezing/` at the repo root, no docs build required. This page's own
+executed run is at `./source/_data/out/runs/gallery_freezing/`.
 
 - [The Reaction Module](../train/reaction_module.md): the general contract every
   reaction module follows, including the field-tag rules in full.
-- [Mechanistic models](mechanistic_rates.md): trainable, physically meaningful
+- [Mechanistic Models](mechanistic_rates.md): trainable, physically meaningful
   constants instead of a frozen random projection.
 - [Stateful reaction modules](stateful.md): another use of
   `print_trainable_structure` to check a module before training it.

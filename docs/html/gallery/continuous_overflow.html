@@ -3,15 +3,15 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="A modeled process variable" href="modeled_pv.html"><link rel="prev" title="Feeds, boluses and samples" href="fed_batch.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="A Modeled Process Variable" href="modeled_pv.html"><link rel="prev" title="Feeds, boluses and samples" href="fed_batch.html">
         <link rel="prefetch" href="../_static/hybrax_logo.png" as="image">
 
     <link rel="shortcut icon" href="../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Continuous culture with controlled overflow - Bioprocess Modeling with Hybrax</title>
+        <title>Continuous Culture with Controlled Overflow - Bioprocess Modeling with Hybrax</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -374,19 +374,18 @@
         </div>
         <article role="main" id="furo-main-content">
           <section class="tex2jax_ignore mathjax_ignore" id="continuous-culture-with-controlled-overflow">
-<h1>Continuous culture with controlled overflow<a class="headerlink" href="#continuous-culture-with-controlled-overflow" title="Link to this heading">¶</a></h1>
+<h1>Continuous Culture with Controlled Overflow<a class="headerlink" href="#continuous-culture-with-controlled-overflow" title="Link to this heading">¶</a></h1>
 <blockquote>
-<div><p><strong>Demonstrates.</strong> One process moving through batch, a pause, fed-batch filling,
-and continuous culture; equal continuous inflow and outflow traces; and the same
-growth law learned as either two Monod parameters or a 33-parameter neural network.</p>
+<div><p>This example follows one process through batch, a pause, fed-batch filling, and
+continuous culture, with matched continuous inflow and outflow. The same growth law
+is then learned two ways: as two Monod parameters or as a small neural network.</p>
 </div></blockquote>
-<p>A continuous process is not a separate solver mode in Hybrax. It is an ordinary
-physical-space process whose volume description contains continuous inflows and
-outflows. This example makes that concrete, then asks how much kinetics can be learned
-from just 21 noiseless biomass measurements and 21 noiseless glucose measurements.</p>
-<p>The complete runnable example lives in <code class="docutils literal notranslate"><span class="pre">examples/gallery_continuous_overflow/</span></code>.</p>
+<p>A continuous process is an ordinary physical-space process in Hybrax whose volume
+description contains continuous inflows and outflows. This example makes that concrete,
+then asks how much kinetics can be learned from just 21 noiseless biomass measurements
+and 21 noiseless glucose measurements.</p>
 <section id="from-batch-to-continuous-operation">
-<h2>From batch to continuous operation<a class="headerlink" href="#from-batch-to-continuous-operation" title="Link to this heading">¶</a></h2>
+<h2>From Batch to Continuous Operation<a class="headerlink" href="#from-batch-to-continuous-operation" title="Link to this heading">¶</a></h2>
 <p>The run starts with 0.5 L containing 0.5 g/L biomass and 5 g/L glucose. Its four phases
 are:</p>
 <ol class="arabic simple">
@@ -416,12 +415,11 @@ overflow   Outflow  continuous=True
 </div>
 </div>
 <p>Both volume changes are <strong>controlled</strong>: their cumulative-volume traces are known inputs.
-The outflow is the realized trace of a passive overflow, not a declarative level
-controller. Hybrax does not infer when a dip tube begins spilling from the simulated
-volume. Here the start time is known, and equal prescribed rates make the level balance
-exact after the vessel reaches 1 L.</p>
-<p><code class="docutils literal notranslate"><span class="pre">process_type=&quot;continuous&quot;</span></code> is useful metadata, but it does not create this behavior.
-The <code class="docutils literal notranslate"><span class="pre">Inflow</span></code>, <code class="docutils literal notranslate"><span class="pre">Outflow</span></code>, and their time series do.</p>
+The outflow is the realized trace of a passive overflow. Hybrax does not infer when a
+dip tube begins spilling from the simulated volume. Here the start time is known, and
+equal prescribed rates make the level balance exact after the vessel reaches 1 L.</p>
+<p><code class="docutils literal notranslate"><span class="pre">process_type=&quot;continuous&quot;</span></code> is useful metadata, while the <code class="docutils literal notranslate"><span class="pre">Inflow</span></code>, <code class="docutils literal notranslate"><span class="pre">Outflow</span></code>, and their
+time series are what actually create this behavior.</p>
 <p>The biological ODE declares one specific rate, growth (<code class="docutils literal notranslate"><span class="pre">mu</span></code>). Transport terms for feed,
 outflow, and changing volume are assembled separately from the process description:</p>
 <div class="cell docutils container">
@@ -454,7 +452,7 @@ outflow, and changing volume are assembled separately from the process descripti
 </div>
 </section>
 <section id="synthetic-measurements">
-<h2>Synthetic measurements<a class="headerlink" href="#synthetic-measurements" title="Link to this heading">¶</a></h2>
+<h2>Synthetic Measurements<a class="headerlink" href="#synthetic-measurements" title="Link to this heading">¶</a></h2>
 <p>The ground truth is a Monod growth law,</p>
 <div class="math-wrapper docutils container">
 <div class="math notranslate nohighlight">
@@ -505,7 +503,7 @@ analytic chemostat steady state. At 40 h the process is close, but not yet exact
 that asymptote.</p>
 </section>
 <section id="two-representations-of-the-same-rate">
-<h2>Two representations of the same rate<a class="headerlink" href="#two-representations-of-the-same-rate" title="Link to this heading">¶</a></h2>
+<h2>Two Representations of the Same Rate<a class="headerlink" href="#two-representations-of-the-same-rate" title="Link to this heading">¶</a></h2>
 <p>The mechanistic candidate has only two trainable values, <code class="docutils literal notranslate"><span class="pre">mu_max</span></code> and <code class="docutils literal notranslate"><span class="pre">Ks</span></code>. Their logs
 are trained so both physical parameters remain positive. They start at 1.0 h⁻¹ and
 1.0 g/L, deliberately away from the ground truth.</p>
@@ -588,15 +586,15 @@ training targets, ODE wrapper, and physical transport terms remain unchanged.</p
 </div>
 </section>
 <section id="what-training-learns">
-<h2>What training learns<a class="headerlink" href="#what-training-learns" title="Link to this heading">¶</a></h2>
+<h2>What Training Learns<a class="headerlink" href="#what-training-learns" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <img alt="../_images/6c3e5d050430f2715f7b193d98d01f4c91bbcffcb5e5f4c69c04b802e0b42bf3.png" src="../_images/6c3e5d050430f2715f7b193d98d01f4c91bbcffcb5e5f4c69c04b802e0b42bf3.png" />
 </div>
 </div>
-<p>The upper panels inspect the learned rate itself, not just its integrated trajectory.
-That distinction matters: a trajectory can look plausible while its local rate law is
-wrong. The lower panels show how those rates accumulate into biomass over all four
+<p>The upper panels inspect the learned rate itself, separately from its integrated
+trajectory. That distinction matters: a trajectory can look plausible while its local
+rate law is wrong. The lower panels show how those rates accumulate into biomass over all four
 operating phases. Black lines are dense simulator references; training still sees only
 the 21 timestamps per measured trace.</p>
 <p>The two-parameter Monod model moves toward the correct curve in an interpretable way.
@@ -628,7 +626,7 @@ That is the central tradeoff here: more structural prior and directly interpreta
 parameters versus a more flexible learned rate.</p>
 </section>
 <section id="practical-takeaways">
-<h2>Practical takeaways<a class="headerlink" href="#practical-takeaways" title="Link to this heading">¶</a></h2>
+<h2>Practical Takeaways<a class="headerlink" href="#practical-takeaways" title="Link to this heading">¶</a></h2>
 <ul class="simple">
 <li><p>A controlled continuous <code class="docutils literal notranslate"><span class="pre">Outflow</span></code> is supported in physical-space training and
 prediction just like a controlled <code class="docutils literal notranslate"><span class="pre">Inflow</span></code>.</p></li>
@@ -642,15 +640,16 @@ noise-aware validation across independent processes.</p></li>
 </ul>
 </section>
 <section id="see-also">
-<h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
-<p>Run the example yourself at
-<code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_continuous_overflow/</span></code>.</p>
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
+<code class="docutils literal notranslate"><span class="pre">examples/gallery_continuous_overflow/</span></code> at the repo root, no docs build required. This
+page’s own executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_continuous_overflow/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../format/volume_feeds_events.html"><span class="std std-doc">Volume, feeds and events</span></a>: how inflows, outflows,
 feed composition, and cumulative-volume traces are represented.</p></li>
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: the scaled input/output contract
 used by both candidates.</p></li>
-<li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic models</span></a>: more structured rate laws and parameter
+<li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic Models</span></a>: more structured rate laws and parameter
 identifiability.</p></li>
 <li><p><a class="reference internal" href="fed_batch.html"><span class="std std-doc">Feeds, boluses and samples</span></a>: controlled inputs in a fed-batch process.</p></li>
 </ul>
@@ -667,7 +666,7 @@ identifiability.</p></li>
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">A modeled process variable</div>
+                <div class="title">A Modeled Process Variable</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -712,13 +711,13 @@ identifiability.</p></li>
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Continuous culture with controlled overflow</a><ul>
-<li><a class="reference internal" href="#from-batch-to-continuous-operation">From batch to continuous operation</a></li>
-<li><a class="reference internal" href="#synthetic-measurements">Synthetic measurements</a></li>
-<li><a class="reference internal" href="#two-representations-of-the-same-rate">Two representations of the same rate</a></li>
-<li><a class="reference internal" href="#what-training-learns">What training learns</a></li>
-<li><a class="reference internal" href="#practical-takeaways">Practical takeaways</a></li>
-<li><a class="reference internal" href="#see-also">See also</a></li>
+<li><a class="reference internal" href="#">Continuous Culture with Controlled Overflow</a><ul>
+<li><a class="reference internal" href="#from-batch-to-continuous-operation">From Batch to Continuous Operation</a></li>
+<li><a class="reference internal" href="#synthetic-measurements">Synthetic Measurements</a></li>
+<li><a class="reference internal" href="#two-representations-of-the-same-rate">Two Representations of the Same Rate</a></li>
+<li><a class="reference internal" href="#what-training-learns">What Training Learns</a></li>
+<li><a class="reference internal" href="#practical-takeaways">Practical Takeaways</a></li>
+<li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>
 </ul>

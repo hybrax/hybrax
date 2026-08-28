@@ -10,11 +10,11 @@ kernelspec:
   name: python3
 ---
 
-# A modeled process variable
+# A Modeled Process Variable
 
-> **Demonstrates.** A process variable declared as a modeled (uncontrolled) state,
-> with its own trained rate `r_glyco_frac`, and why a modeled process variable is
-> never diluted by a feed event the way a modeled reactor component is.
+> This page declares a process variable as its own trained state, with a learned
+> rate. It also shows why a feed event dilutes a reactor component but leaves a
+> modeled process variable unaffected.
 
 Every other page in this gallery that touches a process variable uses it as a
 **controlled** input: a known signal, like `temperature` in [OptFed](optfed.md) or
@@ -39,15 +39,7 @@ non-glycosylated pool by the same factor, so their ratio is untouched. hybrax.fo
 encodes exactly that rule, for any modeled process variable, regardless of what it
 represents physically.
 
-The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:
-
-:::{dropdown} Full `custom.py`
-```{literalinclude} ../../../examples/gallery_modeled_pv/custom.py
-:language: python
-:linenos:
-```
-:::
+The walkthrough below shows the file in pieces, next to the reasoning for each one.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -111,10 +103,10 @@ def r2_by_target(run_dir):
     return out
 ```
 
-## The rate law, declared
+## The Rate Law, Declared
 
-Everything this page's kinetics need lives in the dataset's own `biological_ode`
-block, not in code. This is exactly what was declared when the dataset was built:
+Everything this page's kinetics need lives declaratively in the dataset's own
+`biological_ode` block. This is exactly what was declared when the dataset was built:
 
 ```{code-cell} ipython3
 process = _collection.processes["run_1"]
@@ -129,26 +121,27 @@ modeled_pv_ode = hxf.BiologicalOde(
 print("matches the real declared biological_ode:", modeled_pv_ode == process.biological_ode)
 ```
 
-`glyco_frac` sits in `process.process_variables`, not `process.reactor_medium.components`,
-with `is_controlled=False` and a real `TimeSeries` (an uncontrolled process variable
-cannot hold a `StaticVariable`: a state with no time axis has nothing for the solver to
-integrate against). That single field is the whole declaration; nothing else about
-writing its rate law differs from writing a reactor component's.
+`glyco_frac` sits in `process.process_variables`, separately from
+`process.reactor_medium.components`, with `is_controlled=False` and a real `TimeSeries`
+(an uncontrolled process variable cannot hold a `StaticVariable`: a state with no time
+axis has nothing for the solver to integrate against). That single field is the whole
+declaration; nothing else about writing its rate law differs from writing a reactor
+component's.
 
 ```{code-cell} ipython3
 hxf.print_rhs_ode(process)
 ```
 
-Both `biomass` and `glyco_frac` show an empty Feed/Dilution column here, and that is
-not the demonstration: that column is populated only by a **continuous** controlled or
-modeled inflow/outflow, and this dataset's dilution event is a single discrete bolus.
-A bolus is not part of the continuous right-hand side at all; it is a state jump the
-solver applies between two integration segments, at the bolus's exact time, which is
-why the Volume block below the derivatives shows it instead. That jump is where the
-RMC/PV distinction actually happens, and it holds regardless of whether the dilution
-arrives continuously or as one lump event.
+Both `biomass` and `glyco_frac` show an empty Feed/Dilution column here, because that
+column is populated only by a **continuous** controlled or modeled inflow/outflow, and
+this dataset's dilution event is a single discrete bolus. A bolus is a state jump that
+the solver applies between two integration segments, at the bolus's exact time, entirely
+separate from the continuous right-hand side, which is why the Volume block below the
+derivatives shows it instead. That jump is where the RMC/PV distinction actually
+happens, and it holds regardless of whether the dilution arrives continuously or as one
+lump event.
 
-## The reaction module
+## The Reaction Module
 
 ```{literalinclude} ../../../examples/gallery_modeled_pv/custom.py
 :language: python
@@ -158,8 +151,7 @@ arrives continuously or as one lump event.
 
 Two log-parameterized scalars, no kinetic structure, no state read at all: `__call__`
 ignores `inputs` entirely and returns the same two constants every step. All of this
-page's actual complexity is in the derivative strings and the bolus event above, not
-here.
+page's actual complexity lives in the derivative strings and the bolus event above.
 
 ## Training
 
@@ -200,7 +192,7 @@ applied to only one of them. The bottom row shows why: `V_real` doubles in a sin
 step at the bolus, and that step is the only thing that touches `biomass`; `glyco_frac`
 never appears in that bookkeeping.
 
-## Did the rates recover correctly?
+## Did the Rates Recover Correctly?
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -219,9 +211,9 @@ for name in truth:
 ```
 
 Both rates come back close to their true values: training saw the same bolus at the
-same instant in every state, and only explained `biomass`'s step with a dilution term,
-never with `q_biomass` itself, because that dilution term is not something the
-reaction module controls at all.
+same instant in every state, and explained `biomass`'s step entirely through the
+dilution term, a mechanism outside the reaction module's control, leaving `q_biomass`
+itself unaffected.
 
 ## Gotchas
 
@@ -232,29 +224,32 @@ reaction module controls at all.
   warning. Set `target_source` explicitly the moment a dataset has both kinds of
   targets; see [Configuration](../train/config.md#target_source).
 - **A `UserReactionModule` with modeled process variables must return
-  `SCALE_modeled_PVs` from `estimate_all_scales`.** It is not required for a
-  PV-free dataset (it defaults to an empty scaler), so a reaction module copied from a
-  page like [Glutamine decay](glutamine_decay.md) that never had one will raise a
+  `SCALE_modeled_PVs` from `estimate_all_scales`.** It is required only for a dataset
+  that has modeled process variables (a PV-free dataset defaults to an empty scaler),
+  so a reaction module copied from a
+  page like [Glutamine Decay](glutamine_decay.md) that never had one will raise a
   shape-mismatch error the moment a modeled PV is added; add the axis explicitly, as
   this page's `custom.py` does.
-- **Dilution reaching a modeled process variable is not a silent possibility to guard
-  against, it is architecturally unreachable.** `hybrax.format`'s continuous feed term
-  only ever touches the RMC slice of the derivative vector, and the discrete bolus/sample
-  jump in `hybrax.train` only ever touches the RMC slice of the state, with the same
-  reasoning either way: a process variable is treated as intensive (a ratio or an
-  observable), not as mass dissolved in a volume that can be diluted.
+- **Dilution reaching a modeled process variable is architecturally unreachable.**
+  `hybrax.format`'s continuous feed term only ever touches the RMC slice of the
+  derivative vector, and the discrete bolus/sample jump in `hybrax.train` only ever
+  touches the RMC slice of the state, with the same reasoning either way: a process
+  variable is treated as intensive, a ratio or an observable, with no dissolved mass
+  in a volume to dilute.
 - **Every process still needs a `biomass` reactor component**, even on a page whose
   point is a process variable: `hybrax.format` expects one on every process, so
   `biomass` does double duty here as both the mandatory component and the diluted half
   of the contrast.
 
-## See also
+## See Also
 
-Run the example yourself at `./source/_data/out/runs/gallery_modeled_pv/`.
+The full, runnable example (`custom.py`, configs, data) lives in
+`examples/gallery_modeled_pv/` at the repo root, no docs build required. This page's
+own executed run is at `./source/_data/out/runs/gallery_modeled_pv/`.
 
 - [The Bioprocess ODE](../format/bioprocess_ode.md): `biological_ode`, `rates`,
   `derivatives`, and writing your own expressions.
-- [Mechanistic models](mechanistic_rates.md): its own Gotchas section raises this
+- [Mechanistic Models](mechanistic_rates.md): its own Gotchas section raises this
   exact idea (a well-constrained process variable resolving an identifiability
   problem) without building it; this page is that example.
 - [The Reaction Module](../train/reaction_module.md): `trainable_field` and

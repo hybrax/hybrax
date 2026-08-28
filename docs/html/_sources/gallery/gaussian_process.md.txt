@@ -24,15 +24,7 @@ difference between two measurements. This page builds a Gaussian process reactio
 module that combines both ideas. See [How This Compares to the Papers](#how-this-compares-to-the-papers)
 at the end of this page for exactly where it matches each paper and where it departs.
 
-The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:
-
-:::{dropdown} Full `custom.py`
-```{literalinclude} ../../../examples/gallery_gaussian_process/custom.py
-:language: python
-:linenos:
-```
-:::
+The walkthrough below shows the file in pieces, next to the reasoning for each one.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -110,7 +102,7 @@ are what training actually fits.
 ```{literalinclude} ../../../examples/gallery_gaussian_process/custom.py
 :language: python
 :linenos:
-:lines: 59-78
+:lines: 59-82
 ```
 
 `jax.scipy.linalg.cho_factor`/`cho_solve` over the real, full kernel matrix give a
@@ -128,7 +120,7 @@ The predictive std goes straight into `auxiliary`, which `hybrax.train` threads 
 ```{literalinclude} ../../../examples/gallery_gaussian_process/custom.py
 :language: python
 :linenos:
-:lines: 96-135
+:lines: 100-139
 ```
 
 For every process, {py:func}`hybrax.format.splines.build_pseudobatch_transform` and
@@ -153,7 +145,7 @@ value-space offset from a derivative would silently corrupt it.
 ```{literalinclude} ../../../examples/gallery_gaussian_process/custom.py
 :language: python
 :linenos:
-:lines: 80-93
+:lines: 84-97
 ```
 
 `marginal_nll` is the standard GP negative log marginal likelihood, computed from the
@@ -163,7 +155,7 @@ maximizes, reusing the same Cholesky factor `__call__` already computes.
 ```{literalinclude} ../../../examples/gallery_gaussian_process/custom.py
 :language: python
 :linenos:
-:lines: 138-163
+:lines: 142-162
 ```
 
 `GPLossModule` adds one more named loss, `gp_nll`, to the usual per-target trajectory
@@ -284,8 +276,8 @@ shrinks where it sits close to them.
 ## Gotchas
 
 - **The kernel is shared across all rate outputs.** `rate_std` is one number per
-  timestep, not one per rate: read it as "how confident is the model here," not
-  "how confident is the model about *this specific* rate."
+  timestep, shared by every rate: read it as "how confident is the model here," never
+  as confidence about one specific rate.
 - **Two objectives fit the kernel hyperparameters together.** `gp_nll` and the
   trajectory loss both move `log_lengthscale`, `log_output_scale`, and `log_noise`
   every step. A textbook GP maximizes marginal likelihood alone; the fitted values here
@@ -304,7 +296,7 @@ kernel hyperparameters all match Helleckes et al. 2024's paper
 likelihood alone, once, then held fixed for prediction. Here they are fit by
 likelihood and trajectory error together, continuously, so the fitted values differ
 from what a pure-likelihood fit would find. See
-[Knowledge transfer](knowledge_transfer.md) for the paper's other headline result,
+[Knowledge Transfer](knowledge_transfer.md) for the paper's other headline result,
 pooling data across products, reproduced the same way.
 
 Cruz-Bournazou et al. 2022's core idea <a href="#ref-cruz2022">[2]</a>, training a GP
@@ -315,13 +307,15 @@ comparable role, through real continuous integration.
 
 ## See Also
 
-Run the example yourself at `./source/_data/out/runs/gallery_gaussian_process/`.
+The full, runnable example (`custom.py`, configs, data) lives in
+`examples/gallery_gaussian_process/` at the repo root, no docs build required. This
+page's own executed run is at `./source/_data/out/runs/gallery_gaussian_process/`.
 
-- [Knowledge transfer](knowledge_transfer.md): the same GP, extended to pool data
+- [Knowledge Transfer](knowledge_transfer.md): the same GP, extended to pool data
   across products.
-- [Pseudobatch splines](pseudobatch_splines.md): `build_pseudobatch_transform` and
+- [Pseudobatch Splines](pseudobatch_splines.md): `build_pseudobatch_transform` and
   `build_backtransform_spline`, on their own, without a reaction module.
-- [Mechanistic models](mechanistic_rates.md): a reaction module built from explicit
+- [Mechanistic Models](mechanistic_rates.md): a reaction module built from explicit
   kinetics instead.
 - [The Reaction Module](../train/reaction_module.md): `auxiliary`, and everything else
   a `UserReactionModule` can return.

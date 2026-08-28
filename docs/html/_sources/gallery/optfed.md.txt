@@ -12,49 +12,22 @@ kernelspec:
 
 # OptFed
 
-> **Demonstrates.** A real, published mechanistic rate law (non-competitive
-> -inhibition Michaelis-Menten kinetics with an Eyring-equation temperature
-> dependence) occupying the reaction module's slot, with a controlled process
-> variable, `temperature`, feeding directly into the kinetics themselves rather
-> than into a neural network's input layer.
+> A real, published rate law for substrate uptake, growth, and production, driven by a
+> controlled process variable, `temperature`, instead of a neural network. Its
+> temperature term is the Eyring equation: a reaction speeds up with heat, then
+> collapses again as the enzyme denatures.
 
 Inspired by Schlögl, Lück, Kittler, Spadiut, Kopp, Zanghellini & Gotsmy 2024
 <a href="#ref-optfed">[1]</a>, *"Optimizing bioprocessing efficiency with
-OptFed: Dynamic nonlinear modeling improves product-to-biomass yield,"* whose
-`define` stage models substrate uptake, growth and production as independent,
-non-competitively-inhibited (or activated) Michaelis-Menten terms, each with an
-Eyring-equation temperature dependence. This page reproduces that rate-law
-*structure* exactly (Eq. 4a-4e): the same multiplicative-independent-terms
-inhibition/activation form, the same Eyring equation, applied to all three of
-uptake, production and maintenance. Two things are reduced from the paper's own
-version, stated plainly:
+OptFed: Dynamic nonlinear modeling improves product-to-biomass yield,"* whose model
+predicts substrate uptake, growth, and product formation as independent, multiplicative
+inhibition and activation terms, each carrying its own Eyring-equation temperature
+term. This page reproduces that structure for all three rates, with a smaller set of
+inhibiting and activating variables than the paper uses, fit by ordinary gradient
+descent through the whole ODE rather than the paper's own multi-stage fitting
+pipeline.
 
-- The inhibition/activation variable sets (`var1`/`var2` in the paper) are cut
-  from `{G, n, P/X, X}`/`{γ°, G, n, P/X, X}` down to `{P/X, X}` inhibiting
-  uptake and production, `{γ°, X}` activating maintenance. `n` (number of
-  generations) is dropped entirely: it needs each process's own initial
-  condition threaded into the reaction module, an added wiring cost this
-  page's teaching point doesn't need. The *mechanism*, independent
-  multiplicative terms, is fully real; the *count* of terms is smaller.
-- This page fits every constant by `hybrax.train`'s ordinary gradient descent through
-  the whole ODE, once, with no sparsification. The paper's own Stage II runs an
-  F-test-based backward term-elimination search over 13 significance levels to
-  select a smaller model; Stage III then solves an orthogonal-collocation
-  optimal-control problem. Neither is reproduced here: this page trains and
-  forward-simulates only. `bp-bench`'s own `optfed_sparse` benchmark takes a
-  different, differently-scoped approach to the sparsity question (an L1
-  -regularized term library, fit in state space); it exists too, and does a
-  different job than this page.
-
-The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:
-
-:::{dropdown} Full `custom.py`
-```{literalinclude} ../../../examples/gallery_optfed/custom.py
-:language: python
-:linenos:
-```
-:::
+The walkthrough below shows the file in pieces, next to the reasoning for each one.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -121,34 +94,34 @@ def r2_by_target(run_dir):
     return out
 ```
 
-## The rate law
+## The Rate Law
 
 ```{literalinclude} ../../../examples/gallery_optfed/custom.py
 :language: python
 :linenos:
-:lines: 24-40
+:lines: 24-45
 ```
 
-`_eyring` is Eq. 4e verbatim, vectorized: given a scalar temperature and
-arrays of its four constants, it returns one rate ceiling per Eyring instance
+`_eyring_rate_ceiling` computes the temperature term above, vectorized: given a scalar
+temperature and arrays of its four constants, it returns one rate ceiling per instance
 at once. `_inhibition_product`/`_activation_product` are the paper's own
-independent-multiplicative-terms idea (Eq. 4a-4c): each named influence
-variable contributes its own factor, `1/(1+v/K)` to suppress a rate,
-`1+v/K` to boost it, and the factors multiply.
+independent-multiplicative-terms idea: each named influence variable contributes its
+own factor, `1/(1+v/K)` to suppress a rate, `1+v/K` to boost it, and the factors
+multiply.
 
-## The reaction module
+## The Reaction Module
 
 ```{literalinclude} ../../../examples/gallery_optfed/custom.py
 :language: python
 :linenos:
-:lines: 43-73
+:lines: 48-73
 ```
 
-Twenty trainable scalars: 4 per Eyring instance (`log_A`, `log_Ea_R`,
+Twenty trainable scalars: 4 per temperature term (`log_A`, `log_Ea_R`,
 `raw_Teq`, `log_dHeq_R`) times 3 instances, plus the two Michaelis constants
 and the four inhibition/activation constants. `Y_XrG`/`Y_PG` are
-`frozen_field()`s, not trained: the paper itself states these yields come
-from a genome-scale model, not the fitted parameters.
+`frozen_field()`s: the paper itself states these yields come from a genome-scale
+model, so they stay fixed rather than fitted.
 
 ```{literalinclude} ../../../examples/gallery_optfed/custom.py
 :language: python
@@ -168,12 +141,10 @@ does the rest for every rate except `q_glucose`. `q_biomass` and `q_product` are
 *specific* (per unit active biomass), so no manual `Xr/X` correction is needed inside
 `__call__` for them. `X_active` in the declared derivative strings does that
 division-then-multiplication implicitly and exactly. `q_glucose` is the one rate that
-stays scaled by total `biomass` instead. That is not a literal reading of the paper's
-Eq. 1c: substituting the paper's own Eq. 1f (γ° = γX/Xr) into Eq. 1c shows the fitted
-quantity `q_glucose` (≈ γ°) should scale with active biomass like every other rate
-here. It is a deliberate simplification instead, the same one
-[the data generator](../_data/generate.py) applies when it forward-simulates this
-page's training data, so the model and its own ground truth stay self-consistent.
+stays scaled by total `biomass` instead: a deliberate simplification versus the paper's
+own scaling, the same one [the data generator](../_data/generate.py) applies when it
+forward-simulates this page's training data, so the model and its own ground truth stay
+self-consistent.
 
 ## Training
 
@@ -207,10 +178,9 @@ Image(filename=str(WORK / "run/forward/plots/T_high.png"))
 
 `T_high` (40°C, the hottest of this page's six runs) is worth looking at
 specifically: glucose visibly accumulates instead of being consumed, the
-Eyring equation's denaturation term genuinely suppressing uptake capacity at
-high temperature, not a fixed rate blind to `temperature` at all.
+temperature term genuinely suppressing uptake capacity at high temperature.
 
-## Did it recover the true parameters?
+## Did It Recover the True Parameters?
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -225,9 +195,9 @@ true_Teq_C = [truth["eyring_deg"]["Teq"] - 273.15,
               truth["eyring_pi"]["Teq"] - 273.15,
               truth["eyring_alpha"]["Teq"] - 273.15]
 
-print(f"{'rate':10s} {'fitted Teq':>12s} {'true Teq':>10s}")
+print(f"{'rate':12s} {'fitted Teq':>12s} {'true Teq':>12s}")
 for name, fit, true in zip(("uptake", "production", "maintenance"), fitted_Teq_C, true_Teq_C):
-    print(f"{name:10s} {fit:11.1f}C {true:9.1f}C")
+    print(f"{name:12s} {fit:9.1f} °C {true:9.1f} °C")
 ```
 
 Uptake's and production's fitted thermal optima land within a couple of
@@ -237,30 +207,32 @@ Maintenance's true optimum (46.85°C) sits *above* every temperature this page
 trains on, and the fit shows it: nothing in the data distinguishes a
 denaturation cliff at 47°C from one further away still, so gradient descent
 settles for a curve that merely fits the mild, still-rising behavior actually
-observed. That is a structural identifiability limit, not a bug: parameters
-whose defining feature sits outside the sampled operating envelope come back
-looking however gradient descent found is cheapest, not necessarily correct.
+observed. That is a structural identifiability limit: parameters whose defining
+feature sits outside the sampled operating envelope come back looking however
+gradient descent found cheapest.
 
 ## Gotchas
 
 - **A rate's own optimum has to fall inside the training temperature range to
   be identifiable.** See "maintenance" above: fitting a denaturation cliff
-  from data that never reaches it is asking for an extrapolation, not a fit.
+  from data that never reaches it asks the model to extrapolate.
 - **`gamma_mu = gamma_deg - gamma_pi - gamma_alpha` can go transiently
-  negative early in training.** It is left unclipped, matching Eq. 4d
-  literally; a bad early step just means slower growth, not a crash.
-- **The Eyring equation's `exp` terms need `T` in Kelvin, not Celsius.** The
-  dataset stores `temperature` in °C (the unit a real process log would use);
+  negative early in training.** It is left unclipped, matching the paper's own
+  rate law literally; a bad early step just means slower growth.
+- **The temperature term's `exp` terms need `T` in Kelvin.** The dataset
+  stores `temperature` in °C (the unit a real process log would use);
   `__call__` converts on the way in, once.
 - **`n_pv`/`n_fvc` being zero anywhere breaks a naive `jnp.asarray([])`
   reshape.** `estimate_all_scales` guards every controlled axis with `if
   n_fvc else empty`/`if n_pv else empty` for exactly this reason.
 
-## See also
+## See Also
 
-Run the example yourself at `./source/_data/out/runs/gallery_optfed/`.
+The full, runnable example (`custom.py`, configs, data) lives in
+`examples/gallery_optfed/` at the repo root, no docs build required. This page's own
+executed run is at `./source/_data/out/runs/gallery_optfed/`.
 
-- [Mechanistic models](mechanistic_rates.md): a smaller structured rate law,
+- [Mechanistic Models](mechanistic_rates.md): a smaller structured rate law,
   the same "did it recover the true parameters" question asked there too.
 - [PLS-dFBA](pls_dfba.md): the same controlled-process-variable-as-extra
   -input mechanism, there feeding a learned component instead of closed-form
@@ -269,7 +241,7 @@ Run the example yourself at `./source/_data/out/runs/gallery_optfed/`.
   `trainable_field`, and everything else a `UserReactionModule` can return.
 - [The Bioprocess ODE](../format/bioprocess_ode.md): `biological_ode`,
   `algebraic`, and the `X_active` pattern this page reuses.
-- [Glutamine decay](glutamine_decay.md): a smaller worked example of the same
+- [Glutamine Decay](glutamine_decay.md): a smaller worked example of the same
   "true value must fall inside the sampled range to be identifiable" lesson.
 
 ## References

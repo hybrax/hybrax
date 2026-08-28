@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -378,201 +378,24 @@
 <h1>A KAN model<a class="headerlink" href="#a-kan-model" title="Link to this heading">¶</a></h1>
 <!-- UNLOCK -->
 <blockquote>
-<div><p><strong>Demonstrates.</strong> A Kolmogorov-Arnold Network (KAN) occupying the reaction module’s
-slot: every edge between an input and a hidden or output node carries its own
-learnable univariate function (a SiLU base term plus a small Gaussian
-radial-basis expansion). Most nodes sum their incoming edges; each of the three
-output rates also combines two of them multiplicatively, instead of an MLP’s
-fixed activation with learned linear weights. Trained end to end by
-<code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s own optimizer; each edge’s learned curve can be matched against
-a small shape library after training, and the trained model’s overall behavior
-can be checked against the real process that generated its training data.</p>
+<div><p>A Kolmogorov-Arnold Network (KAN) occupying the reaction module’s slot: each edge
+between two nodes carries its own learnable curve, instead of a neural network’s
+fixed activation with learned weights. After training, each edge’s curve is matched
+against a small shape library and checked against the real process that generated the
+training data.</p>
 </div></blockquote>
-<p>Inspired by Bühler &amp; Guillén-Gosálbez 2026 <a href="#ref-srkan">[1]</a>, whose
-SR-KAN framework builds on Kolmogorov-Arnold Networks
-<a href="#ref-kan">[2]</a> and, in their own bioprocess case study, recovers
-interpretable kinetic rate laws for a batch fermentation of biomass, substrate
-and product, a system whose shape lines up closely with <code class="docutils literal notranslate"><span class="pre">demo_batch</span></code>’s own
-biomass/glucose/product state. This page reproduces the core architectural idea
-(learnable univariate functions on edges, combined at nodes, in place of an MLP)
-as a live <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> reaction module, using a Gaussian radial-basis edge function
-in place of B-splines, an equivalent formulation per Li 2024
-<a href="#ref-rbf">[3]</a>, the same reasoning SR-KAN itself uses to justify
-swapping B-splines for a different fast, localized basis.</p>
-<p><strong>Two pieces worth being explicit about.</strong> This page trains the KAN as the live
-reaction module inside <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s own Diffrax-integrated, end-to-end
-differentiable training loop. SR-KAN’s own bioprocess case study is a two-stage
-pipeline instead: a Neural Controlled Differential Equation first fits smooth
-derivatives from noisy measurements, then those derivatives are symbolically
-regressed offline. Nothing here reproduces the Neural CDE stage; hybrax.format’s own
-ODE integration already provides a differentiable trajectory directly.</p>
-<p>This page does take one step from SR-KAN’s own post-hoc symbolic-extraction
-pipeline: after training, each of <code class="docutils literal notranslate"><span class="pre">l1</span></code>’s edges gets matched against a small
-library of simple shapes (flat, linear, power, saturating, exponential), scored
-by fit quality rather than assumed (below, in
-<a class="reference internal" href="#what-each-edge-learned">What each edge learned</a>). What stays out of scope is
-the harder remainder of SR-KAN’s pipeline: entropy/sparsity regularization,
-separability/symmetry detection, and composing matched edges across both layers
-into one closed-form right-hand side for the whole ODE.
-<a class="reference internal" href="#recovering-the-real-rate-law">Recovering the real rate law</a> below checks the
-trained model’s overall behavior against the real process that generated its
-training data directly, without needing that composition step.</p>
-<p>The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:</p>
-<details class="sd-sphinx-override sd-dropdown sd-card sd-mb-3">
-<summary class="sd-summary-title sd-card-header">
-<span class="sd-summary-text">Full <code class="docutils literal notranslate"><span class="pre">custom.py</span></code></span><span class="sd-summary-state-marker sd-summary-chevron-right"><svg version="1.1" width="1.5em" height="1.5em" class="sd-octicon sd-octicon-chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.72 18.78a.75.75 0 0 1 0-1.06L14.44 12 8.72 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0Z"></path></svg></span></summary><div class="sd-summary-content sd-card-body docutils">
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">  1</span><span class="sd">"""A Kolmogorov-Arnold Network (KAN) reaction module.</span>
-<span class="linenos">  2</span>
-<span class="linenos">  3</span><span class="sd">Every edge between an input and a hidden or output node carries its own</span>
-<span class="linenos">  4</span><span class="sd">learnable univariate function (a SiLU base term plus a small Gaussian</span>
-<span class="linenos">  5</span><span class="sd">radial-basis expansion); a node's output sums over its incoming edges. Two</span>
-<span class="linenos">  6</span><span class="sd">stacked layers, each genuinely KAN-shaped, not a relabeled MLP. Each of the</span>
-<span class="linenos">  7</span><span class="sd">three output rates also gets one small multiplicative term, prod_a(h0) *</span>
-<span class="linenos">  8</span><span class="sd">prod_b(h1), added on top of its sum: see the page for the architecture and</span>
-<span class="linenos">  9</span><span class="sd">what it does and does not reproduce from SR-KAN.</span>
-<span class="linenos"> 10</span>
-<span class="linenos"> 11</span><span class="sd">``estimate_all_scales`` below is unchanged from Tutorial 4.</span>
-<span class="linenos"> 12</span><span class="sd">"""</span>
-<span class="linenos"> 13</span>
-<span class="linenos"> 14</span><span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
-<span class="linenos"> 15</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
-<span class="linenos"> 16</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
-<span class="linenos"> 17</span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="linenos"> 18</span>
-<span class="linenos"> 19</span><span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.train</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<span class="linenos"> 20</span>    <span class="n">EstimatedScales</span><span class="p">,</span>
-<span class="linenos"> 21</span>    <span class="n">ReactionInputs</span><span class="p">,</span>
-<span class="linenos"> 22</span>    <span class="n">ReactionOutputs</span><span class="p">,</span>
-<span class="linenos"> 23</span>    <span class="n">UserReactionModule</span><span class="p">,</span>
-<span class="linenos"> 24</span>    <span class="n">frozen_field</span><span class="p">,</span>
-<span class="linenos"> 25</span>    <span class="n">trainable_field</span><span class="p">,</span>
-<span class="linenos"> 26</span><span class="p">)</span>
-<span class="linenos"> 27</span>
-<span class="linenos"> 28</span>
-<span class="linenos"> 29</span><span class="k">class</span><span class="w"> </span><span class="nc">KANLayer</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="linenos"> 30</span>    <span class="n">base_w</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (out, in)</span>
-<span class="linenos"> 31</span>    <span class="n">spline_c</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (out, in, grid)</span>
-<span class="linenos"> 32</span>    <span class="n">centers</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">frozen_field</span><span class="p">()</span>  <span class="c1"># (grid,)</span>
-<span class="linenos"> 33</span>    <span class="n">inv_h2</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="linenos"> 34</span>
-<span class="linenos"> 35</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">in_dim</span><span class="p">,</span> <span class="n">out_dim</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">out_scale</span><span class="p">):</span>
-<span class="linenos"> 36</span>        <span class="n">kb</span><span class="p">,</span> <span class="n">ks</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
-<span class="linenos"> 37</span>        <span class="bp">self</span><span class="o">.</span><span class="n">base_w</span> <span class="o">=</span> <span class="p">(</span>
-<span class="linenos"> 38</span>            <span class="n">out_scale</span> <span class="o">*</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">kb</span><span class="p">,</span> <span class="p">(</span><span class="n">out_dim</span><span class="p">,</span> <span class="n">in_dim</span><span class="p">))</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">in_dim</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="o">**</span> <span class="mf">0.5</span>
-<span class="linenos"> 39</span>        <span class="p">)</span>
-<span class="linenos"> 40</span>        <span class="bp">self</span><span class="o">.</span><span class="n">spline_c</span> <span class="o">=</span> <span class="p">(</span>
-<span class="linenos"> 41</span>            <span class="n">out_scale</span>
-<span class="linenos"> 42</span>            <span class="o">*</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">ks</span><span class="p">,</span> <span class="p">(</span><span class="n">out_dim</span><span class="p">,</span> <span class="n">in_dim</span><span class="p">,</span> <span class="n">grid</span><span class="p">))</span>
-<span class="linenos"> 43</span>            <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">in_dim</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="o">**</span> <span class="mf">0.5</span>
-<span class="linenos"> 44</span>        <span class="p">)</span>
-<span class="linenos"> 45</span>        <span class="bp">self</span><span class="o">.</span><span class="n">centers</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="o">-</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="n">grid</span><span class="p">)</span>
-<span class="linenos"> 46</span>        <span class="n">spacing</span> <span class="o">=</span> <span class="mf">4.0</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">grid</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-<span class="linenos"> 47</span>        <span class="bp">self</span><span class="o">.</span><span class="n">inv_h2</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="n">spacing</span> <span class="o">*</span> <span class="n">spacing</span><span class="p">)</span>
-<span class="linenos"> 48</span>
-<span class="linenos"> 49</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
-<span class="linenos"> 50</span>        <span class="n">xb</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">tanh</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>  <span class="c1"># bound inputs onto the RBF grid</span>
-<span class="linenos"> 51</span>        <span class="n">rbf</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span>
-<span class="linenos"> 52</span>            <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">inv_h2</span> <span class="o">*</span> <span class="p">(</span><span class="n">xb</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">centers</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:])</span> <span class="o">**</span> <span class="mi">2</span>
-<span class="linenos"> 53</span>        <span class="p">)</span>  <span class="c1"># (in, grid)</span>
-<span class="linenos"> 54</span>        <span class="n">spline</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">einsum</span><span class="p">(</span><span class="s2">"oig,ig-&gt;o"</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">spline_c</span><span class="p">,</span> <span class="n">rbf</span><span class="p">)</span>
-<span class="linenos"> 55</span>        <span class="n">base</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">base_w</span> <span class="o">@</span> <span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">silu</span><span class="p">(</span><span class="n">xb</span><span class="p">)</span>
-<span class="linenos"> 56</span>        <span class="k">return</span> <span class="n">spline</span> <span class="o">+</span> <span class="n">base</span>
-<span class="linenos"> 57</span>
-<span class="linenos"> 58</span>
-<span class="linenos"> 59</span><span class="k">class</span><span class="w"> </span><span class="nc">KANReactionModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
-<span class="linenos"> 60</span>    <span class="n">l1</span><span class="p">:</span> <span class="n">KANLayer</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 61</span>    <span class="n">l2</span><span class="p">:</span> <span class="n">KANLayer</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 62</span>    <span class="n">prod_a</span><span class="p">:</span> <span class="n">KANLayer</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 63</span>    <span class="n">prod_b</span><span class="p">:</span> <span class="n">KANLayer</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 64</span>
-<span class="linenos"> 65</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">hidden</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">grid</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
-<span class="linenos"> 66</span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
-<span class="linenos"> 67</span>        <span class="n">n_in</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span>
-<span class="linenos"> 68</span>        <span class="n">n_out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_BiologicalOde_rates</span>
-<span class="linenos"> 69</span>        <span class="n">k1</span><span class="p">,</span> <span class="n">k2</span><span class="p">,</span> <span class="n">ka</span><span class="p">,</span> <span class="n">kb</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
-<span class="linenos"> 70</span>        <span class="c1"># Hidden layer full-scale; output layer near-zero so the ODE starts flat</span>
-<span class="linenos"> 71</span>        <span class="c1"># yet both layers receive gradient at step 0 (avoids an all-zero cold start).</span>
-<span class="linenos"> 72</span>        <span class="bp">self</span><span class="o">.</span><span class="n">l1</span> <span class="o">=</span> <span class="n">KANLayer</span><span class="p">(</span><span class="n">n_in</span><span class="p">,</span> <span class="n">hidden</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">k1</span><span class="p">,</span> <span class="n">out_scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
-<span class="linenos"> 73</span>        <span class="bp">self</span><span class="o">.</span><span class="n">l2</span> <span class="o">=</span> <span class="n">KANLayer</span><span class="p">(</span><span class="n">hidden</span><span class="p">,</span> <span class="n">n_out</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">k2</span><span class="p">,</span> <span class="n">out_scale</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
-<span class="linenos"> 74</span>        <span class="c1"># One small multiplicative term per rate, prod_a(h0) * prod_b(h1), added</span>
-<span class="linenos"> 75</span>        <span class="c1"># on top of l2's sum. h0/h1 are the first two of l1's hidden units,</span>
-<span class="linenos"> 76</span>        <span class="c1"># picked arbitrarily since none of l1's hidden units carry individual</span>
-<span class="linenos"> 77</span>        <span class="c1"># meaning. Ordinary non-zero start (unlike l2): a product started at</span>
-<span class="linenos"> 78</span>        <span class="c1"># zero can never move away from zero under gradient descent.</span>
-<span class="linenos"> 79</span>        <span class="bp">self</span><span class="o">.</span><span class="n">prod_a</span> <span class="o">=</span> <span class="n">KANLayer</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_out</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">ka</span><span class="p">,</span> <span class="n">out_scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
-<span class="linenos"> 80</span>        <span class="bp">self</span><span class="o">.</span><span class="n">prod_b</span> <span class="o">=</span> <span class="n">KANLayer</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_out</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">kb</span><span class="p">,</span> <span class="n">out_scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
-<span class="linenos"> 81</span>
-<span class="linenos"> 82</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">ReactionInputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
-<span class="linenos"> 83</span>        <span class="k">del</span> <span class="n">t</span>
-<span class="linenos"> 84</span>        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">l1</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">)</span>
-<span class="linenos"> 85</span>        <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">l2</span><span class="p">(</span><span class="n">h</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">prod_a</span><span class="p">(</span><span class="n">h</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">1</span><span class="p">])</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">prod_b</span><span class="p">(</span><span class="n">h</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">2</span><span class="p">])</span>
-<span class="linenos"> 86</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos"> 87</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">out</span><span class="p">,</span>
-<span class="linenos"> 88</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos"> 89</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos"> 90</span>        <span class="p">)</span>
-<span class="linenos"> 91</span>
-<span class="linenos"> 92</span>
-<span class="linenos"> 93</span><span class="k">def</span><span class="w"> </span><span class="nf">build_reaction_module</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">seed</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<span class="linenos"> 94</span>    <span class="n">scale_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"SCALE_"</span><span class="p">)}</span>
-<span class="linenos"> 95</span>    <span class="k">return</span> <span class="n">KANReactionModule</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">key</span><span class="p">(</span><span class="n">seed</span><span class="p">),</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
-<span class="linenos"> 96</span>
-<span class="linenos"> 97</span>
-<span class="linenos"> 98</span><span class="k">def</span><span class="w"> </span><span class="nf">estimate_all_scales</span><span class="p">(</span><span class="n">runtime_data</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
-<span class="linenos"> 99</span>    <span class="k">del</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span>
-<span class="linenos">100</span>    <span class="n">rhs</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">rhs_ode</span>
-<span class="linenos">101</span>    <span class="n">n_processes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
-<span class="linenos">102</span>
-<span class="linenos">103</span>    <span class="k">def</span><span class="w"> </span><span class="nf">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
-<span class="linenos">104</span>        <span class="n">best</span> <span class="o">=</span> <span class="mf">0.0</span>
-<span class="linenos">105</span>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">):</span>
-<span class="linenos">106</span>            <span class="n">_</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
-<span class="linenos">107</span>            <span class="k">if</span> <span class="n">values</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
-<span class="linenos">108</span>                <span class="n">best</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">values</span><span class="p">))))</span>
-<span class="linenos">109</span>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">)</span>
-<span class="linenos">110</span>
-<span class="linenos">111</span>    <span class="n">rmc_scale</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">}</span>
-<span class="linenos">112</span>
-<span class="linenos">113</span>    <span class="k">def</span><span class="w"> </span><span class="nf">rate_scale_for</span><span class="p">(</span><span class="n">species</span><span class="p">):</span>
-<span class="linenos">114</span>        <span class="n">per_process</span> <span class="o">=</span> <span class="p">[]</span>
-<span class="linenos">115</span>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">):</span>
-<span class="linenos">116</span>            <span class="n">c_times</span><span class="p">,</span> <span class="n">c_values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">species</span><span class="p">)</span>
-<span class="linenos">117</span>            <span class="n">x_times</span><span class="p">,</span> <span class="n">x_values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="s2">"biomass"</span><span class="p">)</span>
-<span class="linenos">118</span>            <span class="n">exposure</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trapezoid</span><span class="p">(</span><span class="n">x_values</span><span class="p">,</span> <span class="n">x_times</span><span class="p">)</span>
-<span class="linenos">119</span>            <span class="n">per_process</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">c_values</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">c_values</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">exposure</span><span class="p">,</span> <span class="mf">1e-9</span><span class="p">))</span>
-<span class="linenos">120</span>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">per_process</span><span class="p">),</span> <span class="mf">1e-9</span><span class="p">)</span>
-<span class="linenos">121</span>
-<span class="linenos">122</span>    <span class="n">rate_scale</span> <span class="o">=</span> <span class="p">[</span><span class="n">rate_scale_for</span><span class="p">(</span><span class="n">name</span><span class="p">[</span><span class="mi">2</span><span class="p">:])</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_rates</span><span class="p">]</span>
-<span class="linenos">123</span>
-<span class="linenos">124</span>    <span class="n">empty</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos">125</span>    <span class="k">return</span> <span class="n">EstimatedScales</span><span class="p">(</span>
-<span class="linenos">126</span>        <span class="n">SCALE_modeled_RMCs</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">rmc_scale</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">]),</span>
-<span class="linenos">127</span>        <span class="n">SCALE_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rate_scale</span><span class="p">),</span>
-<span class="linenos">128</span>        <span class="n">SCALE_V_in_cumulative</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
-<span class="linenos">129</span>            <span class="nb">max</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">initial_volume</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">))</span>
-<span class="linenos">130</span>        <span class="p">),</span>
-<span class="linenos">131</span>        <span class="n">SCALE_modeled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">132</span>        <span class="n">SCALE_modeled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">133</span>        <span class="n">SCALE_modeled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">134</span>        <span class="n">SCALE_modeled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">135</span>        <span class="n">SCALE_controlled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">136</span>        <span class="n">SCALE_controlled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">137</span>        <span class="n">SCALE_controlled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">138</span>        <span class="n">SCALE_controlled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">139</span>        <span class="n">SCALE_controlled_PVs</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">140</span>        <span class="n">SCALE_controlled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos">141</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
-<span class="linenos">142</span>        <span class="p">),</span>
-<span class="linenos">143</span>        <span class="n">SCALE_modeled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos">144</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
-<span class="linenos">145</span>        <span class="p">),</span>
-<span class="linenos">146</span>    <span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</details><section id="the-kan-layer">
-<h2>The KAN layer<a class="headerlink" href="#the-kan-layer" title="Link to this heading">¶</a></h2>
+<p>Inspired by Bühler &amp; Guillén-Gosálbez 2026 <a href="#ref-srkan">[1]</a>, whose SR-KAN
+framework builds on Kolmogorov-Arnold Networks <a href="#ref-kan">[2]</a> to recover
+interpretable kinetic rate laws from a batch fermentation case study similar to this
+page’s own biomass, glucose, and product data. This page reproduces the core idea,
+learnable curves on edges in place of a neural network’s fixed activations, as a single
+reaction module trained directly inside <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s own loop rather than the
+paper’s own two-stage pipeline. It also reuses the paper’s post-training step of
+matching each learned edge against a small library of simple curves, stopping short of
+the paper’s further step of composing those matches into one closed-form rate law.</p>
+<p>The walkthrough below shows the file in pieces, next to the reasoning for each one.</p>
+<section id="the-kan-layer">
+<h2>The KAN Layer<a class="headerlink" href="#the-kan-layer" title="Link to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">KANLayer</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
 <span class="linenos"> 2</span>    <span class="n">base_w</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (out, in)</span>
 <span class="linenos"> 3</span>    <span class="n">spline_c</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (out, in, grid)</span>
@@ -599,12 +422,12 @@ small Gaussian radial-basis expansion centered on a fixed grid
 <a href="#ref-rbf">[3]</a>. A node’s output is the sum over its incoming edges’
 curves, <code class="docutils literal notranslate"><span class="pre">Σ_i</span> <span class="pre">φ_oi(x_i)</span></code>, the defining property that makes this a KAN
 <a href="#ref-kan">[2]</a> rather than an MLP: the learnable function lives on
-the edge, not folded into a fixed node activation. <code class="docutils literal notranslate"><span class="pre">x</span></code> is <code class="docutils literal notranslate"><span class="pre">tanh</span></code>-bounded before
+the edge, separate from a fixed node activation. <code class="docutils literal notranslate"><span class="pre">x</span></code> is <code class="docutils literal notranslate"><span class="pre">tanh</span></code>-bounded before
 hitting the grid, so every edge’s spline term always sees an input inside the
 range it was actually fit over.</p>
 </section>
 <section id="the-reaction-module">
-<h2>The reaction module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
+<h2>The Reaction Module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">KANReactionModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
 <span class="linenos"> 2</span>    <span class="n">l1</span><span class="p">:</span> <span class="n">KANLayer</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
 <span class="linenos"> 3</span>    <span class="n">l2</span><span class="p">:</span> <span class="n">KANLayer</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
@@ -657,8 +480,7 @@ actually need it: every rate this page fits turns out to depend on glucose
 alone, through a single saturating curve, with nothing multiplicative in the
 real process (see <a class="reference internal" href="#recovering-the-real-rate-law">Recovering the real rate law</a>
 below). The term stays in as a demonstration that the model has this option
-available, the same way SR-KAN’s own model does, not because this particular
-system requires it.</p>
+available, the same way SR-KAN’s own model does.</p>
 <p><code class="docutils literal notranslate"><span class="pre">prod_a</span></code> and <code class="docutils literal notranslate"><span class="pre">prod_b</span></code> start at ordinary, non-zero values, unlike every other
 weight in <code class="docutils literal notranslate"><span class="pre">l2</span></code>, which starts at zero. A product of two values that both start
 at zero can never move away from zero under gradient descent, since nudging
@@ -670,7 +492,7 @@ starting point the way addition does not.</p>
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 13:26:21 INFO __main__: training complete: first_mean_loss=0.235398 last_mean_loss=0.000211724 delta=-0.235187
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:12:30 INFO __main__: training complete: first_mean_loss=0.235398 last_mean_loss=0.000211724 delta=-0.235187
 run directory: ./source/_data/out/runs/gallery_kan/run
 </pre></div>
 </div>
@@ -697,7 +519,7 @@ column: the rates the KAN actually predicted along the way,
 their integral does.</p>
 </section>
 <section id="what-each-edge-learned">
-<h2>What each edge learned<a class="headerlink" href="#what-each-edge-learned" title="Link to this heading">¶</a></h2>
+<h2>What Each Edge Learned<a class="headerlink" href="#what-each-edge-learned" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <img alt="../_images/e3b73bc670bb1f98ae6deedfac2625c4447c252cc67f4af0fe19e20e81b16072.png" src="../_images/e3b73bc670bb1f98ae6deedfac2625c4447c252cc67f4af0fe19e20e81b16072.png" />
@@ -721,181 +543,38 @@ effect would actually have.</p>
 </div>
 </section>
 <section id="recovering-the-real-rate-law">
-<h2>Recovering the real rate law<a class="headerlink" href="#recovering-the-real-rate-law" title="Link to this heading">¶</a></h2>
-<p>This page’s training data (<code class="docutils literal notranslate"><span class="pre">data.json</span></code>) is not arbitrary: it comes from
+<h2>Recovering the Real Rate Law<a class="headerlink" href="#recovering-the-real-rate-law" title="Link to this heading">¶</a></h2>
+<p>This page’s training data (<code class="docutils literal notranslate"><span class="pre">data.json</span></code>) comes from
 <code class="docutils literal notranslate"><span class="pre">hybrax/docs/source/_data/generate.py</span></code>’s <code class="docutils literal notranslate"><span class="pre">build_demo_batch</span></code>, a real,
 known kinetic model (Monod growth, fixed biomass yield plus maintenance,
 Luedeking-Piret product formation). hybrax multiplies each of the model’s
 three predicted numbers by the current biomass automatically, outside the
 reaction module entirely, so what the KAN itself needs to learn is a
-per-biomass rate, not the full rate of change. Written that way, all three
+per-biomass rate. Written that way, all three
 true rates reduce to one shape:</p>
 <div class="highlight-none notranslate"><div class="highlight"><pre><span></span>(a fixed number) x S / (Ks + S)
 </pre></div>
 </div>
 <p>a single saturating (Michaelis-Menten) curve in glucose (<code class="docutils literal notranslate"><span class="pre">S</span></code>) alone, with the
 same <code class="docutils literal notranslate"><span class="pre">Ks</span> <span class="pre">=</span> <span class="pre">0.05</span> <span class="pre">g/L</span></code> in all three and nothing depending on biomass or
-product. This gives a direct check: feed the trained model made-up
-combinations of the three inputs (not real measured points, just numbers
-picked to isolate one input at a time), and see whether its own behavior
-matches.</p>
+product. This gives a direct check: feed the trained model synthetic
+combinations of the three inputs, picked to isolate one input at a time, and see
+whether its own behavior matches.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output text_html"><div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Biomass and product together move each rate by at most 17.1% of what glucose does.
 
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>rate</th>
-      <th>swept input</th>
-      <th>% of glucose's effect</th>
-      <th>shape</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>q_biomass</td>
-      <td>biomass</td>
-      <td>1.8</td>
-      <td>no clean match</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>q_biomass</td>
-      <td>glucose</td>
-      <td>100.0</td>
-      <td>saturating</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>q_biomass</td>
-      <td>product</td>
-      <td>6.0</td>
-      <td>power</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>q_glucose</td>
-      <td>biomass</td>
-      <td>3.6</td>
-      <td>power</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>q_glucose</td>
-      <td>glucose</td>
-      <td>100.0</td>
-      <td>saturating</td>
-    </tr>
-    <tr>
-      <th>5</th>
-      <td>q_glucose</td>
-      <td>product</td>
-      <td>17.1</td>
-      <td>power</td>
-    </tr>
-    <tr>
-      <th>6</th>
-      <td>q_product</td>
-      <td>biomass</td>
-      <td>4.1</td>
-      <td>no clean match</td>
-    </tr>
-    <tr>
-      <th>7</th>
-      <td>q_product</td>
-      <td>glucose</td>
-      <td>100.0</td>
-      <td>saturating</td>
-    </tr>
-    <tr>
-      <th>8</th>
-      <td>q_product</td>
-      <td>product</td>
-      <td>9.4</td>
-      <td>no clean match</td>
-    </tr>
-  </tbody>
-</table>
-</div></div></div>
+q_biomass   learned: +2.835 * S / (0.943 + S)   true: +0.450 * S / (0.050 + S)
+q_glucose   learned: -2.182 * S / (0.616 + S)   true: -1.020 * S / (0.050 + S)
+q_product   learned: +2.294 * S / (0.684 + S)   true: +0.042 * S / (0.050 + S)
+</pre></div>
 </div>
-<div class="cell tag_remove-input docutils container">
-<div class="cell_output docutils container">
-<div class="output text_html"><div>
-<style scoped>
-    .dataframe tbody tr th:only-of-type {
-        vertical-align: middle;
-    }
-
-    .dataframe tbody tr th {
-        vertical-align: top;
-    }
-
-    .dataframe thead th {
-        text-align: right;
-    }
-</style>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>rate</th>
-      <th>recovered a</th>
-      <th>true a</th>
-      <th>recovered Ks</th>
-      <th>true Ks</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>q_biomass</td>
-      <td>2.84</td>
-      <td>0.450</td>
-      <td>0.94</td>
-      <td>0.05</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>q_glucose</td>
-      <td>-2.18</td>
-      <td>-1.020</td>
-      <td>0.62</td>
-      <td>0.05</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>q_product</td>
-      <td>2.29</td>
-      <td>0.042</td>
-      <td>0.68</td>
-      <td>0.05</td>
-    </tr>
-  </tbody>
-</table>
-</div></div></div>
 </div>
-<p>Sweeping biomass or product moves each rate by only a few percent of what
-sweeping glucose does: the model correctly learned that biomass and product
-barely matter, matching the real process. Sweeping glucose traces a clean
-saturating curve for all three rates, the right shape. The recovered scale
-and half-saturation numbers, though, land well off the real ones above: right
-shape, not the same numbers.</p>
-<p>That gap is expected, not a failure to paper over. Training sees only 3
+</div>
+<p>Biomass and product barely move any rate, matching the real process. Glucose alone
+traces a clean saturating curve for all three rates, the right shape. The learned
+scale and half-saturation numbers above land only roughly near the real ones.</p>
+<p>That gap is expected. Training sees only 3
 processes here (15 timepoints each, <code class="docutils literal notranslate"><span class="pre">BATCH_RUNS</span></code> in <code class="docutils literal notranslate"><span class="pre">generate.py</span></code>), and the
 sweep above evaluates the model at input combinations that never occur
 together along any single real trajectory, off the narrow path training
@@ -905,9 +584,9 @@ model picked up an inhibiting effect of product concentration on biomass
 growth that the real process did not have, and noted “slight numerical
 discrepancies” between its recovered growth surface and the real one, even
 after correctly capturing the overall trend
-<a href="#ref-forster">[4]</a>. This page is not attempting to match SR-KAN’s
-own hyperparameter-tuned pipeline point for point; the aim is to show that a
-comparable check runs, end to end, inside <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>.</p>
+<a href="#ref-forster">[4]</a>. The aim here is to show that a comparable check runs,
+end to end, inside <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>, at a smaller scale than SR-KAN’s own
+hyperparameter-tuned pipeline.</p>
 </section>
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
@@ -918,29 +597,31 @@ only the base <code class="docutils literal notranslate"><span class="pre">SiLU<
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">centers</span></code> is a <code class="docutils literal notranslate"><span class="pre">frozen_field()</span></code>, never trained.</strong> The grid is fixed; only
 <code class="docutils literal notranslate"><span class="pre">base_w</span></code> and <code class="docutils literal notranslate"><span class="pre">spline_c</span></code>, the edge functions’ actual shape, move under
 gradient descent.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">l2</span></code>’s near-zero initialization is what keeps the ODE flat at step 0</strong>,
-not a small learning rate or a warmup schedule. Removing it does not error,
-it just starts training from a wild, effectively random rate prediction.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">l2</span></code>’s near-zero initialization is what keeps the ODE flat at step 0.</strong>
+Removing it does not error, it just starts training from a wild, effectively
+random rate prediction.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">hidden</span></code> and <code class="docutils literal notranslate"><span class="pre">grid</span></code> are real capacity knobs</strong>, exactly like a network’s
 width. Too few edges or basis functions and the model cannot represent the
 trajectory; too many and every edge pays for a wider, mostly redundant
 radial-basis expansion.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">prod_a</span></code>/<code class="docutils literal notranslate"><span class="pre">prod_b</span></code> break perfectly-flat-at-step-0 for all three rates</strong>,
-not just the two hidden units they read from. They start non-zero on
+since every rate reads through <code class="docutils literal notranslate"><span class="pre">l2</span></code>’s shared sum. They start non-zero on
 purpose (see above), so each rate starts very close to flat rather than
 exactly flat.</p></li>
 </ul>
 </section>
 <section id="see-also">
-<h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
-<p>Run the example yourself at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_kan/</span></code>.</p>
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
+<code class="docutils literal notranslate"><span class="pre">examples/gallery_kan/</span></code> at the repo root, no docs build required. This page’s own
+executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_kan/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: <code class="docutils literal notranslate"><span class="pre">auxiliary</span></code>, and
 everything else a <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code> can return.</p></li>
 <li><p><a class="reference internal" href="gaussian_process.html"><span class="std std-doc">Gaussian process reaction module</span></a>: another
 reaction-module architecture, with its own way of reading out what it
 learned.</p></li>
-<li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic models</span></a>: a reaction module built from
+<li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic Models</span></a>: a reaction module built from
 explicit kinetics instead.</p></li>
 </ul>
 </section>
@@ -1022,13 +703,13 @@ models of bioprocesses. <em>Chemical Engineering Science</em>, 300, 120606.
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">A KAN model</a><ul>
-<li><a class="reference internal" href="#the-kan-layer">The KAN layer</a></li>
-<li><a class="reference internal" href="#the-reaction-module">The reaction module</a></li>
+<li><a class="reference internal" href="#the-kan-layer">The KAN Layer</a></li>
+<li><a class="reference internal" href="#the-reaction-module">The Reaction Module</a></li>
 <li><a class="reference internal" href="#training">Training</a></li>
-<li><a class="reference internal" href="#what-each-edge-learned">What each edge learned</a></li>
-<li><a class="reference internal" href="#recovering-the-real-rate-law">Recovering the real rate law</a></li>
+<li><a class="reference internal" href="#what-each-edge-learned">What Each Edge Learned</a></li>
+<li><a class="reference internal" href="#recovering-the-real-rate-law">Recovering the Real Rate Law</a></li>
 <li><a class="reference internal" href="#gotchas">Gotchas</a></li>
-<li><a class="reference internal" href="#see-also">See also</a></li>
+<li><a class="reference internal" href="#see-also">See Also</a></li>
 <li><a class="reference internal" href="#references">References</a></li>
 </ul>
 </li>

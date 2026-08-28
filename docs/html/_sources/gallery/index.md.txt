@@ -2,16 +2,16 @@
 
 > Worked examples of the things the tutorials deliberately left out.
 
-The tutorials use one small batch dataset and stop early on purpose: the point there is
-the shape of the pipeline, not the ceiling of what it can do. This is where the ceiling
-lives. Each entry is a self-contained, executed example, most built on the fed-batch
-demo dataset or an extended version of the batch one.
+The tutorials use one small batch dataset and stop early on purpose, to show the shape
+of the pipeline. This is where the ceiling of what it can do lives. Each entry is a
+self-contained, executed example, most built on the fed-batch demo dataset or an
+extended version of the batch one.
 
 Every entry's `.md` file is itself a real, executable notebook (MyST Markdown via
 myst-nb), living in `source/gallery/`. Its runnable `custom.py`, configs and frozen
 input data live alongside it in `hybrax`'s own top-level `examples/gallery_<name>/`:
 clone `hybrax`, install it, and each page runs top to bottom exactly as shown here,
-no rendering required — or run the `examples/` directory directly, no docs build
+no rendering required, or run the `examples/` directory directly, no docs build
 needed at all.
 
 ## Format Demo
@@ -59,7 +59,7 @@ hybrax's own architecture and training loop, as closely as that allows.
 | [KAN Models](kan.md) | Learnable univariate functions on edges, mostly summed but partly combined multiplicatively at nodes, occupying a reaction module's slot instead of a neural network, with each edge's learned curve matched against a shape library after training. |
 | [OptFed Models](optfed.md) | A real, published non-competitive-inhibition Michaelis-Menten rate law with Eyring-equation temperature dependence, `temperature` feeding straight into the kinetics as a controlled process variable. |
 
-## See also
+## See Also
 
 - [Tutorials](../tutorials/01_your_first_dataset.md): start here if you have not yet.
 - [Which page do I need?](../start/find.md): the full feature routing table.

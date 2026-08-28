@@ -7,11 +7,11 @@
         <link rel="prefetch" href="../_static/hybrax_logo.png" as="image">
 
     <link rel="shortcut icon" href="../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Knowledge transfer - Bioprocess Modeling with Hybrax</title>
+        <title>Knowledge Transfer - Bioprocess Modeling with Hybrax</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -374,316 +374,28 @@
         </div>
         <article role="main" id="furo-main-content">
           <section class="tex2jax_ignore mathjax_ignore" id="knowledge-transfer">
-<h1>Knowledge transfer<a class="headerlink" href="#knowledge-transfer" title="Link to this heading">¶</a></h1>
+<h1>Knowledge Transfer<a class="headerlink" href="#knowledge-transfer" title="Link to this heading">¶</a></h1>
 <blockquote>
-<div><p><strong>Demonstrates.</strong> Pooling data from several products to help a data-poor new one,
-using a constant-valued controlled process variable as a one-hot product-identity
-feature, and an ensemble of GPs anchored to real training data.</p>
+<div><p>Pooling data from several products to help a data-poor new one, using a
+constant-valued controlled process variable to mark which product each run belongs
+to. An ensemble of Gaussian processes, anchored to real training data, does the
+pooling.</p>
 </div></blockquote>
 <p>Inspired by Helleckes et al. 2024 <a href="#ref-helleckes2024">[1]</a>, whose headline result is
 that pooling data across products, “horizontal knowledge transfer,” measurably helps
 a new product with few runs of its own, provided the historical products actually
 resemble it. This page reproduces that qualitative result natively in <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>,
 on synthetic data, using an ensemble version of <a class="reference internal" href="gaussian_process.html"><span class="std std-doc">Gaussian process</span></a>’s
-<code class="docutils literal notranslate"><span class="pre">GPReactionModule</span></code>. It is not a replication of their method (their model is fit by
-maximum-likelihood estimation on a precomputed rate target and pools via one-hot
-encoding or a PACOH meta-learned prior; this page trains by gradient descent through
-the ODE solve and pools via a controlled process variable), only of the finding.</p>
-<p>The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:</p>
-<details class="sd-sphinx-override sd-dropdown sd-card sd-mb-3">
-<summary class="sd-summary-title sd-card-header">
-<span class="sd-summary-text">Full <code class="docutils literal notranslate"><span class="pre">custom.py</span></code></span><span class="sd-summary-state-marker sd-summary-chevron-right"><svg version="1.1" width="1.5em" height="1.5em" class="sd-octicon sd-octicon-chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.72 18.78a.75.75 0 0 1 0-1.06L14.44 12 8.72 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0Z"></path></svg></span></summary><div class="sd-summary-content sd-card-body docutils">
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">  1</span><span class="sd">"""Pooling data across products: an ensemble of GPs, each anchored to a real</span>
-<span class="linenos">  2</span><span class="sd">subsample of training data, reading a product-identity controlled PV.</span>
-<span class="linenos">  3</span>
-<span class="linenos">  4</span><span class="sd">Builds on gaussian_process.md's GPReactionModule, sharing its two real-data</span>
-<span class="linenos">  5</span><span class="sd">grounding pieces: ``centers`` are real measured states (plus, here,</span>
-<span class="linenos">  6</span><span class="sd">``is_new_product``), and ``targets`` are real rate estimates from</span>
-<span class="linenos">  7</span><span class="sd">hybrax.format.splines's pseudobatch machinery, not learned. Two changes on</span>
-<span class="linenos">  8</span><span class="sd">top of the single-GP page:</span>
-<span class="linenos">  9</span>
-<span class="linenos"> 10</span><span class="sd">1. K independent GP heads instead of one, each anchored to a bootstrap</span>
-<span class="linenos"> 11</span><span class="sd">   subsample of REAL (state, product-identity) -&gt; (real rate) pairs, not</span>
-<span class="linenos"> 12</span><span class="sd">   free trainable vectors. Final prediction is the mean across heads; the</span>
-<span class="linenos"> 13</span><span class="sd">   spread across heads stands in for predictive uncertainty. This mirrors</span>
-<span class="linenos"> 14</span><span class="sd">   Helleckes et al. 2024's "mean averaging ensemble... 30 GP models, each</span>
-<span class="linenos"> 15</span><span class="sd">   subsampling 50% of the training data experiments" (scaled down: K heads</span>
-<span class="linenos"> 16</span><span class="sd">   / n_anchors here, not 30, and subsampled at the point level rather than</span>
-<span class="linenos"> 17</span><span class="sd">   the experiment level -- both simplifications made for tractability</span>
-<span class="linenos"> 18</span><span class="sd">   inside hybrax.train's per-solver-step reaction-module call, not hidden).</span>
-<span class="linenos"> 19</span><span class="sd">2. A constant-valued controlled process variable, `is_new_product`, encodes</span>
-<span class="linenos"> 20</span><span class="sd">   which product a given process belongs to: a one-hot identity feature,</span>
-<span class="linenos"> 21</span><span class="sd">   using only existing hybrax machinery (no framework change).</span>
-<span class="linenos"> 22</span><span class="sd">   Shipped as a StaticVariable-valued ProcessVariable directly in data.json,</span>
-<span class="linenos"> 23</span><span class="sd">   baked in by the generator's build_demo_products().</span>
-<span class="linenos"> 24</span><span class="sd">"""</span>
-<span class="linenos"> 25</span>
-<span class="linenos"> 26</span><span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
-<span class="linenos"> 27</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
-<span class="linenos"> 28</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
-<span class="linenos"> 29</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax.scipy.linalg</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jsl</span>
-<span class="linenos"> 30</span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="linenos"> 31</span>
-<span class="linenos"> 32</span><span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.mechanistic</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_rhs_ode</span>
-<span class="linenos"> 33</span><span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.splines</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_backtransform_spline</span><span class="p">,</span> <span class="n">build_pseudobatch_transform</span>
-<span class="linenos"> 34</span><span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.train</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<span class="linenos"> 35</span>    <span class="n">DefaultLossModule</span><span class="p">,</span>
-<span class="linenos"> 36</span>    <span class="n">EstimatedScales</span><span class="p">,</span>
-<span class="linenos"> 37</span>    <span class="n">LossInputs</span><span class="p">,</span>
-<span class="linenos"> 38</span>    <span class="n">LossOutputs</span><span class="p">,</span>
-<span class="linenos"> 39</span>    <span class="n">ReactionInputs</span><span class="p">,</span>
-<span class="linenos"> 40</span>    <span class="n">ReactionOutputs</span><span class="p">,</span>
-<span class="linenos"> 41</span>    <span class="n">UserReactionModule</span><span class="p">,</span>
-<span class="linenos"> 42</span>    <span class="n">frozen_field</span><span class="p">,</span>
-<span class="linenos"> 43</span>    <span class="n">trainable_field</span><span class="p">,</span>
-<span class="linenos"> 44</span><span class="p">)</span>
-<span class="linenos"> 45</span>
-<span class="linenos"> 46</span>
-<span class="linenos"> 47</span><span class="k">class</span><span class="w"> </span><span class="nc">EnsembleGPReactionModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
-<span class="linenos"> 48</span>    <span class="n">centers</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">frozen_field</span><span class="p">()</span>  <span class="c1"># (K, M, n_features), REAL states + is_new_product</span>
-<span class="linenos"> 49</span>    <span class="n">targets</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">frozen_field</span><span class="p">()</span>  <span class="c1"># (K, M, n_rates), REAL rate estimates</span>
-<span class="linenos"> 50</span>    <span class="n">log_lengthscale</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (K, n_features)</span>
-<span class="linenos"> 51</span>    <span class="n">log_output_scale</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (K,)</span>
-<span class="linenos"> 52</span>    <span class="n">log_noise</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (K,)</span>
-<span class="linenos"> 53</span>
-<span class="linenos"> 54</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
-<span class="linenos"> 55</span>        <span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">centers_pool</span><span class="p">,</span> <span class="n">targets_pool</span><span class="p">,</span> <span class="n">n_members</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">n_anchors</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span>
-<span class="linenos"> 56</span>    <span class="p">):</span>
-<span class="linenos"> 57</span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
-<span class="linenos"> 58</span>        <span class="n">n_features</span> <span class="o">=</span> <span class="n">centers_pool</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
-<span class="linenos"> 59</span>
-<span class="linenos"> 60</span>        <span class="n">seed_val</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="p">(),</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="o">**</span><span class="mi">31</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
-<span class="linenos"> 61</span>        <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="n">seed_val</span><span class="p">)</span>
-<span class="linenos"> 62</span>        <span class="n">n_total</span> <span class="o">=</span> <span class="n">centers_pool</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-<span class="linenos"> 63</span>        <span class="n">centers_list</span><span class="p">,</span> <span class="n">targets_list</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
-<span class="linenos"> 64</span>        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_members</span><span class="p">):</span>
-<span class="linenos"> 65</span>            <span class="n">half</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">n_total</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="nb">max</span><span class="p">(</span><span class="n">n_total</span> <span class="o">//</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<span class="linenos"> 66</span>            <span class="n">m</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">n_anchors</span><span class="p">,</span> <span class="n">half</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
-<span class="linenos"> 67</span>            <span class="n">chosen</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">half</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">m</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<span class="linenos"> 68</span>            <span class="n">centers_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">centers_pool</span><span class="p">[</span><span class="n">chosen</span><span class="p">])</span>
-<span class="linenos"> 69</span>            <span class="n">targets_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">targets_pool</span><span class="p">[</span><span class="n">chosen</span><span class="p">])</span>
-<span class="linenos"> 70</span>        <span class="c1"># Pad every member to the same M (repeat last row) so they stack into one array.</span>
-<span class="linenos"> 71</span>        <span class="n">max_m</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">centers_list</span><span class="p">)</span>
-<span class="linenos"> 72</span>
-<span class="linenos"> 73</span>        <span class="k">def</span><span class="w"> </span><span class="nf">pad</span><span class="p">(</span><span class="n">arrs</span><span class="p">):</span>
-<span class="linenos"> 74</span>            <span class="k">return</span> <span class="p">[</span>
-<span class="linenos"> 75</span>                <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">a</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">:],</span> <span class="n">max_m</span> <span class="o">-</span> <span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos"> 76</span>                <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">arrs</span>
-<span class="linenos"> 77</span>            <span class="p">]</span>
-<span class="linenos"> 78</span>
-<span class="linenos"> 79</span>        <span class="bp">self</span><span class="o">.</span><span class="n">centers</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">pad</span><span class="p">(</span><span class="n">centers_list</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
-<span class="linenos"> 80</span>        <span class="bp">self</span><span class="o">.</span><span class="n">targets</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">pad</span><span class="p">(</span><span class="n">targets_list</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
-<span class="linenos"> 81</span>
-<span class="linenos"> 82</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_lengthscale</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_members</span><span class="p">,</span> <span class="n">n_features</span><span class="p">))</span>
-<span class="linenos"> 83</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_output_scale</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_members</span><span class="p">)</span>
-<span class="linenos"> 84</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_noise</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n_members</span><span class="p">,),</span> <span class="o">-</span><span class="mf">2.0</span><span class="p">)</span>
-<span class="linenos"> 85</span>
-<span class="linenos"> 86</span>    <span class="nd">@staticmethod</span>
-<span class="linenos"> 87</span>    <span class="k">def</span><span class="w"> </span><span class="nf">_kernel</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">log_ls</span><span class="p">,</span> <span class="n">log_out</span><span class="p">):</span>
-<span class="linenos"> 88</span>        <span class="n">diff</span> <span class="o">=</span> <span class="p">(</span><span class="n">a</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">b</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:,</span> <span class="p">:])</span> <span class="o">/</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_ls</span><span class="p">)</span>
-<span class="linenos"> 89</span>        <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_out</span><span class="p">)</span> <span class="o">*</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">diff</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">))</span>
-<span class="linenos"> 90</span>
-<span class="linenos"> 91</span>    <span class="k">def</span><span class="w"> </span><span class="nf">_chol</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">centers_k</span><span class="p">,</span> <span class="n">log_ls_k</span><span class="p">,</span> <span class="n">log_out_k</span><span class="p">,</span> <span class="n">log_noise_k</span><span class="p">):</span>
-<span class="linenos"> 92</span>        <span class="n">k_zz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kernel</span><span class="p">(</span><span class="n">centers_k</span><span class="p">,</span> <span class="n">centers_k</span><span class="p">,</span> <span class="n">log_ls_k</span><span class="p">,</span> <span class="n">log_out_k</span><span class="p">)</span>
-<span class="linenos"> 93</span>        <span class="n">k_zz</span> <span class="o">=</span> <span class="n">k_zz</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_noise_k</span><span class="p">)</span> <span class="o">*</span> <span class="n">jnp</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">centers_k</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-<span class="linenos"> 94</span>        <span class="k">return</span> <span class="n">jsl</span><span class="o">.</span><span class="n">cho_factor</span><span class="p">(</span><span class="n">k_zz</span><span class="p">,</span> <span class="n">lower</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="linenos"> 95</span>
-<span class="linenos"> 96</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">ReactionInputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
-<span class="linenos"> 97</span>        <span class="k">del</span> <span class="n">t</span>
-<span class="linenos"> 98</span>        <span class="n">x_phys</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_PVs</span><span class="p">])[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:]</span>
-<span class="linenos"> 99</span>
-<span class="linenos">100</span>        <span class="k">def</span><span class="w"> </span><span class="nf">per_member</span><span class="p">(</span><span class="n">centers_k</span><span class="p">,</span> <span class="n">log_ls_k</span><span class="p">,</span> <span class="n">log_out_k</span><span class="p">,</span> <span class="n">log_noise_k</span><span class="p">,</span> <span class="n">targets_k</span><span class="p">):</span>
-<span class="linenos">101</span>            <span class="n">chol</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chol</span><span class="p">(</span><span class="n">centers_k</span><span class="p">,</span> <span class="n">log_ls_k</span><span class="p">,</span> <span class="n">log_out_k</span><span class="p">,</span> <span class="n">log_noise_k</span><span class="p">)</span>
-<span class="linenos">102</span>            <span class="n">k_xz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kernel</span><span class="p">(</span><span class="n">x_phys</span><span class="p">,</span> <span class="n">centers_k</span><span class="p">,</span> <span class="n">log_ls_k</span><span class="p">,</span> <span class="n">log_out_k</span><span class="p">)</span>
-<span class="linenos">103</span>            <span class="k">return</span> <span class="p">(</span><span class="n">k_xz</span> <span class="o">@</span> <span class="n">jsl</span><span class="o">.</span><span class="n">cho_solve</span><span class="p">(</span><span class="n">chol</span><span class="p">,</span> <span class="n">targets_k</span><span class="p">))[</span><span class="mi">0</span><span class="p">]</span>
-<span class="linenos">104</span>
-<span class="linenos">105</span>        <span class="n">means</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">per_member</span><span class="p">)(</span>
-<span class="linenos">106</span>            <span class="bp">self</span><span class="o">.</span><span class="n">centers</span><span class="p">,</span>
-<span class="linenos">107</span>            <span class="bp">self</span><span class="o">.</span><span class="n">log_lengthscale</span><span class="p">,</span>
-<span class="linenos">108</span>            <span class="bp">self</span><span class="o">.</span><span class="n">log_output_scale</span><span class="p">,</span>
-<span class="linenos">109</span>            <span class="bp">self</span><span class="o">.</span><span class="n">log_noise</span><span class="p">,</span>
-<span class="linenos">110</span>            <span class="bp">self</span><span class="o">.</span><span class="n">targets</span><span class="p">,</span>
-<span class="linenos">111</span>        <span class="p">)</span>
-<span class="linenos">112</span>        <span class="n">mean</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">means</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos">113</span>        <span class="n">rate_std</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">means</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos">114</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos">115</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">mean</span><span class="p">,</span>
-<span class="linenos">116</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos">117</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos">118</span>            <span class="n">auxiliary</span><span class="o">=</span><span class="p">{</span><span class="s2">"rate_std"</span><span class="p">:</span> <span class="n">rate_std</span><span class="p">},</span>
-<span class="linenos">119</span>        <span class="p">)</span>
-<span class="linenos">120</span>
-<span class="linenos">121</span>    <span class="k">def</span><span class="w"> </span><span class="nf">marginal_nll</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-<span class="linenos">122</span><span class="w">        </span><span class="sd">"""Real GP negative log marginal likelihood, averaged across heads.</span>
-<span class="linenos">123</span>
-<span class="linenos">124</span><span class="sd">        Fits each head's kernel hyperparameters the way a textbook GP does:</span>
-<span class="linenos">125</span><span class="sd">        maximizing the probability of that head's real (centers, targets)</span>
-<span class="linenos">126</span><span class="sd">        pairs, not the downstream trajectory.</span>
-<span class="linenos">127</span><span class="sd">        """</span>
-<span class="linenos">128</span>
-<span class="linenos">129</span>        <span class="k">def</span><span class="w"> </span><span class="nf">per_member_nll</span><span class="p">(</span><span class="n">centers_k</span><span class="p">,</span> <span class="n">log_ls_k</span><span class="p">,</span> <span class="n">log_out_k</span><span class="p">,</span> <span class="n">log_noise_k</span><span class="p">,</span> <span class="n">targets_k</span><span class="p">):</span>
-<span class="linenos">130</span>            <span class="n">chol</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_chol</span><span class="p">(</span><span class="n">centers_k</span><span class="p">,</span> <span class="n">log_ls_k</span><span class="p">,</span> <span class="n">log_out_k</span><span class="p">,</span> <span class="n">log_noise_k</span><span class="p">)</span>
-<span class="linenos">131</span>            <span class="n">alpha</span> <span class="o">=</span> <span class="n">jsl</span><span class="o">.</span><span class="n">cho_solve</span><span class="p">(</span><span class="n">chol</span><span class="p">,</span> <span class="n">targets_k</span><span class="p">)</span>
-<span class="linenos">132</span>            <span class="n">n_points</span><span class="p">,</span> <span class="n">n_rates</span> <span class="o">=</span> <span class="n">targets_k</span><span class="o">.</span><span class="n">shape</span>
-<span class="linenos">133</span>            <span class="n">data_fit</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">targets_k</span> <span class="o">*</span> <span class="n">alpha</span><span class="p">)</span>
-<span class="linenos">134</span>            <span class="n">log_det</span> <span class="o">=</span> <span class="n">n_rates</span> <span class="o">*</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">diagonal</span><span class="p">(</span><span class="n">chol</span><span class="p">[</span><span class="mi">0</span><span class="p">])))</span>
-<span class="linenos">135</span>            <span class="n">n_terms</span> <span class="o">=</span> <span class="n">n_points</span> <span class="o">*</span> <span class="n">n_rates</span>
-<span class="linenos">136</span>            <span class="k">return</span> <span class="p">(</span><span class="n">data_fit</span> <span class="o">+</span> <span class="n">log_det</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">n_terms</span> <span class="o">*</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">jnp</span><span class="o">.</span><span class="n">pi</span><span class="p">))</span> <span class="o">/</span> <span class="n">n_terms</span>
-<span class="linenos">137</span>
-<span class="linenos">138</span>        <span class="n">nlls</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">per_member_nll</span><span class="p">)(</span>
-<span class="linenos">139</span>            <span class="bp">self</span><span class="o">.</span><span class="n">centers</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_lengthscale</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_output_scale</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_noise</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">targets</span>
-<span class="linenos">140</span>        <span class="p">)</span>
-<span class="linenos">141</span>        <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">nlls</span><span class="p">)</span>
-<span class="linenos">142</span>
-<span class="linenos">143</span>
-<span class="linenos">144</span><span class="k">def</span><span class="w"> </span><span class="nf">build_reaction_module</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">seed</span><span class="p">,</span> <span class="n">training_parent_collection</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<span class="linenos">145</span>    <span class="n">scale_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"SCALE_"</span><span class="p">)}</span>
-<span class="linenos">146</span>    <span class="n">first_process</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">training_parent_collection</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span>
-<span class="linenos">147</span>    <span class="n">rhs</span> <span class="o">=</span> <span class="n">build_rhs_ode</span><span class="p">(</span><span class="n">first_process</span><span class="p">)</span>
-<span class="linenos">148</span>    <span class="n">rmc_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">)</span>
-<span class="linenos">149</span>    <span class="n">rmc_scaler</span> <span class="o">=</span> <span class="n">scale_kwargs</span><span class="p">[</span><span class="s2">"SCALE_modeled_RMCs"</span><span class="p">]</span>
-<span class="linenos">150</span>    <span class="n">rate_scaler</span> <span class="o">=</span> <span class="n">scale_kwargs</span><span class="p">[</span><span class="s2">"SCALE_modeled_BiologicalOde_rates"</span><span class="p">]</span>
-<span class="linenos">151</span>
-<span class="linenos">152</span>    <span class="n">centers_list</span><span class="p">,</span> <span class="n">targets_list</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
-<span class="linenos">153</span>    <span class="k">for</span> <span class="n">process</span> <span class="ow">in</span> <span class="n">training_parent_collection</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
-<span class="linenos">154</span>        <span class="n">process</span><span class="o">.</span><span class="n">pseudobatch_transform</span> <span class="o">=</span> <span class="n">build_pseudobatch_transform</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
-<span class="linenos">155</span>        <span class="n">meas_times</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
-<span class="linenos">156</span>            <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="s2">"biomass"</span><span class="p">]</span><span class="o">.</span><span class="n">concentration</span><span class="o">.</span><span class="n">times</span>
-<span class="linenos">157</span>        <span class="p">)</span>
-<span class="linenos">158</span>        <span class="n">splines</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">build_backtransform_spline</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rmc_names</span><span class="p">}</span>
-<span class="linenos">159</span>        <span class="n">values</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">splines</span><span class="p">[</span><span class="n">name</span><span class="p">](</span><span class="n">meas_times</span><span class="p">))</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rmc_names</span><span class="p">}</span>
-<span class="linenos">160</span>        <span class="n">derivatives</span> <span class="o">=</span> <span class="p">{</span>
-<span class="linenos">161</span>            <span class="n">name</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">splines</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">derivative</span><span class="p">()(</span><span class="n">meas_times</span><span class="p">))</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rmc_names</span>
-<span class="linenos">162</span>        <span class="p">}</span>
-<span class="linenos">163</span>        <span class="n">biomass</span> <span class="o">=</span> <span class="n">values</span><span class="p">[</span><span class="s2">"biomass"</span><span class="p">]</span>
-<span class="linenos">164</span>
-<span class="linenos">165</span>        <span class="c1"># q_biomass/q_glucose/q_product are all specific rates: the declared</span>
-<span class="linenos">166</span>        <span class="c1"># ODE is "&lt;species&gt;' = q_&lt;species&gt; * biomass" for every one of them.</span>
-<span class="linenos">167</span>        <span class="c1"># Drop the first 3 (of 17) samples: biomass is still near its small</span>
-<span class="linenos">168</span>        <span class="c1"># inoculum value there, and a spline derivative divided by a small</span>
-<span class="linenos">169</span>        <span class="c1"># denominator is a genuinely fragile quantity right at that boundary</span>
-<span class="linenos">170</span>        <span class="c1"># -- glucose's rate estimate blows up by 1-2 orders of magnitude at</span>
-<span class="linenos">171</span>        <span class="c1"># early samples of several processes otherwise (checked directly:</span>
-<span class="linenos">172</span>        <span class="c1"># |rate| std drops 8.3 -&gt; 2.5 dropping these 3, vs. 4.4 dropping just</span>
-<span class="linenos">173</span>        <span class="c1"># the first; a 4th sample barely moves it further).</span>
-<span class="linenos">174</span>        <span class="n">n_drop</span> <span class="o">=</span> <span class="mi">3</span>
-<span class="linenos">175</span>        <span class="n">raw_state</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">values</span><span class="p">[</span><span class="n">name</span><span class="p">][</span><span class="n">n_drop</span><span class="p">:]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rmc_names</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-<span class="linenos">176</span>        <span class="n">raw_rate</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
-<span class="linenos">177</span>            <span class="p">[</span><span class="n">derivatives</span><span class="p">[</span><span class="n">name</span><span class="p">][</span><span class="n">n_drop</span><span class="p">:]</span> <span class="o">/</span> <span class="n">biomass</span><span class="p">[</span><span class="n">n_drop</span><span class="p">:]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rmc_names</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span>
-<span class="linenos">178</span>        <span class="p">)</span>
-<span class="linenos">179</span>
-<span class="linenos">180</span>        <span class="n">scl_state</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rmc_scaler</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">raw_state</span><span class="p">)))</span>
-<span class="linenos">181</span>        <span class="n">is_new</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="p">[</span><span class="s2">"is_new_product"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
-<span class="linenos">182</span>        <span class="n">pv_col</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">scl_state</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">),</span> <span class="n">is_new</span><span class="p">)</span>
-<span class="linenos">183</span>        <span class="n">centers_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">scl_state</span><span class="p">,</span> <span class="n">pv_col</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
-<span class="linenos">184</span>
-<span class="linenos">185</span>        <span class="c1"># A rate is a derivative, not a value: scale_derivative, not</span>
-<span class="linenos">186</span>        <span class="c1"># scale_value, so an affine scaler's offset (if any) is never</span>
-<span class="linenos">187</span>        <span class="c1"># subtracted from it.</span>
-<span class="linenos">188</span>        <span class="n">targets_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rate_scaler</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">raw_rate</span><span class="p">))))</span>
-<span class="linenos">189</span>
-<span class="linenos">190</span>    <span class="n">centers_pool</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">centers_list</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos">191</span>    <span class="n">targets_pool</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">targets_list</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos">192</span>
-<span class="linenos">193</span>    <span class="k">return</span> <span class="n">EnsembleGPReactionModule</span><span class="p">(</span>
-<span class="linenos">194</span>        <span class="n">key</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">key</span><span class="p">(</span><span class="n">seed</span><span class="p">),</span>
-<span class="linenos">195</span>        <span class="n">centers_pool</span><span class="o">=</span><span class="n">centers_pool</span><span class="p">,</span>
-<span class="linenos">196</span>        <span class="n">targets_pool</span><span class="o">=</span><span class="n">targets_pool</span><span class="p">,</span>
-<span class="linenos">197</span>        <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">,</span>
-<span class="linenos">198</span>    <span class="p">)</span>
-<span class="linenos">199</span>
-<span class="linenos">200</span>
-<span class="linenos">201</span><span class="k">class</span><span class="w"> </span><span class="nc">EnsembleGPLossModule</span><span class="p">(</span><span class="n">DefaultLossModule</span><span class="p">):</span>
-<span class="linenos">202</span><span class="w">    </span><span class="sd">"""The usual per-target trajectory loss, plus the ensemble's own mean</span>
-<span class="linenos">203</span><span class="sd">    marginal likelihood across heads: both drive the same `hybrax.train`</span>
-<span class="linenos">204</span><span class="sd">    gradient step.</span>
-<span class="linenos">205</span><span class="sd">    """</span>
-<span class="linenos">206</span>
-<span class="linenos">207</span>    <span class="n">nll_weight</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="linenos">208</span>
-<span class="linenos">209</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">nll_weight</span><span class="o">=</span><span class="mf">0.0005</span><span class="p">):</span>
-<span class="linenos">210</span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">target_names</span><span class="o">=</span><span class="n">target_names</span><span class="p">)</span>
-<span class="linenos">211</span>        <span class="bp">self</span><span class="o">.</span><span class="n">nll_weight</span> <span class="o">=</span> <span class="n">nll_weight</span>
-<span class="linenos">212</span>
-<span class="linenos">213</span>    <span class="nd">@property</span>
-<span class="linenos">214</span>    <span class="k">def</span><span class="w"> </span><span class="nf">loss_names</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="linenos">215</span>        <span class="k">return</span> <span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">target_names</span><span class="p">,</span> <span class="s2">"gp_nll"</span><span class="p">)</span>
-<span class="linenos">216</span>
-<span class="linenos">217</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">LossInputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LossOutputs</span><span class="p">:</span>
-<span class="linenos">218</span>        <span class="n">base</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__call__</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>
-<span class="linenos">219</span>        <span class="n">gp_nll</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">reaction_module</span><span class="o">.</span><span class="n">marginal_nll</span><span class="p">()</span>
-<span class="linenos">220</span>        <span class="k">return</span> <span class="n">LossOutputs</span><span class="p">(</span>
-<span class="linenos">221</span>            <span class="n">named_losses</span><span class="o">=</span><span class="p">{</span><span class="o">**</span><span class="n">base</span><span class="o">.</span><span class="n">named_losses</span><span class="p">,</span> <span class="s2">"gp_nll"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">nll_weight</span> <span class="o">*</span> <span class="n">gp_nll</span><span class="p">}</span>
-<span class="linenos">222</span>        <span class="p">)</span>
-<span class="linenos">223</span>
-<span class="linenos">224</span>
-<span class="linenos">225</span><span class="k">def</span><span class="w"> </span><span class="nf">build_loss_module</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">process_names</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">seed</span><span class="p">,</span> <span class="n">training_parent_collection</span><span class="p">):</span>
-<span class="linenos">226</span>    <span class="k">del</span> <span class="n">process_names</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">seed</span><span class="p">,</span> <span class="n">training_parent_collection</span>
-<span class="linenos">227</span>    <span class="k">return</span> <span class="n">EnsembleGPLossModule</span><span class="p">(</span><span class="n">target_names</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">target_names</span><span class="p">))</span>
-<span class="linenos">228</span>
-<span class="linenos">229</span>
-<span class="linenos">230</span><span class="k">def</span><span class="w"> </span><span class="nf">estimate_all_scales</span><span class="p">(</span><span class="n">runtime_data</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
-<span class="linenos">231</span>    <span class="k">del</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span>
-<span class="linenos">232</span>    <span class="n">rhs</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">rhs_ode</span>
-<span class="linenos">233</span>    <span class="n">controls_store</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">controls_store</span>
-<span class="linenos">234</span>    <span class="n">n_processes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
-<span class="linenos">235</span>
-<span class="linenos">236</span>    <span class="k">def</span><span class="w"> </span><span class="nf">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
-<span class="linenos">237</span>        <span class="n">best</span> <span class="o">=</span> <span class="mf">0.0</span>
-<span class="linenos">238</span>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">):</span>
-<span class="linenos">239</span>            <span class="n">_</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
-<span class="linenos">240</span>            <span class="k">if</span> <span class="n">values</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
-<span class="linenos">241</span>                <span class="n">best</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">values</span><span class="p">))))</span>
-<span class="linenos">242</span>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">)</span>
-<span class="linenos">243</span>
-<span class="linenos">244</span>    <span class="n">rmc_scale</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">}</span>
-<span class="linenos">245</span>
-<span class="linenos">246</span>    <span class="k">def</span><span class="w"> </span><span class="nf">rate_scale_for</span><span class="p">(</span><span class="n">species</span><span class="p">):</span>
-<span class="linenos">247</span>        <span class="n">per_process</span> <span class="o">=</span> <span class="p">[]</span>
-<span class="linenos">248</span>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">):</span>
-<span class="linenos">249</span>            <span class="n">c_times</span><span class="p">,</span> <span class="n">c_values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">species</span><span class="p">)</span>
-<span class="linenos">250</span>            <span class="n">x_times</span><span class="p">,</span> <span class="n">x_values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="s2">"biomass"</span><span class="p">)</span>
-<span class="linenos">251</span>            <span class="n">exposure</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trapezoid</span><span class="p">(</span><span class="n">x_values</span><span class="p">,</span> <span class="n">x_times</span><span class="p">)</span>
-<span class="linenos">252</span>            <span class="n">per_process</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">c_values</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">c_values</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">exposure</span><span class="p">,</span> <span class="mf">1e-9</span><span class="p">))</span>
-<span class="linenos">253</span>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">per_process</span><span class="p">),</span> <span class="mf">1e-9</span><span class="p">)</span>
-<span class="linenos">254</span>
-<span class="linenos">255</span>    <span class="n">rate_scale</span> <span class="o">=</span> <span class="p">[</span><span class="n">rate_scale_for</span><span class="p">(</span><span class="n">name</span><span class="p">[</span><span class="mi">2</span><span class="p">:])</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_rates</span><span class="p">]</span>
-<span class="linenos">256</span>
-<span class="linenos">257</span>    <span class="n">n_PV</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">controls_store</span><span class="o">.</span><span class="n">name_controlled_PVs</span><span class="p">)</span>
-<span class="linenos">258</span>    <span class="n">empty</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos">259</span>    <span class="k">return</span> <span class="n">EstimatedScales</span><span class="p">(</span>
-<span class="linenos">260</span>        <span class="n">SCALE_modeled_RMCs</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">rmc_scale</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">]),</span>
-<span class="linenos">261</span>        <span class="n">SCALE_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rate_scale</span><span class="p">),</span>
-<span class="linenos">262</span>        <span class="n">SCALE_V_in_cumulative</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
-<span class="linenos">263</span>            <span class="nb">max</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">initial_volume</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">))</span>
-<span class="linenos">264</span>        <span class="p">),</span>
-<span class="linenos">265</span>        <span class="n">SCALE_modeled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">266</span>        <span class="n">SCALE_modeled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">267</span>        <span class="n">SCALE_modeled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">268</span>        <span class="n">SCALE_modeled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">269</span>        <span class="n">SCALE_controlled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">270</span>        <span class="n">SCALE_controlled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">271</span>        <span class="n">SCALE_controlled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">272</span>        <span class="n">SCALE_controlled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">273</span>        <span class="n">SCALE_controlled_PVs</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">n_PV</span><span class="p">),</span>
-<span class="linenos">274</span>        <span class="n">SCALE_controlled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos">275</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
-<span class="linenos">276</span>        <span class="p">),</span>
-<span class="linenos">277</span>        <span class="n">SCALE_modeled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos">278</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
-<span class="linenos">279</span>        <span class="p">),</span>
-<span class="linenos">280</span>    <span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</details><section id="two-products-one-shared-identity-feature">
-<h2>Two products, one shared identity feature<a class="headerlink" href="#two-products-one-shared-identity-feature" title="Link to this heading">¶</a></h2>
+<code class="docutils literal notranslate"><span class="pre">GPReactionModule</span></code>, trained by gradient descent through the ODE solve and pooled through
+a controlled process variable rather than the paper’s own maximum-likelihood fit and
+one-hot or learned-embedding pooling.</p>
+<p>The walkthrough below shows the file in pieces, next to the reasoning for each one.</p>
+<section id="two-products-one-shared-identity-feature">
+<h2>Two Products, One Shared Identity Feature<a class="headerlink" href="#two-products-one-shared-identity-feature" title="Link to this heading">¶</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">demo_products</span></code> has five products: four “historical” (<code class="docutils literal notranslate"><span class="pre">H1</span></code>-<code class="docutils literal notranslate"><span class="pre">H4</span></code>) with 6 runs each,
 and one “target” (<code class="docutils literal notranslate"><span class="pre">T</span></code>) with only 4, held data-poor on purpose. All five share
-similar kinetics (slow growth, low glucose affinity, product-forming) but are
-distinguishable cell lines, not re-seeded noise: see
-<a class="reference download internal" download="" href="../_downloads/0d8a528685aba25cca4f8af1bdd7c58b/generate.py"><span class="xref download myst">the data generator</span></a> for the exact numbers.</p>
+similar kinetics (slow growth, low glucose affinity, product-forming) as distinguishable
+cell lines: see <a class="reference download internal" download="" href="../_downloads/0d8a528685aba25cca4f8af1bdd7c58b/generate.py"><span class="xref download myst">the data generator</span></a> for the exact numbers.</p>
 <p>A constant controlled process variable gives the reaction module a
 “which product produced this state” signal, using only existing, unmodified
 hybrax machinery. <a class="reference download internal" download="" href="../_downloads/0d8a528685aba25cca4f8af1bdd7c58b/generate.py"><span class="xref download myst">The data generator</span></a>’s
@@ -704,54 +416,14 @@ the model sees it (below). It ships as a <code class="docutils literal notransla
 variable in <code class="docutils literal notranslate"><span class="pre">data.json</span></code> itself.</p>
 </section>
 <section id="the-ensemble">
-<h2>The ensemble<a class="headerlink" href="#the-ensemble" title="Link to this heading">¶</a></h2>
+<h2>The Ensemble<a class="headerlink" href="#the-ensemble" title="Link to this heading">¶</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">EnsembleGPReactionModule</span></code> extends <a class="reference internal" href="gaussian_process.html"><span class="std std-doc">Gaussian process</span></a>’s
 <code class="docutils literal notranslate"><span class="pre">GPReactionModule</span></code> to K heads, each anchored to a bootstrap subsample of the same
-real <code class="docutils literal notranslate"><span class="pre">(centers,</span> <span class="pre">targets)</span></code> pairs, not free trainable vectors.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">EnsembleGPReactionModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
-<span class="linenos"> 2</span>    <span class="n">centers</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">frozen_field</span><span class="p">()</span>  <span class="c1"># (K, M, n_features), REAL states + is_new_product</span>
-<span class="linenos"> 3</span>    <span class="n">targets</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">frozen_field</span><span class="p">()</span>  <span class="c1"># (K, M, n_rates), REAL rate estimates</span>
-<span class="linenos"> 4</span>    <span class="n">log_lengthscale</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (K, n_features)</span>
-<span class="linenos"> 5</span>    <span class="n">log_output_scale</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (K,)</span>
-<span class="linenos"> 6</span>    <span class="n">log_noise</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (K,)</span>
-<span class="linenos"> 7</span>
-<span class="linenos"> 8</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
-<span class="linenos"> 9</span>        <span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">centers_pool</span><span class="p">,</span> <span class="n">targets_pool</span><span class="p">,</span> <span class="n">n_members</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">n_anchors</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span>
-<span class="linenos">10</span>    <span class="p">):</span>
-<span class="linenos">11</span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
-<span class="linenos">12</span>        <span class="n">n_features</span> <span class="o">=</span> <span class="n">centers_pool</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
-<span class="linenos">13</span>
-<span class="linenos">14</span>        <span class="n">seed_val</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="p">(),</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="o">**</span><span class="mi">31</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
-<span class="linenos">15</span>        <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="n">seed_val</span><span class="p">)</span>
-<span class="linenos">16</span>        <span class="n">n_total</span> <span class="o">=</span> <span class="n">centers_pool</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-<span class="linenos">17</span>        <span class="n">centers_list</span><span class="p">,</span> <span class="n">targets_list</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
-<span class="linenos">18</span>        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_members</span><span class="p">):</span>
-<span class="linenos">19</span>            <span class="n">half</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">n_total</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="nb">max</span><span class="p">(</span><span class="n">n_total</span> <span class="o">//</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<span class="linenos">20</span>            <span class="n">m</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">n_anchors</span><span class="p">,</span> <span class="n">half</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
-<span class="linenos">21</span>            <span class="n">chosen</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">half</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">m</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<span class="linenos">22</span>            <span class="n">centers_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">centers_pool</span><span class="p">[</span><span class="n">chosen</span><span class="p">])</span>
-<span class="linenos">23</span>            <span class="n">targets_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">targets_pool</span><span class="p">[</span><span class="n">chosen</span><span class="p">])</span>
-<span class="linenos">24</span>        <span class="c1"># Pad every member to the same M (repeat last row) so they stack into one array.</span>
-<span class="linenos">25</span>        <span class="n">max_m</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">centers_list</span><span class="p">)</span>
-<span class="linenos">26</span>
-<span class="linenos">27</span>        <span class="k">def</span><span class="w"> </span><span class="nf">pad</span><span class="p">(</span><span class="n">arrs</span><span class="p">):</span>
-<span class="linenos">28</span>            <span class="k">return</span> <span class="p">[</span>
-<span class="linenos">29</span>                <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">a</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">:],</span> <span class="n">max_m</span> <span class="o">-</span> <span class="n">a</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos">30</span>                <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">arrs</span>
-<span class="linenos">31</span>            <span class="p">]</span>
-<span class="linenos">32</span>
-<span class="linenos">33</span>        <span class="bp">self</span><span class="o">.</span><span class="n">centers</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">pad</span><span class="p">(</span><span class="n">centers_list</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
-<span class="linenos">34</span>        <span class="bp">self</span><span class="o">.</span><span class="n">targets</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">pad</span><span class="p">(</span><span class="n">targets_list</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
-<span class="linenos">35</span>
-<span class="linenos">36</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_lengthscale</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_members</span><span class="p">,</span> <span class="n">n_features</span><span class="p">))</span>
-<span class="linenos">37</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_output_scale</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_members</span><span class="p">)</span>
-<span class="linenos">38</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_noise</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n_members</span><span class="p">,),</span> <span class="o">-</span><span class="mf">2.0</span><span class="p">)</span>
-</pre></div>
-</div>
-<p><code class="docutils literal notranslate"><span class="pre">centers</span></code> pairs real <code class="docutils literal notranslate"><span class="pre">(state,</span> <span class="pre">is_new_product)</span></code> locations with <code class="docutils literal notranslate"><span class="pre">targets</span></code>, the real
-rate estimate at that same state, bootstrap-resampled <em>together</em> per head so a
-center never gets separated from its own target. Only the kernel hyperparameters
-(<code class="docutils literal notranslate"><span class="pre">log_lengthscale</span></code>, <code class="docutils literal notranslate"><span class="pre">log_output_scale</span></code>, <code class="docutils literal notranslate"><span class="pre">log_noise</span></code>) are trained.</p>
+real <code class="docutils literal notranslate"><span class="pre">(centers,</span> <span class="pre">targets)</span></code> pairs. <code class="docutils literal notranslate"><span class="pre">centers</span></code> pairs real <code class="docutils literal notranslate"><span class="pre">(state,</span> <span class="pre">is_new_product)</span></code>
+locations with <code class="docutils literal notranslate"><span class="pre">targets</span></code>, the real rate estimate at that same state,
+bootstrap-resampled <em>together</em> per head so a center never gets separated from its own
+target. Only the kernel hyperparameters (<code class="docutils literal notranslate"><span class="pre">log_lengthscale</span></code>, <code class="docutils literal notranslate"><span class="pre">log_output_scale</span></code>,
+<code class="docutils literal notranslate"><span class="pre">log_noise</span></code>) are trained.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span>    <span class="nd">@staticmethod</span>
 <span class="linenos"> 2</span>    <span class="k">def</span><span class="w"> </span><span class="nf">_kernel</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">log_ls</span><span class="p">,</span> <span class="n">log_out</span><span class="p">):</span>
 <span class="linenos"> 3</span>        <span class="n">diff</span> <span class="o">=</span> <span class="p">(</span><span class="n">a</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">b</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:,</span> <span class="p">:])</span> <span class="o">/</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_ls</span><span class="p">)</span>
@@ -792,11 +464,11 @@ center never gets separated from its own target. Only the kernel hyperparameters
 across all K heads at once. The final prediction is the mean across heads; the
 <strong>spread across heads</strong> stands in for <code class="docutils literal notranslate"><span class="pre">rate_std</span></code>. This mirrors Helleckes et al.
 2024’s <a href="#ref-helleckes2024">[1]</a> own “mean averaging ensemble… 30 GP
-models, each subsampling 50% of the training data experiments,” scaled down (5
-heads here, not 30) for tractability.</p>
+models, each subsampling 50% of the training data experiments,” scaled down to 5
+heads here for tractability.</p>
 </section>
 <section id="fitting-the-ensemble">
-<h2>Fitting the ensemble<a class="headerlink" href="#fitting-the-ensemble" title="Link to this heading">¶</a></h2>
+<h2>Fitting the Ensemble<a class="headerlink" href="#fitting-the-ensemble" title="Link to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">def</span><span class="w"> </span><span class="nf">build_reaction_module</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">seed</span><span class="p">,</span> <span class="n">training_parent_collection</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
 <span class="linenos"> 2</span>    <span class="n">scale_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"SCALE_"</span><span class="p">)}</span>
 <span class="linenos"> 3</span>    <span class="n">first_process</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">training_parent_collection</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span>
@@ -818,40 +490,34 @@ heads here, not 30) for tractability.</p>
 <span class="linenos">19</span>        <span class="p">}</span>
 <span class="linenos">20</span>        <span class="n">biomass</span> <span class="o">=</span> <span class="n">values</span><span class="p">[</span><span class="s2">"biomass"</span><span class="p">]</span>
 <span class="linenos">21</span>
-<span class="linenos">22</span>        <span class="c1"># q_biomass/q_glucose/q_product are all specific rates: the declared</span>
-<span class="linenos">23</span>        <span class="c1"># ODE is "&lt;species&gt;' = q_&lt;species&gt; * biomass" for every one of them.</span>
-<span class="linenos">24</span>        <span class="c1"># Drop the first 3 (of 17) samples: biomass is still near its small</span>
-<span class="linenos">25</span>        <span class="c1"># inoculum value there, and a spline derivative divided by a small</span>
-<span class="linenos">26</span>        <span class="c1"># denominator is a genuinely fragile quantity right at that boundary</span>
-<span class="linenos">27</span>        <span class="c1"># -- glucose's rate estimate blows up by 1-2 orders of magnitude at</span>
-<span class="linenos">28</span>        <span class="c1"># early samples of several processes otherwise (checked directly:</span>
-<span class="linenos">29</span>        <span class="c1"># |rate| std drops 8.3 -&gt; 2.5 dropping these 3, vs. 4.4 dropping just</span>
-<span class="linenos">30</span>        <span class="c1"># the first; a 4th sample barely moves it further).</span>
-<span class="linenos">31</span>        <span class="n">n_drop</span> <span class="o">=</span> <span class="mi">3</span>
-<span class="linenos">32</span>        <span class="n">raw_state</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">values</span><span class="p">[</span><span class="n">name</span><span class="p">][</span><span class="n">n_drop</span><span class="p">:]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rmc_names</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-<span class="linenos">33</span>        <span class="n">raw_rate</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
-<span class="linenos">34</span>            <span class="p">[</span><span class="n">derivatives</span><span class="p">[</span><span class="n">name</span><span class="p">][</span><span class="n">n_drop</span><span class="p">:]</span> <span class="o">/</span> <span class="n">biomass</span><span class="p">[</span><span class="n">n_drop</span><span class="p">:]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rmc_names</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span>
-<span class="linenos">35</span>        <span class="p">)</span>
+<span class="linenos">22</span>        <span class="c1"># Specific rates: "&lt;species&gt;' = q_&lt;species&gt; * biomass". Drop the first 3</span>
+<span class="linenos">23</span>        <span class="c1"># (of 17) samples: near the small inoculum, a derivative over a near-zero</span>
+<span class="linenos">24</span>        <span class="c1"># biomass is fragile (rate std drops 8.3 -&gt; 2.5 dropping these 3, vs. 4.4</span>
+<span class="linenos">25</span>        <span class="c1"># dropping just the first).</span>
+<span class="linenos">26</span>        <span class="n">n_drop</span> <span class="o">=</span> <span class="mi">3</span>
+<span class="linenos">27</span>        <span class="n">raw_state</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">values</span><span class="p">[</span><span class="n">name</span><span class="p">][</span><span class="n">n_drop</span><span class="p">:]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rmc_names</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="linenos">28</span>        <span class="n">raw_rate</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
+<span class="linenos">29</span>            <span class="p">[</span><span class="n">derivatives</span><span class="p">[</span><span class="n">name</span><span class="p">][</span><span class="n">n_drop</span><span class="p">:]</span> <span class="o">/</span> <span class="n">biomass</span><span class="p">[</span><span class="n">n_drop</span><span class="p">:]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rmc_names</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span>
+<span class="linenos">30</span>        <span class="p">)</span>
+<span class="linenos">31</span>
+<span class="linenos">32</span>        <span class="n">scl_state</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rmc_scaler</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">raw_state</span><span class="p">)))</span>
+<span class="linenos">33</span>        <span class="n">is_new</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="p">[</span><span class="s2">"is_new_product"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
+<span class="linenos">34</span>        <span class="n">pv_col</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">scl_state</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">),</span> <span class="n">is_new</span><span class="p">)</span>
+<span class="linenos">35</span>        <span class="n">centers_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">scl_state</span><span class="p">,</span> <span class="n">pv_col</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
 <span class="linenos">36</span>
-<span class="linenos">37</span>        <span class="n">scl_state</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rmc_scaler</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">raw_state</span><span class="p">)))</span>
-<span class="linenos">38</span>        <span class="n">is_new</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="p">[</span><span class="s2">"is_new_product"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
-<span class="linenos">39</span>        <span class="n">pv_col</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">scl_state</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">),</span> <span class="n">is_new</span><span class="p">)</span>
-<span class="linenos">40</span>        <span class="n">centers_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">scl_state</span><span class="p">,</span> <span class="n">pv_col</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
-<span class="linenos">41</span>
-<span class="linenos">42</span>        <span class="c1"># A rate is a derivative, not a value: scale_derivative, not</span>
-<span class="linenos">43</span>        <span class="c1"># scale_value, so an affine scaler's offset (if any) is never</span>
-<span class="linenos">44</span>        <span class="c1"># subtracted from it.</span>
-<span class="linenos">45</span>        <span class="n">targets_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rate_scaler</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">raw_rate</span><span class="p">))))</span>
-<span class="linenos">46</span>
-<span class="linenos">47</span>    <span class="n">centers_pool</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">centers_list</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos">48</span>    <span class="n">targets_pool</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">targets_list</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos">49</span>
-<span class="linenos">50</span>    <span class="k">return</span> <span class="n">EnsembleGPReactionModule</span><span class="p">(</span>
-<span class="linenos">51</span>        <span class="n">key</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">key</span><span class="p">(</span><span class="n">seed</span><span class="p">),</span>
-<span class="linenos">52</span>        <span class="n">centers_pool</span><span class="o">=</span><span class="n">centers_pool</span><span class="p">,</span>
-<span class="linenos">53</span>        <span class="n">targets_pool</span><span class="o">=</span><span class="n">targets_pool</span><span class="p">,</span>
-<span class="linenos">54</span>        <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">,</span>
-<span class="linenos">55</span>    <span class="p">)</span>
+<span class="linenos">37</span>        <span class="c1"># A rate is a derivative, so it uses scale_derivative: an affine</span>
+<span class="linenos">38</span>        <span class="c1"># scaler's offset (if any) is never subtracted from it.</span>
+<span class="linenos">39</span>        <span class="n">targets_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rate_scaler</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">raw_rate</span><span class="p">))))</span>
+<span class="linenos">40</span>
+<span class="linenos">41</span>    <span class="n">centers_pool</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">centers_list</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="linenos">42</span>    <span class="n">targets_pool</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">targets_list</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="linenos">43</span>
+<span class="linenos">44</span>    <span class="k">return</span> <span class="n">EnsembleGPReactionModule</span><span class="p">(</span>
+<span class="linenos">45</span>        <span class="n">key</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">key</span><span class="p">(</span><span class="n">seed</span><span class="p">),</span>
+<span class="linenos">46</span>        <span class="n">centers_pool</span><span class="o">=</span><span class="n">centers_pool</span><span class="p">,</span>
+<span class="linenos">47</span>        <span class="n">targets_pool</span><span class="o">=</span><span class="n">targets_pool</span><span class="p">,</span>
+<span class="linenos">48</span>        <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">,</span>
+<span class="linenos">49</span>    <span class="p">)</span>
 </pre></div>
 </div>
 <p>For every process, <a class="reference internal" href="../autoapi/hybrax/format/splines/index.html#hybrax.format.splines.build_pseudobatch_transform" title="hybrax.format.splines.build_pseudobatch_transform"><code class="xref py py-func docutils literal notranslate"><span class="pre">hybrax.format.splines.build_pseudobatch_transform()</span></code></a> and
@@ -927,11 +593,11 @@ to keep it in the same rough range as the trajectory terms, since <code class="d
 averages named losses.</p>
 </section>
 <section id="local-vs-pooled">
-<h2>Local vs. pooled<a class="headerlink" href="#local-vs-pooled" title="Link to this heading">¶</a></h2>
+<h2>Local vs. Pooled<a class="headerlink" href="#local-vs-pooled" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>local 2026-08-27 15:22:18 INFO __main__: training complete: first_mean_loss=0.00353516 last_mean_loss=0.00112781 delta=-0.00240735
-pooled 2026-08-27 15:23:48 INFO __main__: training complete: first_mean_loss=0.0143907 last_mean_loss=0.00738624 delta=-0.00700441
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>local 2026-08-27 21:13:11 INFO __main__: training complete: first_mean_loss=0.00353516 last_mean_loss=0.00112781 delta=-0.00240735
+pooled 2026-08-27 21:14:43 INFO __main__: training complete: first_mean_loss=0.0143907 last_mean_loss=0.00738624 delta=-0.00700441
 run directory: ./source/_data/out/runs/gallery_knowledge_transfer
 </pre></div>
 </div>
@@ -942,7 +608,7 @@ training data differs. <code class="docutils literal notranslate"><span class="p
 plus all 24 historical runs (4 products × 6 runs each).</p>
 </section>
 <section id="evaluating-on-the-held-out-runs">
-<h2>Evaluating on the held-out runs<a class="headerlink" href="#evaluating-on-the-held-out-runs" title="Link to this heading">¶</a></h2>
+<h2>Evaluating on the Held-Out Runs<a class="headerlink" href="#evaluating-on-the-held-out-runs" title="Link to this heading">¶</a></h2>
 <p>The real test is <code class="docutils literal notranslate"><span class="pre">T</span></code>’s 2 held-out runs, never seen by either model. <code class="docutils literal notranslate"><span class="pre">T</span></code>’s training
 runs sit in a narrow initial-condition slice (<code class="docutils literal notranslate"><span class="pre">S0</span></code> 12-14 g/L); its held-out runs sit
 at the extremes of a much wider range (<code class="docutils literal notranslate"><span class="pre">S0</span></code> 6 and 26 g/L) that only the historical
@@ -957,7 +623,7 @@ product       -0.2128     0.7492
 </div>
 </div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">local</span></code>’s R² is strongly negative: not a bug, a real extrapolation failure. Trained
+<p><code class="docutils literal notranslate"><span class="pre">local</span></code>’s R² is strongly negative, a real extrapolation failure. Trained
 only on <code class="docutils literal notranslate"><span class="pre">S0</span></code> 12-14 g/L, it never saw glucose run out at the held-out run’s lower
 <code class="docutils literal notranslate"><span class="pre">S0</span></code>, so it keeps extrapolating the exponential growth phase it learned instead of
 saturating. <code class="docutils literal notranslate"><span class="pre">pooled</span></code> recovers because the historical products, sampled across the
@@ -978,7 +644,7 @@ measured trajectory throughout.</p>
 <ul class="simple">
 <li><p><strong>Pooling only helps if the historical products actually resemble the target.</strong>
 With dissimilar kinetics, one model has to reconcile mostly-unrelated products:
-pooled can end up <em>worse</em> than local, not better. This matches Helleckes et al.
+pooled can end up <em>worse</em> than local. This matches Helleckes et al.
 2024’s <a href="#ref-helleckes2024">[1]</a> own finding: “in case the historical
 data are more heterogeneous… OHE models performed more similarly to local
 models,” i.e. pooling’s benefit shrinks toward zero as similarity drops.</p></li>
@@ -996,8 +662,10 @@ simpler gallery page’s <code class="docutils literal notranslate"><span class=
 </ul>
 </section>
 <section id="see-also">
-<h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
-<p>Run the example yourself at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_knowledge_transfer/</span></code>.</p>
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
+<code class="docutils literal notranslate"><span class="pre">examples/gallery_knowledge_transfer/</span></code> at the repo root, no docs build required. This
+page’s own executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_knowledge_transfer/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="gaussian_process.html"><span class="std std-doc">Gaussian process</span></a>: the single-GP version this builds on.</p></li>
 <li><p><a class="reference internal" href="fed_batch.html"><span class="std std-doc">Fed-batch</span></a>: another reaction module reading a controlled PV as a real
@@ -1079,14 +747,14 @@ Bioengineering</em>, 118(11), 4389-4401.
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Knowledge transfer</a><ul>
-<li><a class="reference internal" href="#two-products-one-shared-identity-feature">Two products, one shared identity feature</a></li>
-<li><a class="reference internal" href="#the-ensemble">The ensemble</a></li>
-<li><a class="reference internal" href="#fitting-the-ensemble">Fitting the ensemble</a></li>
-<li><a class="reference internal" href="#local-vs-pooled">Local vs. pooled</a></li>
-<li><a class="reference internal" href="#evaluating-on-the-held-out-runs">Evaluating on the held-out runs</a></li>
+<li><a class="reference internal" href="#">Knowledge Transfer</a><ul>
+<li><a class="reference internal" href="#two-products-one-shared-identity-feature">Two Products, One Shared Identity Feature</a></li>
+<li><a class="reference internal" href="#the-ensemble">The Ensemble</a></li>
+<li><a class="reference internal" href="#fitting-the-ensemble">Fitting the Ensemble</a></li>
+<li><a class="reference internal" href="#local-vs-pooled">Local vs. Pooled</a></li>
+<li><a class="reference internal" href="#evaluating-on-the-held-out-runs">Evaluating on the Held-Out Runs</a></li>
 <li><a class="reference internal" href="#gotchas">Gotchas</a></li>
-<li><a class="reference internal" href="#see-also">See also</a></li>
+<li><a class="reference internal" href="#see-also">See Also</a></li>
 <li><a class="reference internal" href="#references">References</a></li>
 </ul>
 </li>

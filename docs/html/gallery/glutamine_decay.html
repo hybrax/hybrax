@@ -3,15 +3,15 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Cross-validation" href="loo.html"><link rel="prev" title="Stateful models" href="stateful.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Cross-Validation" href="loo.html"><link rel="prev" title="Stateful Models" href="stateful.html">
         <link rel="prefetch" href="../_static/hybrax_logo.png" as="image">
 
     <link rel="shortcut icon" href="../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Glutamine decay - Bioprocess Modeling with Hybrax</title>
+        <title>Glutamine Decay - Bioprocess Modeling with Hybrax</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -374,150 +374,29 @@
         </div>
         <article role="main" id="furo-main-content">
           <section class="tex2jax_ignore mathjax_ignore" id="glutamine-decay">
-<h1>Glutamine decay<a class="headerlink" href="#glutamine-decay" title="Link to this heading">¶</a></h1>
+<h1>Glutamine Decay<a class="headerlink" href="#glutamine-decay" title="Link to this heading">¶</a></h1>
 <blockquote>
-<div><p><strong>Demonstrates.</strong> One physical rate, declared once in <code class="docutils literal notranslate"><span class="pre">biological_ode.rates</span></code>,
-feeding two different derivatives at once, a sink in one, a source in the other,
-and <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> recovering that single shared number from data alone.</p>
+<div><p>This page declares one physical rate that feeds two different derivatives at once: a
+sink in one, a source in the other. Training recovers that single shared value from
+data alone.</p>
 </div></blockquote>
-<p>Inspired by Ulonska, Kroll, Fricke, Clemens, Voges, Müller &amp; Herwig 2018
-<a href="#ref-ulonska">[1]</a>, <em>“Workflow for Target-Oriented Parametrization of an
-Enhanced Mechanistic Cell Culture Model,”</em> whose CHO cell culture model includes
-glutamine’s own spontaneous, non-enzymatic decomposition to glutamate and ammonia
-(Eq. 18/20), at a real, fitted first-order rate: <code class="docutils literal notranslate"><span class="pre">rNH4,gln</span> <span class="pre">=</span> <span class="pre">0.0036</span> <span class="pre">1/h</span></code> (Table 1, an
-eight-day half-life). This page reproduces that rate exactly: <code class="docutils literal notranslate"><span class="pre">r_Gln</span></code> below is the
-paper’s own cited value, used as this page’s synthetic ground truth, and it appears in
-two different derivatives at once, the same coupling the paper’s own equations
-describe.</p>
-<p>Two things are reduced from the paper’s own version, disclosed plainly:</p>
-<ul class="simple">
-<li><p>NH4’s own balance (Eq. 20) has three source terms: metabolic production tied to
-glutamine consumption (<code class="docutils literal notranslate"><span class="pre">qNH4</span> <span class="pre">*</span> <span class="pre">VCC</span></code>, where <code class="docutils literal notranslate"><span class="pre">qNH4</span> <span class="pre">=</span> <span class="pre">YNH4/gln</span> <span class="pre">*</span> <span class="pre">qgln</span></code>, Eq. 10), release
-from a feed component’s own decay, and the chemical decomposition of glutamine
-(<code class="docutils literal notranslate"><span class="pre">YNH4,gln</span> <span class="pre">*</span> <span class="pre">rNH4,gln</span> <span class="pre">*</span> <span class="pre">cgln</span></code>). This page keeps only the third: that is the one rate
-this page is actually about, and the other two would add unrelated terms on top of
-the point being made.</p></li>
-<li><p>Glutamine and NH4 are tracked in mol/L here, unlike the rest of this site’s g/L
-convention, so glutamine’s loss and NH4’s gain from decomposition can share exactly
-the same literal number, <code class="docutils literal notranslate"><span class="pre">r_Gln</span></code>, with no separate yield constant. The paper’s own
-g/L-plus-yield-constant approach (<code class="docutils literal notranslate"><span class="pre">YNH4,gln</span> <span class="pre">=</span> <span class="pre">0.12</span> <span class="pre">g/g</span></code>) is equally valid: that
-yield exists purely because glutamine (146 g/mol) and ammonia (17 g/mol) have
-different molar masses despite decomposing 1:1. This page just makes the other
-valid choice for its own demo.</p></li>
-<li><p>The paper’s own Monod-form <code class="docutils literal notranslate"><span class="pre">q_Gln</span></code> (saturating in glutamine concentration) is
-replaced with a plain constant specific rate: <a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic models</span></a>
-already covers Monod-form kinetics in depth.</p></li>
-</ul>
-<p>The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:</p>
-<details class="sd-sphinx-override sd-dropdown sd-card sd-mb-3">
-<summary class="sd-summary-title sd-card-header">
-<span class="sd-summary-text">Full <code class="docutils literal notranslate"><span class="pre">custom.py</span></code></span><span class="sd-summary-state-marker sd-summary-chevron-right"><svg version="1.1" width="1.5em" height="1.5em" class="sd-octicon sd-octicon-chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.72 18.78a.75.75 0 0 1 0-1.06L14.44 12 8.72 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0Z"></path></svg></span></summary><div class="sd-summary-content sd-card-body docutils">
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="sd">"""Glutamine decay rate law: three constant specific rates, no kinetic</span>
-<span class="linenos"> 2</span><span class="sd">structure at all. The point of this page is entirely in the dataset's own</span>
-<span class="linenos"> 3</span><span class="sd">biological_ode block (one shared rate feeding two derivatives), not in this</span>
-<span class="linenos"> 4</span><span class="sd">reaction module.</span>
-<span class="linenos"> 5</span><span class="sd">"""</span>
-<span class="linenos"> 6</span>
-<span class="linenos"> 7</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
-<span class="linenos"> 8</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
-<span class="linenos"> 9</span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="linenos">10</span>
-<span class="linenos">11</span><span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.train</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<span class="linenos">12</span>    <span class="n">EstimatedScales</span><span class="p">,</span>
-<span class="linenos">13</span>    <span class="n">ReactionOutputs</span><span class="p">,</span>
-<span class="linenos">14</span>    <span class="n">UserReactionModule</span><span class="p">,</span>
-<span class="linenos">15</span>    <span class="n">trainable_field</span><span class="p">,</span>
-<span class="linenos">16</span><span class="p">)</span>
-<span class="linenos">17</span>
-<span class="linenos">18</span>
-<span class="linenos">19</span><span class="k">class</span><span class="w"> </span><span class="nc">GlutamineDecayModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
-<span class="linenos">20</span>    <span class="n">log_q_biomass</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos">21</span>    <span class="n">log_q_Gln</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos">22</span>    <span class="n">log_r_Gln</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos">23</span>
-<span class="linenos">24</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
-<span class="linenos">25</span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
-<span class="linenos">26</span>        <span class="c1"># Deliberately mediocre starting guesses: the point is that they move.</span>
-<span class="linenos">27</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_q_biomass</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">0.02</span><span class="p">))</span>
-<span class="linenos">28</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_q_Gln</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">1e-4</span><span class="p">))</span>
-<span class="linenos">29</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_r_Gln</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">0.01</span><span class="p">))</span>
-<span class="linenos">30</span>
-<span class="linenos">31</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
-<span class="linenos">32</span>        <span class="k">del</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span>  <span class="c1"># every rate here is a plain constant, no state read</span>
-<span class="linenos">33</span>        <span class="n">RAW_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
-<span class="linenos">34</span>            <span class="p">[</span>
-<span class="linenos">35</span>                <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_q_biomass</span><span class="p">),</span>
-<span class="linenos">36</span>                <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_q_Gln</span><span class="p">),</span>
-<span class="linenos">37</span>                <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_r_Gln</span><span class="p">),</span>
-<span class="linenos">38</span>            <span class="p">]</span>
-<span class="linenos">39</span>        <span class="p">)</span>
-<span class="linenos">40</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos">41</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_BiologicalOde_rates</span><span class="p">(</span>
-<span class="linenos">42</span>                <span class="n">RAW_rates</span>
-<span class="linenos">43</span>            <span class="p">),</span>
-<span class="linenos">44</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos">45</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos">46</span>        <span class="p">)</span>
-<span class="linenos">47</span>
-<span class="linenos">48</span>
-<span class="linenos">49</span><span class="k">def</span><span class="w"> </span><span class="nf">build_reaction_module</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<span class="linenos">50</span>    <span class="k">return</span> <span class="n">GlutamineDecayModule</span><span class="p">(</span>
-<span class="linenos">51</span>        <span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"SCALE_"</span><span class="p">)}</span>
-<span class="linenos">52</span>    <span class="p">)</span>
-<span class="linenos">53</span>
-<span class="linenos">54</span>
-<span class="linenos">55</span><span class="k">def</span><span class="w"> </span><span class="nf">estimate_all_scales</span><span class="p">(</span><span class="n">runtime_data</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
-<span class="linenos">56</span>    <span class="k">del</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span>
-<span class="linenos">57</span>    <span class="n">rhs</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">rhs_ode</span>
-<span class="linenos">58</span>    <span class="n">n_processes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
-<span class="linenos">59</span>    <span class="n">span</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
-<span class="linenos">60</span>        <span class="n">end</span> <span class="o">-</span> <span class="n">start</span>
-<span class="linenos">61</span>        <span class="k">for</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="ow">in</span> <span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">time_bounds</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">))</span>
-<span class="linenos">62</span>    <span class="p">)</span>
-<span class="linenos">63</span>
-<span class="linenos">64</span>    <span class="k">def</span><span class="w"> </span><span class="nf">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
-<span class="linenos">65</span>        <span class="n">best</span> <span class="o">=</span> <span class="mf">0.0</span>
-<span class="linenos">66</span>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">):</span>
-<span class="linenos">67</span>            <span class="n">_</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
-<span class="linenos">68</span>            <span class="k">if</span> <span class="n">values</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
-<span class="linenos">69</span>                <span class="n">best</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">values</span><span class="p">))))</span>
-<span class="linenos">70</span>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">)</span>
-<span class="linenos">71</span>
-<span class="linenos">72</span>    <span class="n">rmc_scale</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">}</span>
-<span class="linenos">73</span>    <span class="n">biomass</span> <span class="o">=</span> <span class="n">rmc_scale</span><span class="p">[</span><span class="s2">"biomass"</span><span class="p">]</span>
-<span class="linenos">74</span>    <span class="n">empty</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos">75</span>    <span class="k">return</span> <span class="n">EstimatedScales</span><span class="p">(</span>
-<span class="linenos">76</span>        <span class="n">SCALE_modeled_RMCs</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">rmc_scale</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">]),</span>
-<span class="linenos">77</span>        <span class="n">SCALE_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
-<span class="linenos">78</span>            <span class="p">[</span><span class="n">rmc_scale</span><span class="p">[</span><span class="n">n</span><span class="p">[</span><span class="mi">2</span><span class="p">:]]</span> <span class="o">/</span> <span class="p">(</span><span class="n">biomass</span> <span class="o">*</span> <span class="n">span</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_rates</span><span class="p">]</span>
-<span class="linenos">79</span>        <span class="p">),</span>
-<span class="linenos">80</span>        <span class="n">SCALE_V_in_cumulative</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
-<span class="linenos">81</span>            <span class="nb">max</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">initial_volume</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">))</span>
-<span class="linenos">82</span>        <span class="p">),</span>
-<span class="linenos">83</span>        <span class="n">SCALE_modeled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">84</span>        <span class="n">SCALE_modeled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">85</span>        <span class="n">SCALE_modeled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">86</span>        <span class="n">SCALE_modeled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">87</span>        <span class="n">SCALE_controlled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">88</span>        <span class="n">SCALE_controlled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">89</span>        <span class="n">SCALE_controlled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">90</span>        <span class="n">SCALE_controlled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">91</span>        <span class="n">SCALE_controlled_PVs</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">92</span>        <span class="n">SCALE_controlled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos">93</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
-<span class="linenos">94</span>        <span class="p">),</span>
-<span class="linenos">95</span>        <span class="n">SCALE_modeled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos">96</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
-<span class="linenos">97</span>        <span class="p">),</span>
-<span class="linenos">98</span>    <span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</details><section id="the-rate-law-declared">
-<h2>The rate law, declared<a class="headerlink" href="#the-rate-law-declared" title="Link to this heading">¶</a></h2>
+<p>This page is inspired by Ulonska et al. (2018) <a href="#ref-ulonska">[1]</a>, whose CHO
+cell culture model includes glutamine’s own spontaneous, non-enzymatic decomposition to
+glutamate and ammonia at a real, fitted first-order rate of 0.0036 1/h (roughly an
+eight-day half-life). <code class="docutils literal notranslate"><span class="pre">r_Gln</span></code> below reproduces that rate exactly as this page’s synthetic
+ground truth, feeding two derivatives at once the same way the paper’s own model does.
+This page simplifies the paper in three ways: it keeps only the decomposition term in
+NH4’s balance (the paper’s version also has two other, unrelated production terms), it
+tracks glutamine and NH4 in mol/L so the same <code class="docutils literal notranslate"><span class="pre">r_Gln</span></code> value drives both derivatives
+without a separate yield constant (the paper’s own g/L-plus-yield-constant approach is
+equally valid), and it replaces the paper’s saturating Monod-form uptake rate with a
+plain constant rate (<a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic Models</span></a> already covers Monod-form
+kinetics in depth).</p>
+<p>The walkthrough below shows the file in pieces, next to the reasoning for each one.</p>
+<section id="the-rate-law-declared">
+<h2>The Rate Law, Declared<a class="headerlink" href="#the-rate-law-declared" title="Link to this heading">¶</a></h2>
 <p>Everything this page’s kinetics need lives in the dataset’s own <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>
-block, not in code. This is exactly what was declared when the dataset was built:</p>
+block. This is exactly what was declared when the dataset was built:</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">process</span> <span class="o">=</span> <span class="n">_collection</span><span class="o">.</span><span class="n">processes</span><span class="p">[</span><span class="s2">"run_1"</span><span class="p">]</span>
@@ -591,7 +470,7 @@ each trusted to carry whatever unit bridges their own term. See
 <a class="reference internal" href="../format/bioprocess_ode.html#writing-your-own"><span class="std std-ref">The Bioprocess ODE</span></a> for the general rule.</p>
 </section>
 <section id="the-reaction-module">
-<h2>The reaction module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
+<h2>The Reaction Module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">GlutamineDecayModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
 <span class="linenos"> 2</span>    <span class="n">log_q_biomass</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
 <span class="linenos"> 3</span>    <span class="n">log_q_Gln</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
@@ -621,13 +500,13 @@ each trusted to carry whatever unit bridges their own term. See
 </div>
 <p>Three log-parameterized scalars, no kinetic structure, no state read at all:
 <code class="docutils literal notranslate"><span class="pre">__call__</span></code> ignores <code class="docutils literal notranslate"><span class="pre">inputs</span></code> entirely and returns the same three constants every step.
-All of this page’s actual complexity is in the derivative strings above, not here.</p>
+All of this page’s actual complexity is in the derivative strings above.</p>
 </section>
 <section id="training">
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 13:25:42 INFO __main__: training complete: first_mean_loss=0.378586 last_mean_loss=0.000245517 delta=-0.37834
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:11:51 INFO __main__: training complete: first_mean_loss=0.378586 last_mean_loss=0.000245517 delta=-0.37834
 run directory: ./source/_data/out/runs/gallery_glutamine_decay/run
 </pre></div>
 </div>
@@ -652,7 +531,7 @@ biomass grows independently of both: exactly the shape the declared derivatives
 describe.</p>
 </section>
 <section id="did-the-shared-rate-recover-correctly">
-<h2>Did the shared rate recover correctly?<a class="headerlink" href="#did-the-shared-rate-recover-correctly" title="Link to this heading">¶</a></h2>
+<h2>Did the Shared Rate Recover Correctly?<a class="headerlink" href="#did-the-shared-rate-recover-correctly" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>parameter        fitted         true
@@ -665,8 +544,8 @@ r_Gln        0.00362208       0.0036
 </div>
 <p>All three come back close to their true values, <code class="docutils literal notranslate"><span class="pre">r_Gln</span></code> included: the same number
 that explains glutamine’s own decline also correctly predicts NH4’s rise, because
-training never saw two separate numbers to fit, only the one declared in
-<code class="docutils literal notranslate"><span class="pre">biological_ode.rates</span></code>. That is the actual demonstration this page exists to make;
+training only ever fit the single number declared in <code class="docutils literal notranslate"><span class="pre">biological_ode.rates</span></code>. That is
+the actual demonstration this page exists to make;
 everything above it is setup.</p>
 </section>
 <section id="gotchas">
@@ -684,18 +563,20 @@ for a different rate.</p></li>
 <li><p><strong>This page’s unusual rate shape (one rate feeding two derivatives) needs no custom
 reaction module at all, technically.</strong> <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s default reaction module sizes
 itself generically from the declared rate vector, so it would train against this
-exact dataset with zero code. It is not used here on purpose: the default module is
+exact dataset with zero code. This page skips it on purpose: the default module is
 an opaque MLP, with no single fitted <code class="docutils literal notranslate"><span class="pre">r_Gln</span></code> scalar to check against the paper’s
 own value, which is the entire verification this page is built around.</p></li>
 </ul>
 </section>
 <section id="see-also">
-<h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
-<p>Run the example yourself at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_glutamine_decay/</span></code>.</p>
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
+<code class="docutils literal notranslate"><span class="pre">examples/gallery_glutamine_decay/</span></code> at the repo root, no docs build required. This
+page’s own executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_glutamine_decay/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../format/bioprocess_ode.html"><span class="std std-doc">The Bioprocess ODE</span></a>: <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>, <code class="docutils literal notranslate"><span class="pre">rates</span></code>,
 <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>, and the unit-consistency rule this page relies on.</p></li>
-<li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic models</span></a>: the same “did it recover the true
+<li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic Models</span></a>: the same “did it recover the true
 parameters” question, asked of a Monod-form rate law instead.</p></li>
 <li><p><a class="reference internal" href="optfed.html"><span class="std std-doc">OptFed</span></a>: a rate law with real kinetic structure, and the same
 “identifiability needs the true value inside the sampled range” lesson.</p></li>
@@ -725,7 +606,7 @@ Journal</em>, 13(4), 1700395.
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Cross-validation</div>
+                <div class="title">Cross-Validation</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -736,7 +617,7 @@ Journal</em>, 13(4), 1700395.
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Stateful models</div>
+                <div class="title">Stateful Models</div>
                 
               </div>
             </a>
@@ -770,13 +651,13 @@ Journal</em>, 13(4), 1700395.
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Glutamine decay</a><ul>
-<li><a class="reference internal" href="#the-rate-law-declared">The rate law, declared</a></li>
-<li><a class="reference internal" href="#the-reaction-module">The reaction module</a></li>
+<li><a class="reference internal" href="#">Glutamine Decay</a><ul>
+<li><a class="reference internal" href="#the-rate-law-declared">The Rate Law, Declared</a></li>
+<li><a class="reference internal" href="#the-reaction-module">The Reaction Module</a></li>
 <li><a class="reference internal" href="#training">Training</a></li>
-<li><a class="reference internal" href="#did-the-shared-rate-recover-correctly">Did the shared rate recover correctly?</a></li>
+<li><a class="reference internal" href="#did-the-shared-rate-recover-correctly">Did the Shared Rate Recover Correctly?</a></li>
 <li><a class="reference internal" href="#gotchas">Gotchas</a></li>
-<li><a class="reference internal" href="#see-also">See also</a></li>
+<li><a class="reference internal" href="#see-also">See Also</a></li>
 <li><a class="reference internal" href="#references">References</a></li>
 </ul>
 </li>

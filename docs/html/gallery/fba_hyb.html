@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="PLS-dFBA" href="pls_dfba.html"><link rel="prev" title="Knowledge transfer" href="knowledge_transfer.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="PLS-dFBA" href="pls_dfba.html"><link rel="prev" title="Knowledge Transfer" href="knowledge_transfer.html">
         <link rel="prefetch" href="../_static/hybrax_logo.png" as="image">
 
     <link rel="shortcut icon" href="../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -376,15 +376,14 @@
           <section class="tex2jax_ignore mathjax_ignore" id="fba-hyb">
 <h1>FBA-Hyb<a class="headerlink" href="#fba-hyb" title="Link to this heading">¶</a></h1>
 <blockquote>
-<div><p><strong>Demonstrates.</strong> A hybrid dynamic-FBA reaction module: two small MLPs predict a
-glucose-uptake rate and a flux-balance-analysis objective from the current state,
-a frozen, pole-free surrogate converts that into real metabolic rates, and
-<code class="docutils literal notranslate"><span class="pre">ReactionOutputs.auxiliary</span></code> exposes what the model believes the cell’s metabolic
-allocation is doing over the batch.</p>
+<div><p>A hybrid dynamic-FBA reaction module: two small neural networks predict a
+glucose-uptake rate and a metabolic objective from the current state, and a frozen,
+offline-fit surrogate converts those into real metabolic rates. No linear program
+ever gets solved during training.</p>
 </div></blockquote>
 <p>Dynamic flux-balance analysis (dFBA) normally means solving a real linear program,
-<code class="docutils literal notranslate"><span class="pre">max</span> <span class="pre">c^T</span> <span class="pre">v</span></code> subject to <code class="docutils literal notranslate"><span class="pre">S.v</span> <span class="pre">=</span> <span class="pre">0</span></code> and flux bounds, at every integration step. That is
-not something JAX can differentiate through or <code class="docutils literal notranslate"><span class="pre">vmap</span></code>/<code class="docutils literal notranslate"><span class="pre">jit</span></code> the way it does a neural
+<code class="docutils literal notranslate"><span class="pre">max</span> <span class="pre">c^T</span> <span class="pre">v</span></code> subject to <code class="docutils literal notranslate"><span class="pre">S.v</span> <span class="pre">=</span> <span class="pre">0</span></code> and flux bounds, at every integration step. JAX cannot
+differentiate through or <code class="docutils literal notranslate"><span class="pre">vmap</span></code>/<code class="docutils literal notranslate"><span class="pre">jit</span></code> a linear-program solve the way it does a neural
 network, and <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> has no LP solver in its training loop. The fix, from Gotsmy &amp;
 Guillén-Gosálbez’s FBA-Hyb <a href="#ref-fbahyb">[1]</a>: fit a closed-form,
 pole-free surrogate of the FBA solution <strong>once, offline</strong> (10,000 real linear
@@ -392,319 +391,13 @@ programs solved outside the training loop), then embed that surrogate directly
 inside an ordinary <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code>. No LP solve ever happens during training.</p>
 <p>The surrogate here is fit fresh against <code class="docutils literal notranslate"><span class="pre">e_coli_core.xml</span></code>
 <a href="#ref-ecolicore">[2]</a>, a small, real, published teaching model (95
-reactions, 72 metabolites), not a proprietary genome-scale network: see
-<a class="reference internal" href="#how-the-surrogate-was-fit">Knowledge</a> below for the full, reproducible chain. See
-<a class="reference internal" href="pls_dfba.html"><span class="std std-doc">PLS-dFBA</span></a> for this page’s sibling, which builds on the same surrogate
-with a product-forming, media-blend-aware extension.</p>
-<p>The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:</p>
-<details class="sd-sphinx-override sd-dropdown sd-card sd-mb-3">
-<summary class="sd-summary-title sd-card-header">
-<span class="sd-summary-text">Full <code class="docutils literal notranslate"><span class="pre">custom.py</span></code></span><span class="sd-summary-state-marker sd-summary-chevron-right"><svg version="1.1" width="1.5em" height="1.5em" class="sd-octicon sd-octicon-chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.72 18.78a.75.75 0 0 1 0-1.06L14.44 12 8.72 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0Z"></path></svg></span></summary><div class="sd-summary-content sd-card-body docutils">
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">  1</span><span class="sd">"""Minimal FBA-Hyb reaction module on e_coli_core.</span>
-<span class="linenos">  2</span>
-<span class="linenos">  3</span><span class="sd">Two small MLPs predict (qG, n_X, n_M, n_A) from state; a frozen, pole-free</span>
-<span class="linenos">  4</span><span class="sd">rational surrogate (fit offline against 10,000 real pFBA solves on</span>
-<span class="linenos">  5</span><span class="sd">e_coli_core.xml, Orth/Fleming/Palsson 2010, via the method from Gotsmy &amp;</span>
-<span class="linenos">  6</span><span class="sd">Guillen-Gosalbez's FBA-Hyb, bioRxiv:10.64898/2026.04.22.720062v1, see</span>
-<span class="linenos">  7</span><span class="sd">01_generate_fba_data.py and 02_fit_surrogate.py) converts these into</span>
-<span class="linenos">  8</span><span class="sd">biomass/glucose/acetate specific rates. n_S (succinate weight) is fixed at 0:</span>
-<span class="linenos">  9</span><span class="sd">this page has no deliberate product, only real E. coli overflow metabolism</span>
-<span class="linenos"> 10</span><span class="sd">(growth vs. maintenance vs. acetate secretion). See knowledge_transfer.md's</span>
-<span class="linenos"> 11</span><span class="sd">sibling page, pls_dfba.md, for a product-forming, media-blend-aware version.</span>
-<span class="linenos"> 12</span><span class="sd">"""</span>
-<span class="linenos"> 13</span>
-<span class="linenos"> 14</span><span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
-<span class="linenos"> 15</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
-<span class="linenos"> 16</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
-<span class="linenos"> 17</span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="linenos"> 18</span>
-<span class="linenos"> 19</span><span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.train</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<span class="linenos"> 20</span>    <span class="n">EstimatedScales</span><span class="p">,</span>
-<span class="linenos"> 21</span>    <span class="n">ReactionInputs</span><span class="p">,</span>
-<span class="linenos"> 22</span>    <span class="n">ReactionOutputs</span><span class="p">,</span>
-<span class="linenos"> 23</span>    <span class="n">UserReactionModule</span><span class="p">,</span>
-<span class="linenos"> 24</span>    <span class="n">trainable_field</span><span class="p">,</span>
-<span class="linenos"> 25</span><span class="p">)</span>
-<span class="linenos"> 26</span>
-<span class="linenos"> 27</span><span class="n">AVG_QG</span> <span class="o">=</span> <span class="mf">10.250012796042299</span>
-<span class="linenos"> 28</span><span class="n">AVG_N</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.00000008</span><span class="p">,</span> <span class="mf">1.00000023</span><span class="p">,</span> <span class="mf">1.00000072</span><span class="p">,</span> <span class="mf">0.99999969</span><span class="p">])</span>
-<span class="linenos"> 29</span><span class="n">MW</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">180.156</span><span class="p">,</span> <span class="mf">60.05</span><span class="p">])</span>  <span class="c1"># glucose, acetate (g/mol)</span>
-<span class="linenos"> 30</span>
-<span class="linenos"> 31</span>
-<span class="linenos"> 32</span><span class="k">def</span><span class="w"> </span><span class="nf">_pos</span><span class="p">(</span><span class="n">B</span><span class="p">):</span>
-<span class="linenos"> 33</span>    <span class="k">return</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">B</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">B</span> <span class="o">*</span> <span class="n">B</span> <span class="o">+</span> <span class="mf">1.5</span><span class="p">))</span>
-<span class="linenos"> 34</span>
-<span class="linenos"> 35</span>
-<span class="linenos"> 36</span><span class="k">def</span><span class="w"> </span><span class="nf">surrogate_fba</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
-<span class="linenos"> 37</span><span class="w">    </span><span class="sd">"""SCALED [qG, n_X, n_M, n_A, n_S] -&gt; RAW [q_glc, qX, qM, qA], mmol/(gX.h).</span>
-<span class="linenos"> 38</span>
-<span class="linenos"> 39</span><span class="sd">    Validation R2 &gt;= 0.999 on all four fitted fluxes; boundedness certificate</span>
-<span class="linenos"> 40</span><span class="sd">    passed (max overshoot 1.7x over the sampling box, min denominator</span>
-<span class="linenos"> 41</span><span class="sd">    0.199 &gt; 0, pole-free).</span>
-<span class="linenos"> 42</span><span class="sd">    """</span>
-<span class="linenos"> 43</span>    <span class="n">qG</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="n">AVG_QG</span>
-<span class="linenos"> 44</span>    <span class="n">n</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">5</span><span class="p">]</span> <span class="o">/</span> <span class="n">AVG_N</span>
-<span class="linenos"> 45</span>    <span class="n">n_X</span><span class="p">,</span> <span class="n">n_M</span><span class="p">,</span> <span class="n">n_A</span><span class="p">,</span> <span class="n">n_S</span> <span class="o">=</span> <span class="n">n</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">n</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">n</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">n</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
-<span class="linenos"> 46</span>    <span class="n">q_glc</span> <span class="o">=</span> <span class="o">-</span><span class="n">AVG_QG</span> <span class="o">*</span> <span class="n">qG</span>
-<span class="linenos"> 47</span>    <span class="n">qX</span> <span class="o">=</span> <span class="p">(</span>
-<span class="linenos"> 48</span>        <span class="n">qG</span>
-<span class="linenos"> 49</span>        <span class="o">*</span> <span class="p">(</span>
-<span class="linenos"> 50</span>            <span class="o">-</span><span class="mf">40.05086</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos"> 51</span>            <span class="o">-</span> <span class="mf">0.011743758</span> <span class="o">*</span> <span class="n">n_M</span>
-<span class="linenos"> 52</span>            <span class="o">+</span> <span class="mf">0.014346741</span> <span class="o">*</span> <span class="n">n_A</span>
-<span class="linenos"> 53</span>            <span class="o">-</span> <span class="mf">0.0052064408</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos"> 54</span>            <span class="o">+</span> <span class="mf">0.0082783369</span>
-<span class="linenos"> 55</span>        <span class="p">)</span>
-<span class="linenos"> 56</span>        <span class="o">*</span> <span class="p">(</span>
-<span class="linenos"> 57</span>            <span class="o">-</span><span class="mf">49.319124</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos"> 58</span>            <span class="o">-</span> <span class="mf">0.41473128</span> <span class="o">*</span> <span class="n">n_M</span>
-<span class="linenos"> 59</span>            <span class="o">+</span> <span class="mf">2.1157595</span> <span class="o">*</span> <span class="n">n_A</span>
-<span class="linenos"> 60</span>            <span class="o">-</span> <span class="mf">1.6528906</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos"> 61</span>            <span class="o">-</span> <span class="mf">3.5412292</span>
-<span class="linenos"> 62</span>        <span class="p">)</span>
-<span class="linenos"> 63</span>        <span class="o">/</span> <span class="p">(</span>
-<span class="linenos"> 64</span>            <span class="p">(</span>
-<span class="linenos"> 65</span>                <span class="n">_pos</span><span class="p">(</span>
-<span class="linenos"> 66</span>                    <span class="mf">24.688972</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos"> 67</span>                    <span class="o">+</span> <span class="mf">0.20074873</span> <span class="o">*</span> <span class="n">n_M</span>
-<span class="linenos"> 68</span>                    <span class="o">-</span> <span class="mf">1.0261536</span> <span class="o">*</span> <span class="n">n_A</span>
-<span class="linenos"> 69</span>                    <span class="o">+</span> <span class="mf">0.79800013</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos"> 70</span>                    <span class="o">+</span> <span class="mf">1.7869275</span>
-<span class="linenos"> 71</span>                <span class="p">)</span>
-<span class="linenos"> 72</span>                <span class="o">+</span> <span class="mf">0.05</span>
-<span class="linenos"> 73</span>            <span class="p">)</span>
-<span class="linenos"> 74</span>            <span class="o">*</span> <span class="p">(</span>
-<span class="linenos"> 75</span>                <span class="n">_pos</span><span class="p">(</span>
-<span class="linenos"> 76</span>                    <span class="mf">85.331771</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos"> 77</span>                    <span class="o">+</span> <span class="mf">0.48121828</span> <span class="o">*</span> <span class="n">n_M</span>
-<span class="linenos"> 78</span>                    <span class="o">+</span> <span class="mf">1.7234505</span> <span class="o">*</span> <span class="n">n_A</span>
-<span class="linenos"> 79</span>                    <span class="o">+</span> <span class="mf">4.5642331</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos"> 80</span>                    <span class="o">-</span> <span class="mf">0.46385535</span>
-<span class="linenos"> 81</span>                <span class="p">)</span>
-<span class="linenos"> 82</span>                <span class="o">+</span> <span class="mf">0.05</span>
-<span class="linenos"> 83</span>            <span class="p">)</span>
-<span class="linenos"> 84</span>        <span class="p">)</span>
-<span class="linenos"> 85</span>    <span class="p">)</span>
-<span class="linenos"> 86</span>    <span class="n">qM</span> <span class="o">=</span> <span class="p">(</span>
-<span class="linenos"> 87</span>        <span class="n">qG</span>
-<span class="linenos"> 88</span>        <span class="o">*</span> <span class="p">(</span>
-<span class="linenos"> 89</span>            <span class="o">-</span><span class="mf">30.549273</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos"> 90</span>            <span class="o">-</span> <span class="mf">0.26807454</span> <span class="o">*</span> <span class="n">n_M</span>
-<span class="linenos"> 91</span>            <span class="o">+</span> <span class="mf">0.60650343</span> <span class="o">*</span> <span class="n">n_A</span>
-<span class="linenos"> 92</span>            <span class="o">-</span> <span class="mf">1.143952</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos"> 93</span>            <span class="o">-</span> <span class="mf">0.92775662</span>
-<span class="linenos"> 94</span>        <span class="p">)</span>
-<span class="linenos"> 95</span>        <span class="o">*</span> <span class="p">(</span>
-<span class="linenos"> 96</span>            <span class="o">-</span><span class="mf">0.037824693</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos"> 97</span>            <span class="o">-</span> <span class="mf">24.825578</span> <span class="o">*</span> <span class="n">n_M</span>
-<span class="linenos"> 98</span>            <span class="o">+</span> <span class="mf">0.027984563</span> <span class="o">*</span> <span class="n">n_A</span>
-<span class="linenos"> 99</span>            <span class="o">+</span> <span class="mf">0.0020666315</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos">100</span>            <span class="o">-</span> <span class="mf">0.007740588</span>
-<span class="linenos">101</span>        <span class="p">)</span>
-<span class="linenos">102</span>        <span class="o">/</span> <span class="p">(</span>
-<span class="linenos">103</span>            <span class="p">(</span>
-<span class="linenos">104</span>                <span class="n">_pos</span><span class="p">(</span>
-<span class="linenos">105</span>                    <span class="mf">17.512874</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos">106</span>                    <span class="o">+</span> <span class="mf">0.16739751</span> <span class="o">*</span> <span class="n">n_M</span>
-<span class="linenos">107</span>                    <span class="o">-</span> <span class="mf">0.27899872</span> <span class="o">*</span> <span class="n">n_A</span>
-<span class="linenos">108</span>                    <span class="o">+</span> <span class="mf">0.67477612</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos">109</span>                    <span class="o">+</span> <span class="mf">0.76306517</span>
-<span class="linenos">110</span>                <span class="p">)</span>
-<span class="linenos">111</span>                <span class="o">+</span> <span class="mf">0.05</span>
-<span class="linenos">112</span>            <span class="p">)</span>
-<span class="linenos">113</span>            <span class="o">*</span> <span class="p">(</span>
-<span class="linenos">114</span>                <span class="n">_pos</span><span class="p">(</span>
-<span class="linenos">115</span>                    <span class="mf">46.415016</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos">116</span>                    <span class="o">+</span> <span class="mf">0.22525384</span> <span class="o">*</span> <span class="n">n_M</span>
-<span class="linenos">117</span>                    <span class="o">+</span> <span class="mf">0.68795142</span> <span class="o">*</span> <span class="n">n_A</span>
-<span class="linenos">118</span>                    <span class="o">+</span> <span class="mf">2.3243431</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos">119</span>                    <span class="o">-</span> <span class="mf">0.91656303</span>
-<span class="linenos">120</span>                <span class="p">)</span>
-<span class="linenos">121</span>                <span class="o">+</span> <span class="mf">0.05</span>
-<span class="linenos">122</span>            <span class="p">)</span>
-<span class="linenos">123</span>        <span class="p">)</span>
-<span class="linenos">124</span>    <span class="p">)</span>
-<span class="linenos">125</span>    <span class="n">qA</span> <span class="o">=</span> <span class="p">(</span>
-<span class="linenos">126</span>        <span class="n">qG</span>
-<span class="linenos">127</span>        <span class="o">*</span> <span class="p">(</span>
-<span class="linenos">128</span>            <span class="mf">0.11560359</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos">129</span>            <span class="o">+</span> <span class="mf">0.025412058</span> <span class="o">*</span> <span class="n">n_M</span>
-<span class="linenos">130</span>            <span class="o">+</span> <span class="mf">24.333516</span> <span class="o">*</span> <span class="n">n_A</span>
-<span class="linenos">131</span>            <span class="o">+</span> <span class="mf">0.037186754</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos">132</span>            <span class="o">-</span> <span class="mf">0.094942148</span>
-<span class="linenos">133</span>        <span class="p">)</span>
-<span class="linenos">134</span>        <span class="o">*</span> <span class="p">(</span>
-<span class="linenos">135</span>            <span class="mf">20.777323</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos">136</span>            <span class="o">-</span> <span class="mf">0.40676165</span> <span class="o">*</span> <span class="n">n_M</span>
-<span class="linenos">137</span>            <span class="o">+</span> <span class="mf">3.1964066</span> <span class="o">*</span> <span class="n">n_A</span>
-<span class="linenos">138</span>            <span class="o">+</span> <span class="mf">0.9569548</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos">139</span>            <span class="o">-</span> <span class="mf">0.19868886</span>
-<span class="linenos">140</span>        <span class="p">)</span>
-<span class="linenos">141</span>        <span class="o">/</span> <span class="p">(</span>
-<span class="linenos">142</span>            <span class="p">(</span>
-<span class="linenos">143</span>                <span class="n">_pos</span><span class="p">(</span>
-<span class="linenos">144</span>                    <span class="mf">41.246274</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos">145</span>                    <span class="o">-</span> <span class="mf">0.34994074</span> <span class="o">*</span> <span class="n">n_M</span>
-<span class="linenos">146</span>                    <span class="o">+</span> <span class="mf">4.3166512</span> <span class="o">*</span> <span class="n">n_A</span>
-<span class="linenos">147</span>                    <span class="o">+</span> <span class="mf">2.1503221</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos">148</span>                    <span class="o">-</span> <span class="mf">1.9194144</span>
-<span class="linenos">149</span>                <span class="p">)</span>
-<span class="linenos">150</span>                <span class="o">+</span> <span class="mf">0.05</span>
-<span class="linenos">151</span>            <span class="p">)</span>
-<span class="linenos">152</span>            <span class="o">*</span> <span class="p">(</span>
-<span class="linenos">153</span>                <span class="n">_pos</span><span class="p">(</span>
-<span class="linenos">154</span>                    <span class="mf">13.35614</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos">155</span>                    <span class="o">-</span> <span class="mf">0.041404912</span> <span class="o">*</span> <span class="n">n_M</span>
-<span class="linenos">156</span>                    <span class="o">+</span> <span class="mf">0.72777261</span> <span class="o">*</span> <span class="n">n_A</span>
-<span class="linenos">157</span>                    <span class="o">+</span> <span class="mf">0.64795735</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos">158</span>                    <span class="o">+</span> <span class="mf">0.29150121</span>
-<span class="linenos">159</span>                <span class="p">)</span>
-<span class="linenos">160</span>                <span class="o">+</span> <span class="mf">0.05</span>
-<span class="linenos">161</span>            <span class="p">)</span>
-<span class="linenos">162</span>        <span class="p">)</span>
-<span class="linenos">163</span>    <span class="p">)</span>
-<span class="linenos">164</span>    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">q_glc</span><span class="p">,</span> <span class="n">qX</span><span class="p">,</span> <span class="n">qM</span><span class="p">,</span> <span class="n">qA</span><span class="p">])</span>
-<span class="linenos">165</span>
-<span class="linenos">166</span>
-<span class="linenos">167</span><span class="k">def</span><span class="w"> </span><span class="nf">_bounded_softplus</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">alpha</span><span class="p">):</span>
-<span class="linenos">168</span>    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">tanh</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">softplus</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">/</span> <span class="n">alpha</span><span class="p">)</span> <span class="o">*</span> <span class="n">alpha</span>
-<span class="linenos">169</span>
-<span class="linenos">170</span>
-<span class="linenos">171</span><span class="k">def</span><span class="w"> </span><span class="nf">_init_xavier_zero_bias</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
-<span class="linenos">172</span>    <span class="k">def</span><span class="w"> </span><span class="nf">init_layer</span><span class="p">(</span><span class="n">layer</span><span class="p">):</span>
-<span class="linenos">173</span>        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">layer</span><span class="p">,</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">):</span>
-<span class="linenos">174</span>            <span class="n">wkey</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
-<span class="linenos">175</span>            <span class="n">new_w</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">initializers</span><span class="o">.</span><span class="n">glorot_normal</span><span class="p">()(</span><span class="n">wkey</span><span class="p">,</span> <span class="n">layer</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
-<span class="linenos">176</span>            <span class="n">layer</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">tree_at</span><span class="p">(</span><span class="k">lambda</span> <span class="n">value</span><span class="p">:</span> <span class="n">value</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span> <span class="n">layer</span><span class="p">,</span> <span class="n">new_w</span><span class="p">)</span>
-<span class="linenos">177</span>            <span class="k">if</span> <span class="n">layer</span><span class="o">.</span><span class="n">bias</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<span class="linenos">178</span>                <span class="n">layer</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">tree_at</span><span class="p">(</span>
-<span class="linenos">179</span>                    <span class="k">lambda</span> <span class="n">value</span><span class="p">:</span> <span class="n">value</span><span class="o">.</span><span class="n">bias</span><span class="p">,</span> <span class="n">layer</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">layer</span><span class="o">.</span><span class="n">bias</span><span class="p">)</span>
-<span class="linenos">180</span>                <span class="p">)</span>
-<span class="linenos">181</span>        <span class="k">return</span> <span class="n">layer</span>
-<span class="linenos">182</span>
-<span class="linenos">183</span>    <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree_util</span><span class="o">.</span><span class="n">tree_map</span><span class="p">(</span>
-<span class="linenos">184</span>        <span class="n">init_layer</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">is_leaf</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">)</span>
-<span class="linenos">185</span>    <span class="p">)</span>
-<span class="linenos">186</span>
-<span class="linenos">187</span>
-<span class="linenos">188</span><span class="k">class</span><span class="w"> </span><span class="nc">FBAHybReactionModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
-<span class="linenos">189</span>    <span class="n">ann_qG</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos">190</span>    <span class="n">ann_obj</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos">191</span>
-<span class="linenos">192</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
-<span class="linenos">193</span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
-<span class="linenos">194</span>        <span class="n">n_in</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span>
-<span class="linenos">195</span>        <span class="n">k_qG</span><span class="p">,</span> <span class="n">k_obj</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
-<span class="linenos">196</span>        <span class="bp">self</span><span class="o">.</span><span class="n">ann_qG</span> <span class="o">=</span> <span class="n">_init_xavier_zero_bias</span><span class="p">(</span>
-<span class="linenos">197</span>            <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span><span class="p">(</span>
-<span class="linenos">198</span>                <span class="n">in_size</span><span class="o">=</span><span class="n">n_in</span><span class="p">,</span>
-<span class="linenos">199</span>                <span class="n">out_size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-<span class="linenos">200</span>                <span class="n">width_size</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
-<span class="linenos">201</span>                <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
-<span class="linenos">202</span>                <span class="n">activation</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">softplus</span><span class="p">,</span>
-<span class="linenos">203</span>                <span class="n">key</span><span class="o">=</span><span class="n">k_qG</span><span class="p">,</span>
-<span class="linenos">204</span>            <span class="p">),</span>
-<span class="linenos">205</span>            <span class="n">k_qG</span><span class="p">,</span>
-<span class="linenos">206</span>        <span class="p">)</span>
-<span class="linenos">207</span>        <span class="bp">self</span><span class="o">.</span><span class="n">ann_obj</span> <span class="o">=</span> <span class="n">_init_xavier_zero_bias</span><span class="p">(</span>
-<span class="linenos">208</span>            <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span><span class="p">(</span>
-<span class="linenos">209</span>                <span class="n">in_size</span><span class="o">=</span><span class="n">n_in</span><span class="p">,</span>
-<span class="linenos">210</span>                <span class="n">out_size</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
-<span class="linenos">211</span>                <span class="n">width_size</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span>
-<span class="linenos">212</span>                <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
-<span class="linenos">213</span>                <span class="n">activation</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">softplus</span><span class="p">,</span>
-<span class="linenos">214</span>                <span class="n">key</span><span class="o">=</span><span class="n">k_obj</span><span class="p">,</span>
-<span class="linenos">215</span>            <span class="p">),</span>
-<span class="linenos">216</span>            <span class="n">k_obj</span><span class="p">,</span>
-<span class="linenos">217</span>        <span class="p">)</span>
-<span class="linenos">218</span>
-<span class="linenos">219</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">ReactionInputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
-<span class="linenos">220</span>        <span class="k">del</span> <span class="n">t</span>
-<span class="linenos">221</span>        <span class="n">SCL_features</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span>
-<span class="linenos">222</span>
-<span class="linenos">223</span>        <span class="n">qG</span> <span class="o">=</span> <span class="n">_bounded_softplus</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ann_qG</span><span class="p">(</span><span class="n">SCL_features</span><span class="p">)[</span><span class="mi">0</span><span class="p">],</span> <span class="mf">18.0</span><span class="p">)</span>
-<span class="linenos">224</span>        <span class="n">obj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ann_obj</span><span class="p">(</span><span class="n">SCL_features</span><span class="p">)</span>
-<span class="linenos">225</span>        <span class="n">n_X</span> <span class="o">=</span> <span class="n">_bounded_softplus</span><span class="p">(</span><span class="n">obj</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mf">1.8</span><span class="p">)</span>
-<span class="linenos">226</span>        <span class="n">n_M</span> <span class="o">=</span> <span class="n">_bounded_softplus</span><span class="p">(</span><span class="n">obj</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="mf">1.8</span><span class="p">)</span>
-<span class="linenos">227</span>        <span class="n">n_A</span> <span class="o">=</span> <span class="n">_bounded_softplus</span><span class="p">(</span><span class="n">obj</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="mf">1.8</span><span class="p">)</span>
-<span class="linenos">228</span>
-<span class="linenos">229</span>        <span class="n">fba_out</span> <span class="o">=</span> <span class="n">surrogate_fba</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">qG</span><span class="p">,</span> <span class="n">n_X</span><span class="p">,</span> <span class="n">n_M</span><span class="p">,</span> <span class="n">n_A</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">]))</span>
-<span class="linenos">230</span>        <span class="n">q_glc</span><span class="p">,</span> <span class="n">qX</span><span class="p">,</span> <span class="n">_qM</span><span class="p">,</span> <span class="n">qA</span> <span class="o">=</span> <span class="n">fba_out</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">fba_out</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">fba_out</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">fba_out</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
-<span class="linenos">231</span>
-<span class="linenos">232</span>        <span class="n">RAW_glc</span> <span class="o">=</span> <span class="n">q_glc</span> <span class="o">*</span> <span class="n">MW</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="mf">1000.0</span>
-<span class="linenos">233</span>        <span class="n">RAW_ace</span> <span class="o">=</span> <span class="n">qA</span> <span class="o">*</span> <span class="n">MW</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="mf">1000.0</span>
-<span class="linenos">234</span>        <span class="n">RAW_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">qX</span><span class="p">,</span> <span class="n">RAW_glc</span><span class="p">,</span> <span class="n">RAW_ace</span><span class="p">])</span>
-<span class="linenos">235</span>
-<span class="linenos">236</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos">237</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_BiologicalOde_rates</span><span class="p">(</span>
-<span class="linenos">238</span>                <span class="n">RAW_rates</span>
-<span class="linenos">239</span>            <span class="p">),</span>
-<span class="linenos">240</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos">241</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos">242</span>            <span class="n">auxiliary</span><span class="o">=</span><span class="p">{</span><span class="s2">"n_weights"</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">n_X</span><span class="p">,</span> <span class="n">n_M</span><span class="p">,</span> <span class="n">n_A</span><span class="p">])},</span>
-<span class="linenos">243</span>        <span class="p">)</span>
-<span class="linenos">244</span>
-<span class="linenos">245</span>
-<span class="linenos">246</span><span class="k">def</span><span class="w"> </span><span class="nf">build_reaction_module</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">seed</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<span class="linenos">247</span>    <span class="n">scale_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"SCALE_"</span><span class="p">)}</span>
-<span class="linenos">248</span>    <span class="k">return</span> <span class="n">FBAHybReactionModule</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">key</span><span class="p">(</span><span class="n">seed</span><span class="p">),</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
-<span class="linenos">249</span>
-<span class="linenos">250</span>
-<span class="linenos">251</span><span class="k">def</span><span class="w"> </span><span class="nf">estimate_all_scales</span><span class="p">(</span><span class="n">runtime_data</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
-<span class="linenos">252</span>    <span class="k">del</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span>
-<span class="linenos">253</span>    <span class="n">rhs</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">rhs_ode</span>
-<span class="linenos">254</span>    <span class="n">n_processes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
-<span class="linenos">255</span>
-<span class="linenos">256</span>    <span class="k">def</span><span class="w"> </span><span class="nf">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
-<span class="linenos">257</span>        <span class="n">best</span> <span class="o">=</span> <span class="mf">0.0</span>
-<span class="linenos">258</span>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">):</span>
-<span class="linenos">259</span>            <span class="n">_</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
-<span class="linenos">260</span>            <span class="k">if</span> <span class="n">values</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
-<span class="linenos">261</span>                <span class="n">best</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">values</span><span class="p">))))</span>
-<span class="linenos">262</span>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">)</span>
-<span class="linenos">263</span>
-<span class="linenos">264</span>    <span class="n">rmc_scale</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">}</span>
-<span class="linenos">265</span>
-<span class="linenos">266</span>    <span class="k">def</span><span class="w"> </span><span class="nf">rate_scale_for</span><span class="p">(</span><span class="n">species</span><span class="p">):</span>
-<span class="linenos">267</span>        <span class="n">per_process</span> <span class="o">=</span> <span class="p">[]</span>
-<span class="linenos">268</span>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">):</span>
-<span class="linenos">269</span>            <span class="n">c_times</span><span class="p">,</span> <span class="n">c_values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">species</span><span class="p">)</span>
-<span class="linenos">270</span>            <span class="n">x_times</span><span class="p">,</span> <span class="n">x_values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="s2">"biomass"</span><span class="p">)</span>
-<span class="linenos">271</span>            <span class="n">exposure</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trapezoid</span><span class="p">(</span><span class="n">x_values</span><span class="p">,</span> <span class="n">x_times</span><span class="p">)</span>
-<span class="linenos">272</span>            <span class="n">per_process</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">c_values</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">c_values</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">exposure</span><span class="p">,</span> <span class="mf">1e-9</span><span class="p">))</span>
-<span class="linenos">273</span>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">per_process</span><span class="p">),</span> <span class="mf">1e-9</span><span class="p">)</span>
-<span class="linenos">274</span>
-<span class="linenos">275</span>    <span class="n">rate_scale</span> <span class="o">=</span> <span class="p">[</span><span class="n">rate_scale_for</span><span class="p">(</span><span class="n">name</span><span class="p">[</span><span class="mi">2</span><span class="p">:])</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_rates</span><span class="p">]</span>
-<span class="linenos">276</span>
-<span class="linenos">277</span>    <span class="n">empty</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos">278</span>    <span class="k">return</span> <span class="n">EstimatedScales</span><span class="p">(</span>
-<span class="linenos">279</span>        <span class="n">SCALE_modeled_RMCs</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">rmc_scale</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">]),</span>
-<span class="linenos">280</span>        <span class="n">SCALE_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rate_scale</span><span class="p">),</span>
-<span class="linenos">281</span>        <span class="n">SCALE_V_in_cumulative</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
-<span class="linenos">282</span>            <span class="nb">max</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">initial_volume</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">))</span>
-<span class="linenos">283</span>        <span class="p">),</span>
-<span class="linenos">284</span>        <span class="n">SCALE_modeled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">285</span>        <span class="n">SCALE_modeled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">286</span>        <span class="n">SCALE_modeled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">287</span>        <span class="n">SCALE_modeled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">288</span>        <span class="n">SCALE_controlled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">289</span>        <span class="n">SCALE_controlled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">290</span>        <span class="n">SCALE_controlled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">291</span>        <span class="n">SCALE_controlled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">292</span>        <span class="n">SCALE_controlled_PVs</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">293</span>        <span class="n">SCALE_controlled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos">294</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
-<span class="linenos">295</span>        <span class="p">),</span>
-<span class="linenos">296</span>        <span class="n">SCALE_modeled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos">297</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
-<span class="linenos">298</span>        <span class="p">),</span>
-<span class="linenos">299</span>    <span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</details><section id="the-surrogate">
-<h2>The surrogate<a class="headerlink" href="#the-surrogate" title="Link to this heading">¶</a></h2>
+reactions, 72 metabolites): see <a class="reference internal" href="#how-the-surrogate-was-fit">How the Surrogate Was Fit</a>
+below for the full, reproducible chain. See <a class="reference internal" href="pls_dfba.html"><span class="std std-doc">PLS-dFBA</span></a> for this page’s
+sibling, which builds on the same surrogate with a product-forming, media-blend-aware
+extension.</p>
+<p>The walkthrough below shows the file in pieces, next to the reasoning for each one.</p>
+<section id="the-surrogate">
+<h2>The Surrogate<a class="headerlink" href="#the-surrogate" title="Link to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">def</span><span class="w"> </span><span class="nf">surrogate_fba</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
 <span class="linenos"> 2</span><span class="w">    </span><span class="sd">"""SCALED [qG, n_X, n_M, n_A, n_S] -&gt; RAW [q_glc, qX, qM, qA], mmol/(gX.h).</span>
 <span class="linenos"> 3</span>
@@ -731,45 +424,63 @@ adjoint however far the reaction module’s own predictions wander, which is exa
 what a real LP solve <em>would</em> do if you tried to differentiate through it.</p>
 </section>
 <section id="the-reaction-module">
-<h2>The reaction module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span>                    <span class="o">+</span> <span class="mf">0.79800013</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos"> 2</span>                    <span class="o">+</span> <span class="mf">1.7869275</span>
-<span class="linenos"> 3</span>                <span class="p">)</span>
-<span class="linenos"> 4</span>                <span class="o">+</span> <span class="mf">0.05</span>
-<span class="linenos"> 5</span>            <span class="p">)</span>
-<span class="linenos"> 6</span>            <span class="o">*</span> <span class="p">(</span>
-<span class="linenos"> 7</span>                <span class="n">_pos</span><span class="p">(</span>
-<span class="linenos"> 8</span>                    <span class="mf">85.331771</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos"> 9</span>                    <span class="o">+</span> <span class="mf">0.48121828</span> <span class="o">*</span> <span class="n">n_M</span>
-<span class="linenos">10</span>                    <span class="o">+</span> <span class="mf">1.7234505</span> <span class="o">*</span> <span class="n">n_A</span>
-<span class="linenos">11</span>                    <span class="o">+</span> <span class="mf">4.5642331</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos">12</span>                    <span class="o">-</span> <span class="mf">0.46385535</span>
-<span class="linenos">13</span>                <span class="p">)</span>
-<span class="linenos">14</span>                <span class="o">+</span> <span class="mf">0.05</span>
-<span class="linenos">15</span>            <span class="p">)</span>
-<span class="linenos">16</span>        <span class="p">)</span>
-<span class="linenos">17</span>    <span class="p">)</span>
-<span class="linenos">18</span>    <span class="n">qM</span> <span class="o">=</span> <span class="p">(</span>
-<span class="linenos">19</span>        <span class="n">qG</span>
-<span class="linenos">20</span>        <span class="o">*</span> <span class="p">(</span>
-<span class="linenos">21</span>            <span class="o">-</span><span class="mf">30.549273</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos">22</span>            <span class="o">-</span> <span class="mf">0.26807454</span> <span class="o">*</span> <span class="n">n_M</span>
-<span class="linenos">23</span>            <span class="o">+</span> <span class="mf">0.60650343</span> <span class="o">*</span> <span class="n">n_A</span>
-<span class="linenos">24</span>            <span class="o">-</span> <span class="mf">1.143952</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos">25</span>            <span class="o">-</span> <span class="mf">0.92775662</span>
-<span class="linenos">26</span>        <span class="p">)</span>
-<span class="linenos">27</span>        <span class="o">*</span> <span class="p">(</span>
-<span class="linenos">28</span>            <span class="o">-</span><span class="mf">0.037824693</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos">29</span>            <span class="o">-</span> <span class="mf">24.825578</span> <span class="o">*</span> <span class="n">n_M</span>
-<span class="linenos">30</span>            <span class="o">+</span> <span class="mf">0.027984563</span> <span class="o">*</span> <span class="n">n_A</span>
-<span class="linenos">31</span>            <span class="o">+</span> <span class="mf">0.0020666315</span> <span class="o">*</span> <span class="n">n_S</span>
-<span class="linenos">32</span>            <span class="o">-</span> <span class="mf">0.007740588</span>
-<span class="linenos">33</span>        <span class="p">)</span>
-<span class="linenos">34</span>        <span class="o">/</span> <span class="p">(</span>
-<span class="linenos">35</span>            <span class="p">(</span>
-<span class="linenos">36</span>                <span class="n">_pos</span><span class="p">(</span>
-<span class="linenos">37</span>                    <span class="mf">17.512874</span> <span class="o">*</span> <span class="n">n_X</span>
-<span class="linenos">38</span>                    <span class="o">+</span> <span class="mf">0.16739751</span> <span class="o">*</span> <span class="n">n_M</span>
+<h2>The Reaction Module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">FBAHybReactionModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
+<span class="linenos"> 2</span>    <span class="n">ann_qG</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
+<span class="linenos"> 3</span>    <span class="n">ann_obj</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
+<span class="linenos"> 4</span>
+<span class="linenos"> 5</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
+<span class="linenos"> 6</span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
+<span class="linenos"> 7</span>        <span class="n">n_in</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span>
+<span class="linenos"> 8</span>        <span class="n">k_qG</span><span class="p">,</span> <span class="n">k_obj</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<span class="linenos"> 9</span>        <span class="bp">self</span><span class="o">.</span><span class="n">ann_qG</span> <span class="o">=</span> <span class="n">_init_xavier_zero_bias</span><span class="p">(</span>
+<span class="linenos">10</span>            <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span><span class="p">(</span>
+<span class="linenos">11</span>                <span class="n">in_size</span><span class="o">=</span><span class="n">n_in</span><span class="p">,</span>
+<span class="linenos">12</span>                <span class="n">out_size</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<span class="linenos">13</span>                <span class="n">width_size</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+<span class="linenos">14</span>                <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+<span class="linenos">15</span>                <span class="n">activation</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">softplus</span><span class="p">,</span>
+<span class="linenos">16</span>                <span class="n">key</span><span class="o">=</span><span class="n">k_qG</span><span class="p">,</span>
+<span class="linenos">17</span>            <span class="p">),</span>
+<span class="linenos">18</span>            <span class="n">k_qG</span><span class="p">,</span>
+<span class="linenos">19</span>        <span class="p">)</span>
+<span class="linenos">20</span>        <span class="bp">self</span><span class="o">.</span><span class="n">ann_obj</span> <span class="o">=</span> <span class="n">_init_xavier_zero_bias</span><span class="p">(</span>
+<span class="linenos">21</span>            <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span><span class="p">(</span>
+<span class="linenos">22</span>                <span class="n">in_size</span><span class="o">=</span><span class="n">n_in</span><span class="p">,</span>
+<span class="linenos">23</span>                <span class="n">out_size</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<span class="linenos">24</span>                <span class="n">width_size</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span>
+<span class="linenos">25</span>                <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+<span class="linenos">26</span>                <span class="n">activation</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">softplus</span><span class="p">,</span>
+<span class="linenos">27</span>                <span class="n">key</span><span class="o">=</span><span class="n">k_obj</span><span class="p">,</span>
+<span class="linenos">28</span>            <span class="p">),</span>
+<span class="linenos">29</span>            <span class="n">k_obj</span><span class="p">,</span>
+<span class="linenos">30</span>        <span class="p">)</span>
+<span class="linenos">31</span>
+<span class="linenos">32</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">ReactionInputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
+<span class="linenos">33</span>        <span class="k">del</span> <span class="n">t</span>
+<span class="linenos">34</span>        <span class="n">SCL_features</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span>
+<span class="linenos">35</span>
+<span class="linenos">36</span>        <span class="n">qG</span> <span class="o">=</span> <span class="n">_bounded_softplus</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ann_qG</span><span class="p">(</span><span class="n">SCL_features</span><span class="p">)[</span><span class="mi">0</span><span class="p">],</span> <span class="mf">18.0</span><span class="p">)</span>
+<span class="linenos">37</span>        <span class="n">obj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ann_obj</span><span class="p">(</span><span class="n">SCL_features</span><span class="p">)</span>
+<span class="linenos">38</span>        <span class="n">n_X</span> <span class="o">=</span> <span class="n">_bounded_softplus</span><span class="p">(</span><span class="n">obj</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mf">1.8</span><span class="p">)</span>
+<span class="linenos">39</span>        <span class="n">n_M</span> <span class="o">=</span> <span class="n">_bounded_softplus</span><span class="p">(</span><span class="n">obj</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="mf">1.8</span><span class="p">)</span>
+<span class="linenos">40</span>        <span class="n">n_A</span> <span class="o">=</span> <span class="n">_bounded_softplus</span><span class="p">(</span><span class="n">obj</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="mf">1.8</span><span class="p">)</span>
+<span class="linenos">41</span>
+<span class="linenos">42</span>        <span class="n">fba_out</span> <span class="o">=</span> <span class="n">surrogate_fba</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">qG</span><span class="p">,</span> <span class="n">n_X</span><span class="p">,</span> <span class="n">n_M</span><span class="p">,</span> <span class="n">n_A</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">]))</span>
+<span class="linenos">43</span>        <span class="n">q_glc</span><span class="p">,</span> <span class="n">qX</span><span class="p">,</span> <span class="n">_qM</span><span class="p">,</span> <span class="n">qA</span> <span class="o">=</span> <span class="n">fba_out</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">fba_out</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">fba_out</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">fba_out</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+<span class="linenos">44</span>
+<span class="linenos">45</span>        <span class="n">RAW_glc</span> <span class="o">=</span> <span class="n">q_glc</span> <span class="o">*</span> <span class="n">MW</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="mf">1000.0</span>
+<span class="linenos">46</span>        <span class="n">RAW_ace</span> <span class="o">=</span> <span class="n">qA</span> <span class="o">*</span> <span class="n">MW</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="mf">1000.0</span>
+<span class="linenos">47</span>        <span class="n">RAW_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">qX</span><span class="p">,</span> <span class="n">RAW_glc</span><span class="p">,</span> <span class="n">RAW_ace</span><span class="p">])</span>
+<span class="linenos">48</span>
+<span class="linenos">49</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
+<span class="linenos">50</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_BiologicalOde_rates</span><span class="p">(</span>
+<span class="linenos">51</span>                <span class="n">RAW_rates</span>
+<span class="linenos">52</span>            <span class="p">),</span>
+<span class="linenos">53</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+<span class="linenos">54</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+<span class="linenos">55</span>            <span class="n">auxiliary</span><span class="o">=</span><span class="p">{</span><span class="s2">"n_weights"</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">n_X</span><span class="p">,</span> <span class="n">n_M</span><span class="p">,</span> <span class="n">n_A</span><span class="p">])},</span>
+<span class="linenos">56</span>        <span class="p">)</span>
 </pre></div>
 </div>
 <p>Two small MLPs predict <code class="docutils literal notranslate"><span class="pre">qG</span></code> (glucose uptake) and the FBA objective weights
@@ -785,7 +496,7 @@ weights go out through <code class="docutils literal notranslate"><span class="p
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 13:16:06 INFO __main__: training complete: first_mean_loss=0.155169 last_mean_loss=0.00139623 delta=-0.153773
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:06:36 INFO __main__: training complete: first_mean_loss=0.155169 last_mean_loss=0.00139623 delta=-0.153773
 run directory: ./source/_data/out/runs/gallery_fba_hyb/run
 </pre></div>
 </div>
@@ -807,442 +518,29 @@ acetate    R2 = 0.9775
 </div>
 </section>
 <section id="what-the-model-believes-is-happening">
-<h2>What the model believes is happening<a class="headerlink" href="#what-the-model-believes-is-happening" title="Link to this heading">¶</a></h2>
+<h2>What the Model Believes Is Happening<a class="headerlink" href="#what-the-model-believes-is-happening" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/ba7c52a239ac7104c99584778aa044d9b724ba07adf443c6e3c51c9c726c66a5.png" src="../_images/ba7c52a239ac7104c99584778aa044d9b724ba07adf443c6e3c51c9c726c66a5.png" />
+<img alt="../_images/cb4a8013f363749f45c97e9d82e1d0d2a25f575d40c4c11ee6afb1e92a82e5dc.png" src="../_images/cb4a8013f363749f45c97e9d82e1d0d2a25f575d40c4c11ee6afb1e92a82e5dc.png" />
 </div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">aux_n_weights_0/1/2</span></code> are <code class="docutils literal notranslate"><span class="pre">ReactionOutputs.auxiliary[&quot;n_weights&quot;]</span></code>, written out with
-no extra plumbing beyond what every other page already gets. The trend is genuinely
-learned, not told: the model was never given time as an input, only state, yet <code class="docutils literal notranslate"><span class="pre">n_A</span></code>
-rises steadily over the batch (real overflow metabolism intensifying as glucose
-depletes and biomass accumulates), inferred purely from the state it was shown.</p>
+no extra plumbing beyond what every other page already gets, normalized here to show
+each component’s share of the total. The trend is genuinely learned: the model was
+never given time as an input, only state, yet <code class="docutils literal notranslate"><span class="pre">n_A</span></code>’s share rises steadily over the
+batch (real overflow metabolism intensifying as glucose depletes and biomass
+accumulates), inferred purely from the state it was shown.</p>
 </section>
 <section id="how-the-surrogate-was-fit">
-<h2>How the surrogate was fit<a class="headerlink" href="#how-the-surrogate-was-fit" title="Link to this heading">¶</a></h2>
-<p>10,000 real parsimonious-FBA solves on <code class="docutils literal notranslate"><span class="pre">e_coli_core.xml</span></code>
-<a href="#ref-ecolicore">[2]</a>, Latin-hypercube-sampled over
-<code class="docutils literal notranslate"><span class="pre">(qG,</span> <span class="pre">n_X,</span> <span class="pre">n_M,</span> <span class="pre">n_A,</span> <span class="pre">n_S)</span></code>:</p>
-<details class="sd-sphinx-override sd-dropdown sd-card sd-mb-3">
-<summary class="sd-summary-title sd-card-header">
-<span class="sd-summary-text"><code class="docutils literal notranslate"><span class="pre">01_generate_fba_data.py</span></code></span><span class="sd-summary-state-marker sd-summary-chevron-right"><svg version="1.1" width="1.5em" height="1.5em" class="sd-octicon sd-octicon-chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.72 18.78a.75.75 0 0 1 0-1.06L14.44 12 8.72 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0Z"></path></svg></span></summary><div class="sd-summary-content sd-card-body docutils">
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">  1</span><span class="sd">"""Generate FBA training data for a fresh surrogate fit on e_coli_core.</span>
-<span class="linenos">  2</span>
-<span class="linenos">  3</span><span class="sd">Run once, offline, not part of docs_rebuild.sh: solving 10,000 real linear</span>
-<span class="linenos">  4</span><span class="sd">programs takes a couple of minutes and needs `cobra` (already in the same</span>
-<span class="linenos">  5</span><span class="sd">environment bp-docs builds against, but not something every doc-build should</span>
-<span class="linenos">  6</span><span class="sd">pay for). Its output, `01_obj_fba_data.csv`, feeds `02_fit_surrogate.py`,</span>
-<span class="linenos">  7</span><span class="sd">whose output is the literal `surrogate_fba` body hardcoded into</span>
-<span class="linenos">  8</span><span class="sd">`fba_hyb_custom.py` and `pls_dfba_custom.py`. Kept here, next to those files,</span>
-<span class="linenos">  9</span><span class="sd">so the whole chain from real FBA solves to the two gallery pages' frozen</span>
-<span class="linenos"> 10</span><span class="sd">surrogate is reproducible, per bp-docs' own "generated by a documented,</span>
-<span class="linenos"> 11</span><span class="sd">deterministic script" rule -- it just doesn't run on every build.</span>
-<span class="linenos"> 12</span>
-<span class="linenos"> 13</span><span class="sd">Combined objective: max  n_X*biomass + n_M*ATPM + n_A*acetate_secretion</span>
-<span class="linenos"> 14</span><span class="sd">                         + n_S*succinate_secretion</span>
-<span class="linenos"> 15</span><span class="sd">at fixed glucose uptake qG. Samples (qG, n_X, n_M, n_A, n_S) via Latin Hypercube,</span>
-<span class="linenos"> 16</span><span class="sd">solves pFBA for each. n_S is included for both pages (page 1's reaction module</span>
-<span class="linenos"> 17</span><span class="sd">will simply never query it), avoiding duplicate offline LP-solving.</span>
-<span class="linenos"> 18</span>
-<span class="linenos"> 19</span><span class="sd">Mirrors the pattern in Gotsmy &amp; Guillen-Gosalbez's FBA-Hyb method</span>
-<span class="linenos"> 20</span><span class="sd">(bioRxiv:10.64898/2026.04.22.720062v1), adapted to e_coli_core (Orth, Fleming</span>
-<span class="linenos"> 21</span><span class="sd">&amp; Palsson 2010) -- a small, citeable, published teaching model, not a</span>
-<span class="linenos"> 22</span><span class="sd">genome-scale network -- with freshly-generated data and a freshly-fit</span>
-<span class="linenos"> 23</span><span class="sd">surrogate rather than reused coefficients.</span>
-<span class="linenos"> 24</span><span class="sd">"""</span>
-<span class="linenos"> 25</span>
-<span class="linenos"> 26</span><span class="kn">import</span><span class="w"> </span><span class="nn">cobra</span>
-<span class="linenos"> 27</span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="linenos"> 28</span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
-<span class="linenos"> 29</span><span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">qmc</span>
-<span class="linenos"> 30</span>
-<span class="linenos"> 31</span><span class="n">GLC_RID</span> <span class="o">=</span> <span class="s2">"EX_glc__D_e"</span>
-<span class="linenos"> 32</span><span class="n">ATPM_RID</span> <span class="o">=</span> <span class="s2">"ATPM"</span>
-<span class="linenos"> 33</span><span class="n">BIOMASS_RID</span> <span class="o">=</span> <span class="s2">"BIOMASS_Ecoli_core_w_GAM"</span>
-<span class="linenos"> 34</span><span class="n">ACETATE_RID</span> <span class="o">=</span> <span class="s2">"EX_ac_e"</span>
-<span class="linenos"> 35</span><span class="n">SUCCINATE_RID</span> <span class="o">=</span> <span class="s2">"EX_succ_e"</span>
-<span class="linenos"> 36</span>
-<span class="linenos"> 37</span>
-<span class="linenos"> 38</span><span class="k">def</span><span class="w"> </span><span class="nf">load_model</span><span class="p">():</span>
-<span class="linenos"> 39</span>    <span class="n">model</span> <span class="o">=</span> <span class="n">cobra</span><span class="o">.</span><span class="n">io</span><span class="o">.</span><span class="n">read_sbml_model</span><span class="p">(</span><span class="s2">"e_coli_core.xml"</span><span class="p">)</span>
-<span class="linenos"> 40</span>    <span class="n">model</span><span class="o">.</span><span class="n">solver</span> <span class="o">=</span> <span class="s2">"glpk"</span>
-<span class="linenos"> 41</span>
-<span class="linenos"> 42</span>    <span class="c1"># Glucose as the sole carbon source; uptake bound is set per-sample below.</span>
-<span class="linenos"> 43</span>    <span class="n">model</span><span class="o">.</span><span class="n">reactions</span><span class="o">.</span><span class="n">get_by_id</span><span class="p">(</span><span class="n">GLC_RID</span><span class="p">)</span><span class="o">.</span><span class="n">bounds</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
-<span class="linenos"> 44</span>    <span class="c1"># Relax ATPM's hard lower bound (8.39) so the maintenance objective weight</span>
-<span class="linenos"> 45</span>    <span class="c1"># n_M actually has room to move the LP solution, matching</span>
-<span class="linenos"> 46</span>    <span class="c1"># vibrio_slim's "remove the ATPM constraint" step.</span>
-<span class="linenos"> 47</span>    <span class="n">model</span><span class="o">.</span><span class="n">reactions</span><span class="o">.</span><span class="n">get_by_id</span><span class="p">(</span><span class="n">ATPM_RID</span><span class="p">)</span><span class="o">.</span><span class="n">bounds</span> <span class="o">=</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1000</span><span class="p">)</span>
-<span class="linenos"> 48</span>
-<span class="linenos"> 49</span>    <span class="n">xxx_equiv</span> <span class="o">=</span> <span class="n">cobra</span><span class="o">.</span><span class="n">Metabolite</span><span class="p">(</span>
-<span class="linenos"> 50</span>        <span class="s2">"xxx_equiv"</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"biomass equivalent"</span><span class="p">,</span> <span class="n">compartment</span><span class="o">=</span><span class="s2">"c"</span>
-<span class="linenos"> 51</span>    <span class="p">)</span>
-<span class="linenos"> 52</span>    <span class="n">atp_equiv</span> <span class="o">=</span> <span class="n">cobra</span><span class="o">.</span><span class="n">Metabolite</span><span class="p">(</span>
-<span class="linenos"> 53</span>        <span class="s2">"atp_equiv"</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"maintenance equivalent"</span><span class="p">,</span> <span class="n">compartment</span><span class="o">=</span><span class="s2">"c"</span>
-<span class="linenos"> 54</span>    <span class="p">)</span>
-<span class="linenos"> 55</span>    <span class="n">ace_equiv</span> <span class="o">=</span> <span class="n">cobra</span><span class="o">.</span><span class="n">Metabolite</span><span class="p">(</span>
-<span class="linenos"> 56</span>        <span class="s2">"ace_equiv"</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"acetate equivalent"</span><span class="p">,</span> <span class="n">compartment</span><span class="o">=</span><span class="s2">"c"</span>
-<span class="linenos"> 57</span>    <span class="p">)</span>
-<span class="linenos"> 58</span>    <span class="n">suc_equiv</span> <span class="o">=</span> <span class="n">cobra</span><span class="o">.</span><span class="n">Metabolite</span><span class="p">(</span>
-<span class="linenos"> 59</span>        <span class="s2">"suc_equiv"</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"succinate equivalent"</span><span class="p">,</span> <span class="n">compartment</span><span class="o">=</span><span class="s2">"c"</span>
-<span class="linenos"> 60</span>    <span class="p">)</span>
-<span class="linenos"> 61</span>
-<span class="linenos"> 62</span>    <span class="n">model</span><span class="o">.</span><span class="n">reactions</span><span class="o">.</span><span class="n">get_by_id</span><span class="p">(</span><span class="n">BIOMASS_RID</span><span class="p">)</span><span class="o">.</span><span class="n">add_metabolites</span><span class="p">({</span><span class="n">xxx_equiv</span><span class="p">:</span> <span class="mi">1</span><span class="p">})</span>
-<span class="linenos"> 63</span>    <span class="n">model</span><span class="o">.</span><span class="n">reactions</span><span class="o">.</span><span class="n">get_by_id</span><span class="p">(</span><span class="n">ATPM_RID</span><span class="p">)</span><span class="o">.</span><span class="n">add_metabolites</span><span class="p">({</span><span class="n">atp_equiv</span><span class="p">:</span> <span class="mi">1</span><span class="p">})</span>
-<span class="linenos"> 64</span>    <span class="n">model</span><span class="o">.</span><span class="n">reactions</span><span class="o">.</span><span class="n">get_by_id</span><span class="p">(</span><span class="n">ACETATE_RID</span><span class="p">)</span><span class="o">.</span><span class="n">add_metabolites</span><span class="p">({</span><span class="n">ace_equiv</span><span class="p">:</span> <span class="mi">1</span><span class="p">})</span>
-<span class="linenos"> 65</span>    <span class="n">model</span><span class="o">.</span><span class="n">reactions</span><span class="o">.</span><span class="n">get_by_id</span><span class="p">(</span><span class="n">SUCCINATE_RID</span><span class="p">)</span><span class="o">.</span><span class="n">add_metabolites</span><span class="p">({</span><span class="n">suc_equiv</span><span class="p">:</span> <span class="mi">1</span><span class="p">})</span>
-<span class="linenos"> 66</span>
-<span class="linenos"> 67</span>    <span class="k">return</span> <span class="n">model</span><span class="p">,</span> <span class="n">xxx_equiv</span><span class="p">,</span> <span class="n">atp_equiv</span><span class="p">,</span> <span class="n">ace_equiv</span><span class="p">,</span> <span class="n">suc_equiv</span>
-<span class="linenos"> 68</span>
-<span class="linenos"> 69</span>
-<span class="linenos"> 70</span><span class="k">def</span><span class="w"> </span><span class="nf">build_model</span><span class="p">(</span>
-<span class="linenos"> 71</span>    <span class="n">qG</span><span class="p">,</span> <span class="n">n_X</span><span class="p">,</span> <span class="n">n_M</span><span class="p">,</span> <span class="n">n_A</span><span class="p">,</span> <span class="n">n_S</span><span class="p">,</span> <span class="n">tmp_model</span><span class="p">,</span> <span class="n">xxx_equiv</span><span class="p">,</span> <span class="n">atp_equiv</span><span class="p">,</span> <span class="n">ace_equiv</span><span class="p">,</span> <span class="n">suc_equiv</span>
-<span class="linenos"> 72</span><span class="p">):</span>
-<span class="linenos"> 73</span>    <span class="n">reaction</span> <span class="o">=</span> <span class="n">cobra</span><span class="o">.</span><span class="n">Reaction</span><span class="p">(</span><span class="s2">"combined_obj"</span><span class="p">)</span>
-<span class="linenos"> 74</span>    <span class="n">reaction</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="s2">"combined_obj_function"</span>
-<span class="linenos"> 75</span>    <span class="n">reaction</span><span class="o">.</span><span class="n">lower_bound</span> <span class="o">=</span> <span class="mf">0.0</span>
-<span class="linenos"> 76</span>    <span class="n">reaction</span><span class="o">.</span><span class="n">upper_bound</span> <span class="o">=</span> <span class="mf">1000.0</span>
-<span class="linenos"> 77</span>    <span class="n">reaction</span><span class="o">.</span><span class="n">add_metabolites</span><span class="p">(</span>
-<span class="linenos"> 78</span>        <span class="p">{</span>
-<span class="linenos"> 79</span>            <span class="n">xxx_equiv</span><span class="p">:</span> <span class="o">-</span><span class="n">n_X</span><span class="p">,</span>
-<span class="linenos"> 80</span>            <span class="n">atp_equiv</span><span class="p">:</span> <span class="o">-</span><span class="n">n_M</span><span class="p">,</span>
-<span class="linenos"> 81</span>            <span class="n">ace_equiv</span><span class="p">:</span> <span class="o">-</span><span class="n">n_A</span><span class="p">,</span>
-<span class="linenos"> 82</span>            <span class="n">suc_equiv</span><span class="p">:</span> <span class="o">-</span><span class="n">n_S</span><span class="p">,</span>
-<span class="linenos"> 83</span>        <span class="p">}</span>
-<span class="linenos"> 84</span>    <span class="p">)</span>
-<span class="linenos"> 85</span>    <span class="n">tmp_model</span><span class="o">.</span><span class="n">add_reactions</span><span class="p">([</span><span class="n">reaction</span><span class="p">])</span>
-<span class="linenos"> 86</span>    <span class="n">tmp_model</span><span class="o">.</span><span class="n">objective</span> <span class="o">=</span> <span class="s2">"combined_obj"</span>
-<span class="linenos"> 87</span>    <span class="n">tmp_model</span><span class="o">.</span><span class="n">objective_direction</span> <span class="o">=</span> <span class="s2">"max"</span>
-<span class="linenos"> 88</span>    <span class="n">tmp_model</span><span class="o">.</span><span class="n">reactions</span><span class="o">.</span><span class="n">get_by_id</span><span class="p">(</span><span class="n">GLC_RID</span><span class="p">)</span><span class="o">.</span><span class="n">bounds</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="n">qG</span><span class="p">,</span> <span class="o">-</span><span class="n">qG</span><span class="p">)</span>
-<span class="linenos"> 89</span>    <span class="k">return</span> <span class="n">tmp_model</span>
-<span class="linenos"> 90</span>
-<span class="linenos"> 91</span>
-<span class="linenos"> 92</span><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
-<span class="linenos"> 93</span>    <span class="n">sampler</span> <span class="o">=</span> <span class="n">qmc</span><span class="o">.</span><span class="n">LatinHypercube</span><span class="p">(</span><span class="n">d</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">20260813</span><span class="p">)</span>
-<span class="linenos"> 94</span>    <span class="n">n_samples</span> <span class="o">=</span> <span class="mi">10_000</span>
-<span class="linenos"> 95</span>    <span class="n">norm_sample</span> <span class="o">=</span> <span class="n">sampler</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="n">n_samples</span><span class="p">)</span>
-<span class="linenos"> 96</span>    <span class="c1"># dims: qG, n_X, n_M, n_A, n_S</span>
-<span class="linenos"> 97</span>    <span class="n">scaled_sample</span> <span class="o">=</span> <span class="n">qmc</span><span class="o">.</span><span class="n">scale</span><span class="p">(</span>
-<span class="linenos"> 98</span>        <span class="n">norm_sample</span><span class="p">,</span> <span class="p">[</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">]</span>
-<span class="linenos"> 99</span>    <span class="p">)</span>
-<span class="linenos">100</span>
-<span class="linenos">101</span>    <span class="n">model</span><span class="p">,</span> <span class="n">xxx_equiv</span><span class="p">,</span> <span class="n">atp_equiv</span><span class="p">,</span> <span class="n">ace_equiv</span><span class="p">,</span> <span class="n">suc_equiv</span> <span class="o">=</span> <span class="n">load_model</span><span class="p">()</span>
-<span class="linenos">102</span>
-<span class="linenos">103</span>    <span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
-<span class="linenos">104</span>    <span class="n">n_fail</span> <span class="o">=</span> <span class="mi">0</span>
-<span class="linenos">105</span>    <span class="k">for</span> <span class="n">qG</span><span class="p">,</span> <span class="n">n_X</span><span class="p">,</span> <span class="n">n_M</span><span class="p">,</span> <span class="n">n_A</span><span class="p">,</span> <span class="n">n_S</span> <span class="ow">in</span> <span class="n">scaled_sample</span><span class="p">:</span>
-<span class="linenos">106</span>        <span class="k">with</span> <span class="n">model</span> <span class="k">as</span> <span class="n">tmp</span><span class="p">:</span>
-<span class="linenos">107</span>            <span class="n">tmp</span> <span class="o">=</span> <span class="n">build_model</span><span class="p">(</span>
-<span class="linenos">108</span>                <span class="n">qG</span><span class="p">,</span> <span class="n">n_X</span><span class="p">,</span> <span class="n">n_M</span><span class="p">,</span> <span class="n">n_A</span><span class="p">,</span> <span class="n">n_S</span><span class="p">,</span> <span class="n">tmp</span><span class="p">,</span> <span class="n">xxx_equiv</span><span class="p">,</span> <span class="n">atp_equiv</span><span class="p">,</span> <span class="n">ace_equiv</span><span class="p">,</span> <span class="n">suc_equiv</span>
-<span class="linenos">109</span>            <span class="p">)</span>
-<span class="linenos">110</span>            <span class="k">try</span><span class="p">:</span>
-<span class="linenos">111</span>                <span class="n">sol</span> <span class="o">=</span> <span class="n">cobra</span><span class="o">.</span><span class="n">flux_analysis</span><span class="o">.</span><span class="n">pfba</span><span class="p">(</span><span class="n">tmp</span><span class="p">)</span>
-<span class="linenos">112</span>                <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<span class="linenos">113</span>                    <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
-<span class="linenos">114</span>                        <span class="p">[</span>
-<span class="linenos">115</span>                            <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">qG</span><span class="p">,</span> <span class="n">n_X</span><span class="p">,</span> <span class="n">n_M</span><span class="p">,</span> <span class="n">n_A</span><span class="p">,</span> <span class="n">n_S</span><span class="p">]),</span>
-<span class="linenos">116</span>                            <span class="n">sol</span><span class="o">.</span><span class="n">fluxes</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">flatten</span><span class="p">(),</span>
-<span class="linenos">117</span>                        <span class="p">]</span>
-<span class="linenos">118</span>                    <span class="p">)</span>
-<span class="linenos">119</span>                <span class="p">)</span>
-<span class="linenos">120</span>            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<span class="linenos">121</span>                <span class="n">n_fail</span> <span class="o">+=</span> <span class="mi">1</span>
-<span class="linenos">122</span>
-<span class="linenos">123</span>    <span class="k">with</span> <span class="n">model</span> <span class="k">as</span> <span class="n">tmp</span><span class="p">:</span>
-<span class="linenos">124</span>        <span class="n">tmp</span> <span class="o">=</span> <span class="n">build_model</span><span class="p">(</span>
-<span class="linenos">125</span>            <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">tmp</span><span class="p">,</span> <span class="n">xxx_equiv</span><span class="p">,</span> <span class="n">atp_equiv</span><span class="p">,</span> <span class="n">ace_equiv</span><span class="p">,</span> <span class="n">suc_equiv</span>
-<span class="linenos">126</span>        <span class="p">)</span>
-<span class="linenos">127</span>        <span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"qG"</span><span class="p">,</span> <span class="s2">"n_X"</span><span class="p">,</span> <span class="s2">"n_M"</span><span class="p">,</span> <span class="s2">"n_A"</span><span class="p">,</span> <span class="s2">"n_S"</span><span class="p">]</span> <span class="o">+</span> <span class="p">[</span><span class="n">r</span><span class="o">.</span><span class="n">id</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">tmp</span><span class="o">.</span><span class="n">reactions</span><span class="p">]</span>
-<span class="linenos">128</span>
-<span class="linenos">129</span>    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="n">columns</span><span class="p">)</span>
-<span class="linenos">130</span>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"solved </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">)</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">n_samples</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">n_fail</span><span class="si">}</span><span class="s2"> failed)"</span><span class="p">)</span>
-<span class="linenos">131</span>    <span class="n">df</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="s2">"01_obj_fba_data.csv"</span><span class="p">)</span>
-<span class="linenos">132</span>    <span class="nb">print</span><span class="p">(</span><span class="s2">"saved 01_obj_fba_data.csv"</span><span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</details><p>Then a fresh pole-free rational fit against that data (multi-restart L-BFGS, method
-from FBA-Hyb <a href="#ref-fbahyb">[1]</a>), with a boundedness certificate checked
-before acceptance: the metric that actually predicts training stability, since a
-surrogate that looks perfect on held-out data can still spike in the sparse gaps of
-the sampling box and blow up an ODE adjoint:</p>
-<details class="sd-sphinx-override sd-dropdown sd-card sd-mb-3">
-<summary class="sd-summary-title sd-card-header">
-<span class="sd-summary-text"><code class="docutils literal notranslate"><span class="pre">02_fit_surrogate.py</span></code></span><span class="sd-summary-state-marker sd-summary-chevron-right"><svg version="1.1" width="1.5em" height="1.5em" class="sd-octicon sd-octicon-chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.72 18.78a.75.75 0 0 1 0-1.06L14.44 12 8.72 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0Z"></path></svg></span></summary><div class="sd-summary-content sd-card-body docutils">
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">  1</span><span class="sd">"""Fit a pole-free rational surrogate for e_coli_core's FBA solution.</span>
-<span class="linenos">  2</span>
-<span class="linenos">  3</span><span class="sd">Run once, offline, after 01_generate_fba_data.py. Method from Gotsmy &amp;</span>
-<span class="linenos">  4</span><span class="sd">Guillen-Gosalbez's FBA-Hyb (bioRxiv:10.64898/2026.04.22.720062v1): a</span>
-<span class="linenos">  5</span><span class="sd">symbolic-regression-discovered rational functional form, its coefficients</span>
-<span class="linenos">  6</span><span class="sd">re-fit here directly against fresh FBA data via multi-restart L-BFGS</span>
-<span class="linenos">  7</span><span class="sd">(skipping symbolic regression itself, since the functional form is already</span>
-<span class="linenos">  8</span><span class="sd">known):</span>
-<span class="linenos">  9</span>
-<span class="linenos"> 10</span><span class="sd">    q_i = qG * (A1.n)(A2.n) / ( (pos(B1.n)+d) * (pos(B2.n)+d) )</span>
-<span class="linenos"> 11</span><span class="sd">    pos(B) = 0.5*(B + sqrt(B^2 + c)),  c = 1.5</span>
-<span class="linenos"> 12</span>
-<span class="linenos"> 13</span><span class="sd">Every denominator factor is &gt;= d &gt; 0 for all inputs, by construction: the</span>
-<span class="linenos"> 14</span><span class="sd">surrogate is pole-free, so it cannot blow up inside an ODE solver's adjoint</span>
-<span class="linenos"> 15</span><span class="sd">however far the trained reaction module's own predictions wander. This</span>
-<span class="linenos"> 16</span><span class="sd">script's boundedness certificate (below) checks that directly, over the full</span>
-<span class="linenos"> 17</span><span class="sd">sampling box, before accepting a fit.</span>
-<span class="linenos"> 18</span>
-<span class="linenos"> 19</span><span class="sd">n = (n_X, n_M, n_A, n_S). q_glc is analytic (= -qG exactly, by construction of</span>
-<span class="linenos"> 20</span><span class="sd">01_generate_fba_data.py's glucose-bound fixing). Fitted fluxes: biomass, ATPM,</span>
-<span class="linenos"> 21</span><span class="sd">EX_ac_e, EX_succ_e. Its output, 02_surrogate_body.txt, is the literal</span>
-<span class="linenos"> 22</span><span class="sd">`surrogate_fba` body pasted into fba_hyb_custom.py and pls_dfba_custom.py.</span>
-<span class="linenos"> 23</span><span class="sd">"""</span>
-<span class="linenos"> 24</span>
-<span class="linenos"> 25</span><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
-<span class="linenos"> 26</span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="linenos"> 27</span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
-<span class="linenos"> 28</span><span class="kn">import</span><span class="w"> </span><span class="nn">scipy.optimize</span>
-<span class="linenos"> 29</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
-<span class="linenos"> 30</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
-<span class="linenos"> 31</span>
-<span class="linenos"> 32</span><span class="n">jax</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="s2">"jax_enable_x64"</span><span class="p">,</span> <span class="kc">True</span><span class="p">)</span>
-<span class="linenos"> 33</span>
-<span class="linenos"> 34</span><span class="n">C_RAMP</span> <span class="o">=</span> <span class="mf">1.5</span>
-<span class="linenos"> 35</span><span class="n">VALIDATION_SPLIT</span> <span class="o">=</span> <span class="mf">0.1</span>
-<span class="linenos"> 36</span><span class="n">N_RESTARTS</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="mi">40</span>
-<span class="linenos"> 37</span>
-<span class="linenos"> 38</span><span class="n">RID</span> <span class="o">=</span> <span class="p">{</span>
-<span class="linenos"> 39</span>    <span class="s2">"qX"</span><span class="p">:</span> <span class="s2">"BIOMASS_Ecoli_core_w_GAM"</span><span class="p">,</span>
-<span class="linenos"> 40</span>    <span class="s2">"qM"</span><span class="p">:</span> <span class="s2">"ATPM"</span><span class="p">,</span>
-<span class="linenos"> 41</span>    <span class="s2">"qA"</span><span class="p">:</span> <span class="s2">"EX_ac_e"</span><span class="p">,</span>
-<span class="linenos"> 42</span>    <span class="s2">"qS"</span><span class="p">:</span> <span class="s2">"EX_succ_e"</span><span class="p">,</span>
-<span class="linenos"> 43</span><span class="p">}</span>
-<span class="linenos"> 44</span><span class="n">FIT_FLUXES</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"qX"</span><span class="p">,</span> <span class="s2">"qM"</span><span class="p">,</span> <span class="s2">"qA"</span><span class="p">,</span> <span class="s2">"qS"</span><span class="p">]</span>
-<span class="linenos"> 45</span><span class="n">DELTA</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"qX"</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span> <span class="s2">"qM"</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span> <span class="s2">"qA"</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span> <span class="s2">"qS"</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">}</span>
-<span class="linenos"> 46</span>
-<span class="linenos"> 47</span>
-<span class="linenos"> 48</span><span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">():</span>
-<span class="linenos"> 49</span>    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s2">"01_obj_fba_data.csv"</span><span class="p">,</span> <span class="n">index_col</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos"> 50</span>    <span class="n">avg</span> <span class="o">=</span> <span class="n">df</span><span class="p">[[</span><span class="s2">"qG"</span><span class="p">,</span> <span class="s2">"n_X"</span><span class="p">,</span> <span class="s2">"n_M"</span><span class="p">,</span> <span class="s2">"n_A"</span><span class="p">,</span> <span class="s2">"n_S"</span><span class="p">]]</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos"> 51</span>    <span class="n">AVG_QG</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">avg</span><span class="p">[</span><span class="s2">"qG"</span><span class="p">])</span>
-<span class="linenos"> 52</span>    <span class="n">AVG_N</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">avg</span><span class="p">[</span><span class="s2">"n_X"</span><span class="p">],</span> <span class="n">avg</span><span class="p">[</span><span class="s2">"n_M"</span><span class="p">],</span> <span class="n">avg</span><span class="p">[</span><span class="s2">"n_A"</span><span class="p">],</span> <span class="n">avg</span><span class="p">[</span><span class="s2">"n_S"</span><span class="p">]],</span> <span class="nb">float</span><span class="p">)</span>
-<span class="linenos"> 53</span>
-<span class="linenos"> 54</span>    <span class="n">qG_scaled</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"qG"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span> <span class="o">/</span> <span class="n">AVG_QG</span>
-<span class="linenos"> 55</span>    <span class="n">n_scaled</span> <span class="o">=</span> <span class="n">df</span><span class="p">[[</span><span class="s2">"n_X"</span><span class="p">,</span> <span class="s2">"n_M"</span><span class="p">,</span> <span class="s2">"n_A"</span><span class="p">,</span> <span class="s2">"n_S"</span><span class="p">]]</span><span class="o">.</span><span class="n">values</span> <span class="o">/</span> <span class="n">AVG_N</span>
-<span class="linenos"> 56</span>    <span class="n">Y</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">df</span><span class="p">[</span><span class="n">v</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">RID</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
-<span class="linenos"> 57</span>    <span class="k">return</span> <span class="n">df</span><span class="p">,</span> <span class="n">AVG_QG</span><span class="p">,</span> <span class="n">AVG_N</span><span class="p">,</span> <span class="n">qG_scaled</span><span class="p">,</span> <span class="n">n_scaled</span><span class="p">,</span> <span class="n">Y</span>
-<span class="linenos"> 58</span>
-<span class="linenos"> 59</span>
-<span class="linenos"> 60</span><span class="k">def</span><span class="w"> </span><span class="nf">canonical_split</span><span class="p">(</span><span class="n">n_rows</span><span class="p">):</span>
-<span class="linenos"> 61</span>    <span class="n">key</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">PRNGKey</span><span class="p">(</span><span class="mi">13</span><span class="p">)</span>
-<span class="linenos"> 62</span>    <span class="n">ID</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span>
-<span class="linenos"> 63</span>        <span class="n">key</span><span class="p">,</span> <span class="n">n_rows</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">n_rows</span> <span class="o">*</span> <span class="n">VALIDATION_SPLIT</span><span class="p">),),</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span>
-<span class="linenos"> 64</span>    <span class="p">)</span>
-<span class="linenos"> 65</span>    <span class="n">ID</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ID</span><span class="p">)</span>
-<span class="linenos"> 66</span>    <span class="n">valid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_rows</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span>
-<span class="linenos"> 67</span>    <span class="n">valid</span><span class="p">[</span><span class="n">ID</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-<span class="linenos"> 68</span>    <span class="k">return</span> <span class="o">~</span><span class="n">valid</span><span class="p">,</span> <span class="n">valid</span>
-<span class="linenos"> 69</span>
-<span class="linenos"> 70</span>
-<span class="linenos"> 71</span><span class="k">def</span><span class="w"> </span><span class="nf">pos</span><span class="p">(</span><span class="n">B</span><span class="p">):</span>
-<span class="linenos"> 72</span>    <span class="k">return</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">B</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">B</span> <span class="o">*</span> <span class="n">B</span> <span class="o">+</span> <span class="n">C_RAMP</span><span class="p">))</span>
-<span class="linenos"> 73</span>
-<span class="linenos"> 74</span>
-<span class="linenos"> 75</span><span class="k">def</span><span class="w"> </span><span class="nf">aff</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">N</span><span class="p">):</span>
-<span class="linenos"> 76</span>    <span class="k">return</span> <span class="n">N</span> <span class="o">@</span> <span class="n">w</span><span class="p">[:</span><span class="mi">4</span><span class="p">]</span> <span class="o">+</span> <span class="n">w</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span>
-<span class="linenos"> 77</span>
-<span class="linenos"> 78</span>
-<span class="linenos"> 79</span><span class="k">def</span><span class="w"> </span><span class="nf">predict</span><span class="p">(</span><span class="n">Z</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">d</span><span class="p">):</span>
-<span class="linenos"> 80</span>    <span class="n">A1</span><span class="p">,</span> <span class="n">A2</span> <span class="o">=</span> <span class="n">aff</span><span class="p">(</span><span class="n">Z</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">5</span><span class="p">],</span> <span class="n">N</span><span class="p">),</span> <span class="n">aff</span><span class="p">(</span><span class="n">Z</span><span class="p">[</span><span class="mi">5</span><span class="p">:</span><span class="mi">10</span><span class="p">],</span> <span class="n">N</span><span class="p">)</span>
-<span class="linenos"> 81</span>    <span class="n">B1</span><span class="p">,</span> <span class="n">B2</span> <span class="o">=</span> <span class="n">aff</span><span class="p">(</span><span class="n">Z</span><span class="p">[</span><span class="mi">10</span><span class="p">:</span><span class="mi">15</span><span class="p">],</span> <span class="n">N</span><span class="p">),</span> <span class="n">aff</span><span class="p">(</span><span class="n">Z</span><span class="p">[</span><span class="mi">15</span><span class="p">:</span><span class="mi">20</span><span class="p">],</span> <span class="n">N</span><span class="p">)</span>
-<span class="linenos"> 82</span>    <span class="k">return</span> <span class="n">g</span> <span class="o">*</span> <span class="n">A1</span> <span class="o">*</span> <span class="n">A2</span> <span class="o">/</span> <span class="p">((</span><span class="n">pos</span><span class="p">(</span><span class="n">B1</span><span class="p">)</span> <span class="o">+</span> <span class="n">d</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">pos</span><span class="p">(</span><span class="n">B2</span><span class="p">)</span> <span class="o">+</span> <span class="n">d</span><span class="p">))</span>
-<span class="linenos"> 83</span>
-<span class="linenos"> 84</span>
-<span class="linenos"> 85</span><span class="k">def</span><span class="w"> </span><span class="nf">r2</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">p</span><span class="p">):</span>
-<span class="linenos"> 86</span>    <span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">y</span> <span class="o">-</span> <span class="n">y</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
-<span class="linenos"> 87</span>    <span class="k">return</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">y</span> <span class="o">-</span> <span class="n">p</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="n">t</span> <span class="k">if</span> <span class="n">t</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">1.0</span>
-<span class="linenos"> 88</span>
-<span class="linenos"> 89</span>
-<span class="linenos"> 90</span><span class="k">def</span><span class="w"> </span><span class="nf">nmae</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">p</span><span class="p">):</span>
-<span class="linenos"> 91</span>    <span class="n">m</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">y</span><span class="p">))</span>
-<span class="linenos"> 92</span>    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">y</span> <span class="o">-</span> <span class="n">p</span><span class="p">))</span> <span class="o">/</span> <span class="n">m</span> <span class="k">if</span> <span class="n">m</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mf">0.0</span>
-<span class="linenos"> 93</span>
-<span class="linenos"> 94</span>
-<span class="linenos"> 95</span><span class="k">def</span><span class="w"> </span><span class="nf">fit_flux</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">tr</span><span class="p">,</span> <span class="n">d</span><span class="p">,</span> <span class="n">n_restarts</span><span class="p">,</span> <span class="n">seed</span><span class="p">):</span>
-<span class="linenos"> 96</span>    <span class="n">ytr</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">y</span><span class="p">[</span><span class="n">tr</span><span class="p">])</span>
-<span class="linenos"> 97</span>    <span class="n">gtr</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">g</span><span class="p">[</span><span class="n">tr</span><span class="p">])</span>
-<span class="linenos"> 98</span>    <span class="n">Ntr</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">N</span><span class="p">[</span><span class="n">tr</span><span class="p">])</span>
-<span class="linenos"> 99</span>    <span class="n">ay</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">ytr</span><span class="p">)</span>
-<span class="linenos">100</span>    <span class="n">sc</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">y</span><span class="p">[</span><span class="n">tr</span><span class="p">])))</span> <span class="o">+</span> <span class="mf">1e-12</span>
-<span class="linenos">101</span>    <span class="n">floor</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">percentile</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">y</span><span class="p">[</span><span class="n">tr</span><span class="p">]),</span> <span class="mi">5</span><span class="p">)),</span> <span class="mf">0.02</span> <span class="o">*</span> <span class="n">sc</span><span class="p">)</span>
-<span class="linenos">102</span>    <span class="n">eps2</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.01</span> <span class="o">*</span> <span class="n">sc</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
-<span class="linenos">103</span>    <span class="n">REL_WEIGHT</span> <span class="o">=</span> <span class="mf">1.0</span>
-<span class="linenos">104</span>
-<span class="linenos">105</span>    <span class="k">def</span><span class="w"> </span><span class="nf">loss</span><span class="p">(</span><span class="n">Z</span><span class="p">):</span>
-<span class="linenos">106</span>        <span class="n">p</span> <span class="o">=</span> <span class="n">predict</span><span class="p">(</span><span class="n">Z</span><span class="p">,</span> <span class="n">gtr</span><span class="p">,</span> <span class="n">Ntr</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span>
-<span class="linenos">107</span>        <span class="n">sh</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sqrt</span><span class="p">((</span><span class="n">ytr</span> <span class="o">-</span> <span class="n">p</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="n">eps2</span><span class="p">)</span>
-<span class="linenos">108</span>        <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">sh</span><span class="p">)</span> <span class="o">/</span> <span class="n">sc</span> <span class="o">+</span> <span class="n">REL_WEIGHT</span> <span class="o">*</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">sh</span> <span class="o">/</span> <span class="p">(</span><span class="n">ay</span> <span class="o">+</span> <span class="n">floor</span><span class="p">))</span>
-<span class="linenos">109</span>
-<span class="linenos">110</span>    <span class="n">vgj</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">jit</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">value_and_grad</span><span class="p">(</span><span class="n">loss</span><span class="p">))</span>
-<span class="linenos">111</span>
-<span class="linenos">112</span>    <span class="k">def</span><span class="w"> </span><span class="nf">vg</span><span class="p">(</span><span class="n">Z</span><span class="p">):</span>
-<span class="linenos">113</span>        <span class="n">v</span><span class="p">,</span> <span class="n">gg</span> <span class="o">=</span> <span class="n">vgj</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">Z</span><span class="p">))</span>
-<span class="linenos">114</span>        <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">v</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">gg</span><span class="p">,</span> <span class="nb">float</span><span class="p">)</span>
-<span class="linenos">115</span>
-<span class="linenos">116</span>    <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
-<span class="linenos">117</span>    <span class="n">best</span><span class="p">,</span> <span class="n">best_loss</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
-<span class="linenos">118</span>
-<span class="linenos">119</span>    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="n">Z0</span><span class="p">):</span>
-<span class="linenos">120</span>        <span class="k">nonlocal</span> <span class="n">best</span><span class="p">,</span> <span class="n">best_loss</span>
-<span class="linenos">121</span>        <span class="k">try</span><span class="p">:</span>
-<span class="linenos">122</span>            <span class="n">r</span> <span class="o">=</span> <span class="n">scipy</span><span class="o">.</span><span class="n">optimize</span><span class="o">.</span><span class="n">minimize</span><span class="p">(</span>
-<span class="linenos">123</span>                <span class="n">vg</span><span class="p">,</span>
-<span class="linenos">124</span>                <span class="n">Z0</span><span class="p">,</span>
-<span class="linenos">125</span>                <span class="n">jac</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<span class="linenos">126</span>                <span class="n">method</span><span class="o">=</span><span class="s2">"L-BFGS-B"</span><span class="p">,</span>
-<span class="linenos">127</span>                <span class="n">options</span><span class="o">=</span><span class="p">{</span><span class="s2">"maxiter"</span><span class="p">:</span> <span class="mi">3000</span><span class="p">,</span> <span class="s2">"maxfun"</span><span class="p">:</span> <span class="mi">6000</span><span class="p">,</span> <span class="s2">"ftol"</span><span class="p">:</span> <span class="mf">1e-15</span><span class="p">,</span> <span class="s2">"gtol"</span><span class="p">:</span> <span class="mf">1e-12</span><span class="p">},</span>
-<span class="linenos">128</span>            <span class="p">)</span>
-<span class="linenos">129</span>        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-<span class="linenos">130</span>            <span class="k">return</span>
-<span class="linenos">131</span>        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">fun</span><span class="p">)</span> <span class="ow">and</span> <span class="n">r</span><span class="o">.</span><span class="n">fun</span> <span class="o">&lt;</span> <span class="n">best_loss</span><span class="p">:</span>
-<span class="linenos">132</span>            <span class="n">best_loss</span><span class="p">,</span> <span class="n">best</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">fun</span><span class="p">,</span> <span class="n">r</span><span class="o">.</span><span class="n">x</span>
-<span class="linenos">133</span>
-<span class="linenos">134</span>    <span class="k">def</span><span class="w"> </span><span class="nf">num</span><span class="p">():</span>
-<span class="linenos">135</span>        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="p">[</span><span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.3</span><span class="p">)]])</span>
-<span class="linenos">136</span>
-<span class="linenos">137</span>    <span class="k">def</span><span class="w"> </span><span class="nf">den</span><span class="p">():</span>
-<span class="linenos">138</span>        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mf">0.3</span><span class="p">,</span> <span class="mf">0.6</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="p">[</span><span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)]])</span>
-<span class="linenos">139</span>
-<span class="linenos">140</span>    <span class="n">run</span><span class="p">(</span>
-<span class="linenos">141</span>        <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
-<span class="linenos">142</span>            <span class="p">[</span>
-<span class="linenos">143</span>                <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">4</span><span class="p">),</span>
-<span class="linenos">144</span>                <span class="p">[</span><span class="mf">0.1</span><span class="p">],</span>
-<span class="linenos">145</span>                <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">4</span><span class="p">),</span>
-<span class="linenos">146</span>                <span class="p">[</span><span class="mf">0.1</span><span class="p">],</span>
-<span class="linenos">147</span>                <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">4</span><span class="p">),</span>
-<span class="linenos">148</span>                <span class="p">[</span><span class="mf">1.0</span><span class="p">],</span>
-<span class="linenos">149</span>                <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">4</span><span class="p">),</span>
-<span class="linenos">150</span>                <span class="p">[</span><span class="mf">1.0</span><span class="p">],</span>
-<span class="linenos">151</span>            <span class="p">]</span>
-<span class="linenos">152</span>        <span class="p">)</span>
-<span class="linenos">153</span>    <span class="p">)</span>
-<span class="linenos">154</span>    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_restarts</span><span class="p">):</span>
-<span class="linenos">155</span>        <span class="n">run</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">num</span><span class="p">(),</span> <span class="n">num</span><span class="p">(),</span> <span class="n">den</span><span class="p">(),</span> <span class="n">den</span><span class="p">()]))</span>
-<span class="linenos">156</span>    <span class="k">return</span> <span class="n">best</span>
-<span class="linenos">157</span>
-<span class="linenos">158</span>
-<span class="linenos">159</span><span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
-<span class="linenos">160</span>    <span class="n">df</span><span class="p">,</span> <span class="n">AVG_QG</span><span class="p">,</span> <span class="n">AVG_N</span><span class="p">,</span> <span class="n">g</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">Y</span> <span class="o">=</span> <span class="n">load</span><span class="p">()</span>
-<span class="linenos">161</span>    <span class="n">n_rows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
-<span class="linenos">162</span>    <span class="n">tr</span><span class="p">,</span> <span class="n">va</span> <span class="o">=</span> <span class="n">canonical_split</span><span class="p">(</span><span class="n">n_rows</span><span class="p">)</span>
-<span class="linenos">163</span>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"rows=</span><span class="si">{</span><span class="n">n_rows</span><span class="si">}</span><span class="s2"> train=</span><span class="si">{</span><span class="n">tr</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="si">}</span><span class="s2"> valid=</span><span class="si">{</span><span class="n">va</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="si">}</span><span class="s2"> AVG_QG=</span><span class="si">{</span><span class="n">AVG_QG</span><span class="si">:</span><span class="s2">.6f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<span class="linenos">164</span>
-<span class="linenos">165</span>    <span class="n">params</span> <span class="o">=</span> <span class="p">{}</span>
-<span class="linenos">166</span>    <span class="k">for</span> <span class="n">nm</span> <span class="ow">in</span> <span class="n">FIT_FLUXES</span><span class="p">:</span>
-<span class="linenos">167</span>        <span class="n">Z</span> <span class="o">=</span> <span class="n">fit_flux</span><span class="p">(</span>
-<span class="linenos">168</span>            <span class="n">g</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">Y</span><span class="p">[</span><span class="n">nm</span><span class="p">],</span> <span class="n">tr</span><span class="p">,</span> <span class="n">DELTA</span><span class="p">[</span><span class="n">nm</span><span class="p">],</span> <span class="n">N_RESTARTS</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="nb">abs</span><span class="p">(</span><span class="nb">hash</span><span class="p">(</span><span class="n">nm</span><span class="p">))</span> <span class="o">%</span> <span class="mi">997</span> <span class="o">+</span> <span class="mi">1</span>
-<span class="linenos">169</span>        <span class="p">)</span>
-<span class="linenos">170</span>        <span class="n">params</span><span class="p">[</span><span class="n">nm</span><span class="p">]</span> <span class="o">=</span> <span class="n">Z</span>
-<span class="linenos">171</span>        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  fit </span><span class="si">{</span><span class="n">nm</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<span class="linenos">172</span>
-<span class="linenos">173</span>    <span class="k">def</span><span class="w"> </span><span class="nf">predict_all</span><span class="p">(</span><span class="n">mask</span><span class="p">):</span>
-<span class="linenos">174</span>        <span class="n">gg</span><span class="p">,</span> <span class="n">NN</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">g</span><span class="p">[</span><span class="n">mask</span><span class="p">]),</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">N</span><span class="p">[</span><span class="n">mask</span><span class="p">])</span>
-<span class="linenos">175</span>        <span class="n">out</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"q_glc"</span><span class="p">:</span> <span class="o">-</span><span class="n">g</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">*</span> <span class="n">AVG_QG</span><span class="p">}</span>
-<span class="linenos">176</span>        <span class="k">for</span> <span class="n">nm</span> <span class="ow">in</span> <span class="n">FIT_FLUXES</span><span class="p">:</span>
-<span class="linenos">177</span>            <span class="n">out</span><span class="p">[</span><span class="n">nm</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">predict</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">nm</span><span class="p">]),</span> <span class="n">gg</span><span class="p">,</span> <span class="n">NN</span><span class="p">,</span> <span class="n">DELTA</span><span class="p">[</span><span class="n">nm</span><span class="p">]))</span>
-<span class="linenos">178</span>        <span class="k">return</span> <span class="n">out</span>
-<span class="linenos">179</span>
-<span class="linenos">180</span>    <span class="n">pv</span> <span class="o">=</span> <span class="n">predict_all</span><span class="p">(</span><span class="n">va</span><span class="p">)</span>
-<span class="linenos">181</span>    <span class="nb">print</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span> <span class="o">+</span> <span class="s2">"="</span> <span class="o">*</span> <span class="mi">70</span><span class="p">)</span>
-<span class="linenos">182</span>    <span class="nb">print</span><span class="p">(</span>
-<span class="linenos">183</span>        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="s1">'flux'</span><span class="si">:</span><span class="s2">5</span><span class="si">}</span><span class="s2"> | </span><span class="si">{</span><span class="s1">'R2_all'</span><span class="si">:</span><span class="s2">&gt;8</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'NMAE_all'</span><span class="si">:</span><span class="s2">&gt;9</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'R2_low10'</span><span class="si">:</span><span class="s2">&gt;9</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'NMAE_low10'</span><span class="si">:</span><span class="s2">&gt;11</span><span class="si">}</span><span class="s2">"</span>
-<span class="linenos">184</span>    <span class="p">)</span>
-<span class="linenos">185</span>    <span class="nb">print</span><span class="p">(</span><span class="s2">"-"</span> <span class="o">*</span> <span class="mi">70</span><span class="p">)</span>
-<span class="linenos">186</span>    <span class="k">for</span> <span class="n">nm</span> <span class="ow">in</span> <span class="n">FIT_FLUXES</span><span class="p">:</span>
-<span class="linenos">187</span>        <span class="n">y</span> <span class="o">=</span> <span class="n">Y</span><span class="p">[</span><span class="n">nm</span><span class="p">][</span><span class="n">va</span><span class="p">]</span>
-<span class="linenos">188</span>        <span class="n">p</span> <span class="o">=</span> <span class="n">pv</span><span class="p">[</span><span class="n">nm</span><span class="p">]</span>
-<span class="linenos">189</span>        <span class="n">thr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">percentile</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">y</span><span class="p">),</span> <span class="mi">10</span><span class="p">)</span>
-<span class="linenos">190</span>        <span class="n">m</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">y</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">thr</span>
-<span class="linenos">191</span>        <span class="nb">print</span><span class="p">(</span>
-<span class="linenos">192</span>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">nm</span><span class="si">:</span><span class="s2">5</span><span class="si">}</span><span class="s2"> | </span><span class="si">{</span><span class="n">r2</span><span class="p">(</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">p</span><span class="p">)</span><span class="si">:</span><span class="s2">8.4f</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">nmae</span><span class="p">(</span><span class="n">y</span><span class="p">,</span><span class="w"> </span><span class="n">p</span><span class="p">)</span><span class="si">:</span><span class="s2">9.4f</span><span class="si">}</span><span class="s2"> "</span>
-<span class="linenos">193</span>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">r2</span><span class="p">(</span><span class="n">y</span><span class="p">[</span><span class="n">m</span><span class="p">],</span><span class="w"> </span><span class="n">p</span><span class="p">[</span><span class="n">m</span><span class="p">])</span><span class="si">:</span><span class="s2">9.4f</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">nmae</span><span class="p">(</span><span class="n">y</span><span class="p">[</span><span class="n">m</span><span class="p">],</span><span class="w"> </span><span class="n">p</span><span class="p">[</span><span class="n">m</span><span class="p">])</span><span class="si">:</span><span class="s2">11.4f</span><span class="si">}</span><span class="s2">"</span>
-<span class="linenos">194</span>        <span class="p">)</span>
-<span class="linenos">195</span>
-<span class="linenos">196</span>    <span class="c1"># Boundedness certificate over the physical sampling box.</span>
-<span class="linenos">197</span>    <span class="n">rng2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos">198</span>    <span class="n">NB</span> <span class="o">=</span> <span class="mi">200000</span>
-<span class="linenos">199</span>    <span class="n">BOX_LO</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">])</span>
-<span class="linenos">200</span>    <span class="n">BOX_HI</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">])</span>
-<span class="linenos">201</span>    <span class="n">U</span> <span class="o">=</span> <span class="n">rng2</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">NB</span><span class="p">,</span> <span class="mi">5</span><span class="p">))</span> <span class="o">*</span> <span class="p">(</span><span class="n">BOX_HI</span> <span class="o">-</span> <span class="n">BOX_LO</span><span class="p">)</span> <span class="o">+</span> <span class="n">BOX_LO</span>
-<span class="linenos">202</span>    <span class="n">gb</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">U</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="n">AVG_QG</span><span class="p">)</span>
-<span class="linenos">203</span>    <span class="n">Nb</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">U</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">:</span><span class="mi">5</span><span class="p">]</span> <span class="o">/</span> <span class="n">AVG_N</span><span class="p">)</span>
-<span class="linenos">204</span>    <span class="nb">print</span><span class="p">(</span><span class="s2">"-"</span> <span class="o">*</span> <span class="mi">70</span><span class="p">)</span>
-<span class="linenos">205</span>    <span class="nb">print</span><span class="p">(</span>
-<span class="linenos">206</span>        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="s1">'flux'</span><span class="si">:</span><span class="s2">5</span><span class="si">}</span><span class="s2"> | </span><span class="si">{</span><span class="s1">'max|flux| box'</span><span class="si">:</span><span class="s2">&gt;14</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'max|flux| data'</span><span class="si">:</span><span class="s2">&gt;15</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="s1">'overshoot'</span><span class="si">:</span><span class="s2">&gt;11</span><span class="si">}</span><span class="s2">"</span>
-<span class="linenos">207</span>    <span class="p">)</span>
-<span class="linenos">208</span>    <span class="n">min_den</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
-<span class="linenos">209</span>    <span class="n">all_ok</span> <span class="o">=</span> <span class="kc">True</span>
-<span class="linenos">210</span>    <span class="k">for</span> <span class="n">nm</span> <span class="ow">in</span> <span class="n">FIT_FLUXES</span><span class="p">:</span>
-<span class="linenos">211</span>        <span class="n">Z</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">nm</span><span class="p">]),</span> <span class="n">DELTA</span><span class="p">[</span><span class="n">nm</span><span class="p">]</span>
-<span class="linenos">212</span>        <span class="n">dd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">((</span><span class="n">pos</span><span class="p">(</span><span class="n">aff</span><span class="p">(</span><span class="n">Z</span><span class="p">[</span><span class="mi">10</span><span class="p">:</span><span class="mi">15</span><span class="p">],</span> <span class="n">Nb</span><span class="p">))</span> <span class="o">+</span> <span class="n">d</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">pos</span><span class="p">(</span><span class="n">aff</span><span class="p">(</span><span class="n">Z</span><span class="p">[</span><span class="mi">15</span><span class="p">:</span><span class="mi">20</span><span class="p">],</span> <span class="n">Nb</span><span class="p">))</span> <span class="o">+</span> <span class="n">d</span><span class="p">))</span>
-<span class="linenos">213</span>        <span class="n">min_den</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">min_den</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">dd</span><span class="o">.</span><span class="n">min</span><span class="p">()))</span>
-<span class="linenos">214</span>        <span class="n">m_box</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">predict</span><span class="p">(</span><span class="n">Z</span><span class="p">,</span> <span class="n">gb</span><span class="p">,</span> <span class="n">Nb</span><span class="p">,</span> <span class="n">d</span><span class="p">)))))</span>
-<span class="linenos">215</span>        <span class="n">m_dat</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">Y</span><span class="p">[</span><span class="n">nm</span><span class="p">])))</span>
-<span class="linenos">216</span>        <span class="n">ratio</span> <span class="o">=</span> <span class="n">m_box</span> <span class="o">/</span> <span class="n">m_dat</span> <span class="k">if</span> <span class="n">m_dat</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
-<span class="linenos">217</span>        <span class="n">ok</span> <span class="o">=</span> <span class="n">ratio</span> <span class="o">&lt;=</span> <span class="mf">3.0</span>
-<span class="linenos">218</span>        <span class="n">all_ok</span> <span class="o">&amp;=</span> <span class="n">ok</span>
-<span class="linenos">219</span>        <span class="nb">print</span><span class="p">(</span>
-<span class="linenos">220</span>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">nm</span><span class="si">:</span><span class="s2">5</span><span class="si">}</span><span class="s2"> | </span><span class="si">{</span><span class="n">m_box</span><span class="si">:</span><span class="s2">14.1f</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">m_dat</span><span class="si">:</span><span class="s2">15.1f</span><span class="si">}</span><span class="s2"> "</span>
-<span class="linenos">221</span>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">ratio</span><span class="si">:</span><span class="s2">10.1f</span><span class="si">}</span><span class="s2">x | </span><span class="si">{</span><span class="s1">'OK'</span><span class="w"> </span><span class="k">if</span><span class="w"> </span><span class="n">ok</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="s1">'MISS'</span><span class="si">}</span><span class="s2">"</span>
-<span class="linenos">222</span>        <span class="p">)</span>
-<span class="linenos">223</span>    <span class="nb">print</span><span class="p">(</span><span class="s2">"-"</span> <span class="o">*</span> <span class="mi">70</span><span class="p">)</span>
-<span class="linenos">224</span>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"pole-free: min denominator over box = </span><span class="si">{</span><span class="n">min_den</span><span class="si">:</span><span class="s2">.5f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<span class="linenos">225</span>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"ALL PASS: </span><span class="si">{</span><span class="n">all_ok</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<span class="linenos">226</span>
-<span class="linenos">227</span>    <span class="n">np</span><span class="o">.</span><span class="n">savez</span><span class="p">(</span>
-<span class="linenos">228</span>        <span class="s2">"02_surrogate_params.npz"</span><span class="p">,</span>
-<span class="linenos">229</span>        <span class="n">AVG_QG</span><span class="o">=</span><span class="n">AVG_QG</span><span class="p">,</span>
-<span class="linenos">230</span>        <span class="n">AVG_N</span><span class="o">=</span><span class="n">AVG_N</span><span class="p">,</span>
-<span class="linenos">231</span>        <span class="n">DELTA</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">DELTA</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">FIT_FLUXES</span><span class="p">]),</span>
-<span class="linenos">232</span>        <span class="n">fit_fluxes</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">FIT_FLUXES</span><span class="p">),</span>
-<span class="linenos">233</span>        <span class="o">**</span><span class="p">{</span><span class="sa">f</span><span class="s2">"Z_</span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s2">"</span><span class="p">:</span> <span class="n">params</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">FIT_FLUXES</span><span class="p">},</span>
-<span class="linenos">234</span>    <span class="p">)</span>
-<span class="linenos">235</span>
-<span class="linenos">236</span>    <span class="k">def</span><span class="w"> </span><span class="nf">_fac</span><span class="p">(</span><span class="n">w</span><span class="p">):</span>
-<span class="linenos">237</span>        <span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"n_X"</span><span class="p">,</span> <span class="s2">"n_M"</span><span class="p">,</span> <span class="s2">"n_A"</span><span class="p">,</span> <span class="s2">"n_S"</span><span class="p">]</span>
-<span class="linenos">238</span>        <span class="n">terms</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">w</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="si">:</span><span class="s2">+.8g</span><span class="si">}</span><span class="s2">*</span><span class="si">{</span><span class="n">names</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">)]</span> <span class="o">+</span> <span class="p">[</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">w</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span><span class="si">:</span><span class="s2">+.8g</span><span class="si">}</span><span class="s2">"</span><span class="p">]</span>
-<span class="linenos">239</span>        <span class="k">return</span> <span class="s2">" "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">terms</span><span class="p">)</span><span class="o">.</span><span class="n">lstrip</span><span class="p">(</span><span class="s2">"+"</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
-<span class="linenos">240</span>
-<span class="linenos">241</span>    <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span>
-<span class="linenos">242</span>        <span class="s2">"qG  = x_data[0]"</span><span class="p">,</span>
-<span class="linenos">243</span>        <span class="s2">"n_X = x_data[1]"</span><span class="p">,</span>
-<span class="linenos">244</span>        <span class="s2">"n_M = x_data[2]"</span><span class="p">,</span>
-<span class="linenos">245</span>        <span class="s2">"n_A = x_data[3]"</span><span class="p">,</span>
-<span class="linenos">246</span>        <span class="s2">"n_S = x_data[4]"</span><span class="p">,</span>
-<span class="linenos">247</span>        <span class="s2">"pos = lambda B: 0.5 * (B + jnp.sqrt(B * B + 1.5))"</span><span class="p">,</span>
-<span class="linenos">248</span>        <span class="sa">f</span><span class="s2">"q_glc = </span><span class="si">{</span><span class="o">-</span><span class="n">AVG_QG</span><span class="si">:</span><span class="s2">.8f</span><span class="si">}</span><span class="s2"> * qG"</span><span class="p">,</span>
-<span class="linenos">249</span>    <span class="p">]</span>
-<span class="linenos">250</span>    <span class="k">for</span> <span class="n">nm</span> <span class="ow">in</span> <span class="n">FIT_FLUXES</span><span class="p">:</span>
-<span class="linenos">251</span>        <span class="n">Z</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="n">nm</span><span class="p">],</span> <span class="n">DELTA</span><span class="p">[</span><span class="n">nm</span><span class="p">]</span>
-<span class="linenos">252</span>        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<span class="linenos">253</span>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">nm</span><span class="si">:</span><span class="s2">4s</span><span class="si">}</span><span class="s2"> = qG * (</span><span class="si">{</span><span class="n">_fac</span><span class="p">(</span><span class="n">Z</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">5</span><span class="p">])</span><span class="si">}</span><span class="s2">) * (</span><span class="si">{</span><span class="n">_fac</span><span class="p">(</span><span class="n">Z</span><span class="p">[</span><span class="mi">5</span><span class="p">:</span><span class="mi">10</span><span class="p">])</span><span class="si">}</span><span class="s2">)"</span>
-<span class="linenos">254</span>            <span class="sa">f</span><span class="s2">" / ((pos(</span><span class="si">{</span><span class="n">_fac</span><span class="p">(</span><span class="n">Z</span><span class="p">[</span><span class="mi">10</span><span class="p">:</span><span class="mi">15</span><span class="p">])</span><span class="si">}</span><span class="s2">) + </span><span class="si">{</span><span class="n">d</span><span class="si">}</span><span class="s2">) * (pos(</span><span class="si">{</span><span class="n">_fac</span><span class="p">(</span><span class="n">Z</span><span class="p">[</span><span class="mi">15</span><span class="p">:</span><span class="mi">20</span><span class="p">])</span><span class="si">}</span><span class="s2">) + </span><span class="si">{</span><span class="n">d</span><span class="si">}</span><span class="s2">))"</span>
-<span class="linenos">255</span>        <span class="p">)</span>
-<span class="linenos">256</span>    <span class="n">body</span> <span class="o">=</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span>
-<span class="linenos">257</span>    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s2">"02_surrogate_body.txt"</span><span class="p">,</span> <span class="s2">"w"</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-<span class="linenos">258</span>        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">body</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
-<span class="linenos">259</span>    <span class="nb">print</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span> <span class="o">+</span> <span class="n">body</span><span class="p">)</span>
-<span class="linenos">260</span>    <span class="k">return</span> <span class="n">all_ok</span>
-<span class="linenos">261</span>
-<span class="linenos">262</span>
-<span class="linenos">263</span><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">"__main__"</span><span class="p">:</span>
-<span class="linenos">264</span>    <span class="n">ok</span> <span class="o">=</span> <span class="n">main</span><span class="p">()</span>
-<span class="linenos">265</span>    <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">0</span> <span class="k">if</span> <span class="n">ok</span> <span class="k">else</span> <span class="mi">1</span><span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</details><p>Validation R² ≥ 0.999 on all four fitted fluxes; boundedness certificate passed (max
-overshoot 1.7× over the sampling box, min denominator 0.199 &gt; 0). Neither script runs
-as part of building these docs: solving 10,000 LPs takes a couple of minutes and
-needs <code class="docutils literal notranslate"><span class="pre">cobra</span></code>, which every doc build should not pay for. The coefficients are frozen
-into <code class="docutils literal notranslate"><span class="pre">surrogate_fba</span></code> above.</p>
+<h2>How the Surrogate Was Fit<a class="headerlink" href="#how-the-surrogate-was-fit" title="Link to this heading">¶</a></h2>
+<p>The surrogate is fit offline the same way as the FBA-Hyb paper
+<a href="#ref-fbahyb">[1]</a>: 10,000 real FBA solves on <code class="docutils literal notranslate"><span class="pre">e_coli_core.xml</span></code>
+<a href="#ref-ecolicore">[2]</a>, then a pole-free rational fit against that data with
+a boundedness certificate checked before acceptance (validation R² ≥ 0.999 on all four
+fitted fluxes). The fitting scripts live in <code class="docutils literal notranslate"><span class="pre">examples/gallery_fba_hyb/</span></code> for anyone who
+wants to reproduce it; they don’t run as part of building these docs, since solving
+10,000 LPs takes a couple of minutes and needs <code class="docutils literal notranslate"><span class="pre">cobra</span></code>, which every doc build should
+not pay for. The coefficients are frozen into <code class="docutils literal notranslate"><span class="pre">surrogate_fba</span></code> above.</p>
 </section>
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
@@ -1251,19 +549,21 @@ into <code class="docutils literal notranslate"><span class="pre">surrogate_fba<
 inputs are <code class="docutils literal notranslate"><span class="pre">trainable_field()</span></code>s; <code class="docutils literal notranslate"><span class="pre">surrogate_fba</span></code> itself has no learnable
 parameters at all.</p></li>
 <li><p><strong>A surrogate that looks accurate on validation data can still be dangerous.</strong>
-The boundedness certificate, not validation R² alone, is what predicts whether
-training will stay stable: an unconstrained fit can free-run to far outside the
-training data’s range in the sparse corners of a 5-dimensional sampling box.</p></li>
+The boundedness certificate is what actually predicts whether training will stay
+stable: an unconstrained fit can free-run to far outside the training data’s range
+in the sparse corners of a 5-dimensional sampling box.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">_bounded_softplus</span></code> keeps the MLPs inside the surrogate’s fitted range.</strong>
 Removing it does not error immediately: the surrogate just starts extrapolating
 into territory the boundedness certificate never checked.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">n_S</span></code> fixed at <code class="docutils literal notranslate"><span class="pre">0.0</span></code> is a real modeling choice, not a placeholder.</strong> It means
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">n_S</span></code> fixed at <code class="docutils literal notranslate"><span class="pre">0.0</span></code> is a deliberate modeling choice.</strong> It means
 this reaction module can never represent a deliberate product, by construction.</p></li>
 </ul>
 </section>
 <section id="see-also">
-<h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
-<p>Run the example yourself at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_fba_hyb/</span></code>.</p>
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
+<code class="docutils literal notranslate"><span class="pre">examples/gallery_fba_hyb/</span></code> at the repo root, no docs build required. This page’s own
+executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_fba_hyb/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="pls_dfba.html"><span class="std std-doc">PLS-dFBA</span></a>: builds on this exact surrogate, adds a deliberate
 product and a media-blend-aware PLS component.</p></li>
@@ -1308,7 +608,7 @@ metabolic networks into hybrid bioprocess models. <em>bioRxiv</em>.
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Knowledge transfer</div>
+                <div class="title">Knowledge Transfer</div>
                 
               </div>
             </a>
@@ -1343,13 +643,13 @@ metabolic networks into hybrid bioprocess models. <em>bioRxiv</em>.
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">FBA-Hyb</a><ul>
-<li><a class="reference internal" href="#the-surrogate">The surrogate</a></li>
-<li><a class="reference internal" href="#the-reaction-module">The reaction module</a></li>
+<li><a class="reference internal" href="#the-surrogate">The Surrogate</a></li>
+<li><a class="reference internal" href="#the-reaction-module">The Reaction Module</a></li>
 <li><a class="reference internal" href="#training">Training</a></li>
-<li><a class="reference internal" href="#what-the-model-believes-is-happening">What the model believes is happening</a></li>
-<li><a class="reference internal" href="#how-the-surrogate-was-fit">How the surrogate was fit</a></li>
+<li><a class="reference internal" href="#what-the-model-believes-is-happening">What the Model Believes Is Happening</a></li>
+<li><a class="reference internal" href="#how-the-surrogate-was-fit">How the Surrogate Was Fit</a></li>
 <li><a class="reference internal" href="#gotchas">Gotchas</a></li>
-<li><a class="reference internal" href="#see-also">See also</a></li>
+<li><a class="reference internal" href="#see-also">See Also</a></li>
 <li><a class="reference internal" href="#references">References</a></li>
 </ul>
 </li>

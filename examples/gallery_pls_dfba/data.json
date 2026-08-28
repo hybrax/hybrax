@@ -251,7 +251,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "media_blend_fraction": {
+          "name": "media_blend_fraction",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -520,7 +534,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "media_blend_fraction": {
+          "name": "media_blend_fraction",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.33
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -789,7 +817,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "media_blend_fraction": {
+          "name": "media_blend_fraction",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 0.67
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",
@@ -1058,7 +1100,21 @@
           }
         }
       },
-      "process_variables": {},
+      "process_variables": {
+        "media_blend_fraction": {
+          "name": "media_blend_fraction",
+          "unit": "-",
+          "is_controlled": true,
+          "values": {
+            "type": "StaticVariable",
+            "value": 1.0
+          },
+          "bounds": {
+            "lower": 0.0,
+            "upper": 1.0
+          }
+        }
+      },
       "volume": {
         "initial_volume": 1.0,
         "unit": "L",

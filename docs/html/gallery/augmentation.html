@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Feeds, boluses and samples" href="fed_batch.html"><link rel="prev" title="Pseudobatch splines through a jump" href="pseudobatch_splines.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Feeds, boluses and samples" href="fed_batch.html"><link rel="prev" title="Pseudobatch Splines Through a Jump" href="pseudobatch_splines.html">
         <link rel="prefetch" href="../_static/hybrax_logo.png" as="image">
 
     <link rel="shortcut icon" href="../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -376,61 +376,16 @@
           <section class="tex2jax_ignore mathjax_ignore" id="augmentation">
 <h1>Augmentation<a class="headerlink" href="#augmentation" title="Link to this heading">¶</a></h1>
 <blockquote>
-<div><p><strong>Demonstrates.</strong> Generating synthetic sibling processes from a single run with
-<code class="docutils literal notranslate"><span class="pre">prepare.augmentation</span></code>, the automatic diagnostic plot, and <code class="docutils literal notranslate"><span class="pre">augment_state_values</span></code> for
-per-state control over what gets generated.</p>
+<div><p>This example generates synthetic sibling processes from a single run with
+<code class="docutils literal notranslate"><span class="pre">prepare.augmentation</span></code>, producing an automatic diagnostic plot. <code class="docutils literal notranslate"><span class="pre">augment_state_values</span></code>
+then gives per-state control over what gets generated.</p>
 </div></blockquote>
 <p><code class="docutils literal notranslate"><span class="pre">demo_fedbatch</span></code> is one run. That is a real, common situation: a single mammalian
 fed-batch campaign, expensive to repeat, with too little data on its own to train
 anything but the simplest model. Augmentation trades that for more (synthetic, noisy)
 training signal, without pretending you have more real experiments than you do.</p>
-<p>The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:</p>
-<details class="sd-sphinx-override sd-dropdown sd-card sd-mb-3">
-<summary class="sd-summary-title sd-card-header">
-<span class="sd-summary-text">Full <code class="docutils literal notranslate"><span class="pre">custom.py</span></code></span><span class="sd-summary-state-marker sd-summary-chevron-right"><svg version="1.1" width="1.5em" height="1.5em" class="sd-octicon sd-octicon-chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.72 18.78a.75.75 0 0 1 0-1.06L14.44 12 8.72 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0Z"></path></svg></span></summary><div class="sd-summary-content sd-card-body docutils">
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="sd">"""Augmenting a single fed-batch run: splines first, then a monotonicity fix.</span>
-<span class="linenos"> 2</span>
-<span class="linenos"> 3</span><span class="sd">Two things a plain "just turn on augmentation" attempt misses:</span>
-<span class="linenos"> 4</span>
-<span class="linenos"> 5</span><span class="sd">1. Augmentation resamples each modeled state onto new timepoints, which needs</span>
-<span class="linenos"> 6</span><span class="sd">   a fitted spline, not just the raw measured samples. `demo_fedbatch` (like</span>
-<span class="linenos"> 7</span><span class="sd">   any freshly loaded hybrax.format file) has none yet: `transform_process_collection`</span>
-<span class="linenos"> 8</span><span class="sd">   fits one per modeled reactor-medium component before augmentation runs.</span>
-<span class="linenos"> 9</span><span class="sd">2. Default augmentation adds independent Gaussian noise to every measured</span>
-<span class="linenos">10</span><span class="sd">   timepoint. That is fine for glucose or biomass, but ``product`` here is a</span>
-<span class="linenos">11</span><span class="sd">   cumulative quantity: it should never decrease, and independent noise can</span>
-<span class="linenos">12</span><span class="sd">   easily produce a synthetic child where it does. ``augment_state_values``</span>
-<span class="linenos">13</span><span class="sd">   fixes exactly that, only for the state that needs it.</span>
-<span class="linenos">14</span><span class="sd">"""</span>
-<span class="linenos">15</span>
-<span class="linenos">16</span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="linenos">17</span>
-<span class="linenos">18</span><span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.splines</span><span class="w"> </span><span class="kn">import</span> <span class="n">fit_timeseries_spline</span>
-<span class="linenos">19</span>
-<span class="linenos">20</span>
-<span class="linenos">21</span><span class="k">def</span><span class="w"> </span><span class="nf">transform_process_collection</span><span class="p">(</span><span class="n">collection</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
-<span class="linenos">22</span>    <span class="k">del</span> <span class="n">config</span>
-<span class="linenos">23</span>    <span class="k">for</span> <span class="n">process</span> <span class="ow">in</span> <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
-<span class="linenos">24</span>        <span class="k">for</span> <span class="n">component</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
-<span class="linenos">25</span>            <span class="n">component</span><span class="o">.</span><span class="n">concentration</span> <span class="o">=</span> <span class="n">fit_timeseries_spline</span><span class="p">(</span>
-<span class="linenos">26</span>                <span class="n">component</span><span class="o">.</span><span class="n">concentration</span><span class="p">,</span> <span class="n">smoothing_s</span><span class="o">=</span><span class="mf">0.0</span>
-<span class="linenos">27</span>            <span class="p">)</span>
-<span class="linenos">28</span>    <span class="k">return</span> <span class="n">collection</span>
-<span class="linenos">29</span>
-<span class="linenos">30</span>
-<span class="linenos">31</span><span class="k">def</span><span class="w"> </span><span class="nf">augment_state_values</span><span class="p">(</span>
-<span class="linenos">32</span>    <span class="o">*</span><span class="p">,</span> <span class="n">parent_name</span><span class="p">,</span> <span class="n">child_name</span><span class="p">,</span> <span class="n">state_name</span><span class="p">,</span> <span class="n">times</span><span class="p">,</span> <span class="n">base_values</span><span class="p">,</span> <span class="n">augmented_values</span><span class="p">,</span> <span class="n">config</span>
-<span class="linenos">33</span><span class="p">):</span>
-<span class="linenos">34</span>    <span class="k">del</span> <span class="n">parent_name</span><span class="p">,</span> <span class="n">child_name</span><span class="p">,</span> <span class="n">times</span><span class="p">,</span> <span class="n">base_values</span><span class="p">,</span> <span class="n">config</span>
-<span class="linenos">35</span>    <span class="k">if</span> <span class="n">state_name</span> <span class="o">!=</span> <span class="s2">"product"</span><span class="p">:</span>
-<span class="linenos">36</span>        <span class="k">return</span> <span class="n">augmented_values</span>
-<span class="linenos">37</span>    <span class="c1"># Default noise already computed; just repair monotonicity in-place.</span>
-<span class="linenos">38</span>    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="o">.</span><span class="n">accumulate</span><span class="p">(</span><span class="n">augmented_values</span><span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</details><p>Everything below runs in <code class="docutils literal notranslate"><span class="pre">WORK</span></code>, printed at the end: inspect, copy or modify the real
+<p>The walkthrough below shows the file in pieces, next to the reasoning for each one.</p>
+<p>Everything below runs in <code class="docutils literal notranslate"><span class="pre">WORK</span></code>, printed at the end: inspect, copy or modify the real
 files it produced.</p>
 <section id="configuration">
 <h2>Configuration<a class="headerlink" href="#configuration" title="Link to this heading">¶</a></h2>
@@ -444,10 +399,10 @@ resampled timepoints each has, and a relative noise level per state.</p>
 </pre></div>
 </div>
 <p>Only states named in <code class="docutils literal notranslate"><span class="pre">noise_std</span></code> are touched. <code class="docutils literal notranslate"><span class="pre">n_time_points</span></code> need not match the
-parent’s own sampling: children are resampled, not resliced.</p>
+parent’s own sampling: children are resampled onto new timepoints.</p>
 </section>
 <section id="splines-first">
-<h2>Splines first<a class="headerlink" href="#splines-first" title="Link to this heading">¶</a></h2>
+<h2>Splines First<a class="headerlink" href="#splines-first" title="Link to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">1</span><span class="k">def</span><span class="w"> </span><span class="nf">transform_process_collection</span><span class="p">(</span><span class="n">collection</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
 <span class="linenos">2</span>    <span class="k">del</span> <span class="n">config</span>
 <span class="linenos">3</span>    <span class="k">for</span> <span class="n">process</span> <span class="ow">in</span> <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
@@ -458,7 +413,7 @@ parent’s own sampling: children are resampled, not resliced.</p>
 </pre></div>
 </div>
 <p>Augmentation resamples each modeled state onto new timepoints, and that needs a fitted
-spline, not just the raw measured samples. A freshly loaded hybrax.format file has none:
+spline. A freshly loaded hybrax.format file has none:
 without this hook, <code class="docutils literal notranslate"><span class="pre">prepare</span></code> fails fast with <code class="docutils literal notranslate"><span class="pre">&quot;modeled</span> <span class="pre">state</span> <span class="pre">'biomass'</span> <span class="pre">requires</span> <span class="pre">a</span> <span class="pre">spline&quot;</span></code> rather than guessing. <code class="docutils literal notranslate"><span class="pre">custom_py</span></code> must be set at the top level of the config
 (not inside <code class="docutils literal notranslate"><span class="pre">prepare</span></code>) for <code class="docutils literal notranslate"><span class="pre">prepare</span></code> to pick this hook up at all.</p>
 <div class="cell tag_remove-input docutils container">
@@ -470,7 +425,7 @@ without this hook, <code class="docutils literal notranslate"><span class="pre">
 </div>
 </section>
 <section id="what-got-generated">
-<h2>What got generated<a class="headerlink" href="#what-got-generated" title="Link to this heading">¶</a></h2>
+<h2>What Got Generated<a class="headerlink" href="#what-got-generated" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <img alt="../_images/79bc26faafe94db6acbecc40e13b14ab31ce1301b91c92f4bb4c7a81ba41ed25.png" src="../_images/79bc26faafe94db6acbecc40e13b14ab31ce1301b91c92f4bb4c7a81ba41ed25.png" />
@@ -488,7 +443,7 @@ physically invalid concentration, but it is a real sign to look at the plot rath
 trust the config blindly.</p>
 </section>
 <section id="fixing-what-default-noise-gets-wrong">
-<h2>Fixing what default noise gets wrong<a class="headerlink" href="#fixing-what-default-noise-gets-wrong" title="Link to this heading">¶</a></h2>
+<h2>Fixing What Default Noise Gets Wrong<a class="headerlink" href="#fixing-what-default-noise-gets-wrong" title="Link to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">1</span>
 <span class="linenos">2</span><span class="k">def</span><span class="w"> </span><span class="nf">augment_state_values</span><span class="p">(</span>
 <span class="linenos">3</span>    <span class="o">*</span><span class="p">,</span> <span class="n">parent_name</span><span class="p">,</span> <span class="n">child_name</span><span class="p">,</span> <span class="n">state_name</span><span class="p">,</span> <span class="n">times</span><span class="p">,</span> <span class="n">base_values</span><span class="p">,</span> <span class="n">augmented_values</span><span class="p">,</span> <span class="n">config</span>
@@ -509,7 +464,7 @@ transform and can repair them: here, a running maximum.</p>
   fedbatch_1__aug_002: parent=fedbatch_1  product monotone=True
 </pre></div>
 </div>
-<div class="output stderr highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>/tmp/ipykernel_2036207/1178419899.py:19: UserWarning: fedbatch_1: spline for reactor-medium component 'glucose' evaluated below zero during augmentation
+<div class="output stderr highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>/tmp/ipykernel_2315134/1178419899.py:19: UserWarning: fedbatch_1: spline for reactor-medium component 'glucose' evaluated below zero during augmentation
   augmented = augmentation.augment_process_collection(raw, cfg, custom.augment_state_values)
 </pre></div>
 </div>
@@ -517,10 +472,10 @@ transform and can repair them: here, a running maximum.</p>
 </div>
 </section>
 <section id="training-on-the-enlarged-dataset">
-<h2>Training on the enlarged dataset<a class="headerlink" href="#training-on-the-enlarged-dataset" title="Link to this heading">¶</a></h2>
+<h2>Training on the Enlarged Dataset<a class="headerlink" href="#training-on-the-enlarged-dataset" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 13:15:46 INFO __main__: training complete: first_mean_loss=356.227 last_mean_loss=1.14974 delta=-355.077
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:06:16 INFO __main__: training complete: first_mean_loss=356.227 last_mean_loss=1.14974 delta=-355.077
 </pre></div>
 </div>
 </div>
@@ -541,28 +496,30 @@ prepared augmentation diagnostic: ./source/_data/out/runs/gallery_augmentation/p
 <ul class="simple">
 <li><p><strong>Augmentation needs a fitted spline on every state it touches.</strong> Fit one in
 <code class="docutils literal notranslate"><span class="pre">transform_process_collection</span></code> before augmenting; a freshly loaded file has none.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">custom_py</span></code> is a top-level config key</strong>, not nested inside <code class="docutils literal notranslate"><span class="pre">prepare</span></code>. Nesting it
-there silently means no hooks are found (<code class="docutils literal notranslate"><span class="pre">prepare</span> <span class="pre">hooks</span> <span class="pre">default:</span> <span class="pre">transform_process_collection,</span> <span class="pre">augment_state_values</span></code> in the log is the tell).</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">custom_py</span></code> is a top-level config key.</strong> Nesting it inside <code class="docutils literal notranslate"><span class="pre">prepare</span></code> silently means
+no hooks are found (<code class="docutils literal notranslate"><span class="pre">prepare</span> <span class="pre">hooks</span> <span class="pre">default:</span> <span class="pre">transform_process_collection,</span> <span class="pre">augment_state_values</span></code> in the log is the tell).</p></li>
 <li><p><strong>Only states named in <code class="docutils literal notranslate"><span class="pre">noise_std</span></code> are generated with noise</strong>; everything else is
 copied from the parent’s resampled trajectory unchanged.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">augment_state_values</span></code> runs after the default noise</strong>, not instead of it: it
-receives <code class="docutils literal notranslate"><span class="pre">augmented_values</span></code> already populated, to adjust rather than replace outright.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">augment_state_values</span></code> runs after the default noise</strong>: it receives <code class="docutils literal notranslate"><span class="pre">augmented_values</span></code>
+already populated, so it adjusts rather than replaces them outright.</p></li>
 <li><p><strong>A spline can dip below zero between measurements</strong>, especially near sharp features
 like a near-zero glucose plateau. Reactor-medium children are clipped to <code class="docutils literal notranslate"><span class="pre">≥</span> <span class="pre">0</span></code>
 afterward, but check the diagnostic plot for any state where this matters.</p></li>
 <li><p><strong>Cross-validation must stay group-aware.</strong> A parent and its synthetic children carry
 the same information; splitting them across train and holdout leaks the answer. Use
 <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s LOO (<a class="reference internal" href="loo.html"><span class="std std-doc">worked example</span></a>), which handles this for you.</p></li>
-<li><p><strong>This does not manufacture new information.</strong> It resamples and perturbs what one run
-already told you; it cannot substitute for an experiment you have not run.</p></li>
+<li><p><strong>This resamples and perturbs what one run already told you.</strong> It cannot substitute
+for an experiment you have not run.</p></li>
 </ul>
 </section>
 <section id="see-also">
-<h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
-<p>Run the example yourself at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_augmentation/</span></code>.</p>
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
+<code class="docutils literal notranslate"><span class="pre">examples/gallery_augmentation/</span></code> at the repo root, no docs build required. This page’s
+own executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_augmentation/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../train/prepare.html#augmentation"><span class="std std-ref">Prepare</span></a>: the config reference.</p></li>
-<li><p><a class="reference internal" href="loo.html"><span class="std std-doc">Cross-validation, worked</span></a>: why augmented data needs group-aware folds.</p></li>
+<li><p><a class="reference internal" href="loo.html"><span class="std std-doc">Cross-Validation, Worked</span></a>: why augmented data needs group-aware folds.</p></li>
 <li><p><a class="reference internal" href="fed_batch.html"><span class="std std-doc">Fed-batch</span></a>: the un-augmented version of this same dataset.</p></li>
 </ul>
 </section>
@@ -589,7 +546,7 @@ already told you; it cannot substitute for an experiment you have not run.</p></
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Pseudobatch splines through a jump</div>
+                <div class="title">Pseudobatch Splines Through a Jump</div>
                 
               </div>
             </a>
@@ -625,12 +582,12 @@ already told you; it cannot substitute for an experiment you have not run.</p></
             <ul>
 <li><a class="reference internal" href="#">Augmentation</a><ul>
 <li><a class="reference internal" href="#configuration">Configuration</a></li>
-<li><a class="reference internal" href="#splines-first">Splines first</a></li>
-<li><a class="reference internal" href="#what-got-generated">What got generated</a></li>
-<li><a class="reference internal" href="#fixing-what-default-noise-gets-wrong">Fixing what default noise gets wrong</a></li>
-<li><a class="reference internal" href="#training-on-the-enlarged-dataset">Training on the enlarged dataset</a></li>
+<li><a class="reference internal" href="#splines-first">Splines First</a></li>
+<li><a class="reference internal" href="#what-got-generated">What Got Generated</a></li>
+<li><a class="reference internal" href="#fixing-what-default-noise-gets-wrong">Fixing What Default Noise Gets Wrong</a></li>
+<li><a class="reference internal" href="#training-on-the-enlarged-dataset">Training on the Enlarged Dataset</a></li>
 <li><a class="reference internal" href="#gotchas">Gotchas</a></li>
-<li><a class="reference internal" href="#see-also">See also</a></li>
+<li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>
 </ul>

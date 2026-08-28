@@ -7,11 +7,11 @@
         <link rel="prefetch" href="../_static/hybrax_logo.png" as="image">
 
     <link rel="shortcut icon" href="../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Pseudobatch splines through a jump - Bioprocess Modeling with Hybrax</title>
+        <title>Pseudobatch Splines Through a Jump - Bioprocess Modeling with Hybrax</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -374,22 +374,21 @@
         </div>
         <article role="main" id="furo-main-content">
           <section class="tex2jax_ignore mathjax_ignore" id="pseudobatch-splines-through-a-jump">
-<h1>Pseudobatch splines through a jump<a class="headerlink" href="#pseudobatch-splines-through-a-jump" title="Link to this heading">¶</a></h1>
+<h1>Pseudobatch Splines Through a Jump<a class="headerlink" href="#pseudobatch-splines-through-a-jump" title="Link to this heading">¶</a></h1>
 <blockquote>
-<div><p><strong>Demonstrates.</strong> Recovering a smooth concentration curve from just 5 noisy
-measurements straddling a discrete feed jump, checked against a known ground truth.
-hybrax.format only: no reaction module, no training.</p>
+<div><p>Recovering a smooth concentration curve from just 5 noisy measurements straddling a
+discrete feed jump, checked against a known ground truth. Uses hybrax.format only,
+with no reaction module or training involved.</p>
 </div></blockquote>
 <p>The other gallery entries fit a model. This one fits a curve: it exercises
 <a class="reference internal" href="../format/pseudobatch_transform.html"><span class="std std-doc">the pseudobatch transform</span></a> and
 <a class="reference internal" href="../format/time_series_and_splines.html"><span class="std std-doc">spline fitting</span></a> on their own, with nothing else
 in the way.</p>
 <section id="the-setup">
-<h2>The setup<a class="headerlink" href="#the-setup" title="Link to this heading">¶</a></h2>
+<h2>The Setup<a class="headerlink" href="#the-setup" title="Link to this heading">¶</a></h2>
 <p>One species (<code class="docutils literal notranslate"><span class="pre">solute</span></code>), first-order decay, and one feed bolus part-way through that
 jumps mass and volume together. Both phases are closed-form exponential decay at
-constant volume, so the dense curve below is the exact ground truth, not a numerical
-approximation of it:</p>
+constant volume, so the dense curve below is the exact ground truth:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">SJ_K</span> <span class="o">=</span> <span class="mf">0.15</span>  <span class="c1"># 1/h, first-order decay rate</span>
 <span class="n">SJ_V0</span> <span class="o">=</span> <span class="mf">1.0</span>  <span class="c1"># L</span>
 <span class="n">SJ_C0</span> <span class="o">=</span> <span class="mf">5.0</span>  <span class="c1"># g/L</span>
@@ -444,11 +443,10 @@ measured values   : [5.    2.876 1.305 5.508 2.073]
 </div>
 </div>
 <p>Two measurements land inside 1 h of the jump on either side (9 h and 11 h), and the raw
-value nearly quintuples between them: that jump is the feed bolus adding mass, not the
-solute suddenly reappearing.</p>
+value nearly quintuples between them: that jump is the feed bolus adding mass.</p>
 </section>
 <section id="fit-and-backtransform">
-<h2>Fit and backtransform<a class="headerlink" href="#fit-and-backtransform" title="Link to this heading">¶</a></h2>
+<h2>Fit and Backtransform<a class="headerlink" href="#fit-and-backtransform" title="Link to this heading">¶</a></h2>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.splines</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_pseudobatch_transform</span><span class="p">,</span> <span class="n">build_backtransform_spline</span>
@@ -464,12 +462,12 @@ solute suddenly reappearing.</p>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">build_pseudobatch_transform</span></code> removes the physical jump before fitting a spline to it;
 <code class="docutils literal notranslate"><span class="pre">build_backtransform_spline</span></code> then wraps that fit so evaluating it returns real
-concentration, not the intermediate <code class="docutils literal notranslate"><span class="pre">pseudobatch_concentration</span></code>. The result is a single
-spline, valid on both sides of the jump, that <code class="docutils literal notranslate"><span class="pre">back</span></code> maps to real concentration wherever
-you evaluate it.</p>
+concentration directly, skipping the intermediate <code class="docutils literal notranslate"><span class="pre">pseudobatch_concentration</span></code>. The
+result is a single spline, valid on both sides of the jump, that <code class="docutils literal notranslate"><span class="pre">back</span></code> maps to real
+concentration wherever you evaluate it.</p>
 </section>
 <section id="recovered-curve-versus-ground-truth">
-<h2>Recovered curve versus ground truth<a class="headerlink" href="#recovered-curve-versus-ground-truth" title="Link to this heading">¶</a></h2>
+<h2>Recovered Curve Versus Ground Truth<a class="headerlink" href="#recovered-curve-versus-ground-truth" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 </div>
 <div class="cell tag_remove-input docutils container">
@@ -480,7 +478,7 @@ you evaluate it.</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Error only where a segment actually has data on both sides. Evaluating a</span>
-<span class="c1"># 2-point segment beyond its own last measurement is extrapolation, not recovery.</span>
+<span class="c1"># 2-point segment beyond its own last measurement is pure extrapolation.</span>
 <span class="n">pre</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">SJ_T_JUMP</span> <span class="o">-</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>
 <span class="n">post</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">SJ_T_JUMP</span> <span class="o">+</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">SJ_T_END</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>
 <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">grid</span> <span class="ow">in</span> <span class="p">[(</span><span class="s2">"pre-jump [0, 9]"</span><span class="p">,</span> <span class="n">pre</span><span class="p">),</span> <span class="p">(</span><span class="s2">"post-jump [11, 17]"</span><span class="p">,</span> <span class="n">post</span><span class="p">)]:</span>
@@ -500,19 +498,19 @@ post-jump [11, 17]: max relative error 14.2%   mean  9.6%
 </div>
 <p>A real, honest fit: within roughly 14% of the true curve at its worst, both before and
 after the jump, from 5 points total. The dashed curve tracks the true decay’s shape
-closely, including its curvature, not just its two endpoints.</p>
+closely, including its curvature between the two endpoints.</p>
 <div class="note admonition">
 <p class="admonition-title">Why the post-jump segment is the weaker fit</p>
 <p>The pre-jump segment has 3 measurements (0, 4, 9 h); the post-jump segment has only 2
 (11, 17 h). <code class="docutils literal notranslate"><span class="pre">fit_timeseries_spline</span></code> needs at least 4 points per segment for its smoothing
 B-spline path, so both segments here fall back to natural cubic interpolation, and 2
 points pin a natural cubic down to very nearly a straight line. That line still tracks
-an honestly-curved exponential decay to within ~14% here, but it is not a coincidence
-that the weaker half is the 2-point one.</p>
+an honestly-curved exponential decay to within ~14% here, and the weaker half is the
+2-point one for exactly that reason.</p>
 </div>
 </section>
 <section id="what-made-this-example-different">
-<h2>What made this example different<a class="headerlink" href="#what-made-this-example-different" title="Link to this heading">¶</a></h2>
+<h2>What Made This Example Different<a class="headerlink" href="#what-made-this-example-different" title="Link to this heading">¶</a></h2>
 <ul class="simple">
 <li><p><strong>No reaction module, no <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, no training.</strong> The pseudobatch transform and
 spline fitting are hybrax.format’s own, and stop being useful to demonstrate the moment
@@ -520,14 +518,16 @@ spline fitting are hybrax.format’s own, and stop being useful to demonstrate t
 <li><p><strong>A closed-form ground truth.</strong> Every other demo dataset in this site is simulated
 with RK4 and compared to noisy measurements of itself. This one has an exact answer to
 check the fit against, because that is the whole point of the page.</p></li>
-<li><p><strong>5 points is not a comfortable number.</strong> One of the two segments this jump creates
+<li><p><strong>5 points is a tight budget.</strong> One of the two segments this jump creates
 is forced into the 2-point, near-linear fallback. That the fit still tracks a real,
 curved decay to ~14% is the actual demonstration.</p></li>
 </ul>
 </section>
 <section id="see-also">
-<h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
-<p>Run the example yourself at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_pseudobatch_splines/</span></code>.</p>
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<p>The full example (configs, data) lives in <code class="docutils literal notranslate"><span class="pre">examples/gallery_pseudobatch_splines/</span></code> at the
+repo root, no docs build required. This page’s own executed run is at
+<code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_pseudobatch_splines/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../format/pseudobatch_transform.html"><span class="std std-doc">The pseudobatch transform</span></a>: what
 <code class="docutils literal notranslate"><span class="pre">build_pseudobatch_transform</span></code> and <code class="docutils literal notranslate"><span class="pre">build_backtransform_spline</span></code> actually compute.</p></li>
@@ -594,12 +594,12 @@ model.</p></li>
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Pseudobatch splines through a jump</a><ul>
-<li><a class="reference internal" href="#the-setup">The setup</a></li>
-<li><a class="reference internal" href="#fit-and-backtransform">Fit and backtransform</a></li>
-<li><a class="reference internal" href="#recovered-curve-versus-ground-truth">Recovered curve versus ground truth</a></li>
-<li><a class="reference internal" href="#what-made-this-example-different">What made this example different</a></li>
-<li><a class="reference internal" href="#see-also">See also</a></li>
+<li><a class="reference internal" href="#">Pseudobatch Splines Through a Jump</a><ul>
+<li><a class="reference internal" href="#the-setup">The Setup</a></li>
+<li><a class="reference internal" href="#fit-and-backtransform">Fit and Backtransform</a></li>
+<li><a class="reference internal" href="#recovered-curve-versus-ground-truth">Recovered Curve Versus Ground Truth</a></li>
+<li><a class="reference internal" href="#what-made-this-example-different">What Made This Example Different</a></li>
+<li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>
 </ul>

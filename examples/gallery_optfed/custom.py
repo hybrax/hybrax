@@ -21,8 +21,10 @@ from hybrax.train import (
 )
 
 
-def _eyring(T_K, log_A, log_Ea_R, raw_Teq, log_dHeq_R):
-    """Eq. 4e. Vectorizes over any leading shape of the four parameter args."""
+def _eyring_rate_ceiling(T_K, log_A, log_Ea_R, raw_Teq, log_dHeq_R):
+    """Temperature-dependent rate ceiling (the Eyring equation): rises with
+    heat, then collapses again past the enzyme's denaturation point.
+    Vectorizes over any leading shape of the four parameter args."""
     A = jnp.exp(log_A)
     Ea_R = jnp.exp(log_Ea_R)
     Teq = 290.0 + 40.0 * jax.nn.sigmoid(raw_Teq)
@@ -88,7 +90,7 @@ class OptFedModule(UserReactionModule):
         T_K = self.unscale_controlled_PVs(inputs.SCL_controlled_PVs)[0] + 273.15
         px = P / X
 
-        gdeg_max, gpi_max, galpha_min = _eyring(
+        gdeg_max, gpi_max, galpha_min = _eyring_rate_ceiling(
             T_K,
             self.eyring_log_A,
             self.eyring_log_Ea_R,

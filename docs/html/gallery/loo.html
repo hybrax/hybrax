@@ -3,15 +3,15 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="A Gaussian-Process Model" href="gaussian_process.html"><link rel="prev" title="Glutamine decay" href="glutamine_decay.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="A Gaussian-Process Model" href="gaussian_process.html"><link rel="prev" title="Glutamine Decay" href="glutamine_decay.html">
         <link rel="prefetch" href="../_static/hybrax_logo.png" as="image">
 
     <link rel="shortcut icon" href="../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Cross-validation - Bioprocess Modeling with Hybrax</title>
+        <title>Cross-Validation - Bioprocess Modeling with Hybrax</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -374,18 +374,18 @@
         </div>
         <article role="main" id="furo-main-content">
           <section class="tex2jax_ignore mathjax_ignore" id="cross-validation">
-<h1>Cross-validation<a class="headerlink" href="#cross-validation" title="Link to this heading">¶</a></h1>
+<h1>Cross-Validation<a class="headerlink" href="#cross-validation" title="Link to this heading">¶</a></h1>
 <blockquote>
-<div><p><strong>Demonstrates.</strong> A cheap holdout check with no fold loop, then a full leave-one-out
-run: real folds, the corrected <code class="docutils literal notranslate"><span class="pre">per_fold_holdout_sets</span></code> schema, and the files it
+<div><p>This page runs a quick holdout check with no fold loop, then a full leave-one-out
+cross-validation over real folds. It also shows the files each training run
 produces.</p>
 </div></blockquote>
 <p>Neither of these needs a custom reaction module: the point here is the cross-validation
-machinery, not the model, so this page trains the plain default MLP throughout.</p>
+machinery itself, so this page trains the plain default MLP throughout.</p>
 <p>Everything below runs in <code class="docutils literal notranslate"><span class="pre">WORK</span></code>, printed at the end: inspect, copy or modify the real
 files it produced.</p>
 <section id="a-cheap-first-check-holdout-processes">
-<h2>A cheap first check: <code class="docutils literal notranslate"><span class="pre">holdout_processes</span></code><a class="headerlink" href="#a-cheap-first-check-holdout-processes" title="Link to this heading">¶</a></h2>
+<h2>A Cheap First Check: <code class="docutils literal notranslate"><span class="pre">holdout_processes</span></code><a class="headerlink" href="#a-cheap-first-check-holdout-processes" title="Link to this heading">¶</a></h2>
 <p>Before committing to N full trainings, hold out one process inside a single run. This
 is Python-API-only (see <a class="reference internal" href="../train/loo.html#holdout-without-cross-validation"><span class="std std-ref">Cross-Validation</span></a>):</p>
 <div class="cell tag_remove-input docutils container">
@@ -399,11 +399,12 @@ final holdout (run_3)   = 0.0467  (label: holdout)
 <div class="cell tag_remove-input docutils container">
 </div>
 <p>Train and holdout track each other closely here: on this small, easy dataset, one
-held-out run generalises about as well as the training set fits. That is a real result,
-not a given, and it is the first thing to check before trusting a model further.</p>
+held-out run generalises about as well as the training set fits. That is a genuine
+result worth confirming, and it is the first thing to check before trusting a model
+further.</p>
 </section>
 <section id="full-leave-one-out">
-<h2>Full leave-one-out<a class="headerlink" href="#full-leave-one-out" title="Link to this heading">¶</a></h2>
+<h2>Full Leave-One-Out<a class="headerlink" href="#full-leave-one-out" title="Link to this heading">¶</a></h2>
 <p>One fold per process, via the CLI. The config is a train config plus a <code class="docutils literal notranslate"><span class="pre">loo</span></code> section:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">"loo"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
@@ -423,14 +424,14 @@ the exact training set, otherwise every other process is used. With no
 per process.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 13:30:13 INFO __main__: LOO complete: 3 fold(s) (1 parallel x 2 device(s) each); aggregate={'base_seed': 0, 'n_folds': 3, 'holdout_total_mean': 0.04841843333333334, 'holdout_total_std': 0.007135348009966532, 'holdout_total_median': 0.0463514, 'holdout_biomass_mean': 0.03901983333333333, 'holdout_biomass_std': 0.02636229193949823, 'holdout_biomass_median': 0.0349426, 'holdout_glucose_mean': 0.10596246666666666, 'holdout_glucose_std': 0.016038275576050358, 'holdout_glucose_median': 0.101616, 'holdout_product_mean': 0.0002727703333333333, 'holdout_product_std': 0.00012389118609624065, 'holdout_product_median': 0.00027767}
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:17:43 INFO __main__: LOO complete: 3 fold(s) (1 parallel x 2 device(s) each); aggregate={'base_seed': 0, 'n_folds': 3, 'holdout_total_mean': 0.04841843333333334, 'holdout_total_std': 0.007135348009966532, 'holdout_total_median': 0.0463514, 'holdout_biomass_mean': 0.03901983333333333, 'holdout_biomass_std': 0.02636229193949823, 'holdout_biomass_median': 0.0349426, 'holdout_glucose_mean': 0.10596246666666666, 'holdout_glucose_std': 0.016038275576050358, 'holdout_glucose_median': 0.101616, 'holdout_product_mean': 0.0002727703333333333, 'holdout_product_std': 0.00012389118609624065, 'holdout_product_median': 0.00027767}
 </pre></div>
 </div>
 </div>
 </div>
 </section>
 <section id="what-it-produced">
-<h2>What it produced<a class="headerlink" href="#what-it-produced" title="Link to this heading">¶</a></h2>
+<h2>What It Produced<a class="headerlink" href="#what-it-produced" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>fold       held out    holdout loss  train loss
@@ -446,8 +447,8 @@ run_3      run_3             0.0464      0.0329
 <img alt="../_images/2d3b6aa301e9afcfbacd4b8cd7d2e0fb993a6013bbb7e7d9aa2c72c1e56ef387.png" src="../_images/2d3b6aa301e9afcfbacd4b8cd7d2e0fb993a6013bbb7e7d9aa2c72c1e56ef387.png" />
 </div>
 </div>
-<p>Read the <strong>spread across folds</strong>, not just the mean: one fold noticeably worse than the
-others usually means that process is different in a way the model does not capture,
+<p>Read the <strong>spread across folds</strong> as well as the mean: one fold noticeably worse than
+the others usually means that process is different in a way the model does not capture,
 which is more informative than an averaged score.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
@@ -470,7 +471,7 @@ plotting all work on it exactly like any other trained run.</p>
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">per_fold_holdout_sets</span></code> entries are objects, not bare lists.</strong> <code class="docutils literal notranslate"><span class="pre">[&quot;run_1&quot;,</span> <span class="pre">&quot;run_2&quot;]</span></code>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">per_fold_holdout_sets</span></code> entries must be objects.</strong> <code class="docutils literal notranslate"><span class="pre">[&quot;run_1&quot;,</span> <span class="pre">&quot;run_2&quot;]</span></code>
 fails validation; <code class="docutils literal notranslate"><span class="pre">{&quot;test&quot;:</span> <span class="pre">[&quot;run_1&quot;,</span> <span class="pre">&quot;run_2&quot;]}</span></code> is the shape.</p></li>
 <li><p><strong>N folds means N trainings.</strong> Get one fold converging well first (or use
 <code class="docutils literal notranslate"><span class="pre">holdout_processes</span></code> above) before multiplying everything, mistakes included.</p></li>
@@ -485,8 +486,10 @@ is what you want if you edited the config.</p></li>
 </ul>
 </section>
 <section id="see-also">
-<h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
-<p>Run the example yourself at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_loo/</span></code>.</p>
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<p>The full example (configs, data) lives in <code class="docutils literal notranslate"><span class="pre">examples/gallery_loo/</span></code> at the repo root, no
+docs build required. This page’s own executed run is at
+<code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_loo/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../train/loo.html"><span class="std std-doc">Cross-Validation</span></a>: the full reference, including parallelism and
 resuming.</p></li>
@@ -517,7 +520,7 @@ resuming.</p></li>
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Glutamine decay</div>
+                <div class="title">Glutamine Decay</div>
                 
               </div>
             </a>
@@ -551,12 +554,12 @@ resuming.</p></li>
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Cross-validation</a><ul>
-<li><a class="reference internal" href="#a-cheap-first-check-holdout-processes">A cheap first check: <code class="docutils literal notranslate"><span class="pre">holdout_processes</span></code></a></li>
-<li><a class="reference internal" href="#full-leave-one-out">Full leave-one-out</a></li>
-<li><a class="reference internal" href="#what-it-produced">What it produced</a></li>
+<li><a class="reference internal" href="#">Cross-Validation</a><ul>
+<li><a class="reference internal" href="#a-cheap-first-check-holdout-processes">A Cheap First Check: <code class="docutils literal notranslate"><span class="pre">holdout_processes</span></code></a></li>
+<li><a class="reference internal" href="#full-leave-one-out">Full Leave-One-Out</a></li>
+<li><a class="reference internal" href="#what-it-produced">What It Produced</a></li>
 <li><a class="reference internal" href="#gotchas">Gotchas</a></li>
-<li><a class="reference internal" href="#see-also">See also</a></li>
+<li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>
 </ul>

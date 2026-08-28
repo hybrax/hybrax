@@ -85,7 +85,7 @@ html_theme_options = {
 # silently rotting a page. "cache" means only pages whose source changed re-run.
 nb_execution_mode = "cache"
 nb_execution_cache_path = str(_HERE.parent / "_scratch" / "jupyter_cache")
-nb_execution_timeout = 900  # a tutorial that trains a model needs headroom
+nb_execution_timeout = 1200  # a tutorial that trains a model needs headroom
 nb_execution_raise_on_error = True  # a failing cell fails the build
 nb_merge_streams = True
 

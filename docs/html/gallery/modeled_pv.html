@@ -3,15 +3,15 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Freezing parameters" href="freezing.html"><link rel="prev" title="Continuous culture with controlled overflow" href="continuous_overflow.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Freezing Parameters" href="freezing.html"><link rel="prev" title="Continuous Culture with Controlled Overflow" href="continuous_overflow.html">
         <link rel="prefetch" href="../_static/hybrax_logo.png" as="image">
 
     <link rel="shortcut icon" href="../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>A modeled process variable - Bioprocess Modeling with Hybrax</title>
+        <title>A Modeled Process Variable - Bioprocess Modeling with Hybrax</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -374,11 +374,11 @@
         </div>
         <article role="main" id="furo-main-content">
           <section class="tex2jax_ignore mathjax_ignore" id="a-modeled-process-variable">
-<h1>A modeled process variable<a class="headerlink" href="#a-modeled-process-variable" title="Link to this heading">¶</a></h1>
+<h1>A Modeled Process Variable<a class="headerlink" href="#a-modeled-process-variable" title="Link to this heading">¶</a></h1>
 <blockquote>
-<div><p><strong>Demonstrates.</strong> A process variable declared as a modeled (uncontrolled) state,
-with its own trained rate <code class="docutils literal notranslate"><span class="pre">r_glyco_frac</span></code>, and why a modeled process variable is
-never diluted by a feed event the way a modeled reactor component is.</p>
+<div><p>This page declares a process variable as its own trained state, with a learned
+rate. It also shows why a feed event dilutes a reactor component but leaves a
+modeled process variable unaffected.</p>
 </div></blockquote>
 <p>Every other page in this gallery that touches a process variable uses it as a
 <strong>controlled</strong> input: a known signal, like <code class="docutils literal notranslate"><span class="pre">temperature</span></code> in <a class="reference internal" href="optfed.html"><span class="std std-doc">OptFed</span></a> or
@@ -401,122 +401,11 @@ because it is a fraction: adding diluent scales both a glycosylated and a
 non-glycosylated pool by the same factor, so their ratio is untouched. hybrax.format
 encodes exactly that rule, for any modeled process variable, regardless of what it
 represents physically.</p>
-<p>The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:</p>
-<details class="sd-sphinx-override sd-dropdown sd-card sd-mb-3">
-<summary class="sd-summary-title sd-card-header">
-<span class="sd-summary-text">Full <code class="docutils literal notranslate"><span class="pre">custom.py</span></code></span><span class="sd-summary-state-marker sd-summary-chevron-right"><svg version="1.1" width="1.5em" height="1.5em" class="sd-octicon sd-octicon-chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.72 18.78a.75.75 0 0 1 0-1.06L14.44 12 8.72 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0Z"></path></svg></span></summary><div class="sd-summary-content sd-card-body docutils">
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">  1</span><span class="sd">"""Modeled process variable: two constant specific rates, no kinetic</span>
-<span class="linenos">  2</span><span class="sd">structure at all. The point of this page is entirely in the dataset's own</span>
-<span class="linenos">  3</span><span class="sd">declaration of glyco_frac as a modeled (uncontrolled) process variable, not in</span>
-<span class="linenos">  4</span><span class="sd">this reaction module.</span>
-<span class="linenos">  5</span><span class="sd">"""</span>
-<span class="linenos">  6</span>
-<span class="linenos">  7</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
-<span class="linenos">  8</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
-<span class="linenos">  9</span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="linenos"> 10</span>
-<span class="linenos"> 11</span><span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.train</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<span class="linenos"> 12</span>    <span class="n">EstimatedScales</span><span class="p">,</span>
-<span class="linenos"> 13</span>    <span class="n">ReactionOutputs</span><span class="p">,</span>
-<span class="linenos"> 14</span>    <span class="n">UserReactionModule</span><span class="p">,</span>
-<span class="linenos"> 15</span>    <span class="n">trainable_field</span><span class="p">,</span>
-<span class="linenos"> 16</span><span class="p">)</span>
-<span class="linenos"> 17</span>
-<span class="linenos"> 18</span>
-<span class="linenos"> 19</span><span class="k">class</span><span class="w"> </span><span class="nc">ModeledPVModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
-<span class="linenos"> 20</span>    <span class="n">log_q_biomass</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 21</span>    <span class="n">log_r_glyco_frac</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 22</span>
-<span class="linenos"> 23</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
-<span class="linenos"> 24</span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
-<span class="linenos"> 25</span>        <span class="c1"># Deliberately mediocre starting guesses: the point is that they move.</span>
-<span class="linenos"> 26</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_q_biomass</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">0.05</span><span class="p">))</span>
-<span class="linenos"> 27</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_r_glyco_frac</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">0.1</span><span class="p">))</span>
-<span class="linenos"> 28</span>
-<span class="linenos"> 29</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
-<span class="linenos"> 30</span>        <span class="k">del</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span>  <span class="c1"># every rate here is a plain constant, no state read</span>
-<span class="linenos"> 31</span>        <span class="n">RAW_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
-<span class="linenos"> 32</span>            <span class="p">[</span>
-<span class="linenos"> 33</span>                <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_q_biomass</span><span class="p">),</span>
-<span class="linenos"> 34</span>                <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_r_glyco_frac</span><span class="p">),</span>
-<span class="linenos"> 35</span>            <span class="p">]</span>
-<span class="linenos"> 36</span>        <span class="p">)</span>
-<span class="linenos"> 37</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos"> 38</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_BiologicalOde_rates</span><span class="p">(</span>
-<span class="linenos"> 39</span>                <span class="n">RAW_rates</span>
-<span class="linenos"> 40</span>            <span class="p">),</span>
-<span class="linenos"> 41</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos"> 42</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos"> 43</span>        <span class="p">)</span>
-<span class="linenos"> 44</span>
-<span class="linenos"> 45</span>
-<span class="linenos"> 46</span><span class="k">def</span><span class="w"> </span><span class="nf">build_reaction_module</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<span class="linenos"> 47</span>    <span class="k">return</span> <span class="n">ModeledPVModule</span><span class="p">(</span>
-<span class="linenos"> 48</span>        <span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"SCALE_"</span><span class="p">)}</span>
-<span class="linenos"> 49</span>    <span class="p">)</span>
-<span class="linenos"> 50</span>
-<span class="linenos"> 51</span>
-<span class="linenos"> 52</span><span class="k">def</span><span class="w"> </span><span class="nf">estimate_all_scales</span><span class="p">(</span><span class="n">runtime_data</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
-<span class="linenos"> 53</span>    <span class="k">del</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span>
-<span class="linenos"> 54</span>    <span class="n">rhs</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">rhs_ode</span>
-<span class="linenos"> 55</span>    <span class="n">n_processes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
-<span class="linenos"> 56</span>    <span class="n">span</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
-<span class="linenos"> 57</span>        <span class="n">end</span> <span class="o">-</span> <span class="n">start</span>
-<span class="linenos"> 58</span>        <span class="k">for</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="ow">in</span> <span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">time_bounds</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">))</span>
-<span class="linenos"> 59</span>    <span class="p">)</span>
-<span class="linenos"> 60</span>
-<span class="linenos"> 61</span>    <span class="k">def</span><span class="w"> </span><span class="nf">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
-<span class="linenos"> 62</span>        <span class="n">best</span> <span class="o">=</span> <span class="mf">0.0</span>
-<span class="linenos"> 63</span>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">):</span>
-<span class="linenos"> 64</span>            <span class="n">_</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
-<span class="linenos"> 65</span>            <span class="k">if</span> <span class="n">values</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
-<span class="linenos"> 66</span>                <span class="n">best</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">values</span><span class="p">))))</span>
-<span class="linenos"> 67</span>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">)</span>
-<span class="linenos"> 68</span>
-<span class="linenos"> 69</span>    <span class="n">rmc_scale</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">}</span>
-<span class="linenos"> 70</span>    <span class="n">pv_scale</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_PVs</span><span class="p">}</span>
-<span class="linenos"> 71</span>    <span class="n">biomass</span> <span class="o">=</span> <span class="n">rmc_scale</span><span class="p">[</span><span class="s2">"biomass"</span><span class="p">]</span>
-<span class="linenos"> 72</span>    <span class="n">empty</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos"> 73</span>
-<span class="linenos"> 74</span>    <span class="k">def</span><span class="w"> </span><span class="nf">rate_scale</span><span class="p">(</span><span class="n">rate_name</span><span class="p">):</span>
-<span class="linenos"> 75</span>        <span class="n">state_name</span> <span class="o">=</span> <span class="n">rate_name</span><span class="p">[</span><span class="mi">2</span><span class="p">:]</span>  <span class="c1"># strip "q_" or "r_"</span>
-<span class="linenos"> 76</span>        <span class="k">if</span> <span class="n">state_name</span> <span class="ow">in</span> <span class="n">rmc_scale</span><span class="p">:</span>
-<span class="linenos"> 77</span>            <span class="k">return</span> <span class="n">rmc_scale</span><span class="p">[</span><span class="n">state_name</span><span class="p">]</span> <span class="o">/</span> <span class="p">(</span><span class="n">biomass</span> <span class="o">*</span> <span class="n">span</span><span class="p">)</span>
-<span class="linenos"> 78</span>        <span class="k">return</span> <span class="n">pv_scale</span><span class="p">[</span><span class="n">state_name</span><span class="p">]</span> <span class="o">/</span> <span class="n">span</span>
-<span class="linenos"> 79</span>
-<span class="linenos"> 80</span>    <span class="k">return</span> <span class="n">EstimatedScales</span><span class="p">(</span>
-<span class="linenos"> 81</span>        <span class="n">SCALE_modeled_RMCs</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">rmc_scale</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">]),</span>
-<span class="linenos"> 82</span>        <span class="n">SCALE_modeled_PVs</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">pv_scale</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_PVs</span><span class="p">]),</span>
-<span class="linenos"> 83</span>        <span class="n">SCALE_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
-<span class="linenos"> 84</span>            <span class="p">[</span><span class="n">rate_scale</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_rates</span><span class="p">]</span>
-<span class="linenos"> 85</span>        <span class="p">),</span>
-<span class="linenos"> 86</span>        <span class="n">SCALE_V_in_cumulative</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
-<span class="linenos"> 87</span>            <span class="nb">max</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">initial_volume</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">))</span>
-<span class="linenos"> 88</span>        <span class="p">),</span>
-<span class="linenos"> 89</span>        <span class="n">SCALE_modeled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos"> 90</span>        <span class="n">SCALE_modeled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos"> 91</span>        <span class="n">SCALE_modeled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos"> 92</span>        <span class="n">SCALE_modeled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos"> 93</span>        <span class="n">SCALE_controlled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos"> 94</span>        <span class="n">SCALE_controlled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos"> 95</span>        <span class="n">SCALE_controlled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos"> 96</span>        <span class="n">SCALE_controlled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos"> 97</span>        <span class="n">SCALE_controlled_PVs</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos"> 98</span>        <span class="n">SCALE_controlled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos"> 99</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
-<span class="linenos">100</span>        <span class="p">),</span>
-<span class="linenos">101</span>        <span class="n">SCALE_modeled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos">102</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
-<span class="linenos">103</span>        <span class="p">),</span>
-<span class="linenos">104</span>    <span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</details><section id="the-rate-law-declared">
-<h2>The rate law, declared<a class="headerlink" href="#the-rate-law-declared" title="Link to this heading">¶</a></h2>
-<p>Everything this page’s kinetics need lives in the dataset’s own <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>
-block, not in code. This is exactly what was declared when the dataset was built:</p>
+<p>The walkthrough below shows the file in pieces, next to the reasoning for each one.</p>
+<section id="the-rate-law-declared">
+<h2>The Rate Law, Declared<a class="headerlink" href="#the-rate-law-declared" title="Link to this heading">¶</a></h2>
+<p>Everything this page’s kinetics need lives declaratively in the dataset’s own
+<code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> block. This is exactly what was declared when the dataset was built:</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">process</span> <span class="o">=</span> <span class="n">_collection</span><span class="o">.</span><span class="n">processes</span><span class="p">[</span><span class="s2">"run_1"</span><span class="p">]</span>
@@ -538,11 +427,12 @@ block, not in code. This is exactly what was declared when the dataset was built
 </div>
 </div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">glyco_frac</span></code> sits in <code class="docutils literal notranslate"><span class="pre">process.process_variables</span></code>, not <code class="docutils literal notranslate"><span class="pre">process.reactor_medium.components</span></code>,
-with <code class="docutils literal notranslate"><span class="pre">is_controlled=False</span></code> and a real <code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> (an uncontrolled process variable
-cannot hold a <code class="docutils literal notranslate"><span class="pre">StaticVariable</span></code>: a state with no time axis has nothing for the solver to
-integrate against). That single field is the whole declaration; nothing else about
-writing its rate law differs from writing a reactor component’s.</p>
+<p><code class="docutils literal notranslate"><span class="pre">glyco_frac</span></code> sits in <code class="docutils literal notranslate"><span class="pre">process.process_variables</span></code>, separately from
+<code class="docutils literal notranslate"><span class="pre">process.reactor_medium.components</span></code>, with <code class="docutils literal notranslate"><span class="pre">is_controlled=False</span></code> and a real <code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code>
+(an uncontrolled process variable cannot hold a <code class="docutils literal notranslate"><span class="pre">StaticVariable</span></code>: a state with no time
+axis has nothing for the solver to integrate against). That single field is the whole
+declaration; nothing else about writing its rate law differs from writing a reactor
+component’s.</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">hxf</span><span class="o">.</span><span class="n">print_rhs_ode</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
@@ -572,17 +462,17 @@ writing its rate law differs from writing a reactor component’s.</p>
 </div>
 </div>
 </div>
-<p>Both <code class="docutils literal notranslate"><span class="pre">biomass</span></code> and <code class="docutils literal notranslate"><span class="pre">glyco_frac</span></code> show an empty Feed/Dilution column here, and that is
-not the demonstration: that column is populated only by a <strong>continuous</strong> controlled or
-modeled inflow/outflow, and this dataset’s dilution event is a single discrete bolus.
-A bolus is not part of the continuous right-hand side at all; it is a state jump the
-solver applies between two integration segments, at the bolus’s exact time, which is
-why the Volume block below the derivatives shows it instead. That jump is where the
-RMC/PV distinction actually happens, and it holds regardless of whether the dilution
-arrives continuously or as one lump event.</p>
+<p>Both <code class="docutils literal notranslate"><span class="pre">biomass</span></code> and <code class="docutils literal notranslate"><span class="pre">glyco_frac</span></code> show an empty Feed/Dilution column here, because that
+column is populated only by a <strong>continuous</strong> controlled or modeled inflow/outflow, and
+this dataset’s dilution event is a single discrete bolus. A bolus is a state jump that
+the solver applies between two integration segments, at the bolus’s exact time, entirely
+separate from the continuous right-hand side, which is why the Volume block below the
+derivatives shows it instead. That jump is where the RMC/PV distinction actually
+happens, and it holds regardless of whether the dilution arrives continuously or as one
+lump event.</p>
 </section>
 <section id="the-reaction-module">
-<h2>The reaction module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
+<h2>The Reaction Module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">ModeledPVModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
 <span class="linenos"> 2</span>    <span class="n">log_q_biomass</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
 <span class="linenos"> 3</span>    <span class="n">log_r_glyco_frac</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
@@ -609,14 +499,13 @@ arrives continuously or as one lump event.</p>
 </div>
 <p>Two log-parameterized scalars, no kinetic structure, no state read at all: <code class="docutils literal notranslate"><span class="pre">__call__</span></code>
 ignores <code class="docutils literal notranslate"><span class="pre">inputs</span></code> entirely and returns the same two constants every step. All of this
-page’s actual complexity is in the derivative strings and the bolus event above, not
-here.</p>
+page’s actual complexity lives in the derivative strings and the bolus event above.</p>
 </section>
 <section id="training">
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 13:31:07 INFO __main__: training complete: first_mean_loss=0.0918845 last_mean_loss=0.00022645 delta=-0.091658
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:18:38 INFO __main__: training complete: first_mean_loss=0.0918845 last_mean_loss=0.00022645 delta=-0.091658
 run directory: ./source/_data/out/runs/gallery_modeled_pv/run
 </pre></div>
 </div>
@@ -645,7 +534,7 @@ step at the bolus, and that step is the only thing that touches <code class="doc
 never appears in that bookkeeping.</p>
 </section>
 <section id="did-the-rates-recover-correctly">
-<h2>Did the rates recover correctly?<a class="headerlink" href="#did-the-rates-recover-correctly" title="Link to this heading">¶</a></h2>
+<h2>Did the Rates Recover Correctly?<a class="headerlink" href="#did-the-rates-recover-correctly" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>parameter            fitted         true
@@ -656,9 +545,9 @@ r_glyco_frac      0.0297058         0.03
 </div>
 </div>
 <p>Both rates come back close to their true values: training saw the same bolus at the
-same instant in every state, and only explained <code class="docutils literal notranslate"><span class="pre">biomass</span></code>’s step with a dilution term,
-never with <code class="docutils literal notranslate"><span class="pre">q_biomass</span></code> itself, because that dilution term is not something the
-reaction module controls at all.</p>
+same instant in every state, and explained <code class="docutils literal notranslate"><span class="pre">biomass</span></code>’s step entirely through the
+dilution term, a mechanism outside the reaction module’s control, leaving <code class="docutils literal notranslate"><span class="pre">q_biomass</span></code>
+itself unaffected.</p>
 </section>
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
@@ -670,17 +559,18 @@ once you actually want it trained.</strong> Left on the <code class="docutils li
 warning. Set <code class="docutils literal notranslate"><span class="pre">target_source</span></code> explicitly the moment a dataset has both kinds of
 targets; see <a class="reference internal" href="../train/config.html#target-source"><span class="std std-ref">Configuration</span></a>.</p></li>
 <li><p><strong>A <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code> with modeled process variables must return
-<code class="docutils literal notranslate"><span class="pre">SCALE_modeled_PVs</span></code> from <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code>.</strong> It is not required for a
-PV-free dataset (it defaults to an empty scaler), so a reaction module copied from a
-page like <a class="reference internal" href="glutamine_decay.html"><span class="std std-doc">Glutamine decay</span></a> that never had one will raise a
+<code class="docutils literal notranslate"><span class="pre">SCALE_modeled_PVs</span></code> from <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code>.</strong> It is required only for a dataset
+that has modeled process variables (a PV-free dataset defaults to an empty scaler),
+so a reaction module copied from a
+page like <a class="reference internal" href="glutamine_decay.html"><span class="std std-doc">Glutamine Decay</span></a> that never had one will raise a
 shape-mismatch error the moment a modeled PV is added; add the axis explicitly, as
 this page’s <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> does.</p></li>
-<li><p><strong>Dilution reaching a modeled process variable is not a silent possibility to guard
-against, it is architecturally unreachable.</strong> <code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code>’s continuous feed term
-only ever touches the RMC slice of the derivative vector, and the discrete bolus/sample
-jump in <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> only ever touches the RMC slice of the state, with the same
-reasoning either way: a process variable is treated as intensive (a ratio or an
-observable), not as mass dissolved in a volume that can be diluted.</p></li>
+<li><p><strong>Dilution reaching a modeled process variable is architecturally unreachable.</strong>
+<code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code>’s continuous feed term only ever touches the RMC slice of the
+derivative vector, and the discrete bolus/sample jump in <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> only ever
+touches the RMC slice of the state, with the same reasoning either way: a process
+variable is treated as intensive, a ratio or an observable, with no dissolved mass
+in a volume to dilute.</p></li>
 <li><p><strong>Every process still needs a <code class="docutils literal notranslate"><span class="pre">biomass</span></code> reactor component</strong>, even on a page whose
 point is a process variable: <code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> expects one on every process, so
 <code class="docutils literal notranslate"><span class="pre">biomass</span></code> does double duty here as both the mandatory component and the diluted half
@@ -688,12 +578,14 @@ of the contrast.</p></li>
 </ul>
 </section>
 <section id="see-also">
-<h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
-<p>Run the example yourself at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_modeled_pv/</span></code>.</p>
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
+<code class="docutils literal notranslate"><span class="pre">examples/gallery_modeled_pv/</span></code> at the repo root, no docs build required. This page’s
+own executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_modeled_pv/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../format/bioprocess_ode.html"><span class="std std-doc">The Bioprocess ODE</span></a>: <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>, <code class="docutils literal notranslate"><span class="pre">rates</span></code>,
 <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>, and writing your own expressions.</p></li>
-<li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic models</span></a>: its own Gotchas section raises this
+<li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic Models</span></a>: its own Gotchas section raises this
 exact idea (a well-constrained process variable resolving an identifiability
 problem) without building it; this page is that example.</p></li>
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: <code class="docutils literal notranslate"><span class="pre">trainable_field</span></code> and
@@ -714,7 +606,7 @@ schema.</p></li>
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Freezing parameters</div>
+                <div class="title">Freezing Parameters</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -725,7 +617,7 @@ schema.</p></li>
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Continuous culture with controlled overflow</div>
+                <div class="title">Continuous Culture with Controlled Overflow</div>
                 
               </div>
             </a>
@@ -759,13 +651,13 @@ schema.</p></li>
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">A modeled process variable</a><ul>
-<li><a class="reference internal" href="#the-rate-law-declared">The rate law, declared</a></li>
-<li><a class="reference internal" href="#the-reaction-module">The reaction module</a></li>
+<li><a class="reference internal" href="#">A Modeled Process Variable</a><ul>
+<li><a class="reference internal" href="#the-rate-law-declared">The Rate Law, Declared</a></li>
+<li><a class="reference internal" href="#the-reaction-module">The Reaction Module</a></li>
 <li><a class="reference internal" href="#training">Training</a></li>
-<li><a class="reference internal" href="#did-the-rates-recover-correctly">Did the rates recover correctly?</a></li>
+<li><a class="reference internal" href="#did-the-rates-recover-correctly">Did the Rates Recover Correctly?</a></li>
 <li><a class="reference internal" href="#gotchas">Gotchas</a></li>
-<li><a class="reference internal" href="#see-also">See also</a></li>
+<li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>
 </ul>

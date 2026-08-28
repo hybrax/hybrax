@@ -14,22 +14,13 @@ kernelspec:
 # Feeds, boluses and samples
 <!-- UNLOCK -->
 
-> **Demonstrates.** A continuous feed, two boluses and sampling events in one run, and a
-> reaction module that reads the feed rate and a controlled process variable as real
-> biological inputs: not just transport bookkeeping.
+> A continuous feed, two boluses and sampling events all happen in one run. The reaction
+> module treats the feed rate and a controlled process variable as real biological inputs.
 
 The tutorials used a pure batch: no feeds, no boluses, no sampling volume. This dataset
 has all three at once, which is the normal case for real fermentation data.
 
-The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:
-
-:::{dropdown} Full `custom.py`
-```{literalinclude} ../../../examples/gallery_fed_batch/custom.py
-:language: python
-:linenos:
-```
-:::
+The walkthrough below shows the file in pieces, next to the reasoning for each one.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -61,7 +52,7 @@ shutil.copy(EXAMPLE / "train-config.json", WORK / "train-config.json")
 shutil.copy(EXAMPLE / "forward-config.json", WORK / "forward-config.json")
 ```
 
-## The dataset
+## The Dataset
 
 ```{code-cell} ipython3
 import hybrax.format as hxf
@@ -83,10 +74,10 @@ hxf.print_rhs_ode(process)
 Compare this to a batch process's `print_rhs_ode` output: every feed and sample now
 contributes a real transport term, generated for you.
 
-## The reaction module
+## The Reaction Module
 
-The interesting change from the tutorials is not really about feeds: it is that the
-model now has real controlled inputs beyond the state:
+The interesting change from the tutorials is that the model now has real controlled
+inputs beyond the state:
 
 ```{literalinclude} ../../../examples/gallery_fed_batch/custom.py
 :language: python
@@ -97,10 +88,10 @@ model now has real controlled inputs beyond the state:
 `SCL_controlled_Inflows_rates` (the feed) and `SCL_controlled_PVs` (dissolved oxygen) are
 concatenated onto the state before the network sees it. Nothing about the *mechanics* of
 writing a reaction module changed (you still emit rates in SCL space) but the module
-can now respond to what is happening to the process, not just its own current
+can now respond to what is happening to the process, as well as to its own current
 concentrations.
 
-## Scaling with real controlled axes
+## Scaling with Real Controlled Axes
 
 ```{literalinclude} ../../../examples/gallery_fed_batch/custom.py
 :language: python
@@ -146,18 +137,20 @@ discontinuity twice in one run, which is a meaningfully harder fit than the smoo
 case. Biomass is the hardest target here (a real, honest R² in the low 0.9s at this
 epoch budget); glucose and product are markedly easier.
 
-## What made this example different from the tutorials
+## What Made This Example Different from the Tutorials
 
 - **A feed medium with every species declared**, including the zeros: see
   [Volume, feeds and events](../format/volume_feeds_events.md).
 - **Sample-then-bolus ordering** at the coincident timestamps was handled for you by the
   solve; you never wrote it.
-- **A reaction module that reads controlled inputs**, not just the state.
+- **A reaction module that reads controlled inputs**, alongside the state.
 - **`estimate_all_scales` reading `runtime_data.controls_store`**, for the controlled axes.
 
-## See also
+## See Also
 
-Run the example yourself at `./source/_data/out/runs/gallery_fed_batch/`.
+The full, runnable example (`custom.py`, configs, data) lives in
+`examples/gallery_fed_batch/` at the repo root, no docs build required. This page's own
+executed run is at `./source/_data/out/runs/gallery_fed_batch/`.
 
 - [Volume, feeds and events](../format/volume_feeds_events.md): the concepts behind this
   dataset.

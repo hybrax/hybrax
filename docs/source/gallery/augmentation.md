@@ -12,24 +12,16 @@ kernelspec:
 
 # Augmentation
 
-> **Demonstrates.** Generating synthetic sibling processes from a single run with
-> `prepare.augmentation`, the automatic diagnostic plot, and `augment_state_values` for
-> per-state control over what gets generated.
+> This example generates synthetic sibling processes from a single run with
+> `prepare.augmentation`, producing an automatic diagnostic plot. `augment_state_values`
+> then gives per-state control over what gets generated.
 
 `demo_fedbatch` is one run. That is a real, common situation: a single mammalian
 fed-batch campaign, expensive to repeat, with too little data on its own to train
 anything but the simplest model. Augmentation trades that for more (synthetic, noisy)
 training signal, without pretending you have more real experiments than you do.
 
-The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:
-
-:::{dropdown} Full `custom.py`
-```{literalinclude} ../../../examples/gallery_augmentation/custom.py
-:language: python
-:linenos:
-```
-:::
+The walkthrough below shows the file in pieces, next to the reasoning for each one.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -76,9 +68,9 @@ resampled timepoints each has, and a relative noise level per state.
 ```
 
 Only states named in `noise_std` are touched. `n_time_points` need not match the
-parent's own sampling: children are resampled, not resliced.
+parent's own sampling: children are resampled onto new timepoints.
 
-## Splines first
+## Splines First
 
 ```{literalinclude} ../../../examples/gallery_augmentation/custom.py
 :language: python
@@ -87,7 +79,7 @@ parent's own sampling: children are resampled, not resliced.
 ```
 
 Augmentation resamples each modeled state onto new timepoints, and that needs a fitted
-spline, not just the raw measured samples. A freshly loaded hybrax.format file has none:
+spline. A freshly loaded hybrax.format file has none:
 without this hook, `prepare` fails fast with `"modeled state 'biomass' requires a
 spline"` rather than guessing. `custom_py` must be set at the top level of the config
 (not inside `prepare`) for `prepare` to pick this hook up at all.
@@ -102,7 +94,7 @@ for line in out.splitlines():
         print("UserWarning:", line.split("UserWarning: ", 1)[1])
 ```
 
-## What got generated
+## What Got Generated
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -123,7 +115,7 @@ clips every reactor-medium child value to `≥ 0` afterward, so this does not pr
 physically invalid concentration, but it is a real sign to look at the plot rather than
 trust the config blindly.
 
-## Fixing what default noise gets wrong
+## Fixing What Default Noise Gets Wrong
 
 ```{literalinclude} ../../../examples/gallery_augmentation/custom.py
 :language: python
@@ -169,7 +161,7 @@ for name in children[:3]:
           f"  product monotone={bool(np.all(np.diff(values) >= 0))}")
 ```
 
-## Training on the enlarged dataset
+## Training on the Enlarged Dataset
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -207,26 +199,28 @@ print(f"prepared augmentation diagnostic: ./{(WORK / 'prepared/augmented-data.pn
 
 - **Augmentation needs a fitted spline on every state it touches.** Fit one in
   `transform_process_collection` before augmenting; a freshly loaded file has none.
-- **`custom_py` is a top-level config key**, not nested inside `prepare`. Nesting it
-  there silently means no hooks are found (`prepare hooks default: transform_process_collection,
+- **`custom_py` is a top-level config key.** Nesting it inside `prepare` silently means
+  no hooks are found (`prepare hooks default: transform_process_collection,
   augment_state_values` in the log is the tell).
 - **Only states named in `noise_std` are generated with noise**; everything else is
   copied from the parent's resampled trajectory unchanged.
-- **`augment_state_values` runs after the default noise**, not instead of it: it
-  receives `augmented_values` already populated, to adjust rather than replace outright.
+- **`augment_state_values` runs after the default noise**: it receives `augmented_values`
+  already populated, so it adjusts rather than replaces them outright.
 - **A spline can dip below zero between measurements**, especially near sharp features
   like a near-zero glucose plateau. Reactor-medium children are clipped to `≥ 0`
   afterward, but check the diagnostic plot for any state where this matters.
 - **Cross-validation must stay group-aware.** A parent and its synthetic children carry
   the same information; splitting them across train and holdout leaks the answer. Use
   `hybrax.train`'s LOO ([worked example](loo.md)), which handles this for you.
-- **This does not manufacture new information.** It resamples and perturbs what one run
-  already told you; it cannot substitute for an experiment you have not run.
+- **This resamples and perturbs what one run already told you.** It cannot substitute
+  for an experiment you have not run.
 
-## See also
+## See Also
 
-Run the example yourself at `./source/_data/out/runs/gallery_augmentation/`.
+The full, runnable example (`custom.py`, configs, data) lives in
+`examples/gallery_augmentation/` at the repo root, no docs build required. This page's
+own executed run is at `./source/_data/out/runs/gallery_augmentation/`.
 
 - [Prepare](../train/prepare.md#augmentation): the config reference.
-- [Cross-validation, worked](loo.md): why augmented data needs group-aware folds.
+- [Cross-Validation, Worked](loo.md): why augmented data needs group-aware folds.
 - [Fed-batch](fed_batch.md): the un-augmented version of this same dataset.

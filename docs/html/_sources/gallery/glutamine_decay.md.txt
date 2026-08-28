@@ -10,50 +10,26 @@ kernelspec:
   name: python3
 ---
 
-# Glutamine decay
+# Glutamine Decay
 
-> **Demonstrates.** One physical rate, declared once in `biological_ode.rates`,
-> feeding two different derivatives at once, a sink in one, a source in the other,
-> and `hybrax.train` recovering that single shared number from data alone.
+> This page declares one physical rate that feeds two different derivatives at once: a
+> sink in one, a source in the other. Training recovers that single shared value from
+> data alone.
 
-Inspired by Ulonska, Kroll, Fricke, Clemens, Voges, Müller & Herwig 2018
-<a href="#ref-ulonska">[1]</a>, *"Workflow for Target-Oriented Parametrization of an
-Enhanced Mechanistic Cell Culture Model,"* whose CHO cell culture model includes
-glutamine's own spontaneous, non-enzymatic decomposition to glutamate and ammonia
-(Eq. 18/20), at a real, fitted first-order rate: `rNH4,gln = 0.0036 1/h` (Table 1, an
-eight-day half-life). This page reproduces that rate exactly: `r_Gln` below is the
-paper's own cited value, used as this page's synthetic ground truth, and it appears in
-two different derivatives at once, the same coupling the paper's own equations
-describe.
+This page is inspired by Ulonska et al. (2018) <a href="#ref-ulonska">[1]</a>, whose CHO
+cell culture model includes glutamine's own spontaneous, non-enzymatic decomposition to
+glutamate and ammonia at a real, fitted first-order rate of 0.0036 1/h (roughly an
+eight-day half-life). `r_Gln` below reproduces that rate exactly as this page's synthetic
+ground truth, feeding two derivatives at once the same way the paper's own model does.
+This page simplifies the paper in three ways: it keeps only the decomposition term in
+NH4's balance (the paper's version also has two other, unrelated production terms), it
+tracks glutamine and NH4 in mol/L so the same `r_Gln` value drives both derivatives
+without a separate yield constant (the paper's own g/L-plus-yield-constant approach is
+equally valid), and it replaces the paper's saturating Monod-form uptake rate with a
+plain constant rate ([Mechanistic Models](mechanistic_rates.md) already covers Monod-form
+kinetics in depth).
 
-Two things are reduced from the paper's own version, disclosed plainly:
-
-- NH4's own balance (Eq. 20) has three source terms: metabolic production tied to
-  glutamine consumption (`qNH4 * VCC`, where `qNH4 = YNH4/gln * qgln`, Eq. 10), release
-  from a feed component's own decay, and the chemical decomposition of glutamine
-  (`YNH4,gln * rNH4,gln * cgln`). This page keeps only the third: that is the one rate
-  this page is actually about, and the other two would add unrelated terms on top of
-  the point being made.
-- Glutamine and NH4 are tracked in mol/L here, unlike the rest of this site's g/L
-  convention, so glutamine's loss and NH4's gain from decomposition can share exactly
-  the same literal number, `r_Gln`, with no separate yield constant. The paper's own
-  g/L-plus-yield-constant approach (`YNH4,gln = 0.12 g/g`) is equally valid: that
-  yield exists purely because glutamine (146 g/mol) and ammonia (17 g/mol) have
-  different molar masses despite decomposing 1:1. This page just makes the other
-  valid choice for its own demo.
-- The paper's own Monod-form `q_Gln` (saturating in glutamine concentration) is
-  replaced with a plain constant specific rate: [Mechanistic models](mechanistic_rates.md)
-  already covers Monod-form kinetics in depth.
-
-The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:
-
-:::{dropdown} Full `custom.py`
-```{literalinclude} ../../../examples/gallery_glutamine_decay/custom.py
-:language: python
-:linenos:
-```
-:::
+The walkthrough below shows the file in pieces, next to the reasoning for each one.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -116,10 +92,10 @@ def r2_by_target(run_dir):
     return out
 ```
 
-## The rate law, declared
+## The Rate Law, Declared
 
 Everything this page's kinetics need lives in the dataset's own `biological_ode`
-block, not in code. This is exactly what was declared when the dataset was built:
+block. This is exactly what was declared when the dataset was built:
 
 ```{code-cell} ipython3
 process = _collection.processes["run_1"]
@@ -161,7 +137,7 @@ even though `biomass` is `g/L` and `Gln` is `mol/L`, because `q_Gln` and `r_Gln`
 each trusted to carry whatever unit bridges their own term. See
 [The Bioprocess ODE](../format/bioprocess_ode.md#writing-your-own) for the general rule.
 
-## The reaction module
+## The Reaction Module
 
 ```{literalinclude} ../../../examples/gallery_glutamine_decay/custom.py
 :language: python
@@ -171,7 +147,7 @@ each trusted to carry whatever unit bridges their own term. See
 
 Three log-parameterized scalars, no kinetic structure, no state read at all:
 `__call__` ignores `inputs` entirely and returns the same three constants every step.
-All of this page's actual complexity is in the derivative strings above, not here.
+All of this page's actual complexity is in the derivative strings above.
 
 ## Training
 
@@ -207,7 +183,7 @@ Glutamine declines smoothly across the full 120 h window, NH4 rises to match, an
 biomass grows independently of both: exactly the shape the declared derivatives
 describe.
 
-## Did the shared rate recover correctly?
+## Did the Shared Rate Recover Correctly?
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -228,8 +204,8 @@ for name in truth:
 
 All three come back close to their true values, `r_Gln` included: the same number
 that explains glutamine's own decline also correctly predicts NH4's rise, because
-training never saw two separate numbers to fit, only the one declared in
-`biological_ode.rates`. That is the actual demonstration this page exists to make;
+training only ever fit the single number declared in `biological_ode.rates`. That is
+the actual demonstration this page exists to make;
 everything above it is setup.
 
 ## Gotchas
@@ -246,17 +222,19 @@ everything above it is setup.
 - **This page's unusual rate shape (one rate feeding two derivatives) needs no custom
   reaction module at all, technically.** `hybrax.train`'s default reaction module sizes
   itself generically from the declared rate vector, so it would train against this
-  exact dataset with zero code. It is not used here on purpose: the default module is
+  exact dataset with zero code. This page skips it on purpose: the default module is
   an opaque MLP, with no single fitted `r_Gln` scalar to check against the paper's
   own value, which is the entire verification this page is built around.
 
-## See also
+## See Also
 
-Run the example yourself at `./source/_data/out/runs/gallery_glutamine_decay/`.
+The full, runnable example (`custom.py`, configs, data) lives in
+`examples/gallery_glutamine_decay/` at the repo root, no docs build required. This
+page's own executed run is at `./source/_data/out/runs/gallery_glutamine_decay/`.
 
 - [The Bioprocess ODE](../format/bioprocess_ode.md): `biological_ode`, `rates`,
   `derivatives`, and the unit-consistency rule this page relies on.
-- [Mechanistic models](mechanistic_rates.md): the same "did it recover the true
+- [Mechanistic Models](mechanistic_rates.md): the same "did it recover the true
   parameters" question, asked of a Monod-form rate law instead.
 - [OptFed](optfed.md): a rate law with real kinetic structure, and the same
   "identifiability needs the true value inside the sampled range" lesson.

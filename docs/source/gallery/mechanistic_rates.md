@@ -10,25 +10,17 @@ kernelspec:
   name: python3
 ---
 
-# Mechanistic models
+# Mechanistic Models
 
-> **Demonstrates.** Mechanistic kinetics (Monod growth, Luedeking-Piret product
-> formation) instead of a bare MLP, with named, trainable, physically interpretable
-> constants. And where those constants trade off against each other.
+> This page fits mechanistic kinetics instead of a generic neural network, using
+> named constants that are easy to interpret directly. It also shows how some of
+> those constants trade off against each other during fitting.
 
 Every tutorial so far let an MLP discover the rates. Nothing requires that. A reaction
 module is any function from the state to the rates: it can just as easily be the kinetic
 law you already believe in, with a handful of trainable scalars instead of a network.
 
-The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:
-
-:::{dropdown} Full `custom.py`
-```{literalinclude} ../../../examples/gallery_mechanistic_rates/custom.py
-:language: python
-:linenos:
-```
-:::
+The walkthrough below shows the file in pieces, next to the reasoning for each one.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -60,7 +52,7 @@ shutil.copy(EXAMPLE / "train-config.json", WORK / "train-config.json")
 shutil.copy(EXAMPLE / "forward-config.json", WORK / "forward-config.json")
 ```
 
-## The reaction module
+## The Reaction Module
 
 ```{literalinclude} ../../../examples/gallery_mechanistic_rates/custom.py
 :language: python
@@ -71,9 +63,9 @@ shutil.copy(EXAMPLE / "forward-config.json", WORK / "forward-config.json")
 Three things worth noting.
 
 **Every constant is `jnp.exp(log_x)`.** An unconstrained optimizer can push a plain
-trainable scalar negative, and a negative `Ks` or `Y_xs` is not just wrong, it makes the
-kinetics nonsensical. Training the *log* of each constant is the cheapest way to impose
-positivity: no clipping, no penalty term, the constraint is structural.
+trainable scalar negative, and a negative `Ks` or `Y_xs` makes the kinetics nonsensical.
+Training the *log* of each constant is the cheapest way to impose positivity: no
+clipping, no penalty term, the constraint is structural.
 
 **Uptake is gated by the same saturation term as growth.** `q_glucose` includes `sigma`
 in both its growth-linked and maintenance-linked parts, so uptake tapers smoothly as
@@ -82,9 +74,9 @@ is the mechanistic-modeling equivalent of the "concentrations must not go negati
 problem in [Dense losses](dense_loss.md): here it is built into the rate law instead of
 enforced by a penalty.
 
-**State indices are read off the assembled ODE, never hard-coded**: 
-`names.index("glucose")` in `build_reaction_module`, not a bare `1`. If someone reorders
-the dataset's components, this still works.
+**State indices are read off the assembled ODE, never hard-coded**:
+`build_reaction_module` looks up `names.index("glucose")` to find each state's
+position. If someone reorders the dataset's components, this still works.
 
 ## Training
 
@@ -108,7 +100,7 @@ from IPython.display import Image
 Image(filename=str(WORK / "run/forward/plots/run_1.png"))
 ```
 
-## Did it recover the true parameters?
+## Did It Recover the True Parameters?
 
 The dataset was simulated from known kinetics: nobody told the model this while
 training.
@@ -139,9 +131,10 @@ for name in truth:
 
 `mu_max` and `Y_XS` (the parameters that dominate the exponential growth phase, where
 most of the data's information lives) come back close to their true values. `Ks`, `m_s`,
-`alpha` and `beta` do not, and that is not a bug in the fit.
+`alpha` and `beta` land further from their true values, reflecting the identifiability
+trade-off explained in the next section.
 
-## Why the rest don't match, and why the fit is still good
+## Why the Rest Don't Match, and Why the Fit Is Still Good
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -157,7 +150,7 @@ number. The data constrains *that combination* tightly; it says almost nothing a
 much of it comes from `alpha` versus `beta` individually. Two different splits that sum to
 the same combination fit equally well, so the optimizer finds whichever split its
 initialisation happened to favour: this is a textbook **structural identifiability**
-problem, not an optimizer failure.
+problem baked into the data itself.
 
 `Ks` is a milder version of the same story: `demo_batch` never lingers at low, resolving
 glucose concentrations (the culture consumes it and moves on) so there is little data
@@ -171,18 +164,20 @@ longer low-glucose tail for `Ks`, a run with product measured *after* growth sto
 
 ## Gotchas
 
-- **Positivity via `log`, not `clip`.** A `jnp.clip` on a rate is a dead gradient region;
+- **Positivity via `log`.** A `jnp.clip` on a rate is a dead gradient region;
   the log-parameterisation has none.
 - **Multiple valid initializations exist.** Try a few seeds if a parameter estimate looks
   implausible: you may be seeing one identifiability trade-off rather than a wrong fit.
 - **Adding a state that *is* well constrained resolves the ambiguity.** If DO or another
   process variable independently informs the split, adding it as a modeled PV changes the
-  identifiability picture. See [A modeled process variable](modeled_pv.md) for what
+  identifiability picture. See [A Modeled Process Variable](modeled_pv.md) for what
   declaring and training one actually looks like.
 
-## See also
+## See Also
 
-Run the example yourself at `./source/_data/out/runs/gallery_structured_rates/`.
+The full, runnable example (`custom.py`, configs, data) lives in
+`examples/gallery_mechanistic_rates/` at the repo root, no docs build required. This
+page's own executed run is at `./source/_data/out/runs/gallery_mechanistic_rates/`.
 
 - [The Reaction Module](../train/reaction_module.md): the general SCL/RAW contract this
   module follows.
@@ -190,5 +185,5 @@ Run the example yourself at `./source/_data/out/runs/gallery_structured_rates/`.
   problem, for comparison.
 - [Dense losses](dense_loss.md): bounds and smoothness as an alternative way to encode
   what you know about the biology.
-- [Glutamine decay](glutamine_decay.md): a single declared rate feeding two coupled
+- [Glutamine Decay](glutamine_decay.md): a single declared rate feeding two coupled
   derivatives at once, the same "did it recover the true parameters" check.

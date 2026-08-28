@@ -8,12 +8,13 @@ Trained here by ordinary gradient descent through the whole ODE trajectory
 rather than NIPALS (the actual algorithm real PLS is fit with): the one
 disclosed algorithmic difference from a textbook PLS fit.
 
-Also adds a controlled process variable, `media_blend_fraction`, attached via
-`transform_process_collection`. The PLS component takes the blend fraction as
-an extra predictor alongside state, so the predicted FBA objective weights,
-and hence the predicted rates, become a function of both physiology AND
-recipe: Negahban et al. 2026's real structural idea (a kinetic corridor that
-depends on media composition).
+Also reads a constant-valued controlled process variable, `media_blend_fraction`.
+The PLS component takes the blend fraction as an extra predictor alongside state, so
+the predicted FBA objective weights, and hence the predicted rates, become a function
+of both physiology and recipe: Negahban et al. 2026's real structural idea (a kinetic
+corridor that depends on media composition). Shipped as a StaticVariable-valued
+ProcessVariable directly in data.json, baked in by the generator's
+build_demo_ecoli_blend().
 """
 
 import equinox as eqx
@@ -21,8 +22,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-import hybrax.format as hxf
-from hybrax.format.time_series import TimeSeries
 from hybrax.train import (
     EstimatedScales,
     ReactionInputs,
@@ -34,28 +33,6 @@ from hybrax.train import (
 AVG_QG = 10.250012796042299
 AVG_N = jnp.array([1.00000008, 1.00000023, 1.00000072, 0.99999969])
 MW = jnp.array([180.156, 60.05, 118.09])  # glucose, acetate, succinate (g/mol)
-
-BLEND_BY_PROCESS = {
-    "blend_00": 0.0,
-    "blend_33": 0.33,
-    "blend_67": 0.67,
-    "blend_100": 1.0,
-}
-
-
-def transform_process_collection(collection, config):
-    del config
-    for name, process in collection.processes.items():
-        blend = BLEND_BY_PROCESS[name]
-        times = process.reactor_medium.components["biomass"].concentration.times
-        process.process_variables["media_blend_fraction"] = hxf.ProcessVariable(
-            name="media_blend_fraction",
-            unit="-",
-            is_controlled=True,
-            values=TimeSeries(times=times, values=np.full(times.shape, blend)),
-            bounds=(0.0, 1.0),
-        )
-    return collection
 
 
 def _pos(B):

@@ -3,15 +3,15 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Custom losses" href="dense_loss.html"><link rel="prev" title="Freezing parameters" href="freezing.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Custom Losses" href="dense_loss.html"><link rel="prev" title="Freezing Parameters" href="freezing.html">
         <link rel="prefetch" href="../_static/hybrax_logo.png" as="image">
 
     <link rel="shortcut icon" href="../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>Mechanistic models - Bioprocess Modeling with Hybrax</title>
+        <title>Mechanistic Models - Bioprocess Modeling with Hybrax</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -374,155 +374,18 @@
         </div>
         <article role="main" id="furo-main-content">
           <section class="tex2jax_ignore mathjax_ignore" id="mechanistic-models">
-<h1>Mechanistic models<a class="headerlink" href="#mechanistic-models" title="Link to this heading">¶</a></h1>
+<h1>Mechanistic Models<a class="headerlink" href="#mechanistic-models" title="Link to this heading">¶</a></h1>
 <blockquote>
-<div><p><strong>Demonstrates.</strong> Mechanistic kinetics (Monod growth, Luedeking-Piret product
-formation) instead of a bare MLP, with named, trainable, physically interpretable
-constants. And where those constants trade off against each other.</p>
+<div><p>This page fits mechanistic kinetics instead of a generic neural network, using
+named constants that are easy to interpret directly. It also shows how some of
+those constants trade off against each other during fitting.</p>
 </div></blockquote>
 <p>Every tutorial so far let an MLP discover the rates. Nothing requires that. A reaction
 module is any function from the state to the rates: it can just as easily be the kinetic
 law you already believe in, with a handful of trainable scalars instead of a network.</p>
-<p>The walkthrough below shows the file in pieces, next to the reasoning for each one. For
-the whole thing at once: to copy, diff against your own, or just read top to bottom:</p>
-<details class="sd-sphinx-override sd-dropdown sd-card sd-mb-3">
-<summary class="sd-summary-title sd-card-header">
-<span class="sd-summary-text">Full <code class="docutils literal notranslate"><span class="pre">custom.py</span></code></span><span class="sd-summary-state-marker sd-summary-chevron-right"><svg version="1.1" width="1.5em" height="1.5em" class="sd-octicon sd-octicon-chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.72 18.78a.75.75 0 0 1 0-1.06L14.44 12 8.72 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0Z"></path></svg></span></summary><div class="sd-summary-content sd-card-body docutils">
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">  1</span><span class="sd">"""Structured rate laws: Monod growth + Luedeking-Piret product formation.</span>
-<span class="linenos">  2</span>
-<span class="linenos">  3</span><span class="sd">Instead of an MLP mapping state to rates, every rate is an explicit kinetic</span>
-<span class="linenos">  4</span><span class="sd">expression with named, physically meaningful, trainable constants.</span>
-<span class="linenos">  5</span><span class="sd">"""</span>
-<span class="linenos">  6</span>
-<span class="linenos">  7</span><span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
-<span class="linenos">  8</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
-<span class="linenos">  9</span><span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
-<span class="linenos"> 10</span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="linenos"> 11</span>
-<span class="linenos"> 12</span><span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.mechanistic</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_rhs_ode</span>
-<span class="linenos"> 13</span><span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.train</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-<span class="linenos"> 14</span>    <span class="n">EstimatedScales</span><span class="p">,</span>
-<span class="linenos"> 15</span>    <span class="n">ReactionOutputs</span><span class="p">,</span>
-<span class="linenos"> 16</span>    <span class="n">UserReactionModule</span><span class="p">,</span>
-<span class="linenos"> 17</span>    <span class="n">trainable_field</span><span class="p">,</span>
-<span class="linenos"> 18</span><span class="p">)</span>
-<span class="linenos"> 19</span>
-<span class="linenos"> 20</span>
-<span class="linenos"> 21</span><span class="k">class</span><span class="w"> </span><span class="nc">MonodModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
-<span class="linenos"> 22</span><span class="w">    </span><span class="sd">"""mu = mu_max·S/(Ks+S);</span>
-<span class="linenos"> 23</span><span class="sd">    q_S = -(mu/Yxs + ms·sigma);</span>
-<span class="linenos"> 24</span><span class="sd">    q_P = alpha·mu + beta·sigma.</span>
-<span class="linenos"> 25</span><span class="sd">    """</span>
-<span class="linenos"> 26</span>
-<span class="linenos"> 27</span>    <span class="c1"># Log-parameterised so every constant stays strictly positive under an</span>
-<span class="linenos"> 28</span>    <span class="c1"># unconstrained optimizer. This is the cheapest way to impose positivity.</span>
-<span class="linenos"> 29</span>    <span class="n">log_mu_max</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 30</span>    <span class="n">log_Ks</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 31</span>    <span class="n">log_Yxs</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 32</span>    <span class="n">log_ms</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 33</span>    <span class="n">log_alpha</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 34</span>    <span class="n">log_beta</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 35</span>
-<span class="linenos"> 36</span>    <span class="c1"># Index of each species in the state vector. Static: not arrays, not trained.</span>
-<span class="linenos"> 37</span>    <span class="n">i_biomass</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="linenos"> 38</span>    <span class="n">i_glucose</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="linenos"> 39</span>
-<span class="linenos"> 40</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">i_biomass</span><span class="p">,</span> <span class="n">i_glucose</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
-<span class="linenos"> 41</span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
-<span class="linenos"> 42</span>        <span class="bp">self</span><span class="o">.</span><span class="n">i_biomass</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">i_glucose</span> <span class="o">=</span> <span class="n">i_biomass</span><span class="p">,</span> <span class="n">i_glucose</span>
-<span class="linenos"> 43</span>        <span class="c1"># Deliberately mediocre starting guesses: the point is that they move.</span>
-<span class="linenos"> 44</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_mu_max</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">0.20</span><span class="p">))</span>
-<span class="linenos"> 45</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_Ks</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">0.50</span><span class="p">))</span>
-<span class="linenos"> 46</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_Yxs</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">0.30</span><span class="p">))</span>
-<span class="linenos"> 47</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_ms</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">0.05</span><span class="p">))</span>
-<span class="linenos"> 48</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_alpha</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">0.03</span><span class="p">))</span>
-<span class="linenos"> 49</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_beta</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">0.02</span><span class="p">))</span>
-<span class="linenos"> 50</span>
-<span class="linenos"> 51</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
-<span class="linenos"> 52</span>        <span class="k">del</span> <span class="n">t</span>
-<span class="linenos"> 53</span>        <span class="c1"># Kinetics are written in PHYSICAL units, so unscale on the way in and</span>
-<span class="linenos"> 54</span>        <span class="c1"># scale on the way out. Ks in g/L only means something in RAW space.</span>
-<span class="linenos"> 55</span>        <span class="n">RAW</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unscale_modeled_RMCs</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">)</span>
-<span class="linenos"> 56</span>        <span class="n">S</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">RAW</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">i_glucose</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>  <span class="c1"># guard tiny negative excursions</span>
-<span class="linenos"> 57</span>
-<span class="linenos"> 58</span>        <span class="n">sigma</span> <span class="o">=</span> <span class="n">S</span> <span class="o">/</span> <span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_Ks</span><span class="p">)</span> <span class="o">+</span> <span class="n">S</span><span class="p">)</span>  <span class="c1"># Monod saturation term</span>
-<span class="linenos"> 59</span>        <span class="n">mu</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_mu_max</span><span class="p">)</span> <span class="o">*</span> <span class="n">sigma</span>
-<span class="linenos"> 60</span>        <span class="c1"># Uptake is gated by the SAME saturation term, so it tapers at depletion</span>
-<span class="linenos"> 61</span>        <span class="c1"># instead of being clipped afterwards.</span>
-<span class="linenos"> 62</span>        <span class="n">q_glucose</span> <span class="o">=</span> <span class="o">-</span><span class="p">(</span><span class="n">mu</span> <span class="o">/</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_Yxs</span><span class="p">)</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_ms</span><span class="p">)</span> <span class="o">*</span> <span class="n">sigma</span><span class="p">)</span>
-<span class="linenos"> 63</span>        <span class="n">q_product</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_alpha</span><span class="p">)</span> <span class="o">*</span> <span class="n">mu</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_beta</span><span class="p">)</span> <span class="o">*</span> <span class="n">sigma</span>
-<span class="linenos"> 64</span>
-<span class="linenos"> 65</span>        <span class="n">RAW_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">mu</span><span class="p">,</span> <span class="n">q_glucose</span><span class="p">,</span> <span class="n">q_product</span><span class="p">])</span>
-<span class="linenos"> 66</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos"> 67</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_BiologicalOde_rates</span><span class="p">(</span>
-<span class="linenos"> 68</span>                <span class="n">RAW_rates</span>
-<span class="linenos"> 69</span>            <span class="p">),</span>
-<span class="linenos"> 70</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos"> 71</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos"> 72</span>        <span class="p">)</span>
-<span class="linenos"> 73</span>
-<span class="linenos"> 74</span>
-<span class="linenos"> 75</span><span class="k">def</span><span class="w"> </span><span class="nf">build_reaction_module</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">training_parent_collection</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<span class="linenos"> 76</span>    <span class="c1"># Never hard-code state indices: read them off the assembled ODE.</span>
-<span class="linenos"> 77</span>    <span class="n">process</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">training_parent_collection</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span>
-<span class="linenos"> 78</span>    <span class="n">rhs</span> <span class="o">=</span> <span class="n">build_rhs_ode</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
-<span class="linenos"> 79</span>    <span class="n">names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">)</span>
-<span class="linenos"> 80</span>    <span class="k">return</span> <span class="n">MonodModule</span><span class="p">(</span>
-<span class="linenos"> 81</span>        <span class="n">i_biomass</span><span class="o">=</span><span class="n">names</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s2">"biomass"</span><span class="p">),</span>
-<span class="linenos"> 82</span>        <span class="n">i_glucose</span><span class="o">=</span><span class="n">names</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="s2">"glucose"</span><span class="p">),</span>
-<span class="linenos"> 83</span>        <span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"SCALE_"</span><span class="p">)},</span>
-<span class="linenos"> 84</span>    <span class="p">)</span>
-<span class="linenos"> 85</span>
-<span class="linenos"> 86</span>
-<span class="linenos"> 87</span><span class="k">def</span><span class="w"> </span><span class="nf">estimate_all_scales</span><span class="p">(</span><span class="n">runtime_data</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
-<span class="linenos"> 88</span>    <span class="k">del</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span>
-<span class="linenos"> 89</span>    <span class="n">rhs</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">rhs_ode</span>
-<span class="linenos"> 90</span>    <span class="n">n_processes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
-<span class="linenos"> 91</span>    <span class="n">span</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span>
-<span class="linenos"> 92</span>        <span class="n">end</span> <span class="o">-</span> <span class="n">start</span>
-<span class="linenos"> 93</span>        <span class="k">for</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="ow">in</span> <span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">time_bounds</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">))</span>
-<span class="linenos"> 94</span>    <span class="p">)</span>
-<span class="linenos"> 95</span>
-<span class="linenos"> 96</span>    <span class="k">def</span><span class="w"> </span><span class="nf">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
-<span class="linenos"> 97</span>        <span class="n">best</span> <span class="o">=</span> <span class="mf">0.0</span>
-<span class="linenos"> 98</span>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">):</span>
-<span class="linenos"> 99</span>            <span class="n">_</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
-<span class="linenos">100</span>            <span class="k">if</span> <span class="n">values</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
-<span class="linenos">101</span>                <span class="n">best</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">values</span><span class="p">))))</span>
-<span class="linenos">102</span>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">)</span>
-<span class="linenos">103</span>
-<span class="linenos">104</span>    <span class="n">rmc_scale</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">}</span>
-<span class="linenos">105</span>    <span class="n">biomass</span> <span class="o">=</span> <span class="n">rmc_scale</span><span class="p">[</span><span class="s2">"biomass"</span><span class="p">]</span>
-<span class="linenos">106</span>    <span class="n">empty</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-<span class="linenos">107</span>    <span class="k">return</span> <span class="n">EstimatedScales</span><span class="p">(</span>
-<span class="linenos">108</span>        <span class="n">SCALE_modeled_RMCs</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">rmc_scale</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">]),</span>
-<span class="linenos">109</span>        <span class="n">SCALE_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
-<span class="linenos">110</span>            <span class="p">[</span><span class="n">rmc_scale</span><span class="p">[</span><span class="n">n</span><span class="p">[</span><span class="mi">2</span><span class="p">:]]</span> <span class="o">/</span> <span class="p">(</span><span class="n">biomass</span> <span class="o">*</span> <span class="n">span</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_rates</span><span class="p">]</span>
-<span class="linenos">111</span>        <span class="p">),</span>
-<span class="linenos">112</span>        <span class="n">SCALE_V_in_cumulative</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
-<span class="linenos">113</span>            <span class="nb">max</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">initial_volume</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">))</span>
-<span class="linenos">114</span>        <span class="p">),</span>
-<span class="linenos">115</span>        <span class="n">SCALE_modeled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">116</span>        <span class="n">SCALE_modeled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">117</span>        <span class="n">SCALE_modeled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">118</span>        <span class="n">SCALE_modeled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">119</span>        <span class="n">SCALE_controlled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">120</span>        <span class="n">SCALE_controlled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">121</span>        <span class="n">SCALE_controlled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">122</span>        <span class="n">SCALE_controlled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">123</span>        <span class="n">SCALE_controlled_PVs</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">124</span>        <span class="n">SCALE_controlled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos">125</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
-<span class="linenos">126</span>        <span class="p">),</span>
-<span class="linenos">127</span>        <span class="n">SCALE_modeled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos">128</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
-<span class="linenos">129</span>        <span class="p">),</span>
-<span class="linenos">130</span>    <span class="p">)</span>
-</pre></div>
-</div>
-</div>
-</details><section id="the-reaction-module">
-<h2>The reaction module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
+<p>The walkthrough below shows the file in pieces, next to the reasoning for each one.</p>
+<section id="the-reaction-module">
+<h2>The Reaction Module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">MonodModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
 <span class="linenos"> 2</span><span class="w">    </span><span class="sd">"""mu = mu_max·S/(Ks+S);</span>
 <span class="linenos"> 3</span><span class="sd">    q_S = -(mu/Yxs + ms·sigma);</span>
@@ -575,9 +438,9 @@ the whole thing at once: to copy, diff against your own, or just read top to bot
 </div>
 <p>Three things worth noting.</p>
 <p><strong>Every constant is <code class="docutils literal notranslate"><span class="pre">jnp.exp(log_x)</span></code>.</strong> An unconstrained optimizer can push a plain
-trainable scalar negative, and a negative <code class="docutils literal notranslate"><span class="pre">Ks</span></code> or <code class="docutils literal notranslate"><span class="pre">Y_xs</span></code> is not just wrong, it makes the
-kinetics nonsensical. Training the <em>log</em> of each constant is the cheapest way to impose
-positivity: no clipping, no penalty term, the constraint is structural.</p>
+trainable scalar negative, and a negative <code class="docutils literal notranslate"><span class="pre">Ks</span></code> or <code class="docutils literal notranslate"><span class="pre">Y_xs</span></code> makes the kinetics nonsensical.
+Training the <em>log</em> of each constant is the cheapest way to impose positivity: no
+clipping, no penalty term, the constraint is structural.</p>
 <p><strong>Uptake is gated by the same saturation term as growth.</strong> <code class="docutils literal notranslate"><span class="pre">q_glucose</span></code> includes <code class="docutils literal notranslate"><span class="pre">sigma</span></code>
 in both its growth-linked and maintenance-linked parts, so uptake tapers smoothly as
 glucose depletes rather than being driven to some fixed rate and clipped afterwards. This
@@ -585,14 +448,14 @@ is the mechanistic-modeling equivalent of the “concentrations must not go nega
 problem in <a class="reference internal" href="dense_loss.html"><span class="std std-doc">Dense losses</span></a>: here it is built into the rate law instead of
 enforced by a penalty.</p>
 <p><strong>State indices are read off the assembled ODE, never hard-coded</strong>:
-<code class="docutils literal notranslate"><span class="pre">names.index(&quot;glucose&quot;)</span></code> in <code class="docutils literal notranslate"><span class="pre">build_reaction_module</span></code>, not a bare <code class="docutils literal notranslate"><span class="pre">1</span></code>. If someone reorders
-the dataset’s components, this still works.</p>
+<code class="docutils literal notranslate"><span class="pre">build_reaction_module</span></code> looks up <code class="docutils literal notranslate"><span class="pre">names.index(&quot;glucose&quot;)</span></code> to find each state’s
+position. If someone reorders the dataset’s components, this still works.</p>
 </section>
 <section id="training">
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 13:30:35 INFO __main__: training complete: first_mean_loss=0.15896 last_mean_loss=0.0002096 delta=-0.158751
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:18:06 INFO __main__: training complete: first_mean_loss=0.15896 last_mean_loss=0.0002096 delta=-0.158751
 run directory: ./source/_data/out/runs/gallery_structured_rates/run
 </pre></div>
 </div>
@@ -605,7 +468,7 @@ run directory: ./source/_data/out/runs/gallery_structured_rates/run
 </div>
 </section>
 <section id="did-it-recover-the-true-parameters">
-<h2>Did it recover the true parameters?<a class="headerlink" href="#did-it-recover-the-true-parameters" title="Link to this heading">¶</a></h2>
+<h2>Did It Recover the True Parameters?<a class="headerlink" href="#did-it-recover-the-true-parameters" title="Link to this heading">¶</a></h2>
 <p>The dataset was simulated from known kinetics: nobody told the model this while
 training.</p>
 <div class="cell tag_remove-input docutils container">
@@ -623,10 +486,11 @@ beta           0.0263     0.0060
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">mu_max</span></code> and <code class="docutils literal notranslate"><span class="pre">Y_XS</span></code> (the parameters that dominate the exponential growth phase, where
 most of the data’s information lives) come back close to their true values. <code class="docutils literal notranslate"><span class="pre">Ks</span></code>, <code class="docutils literal notranslate"><span class="pre">m_s</span></code>,
-<code class="docutils literal notranslate"><span class="pre">alpha</span></code> and <code class="docutils literal notranslate"><span class="pre">beta</span></code> do not, and that is not a bug in the fit.</p>
+<code class="docutils literal notranslate"><span class="pre">alpha</span></code> and <code class="docutils literal notranslate"><span class="pre">beta</span></code> land further from their true values, reflecting the identifiability
+trade-off explained in the next section.</p>
 </section>
 <section id="why-the-rest-don-t-match-and-why-the-fit-is-still-good">
-<h2>Why the rest don’t match, and why the fit is still good<a class="headerlink" href="#why-the-rest-don-t-match-and-why-the-fit-is-still-good" title="Link to this heading">¶</a></h2>
+<h2>Why the Rest Don’t Match, and Why the Fit Is Still Good<a class="headerlink" href="#why-the-rest-don-t-match-and-why-the-fit-is-still-good" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>alpha*mu_max + beta   fitted=0.0426   true=0.0420
@@ -640,7 +504,7 @@ number. The data constrains <em>that combination</em> tightly; it says almost no
 much of it comes from <code class="docutils literal notranslate"><span class="pre">alpha</span></code> versus <code class="docutils literal notranslate"><span class="pre">beta</span></code> individually. Two different splits that sum to
 the same combination fit equally well, so the optimizer finds whichever split its
 initialisation happened to favour: this is a textbook <strong>structural identifiability</strong>
-problem, not an optimizer failure.</p>
+problem baked into the data itself.</p>
 <p><code class="docutils literal notranslate"><span class="pre">Ks</span></code> is a milder version of the same story: <code class="docutils literal notranslate"><span class="pre">demo_batch</span></code> never lingers at low, resolving
 glucose concentrations (the culture consumes it and moves on) so there is little data
 constraining exactly where the saturation curve bends.</p>
@@ -653,19 +517,21 @@ longer low-glucose tail for <code class="docutils literal notranslate"><span cla
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><strong>Positivity via <code class="docutils literal notranslate"><span class="pre">log</span></code>, not <code class="docutils literal notranslate"><span class="pre">clip</span></code>.</strong> A <code class="docutils literal notranslate"><span class="pre">jnp.clip</span></code> on a rate is a dead gradient region;
+<li><p><strong>Positivity via <code class="docutils literal notranslate"><span class="pre">log</span></code>.</strong> A <code class="docutils literal notranslate"><span class="pre">jnp.clip</span></code> on a rate is a dead gradient region;
 the log-parameterisation has none.</p></li>
 <li><p><strong>Multiple valid initializations exist.</strong> Try a few seeds if a parameter estimate looks
 implausible: you may be seeing one identifiability trade-off rather than a wrong fit.</p></li>
 <li><p><strong>Adding a state that <em>is</em> well constrained resolves the ambiguity.</strong> If DO or another
 process variable independently informs the split, adding it as a modeled PV changes the
-identifiability picture. See <a class="reference internal" href="modeled_pv.html"><span class="std std-doc">A modeled process variable</span></a> for what
+identifiability picture. See <a class="reference internal" href="modeled_pv.html"><span class="std std-doc">A Modeled Process Variable</span></a> for what
 declaring and training one actually looks like.</p></li>
 </ul>
 </section>
 <section id="see-also">
-<h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
-<p>Run the example yourself at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_structured_rates/</span></code>.</p>
+<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
+<p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
+<code class="docutils literal notranslate"><span class="pre">examples/gallery_mechanistic_rates/</span></code> at the repo root, no docs build required. This
+page’s own executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_mechanistic_rates/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: the general SCL/RAW contract this
 module follows.</p></li>
@@ -673,7 +539,7 @@ module follows.</p></li>
 problem, for comparison.</p></li>
 <li><p><a class="reference internal" href="dense_loss.html"><span class="std std-doc">Dense losses</span></a>: bounds and smoothness as an alternative way to encode
 what you know about the biology.</p></li>
-<li><p><a class="reference internal" href="glutamine_decay.html"><span class="std std-doc">Glutamine decay</span></a>: a single declared rate feeding two coupled
+<li><p><a class="reference internal" href="glutamine_decay.html"><span class="std std-doc">Glutamine Decay</span></a>: a single declared rate feeding two coupled
 derivatives at once, the same “did it recover the true parameters” check.</p></li>
 </ul>
 </section>
@@ -689,7 +555,7 @@ derivatives at once, the same “did it recover the true parameters” check.</p
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">Custom losses</div>
+                <div class="title">Custom Losses</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
@@ -700,7 +566,7 @@ derivatives at once, the same “did it recover the true parameters” check.</p
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">Freezing parameters</div>
+                <div class="title">Freezing Parameters</div>
                 
               </div>
             </a>
@@ -734,13 +600,13 @@ derivatives at once, the same “did it recover the true parameters” check.</p
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">Mechanistic models</a><ul>
-<li><a class="reference internal" href="#the-reaction-module">The reaction module</a></li>
+<li><a class="reference internal" href="#">Mechanistic Models</a><ul>
+<li><a class="reference internal" href="#the-reaction-module">The Reaction Module</a></li>
 <li><a class="reference internal" href="#training">Training</a></li>
-<li><a class="reference internal" href="#did-it-recover-the-true-parameters">Did it recover the true parameters?</a></li>
-<li><a class="reference internal" href="#why-the-rest-don-t-match-and-why-the-fit-is-still-good">Why the rest don’t match, and why the fit is still good</a></li>
+<li><a class="reference internal" href="#did-it-recover-the-true-parameters">Did It Recover the True Parameters?</a></li>
+<li><a class="reference internal" href="#why-the-rest-don-t-match-and-why-the-fit-is-still-good">Why the Rest Don’t Match, and Why the Fit Is Still Good</a></li>
 <li><a class="reference internal" href="#gotchas">Gotchas</a></li>
-<li><a class="reference internal" href="#see-also">See also</a></li>
+<li><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
 </li>
 </ul>
