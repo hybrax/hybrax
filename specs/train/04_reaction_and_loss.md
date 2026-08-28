@@ -155,14 +155,14 @@ are zero, and the output weights use `0.01 × Glorot uniform` to start the ODE
 rates near zero. The single trainable leaf is the MLP
 (`model: eqx.nn.MLP = trainable_field()`).
 
-### `DefaultStatefulReactionModule`
+### Built-in recurrent modules
 
-Import it from `hybrax.train.defaults` — unlike `DefaultReactionModule` it is not
-re-exported at the package top level. Using any module with `n_latent > 0` also
-requires `train.allow_stateful_models: true` in the config; otherwise training
-fails fast.
+Import `DefaultGruReactionModule` or `DefaultLstmReactionModule` from
+`hybrax.train`. `DefaultStatefulReactionModule` remains a documented alias for
+`DefaultGruReactionModule`. Using any module with `n_latent > 0` also requires
+`train.allow_stateful_models: true` in the config; otherwise training fails fast.
 
-`DefaultStatefulReactionModule` is a latent ODE with a standard GRU:
+`DefaultGruReactionModule` is a latent ODE with a standard GRU:
 `dh/dt = GRUCell(x, h) - h`. Its cell input `x` contains the scaled physical
 and control inputs only; the latent state is passed only as the GRU hidden
 argument. The reset and keep gates use sigmoid and the candidate uses tanh.
@@ -177,6 +177,16 @@ readout emits `0.01` in SCL derivative units. The separate modeled Outflow
 head uses `-softplus`, so its rates remain non-positive. These flow-head biases
 are separate from, and do not change, the zero initialization of internal GRU
 biases.
+
+`DefaultLstmReactionModule` has the same physical/control input and calibrated
+biological, Inflow, and Outflow heads. Its `hidden_width` argument sets the LSTM
+width; `SCL_latent` stores `[hidden | cell]`, so its integrated width is
+`2 * hidden_width`. It uses
+`d([h | c])/dt = LSTMCell(x, (h, c)) - [h | c]`, with independent
+per-gate Glorot input kernels, orthogonal recurrent kernels, and zero internal
+biases. This deliberately leaves the forget gate near 0.5 at zero input rather
+than applying the discrete-LSTM convention of a +1 forget bias; the
+continuous-time derivative already expresses relaxation toward the cell target.
 
 ### Field tagging
 

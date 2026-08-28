@@ -186,7 +186,10 @@ different model class, and it requires explicit opt-in:
 { "train": { "allow_stateful_models": true } }
 ```
 
-Without it you get a clear `ValueError`. See [Gallery](../gallery/index.md).
+Without it you get a clear `ValueError`. Hybrax exports
+`DefaultGruReactionModule` and `DefaultLstmReactionModule` for the standard
+recurrent cases; the LSTM integrates `[hidden | cell]`, so its latent width is
+twice `hidden_width`. See the [stateful gallery](../gallery/stateful.md).
 
 ## Gotchas
 

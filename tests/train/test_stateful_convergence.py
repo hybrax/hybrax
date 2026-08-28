@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import jax
 import jax.numpy as jnp
+import pytest
 
-from hybrax.train.defaults import DefaultStatefulReactionModule
+from hybrax.train.defaults import DefaultGruReactionModule, DefaultLstmReactionModule
 from stateful_helpers import (
     build_stateful_wrapper,
     default_stateful_scale_kwargs,
@@ -15,10 +16,8 @@ from stateful_helpers import (
 _SCALE_KWARGS = default_stateful_scale_kwargs()
 
 
-def _solve(rtol, atol):
-    module = DefaultStatefulReactionModule(
-        key=jax.random.key(2), n_latent=1, **_SCALE_KWARGS
-    )
+def _solve(module_class, width_kwargs, rtol, atol):
+    module = module_class(key=jax.random.key(2), **width_kwargs, **_SCALE_KWARGS)
     wrapper = build_stateful_wrapper(make_process(feed_rate=0.1), module)
     return solve(
         wrapper,
@@ -29,10 +28,19 @@ def _solve(rtol, atol):
     )
 
 
-def test_stateful_latent_trajectory_converges_as_tolerances_tighten():
-    loose = _solve(1e-2, 1e-4)
-    mid = _solve(1e-4, 1e-6)
-    tight = _solve(1e-6, 1e-8)
+@pytest.mark.parametrize(
+    ("module_class", "width_kwargs"),
+    [
+        (DefaultGruReactionModule, {"n_latent": 1}),
+        (DefaultLstmReactionModule, {"hidden_width": 1}),
+    ],
+)
+def test_stateful_latent_trajectory_converges_as_tolerances_tighten(
+    module_class, width_kwargs
+):
+    loose = _solve(module_class, width_kwargs, 1e-2, 1e-4)
+    mid = _solve(module_class, width_kwargs, 1e-4, 1e-6)
+    tight = _solve(module_class, width_kwargs, 1e-6, 1e-8)
 
     loose_to_mid = jnp.linalg.norm(loose[:, -1] - mid[:, -1])
     mid_to_tight = jnp.linalg.norm(mid[:, -1] - tight[:, -1])

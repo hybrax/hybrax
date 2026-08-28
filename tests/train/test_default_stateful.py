@@ -3,8 +3,14 @@ from __future__ import annotations
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
+import pytest
 
-from hybrax.train.defaults import DefaultStatefulReactionModule
+from hybrax.train.defaults import (
+    DefaultGruReactionModule,
+    DefaultLstmReactionModule,
+    DefaultStatefulReactionModule,
+)
 from hybrax.train.model_api import ReactionInputs, partition_trainable
 from stateful_helpers import TrainableH0DefaultStateful, default_stateful_scale_kwargs
 
@@ -14,24 +20,45 @@ _SCALE_KWARGS = default_stateful_scale_kwargs(
 )
 
 
-def _inputs(h, *, n_modeled_inflows=0, n_modeled_outflows=0):
+def _inputs(
+    h,
+    *,
+    n_rmcs=1,
+    n_modeled_pvs=0,
+    n_modeled_inflows=0,
+    n_modeled_outflows=0,
+    n_controlled_inflows=0,
+    n_controlled_outflows=0,
+    n_controlled_pvs=0,
+    distinct=False,
+):
+    def values(size, start, *, default=0.0):
+        if distinct:
+            return start + jnp.arange(size, dtype=h.dtype)
+        return jnp.full(size, default, dtype=h.dtype)
+
     return ReactionInputs(
-        SCL_modeled_RMCs=jnp.asarray([1.0], dtype=h.dtype),
-        SCL_modeled_V=jnp.asarray(1.0, dtype=h.dtype),
-        SCL_modeled_Inflows_cumulative=jnp.zeros(n_modeled_inflows, dtype=h.dtype),
-        SCL_modeled_Outflows_cumulative=jnp.zeros(n_modeled_outflows, dtype=h.dtype),
-        SCL_controlled_Inflows_cumulative=jnp.zeros(0, dtype=h.dtype),
-        SCL_controlled_Inflows_rates=jnp.zeros(0, dtype=h.dtype),
-        SCL_controlled_Inflows_Cin=jnp.zeros((0, 1), dtype=h.dtype),
-        SCL_controlled_Outflows_cumulative=jnp.zeros(0, dtype=h.dtype),
-        SCL_controlled_Outflows_rates=jnp.zeros(0, dtype=h.dtype),
-        RAW_controlled_Outflows_retention=jnp.zeros((0, 1), dtype=h.dtype),
-        SCL_controlled_PVs=jnp.zeros(0, dtype=h.dtype),
-        SCL_modeled_Inflows_Cin=jnp.zeros((n_modeled_inflows, 1), dtype=h.dtype),
+        SCL_modeled_RMCs=values(n_rmcs, 1.0, default=1.0),
+        SCL_modeled_V=jnp.asarray(21.0 if distinct else 1.0, dtype=h.dtype),
+        SCL_modeled_Inflows_cumulative=values(n_modeled_inflows, 31.0),
+        SCL_modeled_Outflows_cumulative=values(n_modeled_outflows, 41.0),
+        SCL_controlled_Inflows_cumulative=values(n_controlled_inflows, 51.0),
+        SCL_controlled_Inflows_rates=values(n_controlled_inflows, 61.0),
+        SCL_controlled_Inflows_Cin=jnp.zeros(
+            (n_controlled_inflows, n_rmcs), dtype=h.dtype
+        ),
+        SCL_controlled_Outflows_cumulative=values(n_controlled_outflows, 71.0),
+        SCL_controlled_Outflows_rates=values(n_controlled_outflows, 81.0),
+        RAW_controlled_Outflows_retention=jnp.zeros(
+            (n_controlled_outflows, n_rmcs), dtype=h.dtype
+        ),
+        SCL_controlled_PVs=values(n_controlled_pvs, 91.0),
+        SCL_modeled_Inflows_Cin=jnp.zeros((n_modeled_inflows, n_rmcs), dtype=h.dtype),
         RAW_modeled_Outflows_retention=jnp.zeros(
-            (n_modeled_outflows, 1), dtype=h.dtype
+            (n_modeled_outflows, n_rmcs), dtype=h.dtype
         ),
         SCL_latent=h,
+        SCL_modeled_PVs=values(n_modeled_pvs, 11.0),
     )
 
 
@@ -61,12 +88,13 @@ def _flow_scale_kwargs():
 
 
 def test_default_stateful_module_uses_gru_cell_as_latent_derivative():
-    module = DefaultStatefulReactionModule(
+    module = DefaultGruReactionModule(
         key=jax.random.key(0), n_latent=2, **_SCALE_KWARGS
     )
     h = jnp.asarray([0.2, -0.3])
 
-    outputs = module(jnp.asarray(0.0), _inputs(h))
+    inputs = _inputs(h)
+    outputs = module(jnp.asarray(0.0), inputs)
 
     cell_input = jnp.asarray([1.0, 1.0])
     expected_input_size = (
@@ -85,35 +113,206 @@ def test_default_stateful_module_uses_gru_cell_as_latent_derivative():
     assert jnp.allclose(
         outputs.SCL_latent_derivative, module.gru_cell(cell_input, h) - h
     )
+    readout = jnp.concatenate([h, inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs])
+    assert jnp.allclose(
+        outputs.SCL_modeled_BiologicalOde_rates,
+        module.rate_head(readout),
+    )
     assert outputs.SCL_modeled_BiologicalOde_rates.shape == (1,)
     assert outputs.SCL_modeled_Inflows_rates.shape == (0,)
     assert outputs.SCL_modeled_Outflows_rates.shape == (0,)
 
 
-def test_default_stateful_mixed_flow_axes_size_the_gru_input():
-    module = DefaultStatefulReactionModule(
+def test_default_gru_alias_and_package_exports():
+    import hybrax.train as train
+
+    assert DefaultStatefulReactionModule is DefaultGruReactionModule
+    assert train.DefaultGruReactionModule is DefaultGruReactionModule
+    assert train.DefaultLstmReactionModule is DefaultLstmReactionModule
+    assert train.DefaultStatefulReactionModule is DefaultGruReactionModule
+
+
+@pytest.mark.parametrize(
+    ("module_class", "width_name"),
+    [
+        (DefaultGruReactionModule, "n_latent"),
+        (DefaultLstmReactionModule, "hidden_width"),
+    ],
+)
+@pytest.mark.parametrize("width", [0, -1, 2.5, True])
+def test_default_stateful_rejects_invalid_width(module_class, width_name, width):
+    with pytest.raises(ValueError, match=f"{width_name}.*positive integer"):
+        module_class(
+            key=jax.random.key(0),
+            **{width_name: width},
+            **_SCALE_KWARGS,
+        )
+
+
+@pytest.mark.parametrize(
+    ("module_class", "width_name"),
+    [
+        (DefaultGruReactionModule, "n_latent"),
+        (DefaultLstmReactionModule, "hidden_width"),
+    ],
+)
+def test_default_stateful_accepts_numpy_integer_width(module_class, width_name):
+    module = module_class(
+        key=jax.random.key(0),
+        **{width_name: np.int64(2)},
+        **_SCALE_KWARGS,
+    )
+    assert module.n_latent == (4 if width_name == "hidden_width" else 2)
+
+
+@pytest.mark.parametrize(
+    ("module_class", "width_name"),
+    [
+        (DefaultGruReactionModule, "n_latent"),
+        (DefaultLstmReactionModule, "hidden_width"),
+    ],
+)
+def test_default_stateful_rejects_explicit_latent_scale(module_class, width_name):
+    with pytest.raises(ValueError, match=f"sizes SCALE_latent from {width_name}"):
+        module_class(
+            key=jax.random.key(0),
+            **{width_name: 2},
+            **{**_SCALE_KWARGS, "SCALE_latent": jnp.ones(4)},
+        )
+
+
+def test_default_lstm_latent_layout_output_semantics_and_initialization():
+    key = jax.random.key(37)
+    module = DefaultLstmReactionModule(key=key, hidden_width=3, **_flow_scale_kwargs())
+    latent = jnp.asarray([0.2, -0.3, 0.4, -0.5, 0.6, -0.7])
+    inputs = _inputs(latent, n_modeled_inflows=1, n_modeled_outflows=1)
+
+    assert module.n_latent == 6
+    assert module.hidden_width == 3
+    assert module.lstm_cell.weight_ih.shape == (12, 4)
+    assert module.lstm_cell.weight_hh.shape == (12, 3)
+    assert jnp.array_equal(module.SCALE_latent.scale, jnp.ones(6))
+    assert jnp.array_equal(module.lstm_cell.bias, jnp.zeros(12))
+
+    key_lstm, _, _, _ = jax.random.split(key, 4)
+    _, lstm_init_key = jax.random.split(key_lstm)
+    lstm_keys = jax.random.split(lstm_init_key, 8)
+    glorot_init = jax.nn.initializers.glorot_uniform(in_axis=1, out_axis=0)
+    orthogonal_init = jax.nn.initializers.orthogonal()
+    for i, block in enumerate(jnp.split(module.lstm_cell.weight_ih, 4)):
+        assert jnp.array_equal(
+            block, glorot_init(lstm_keys[i], block.shape, block.dtype)
+        )
+    for i, block in enumerate(jnp.split(module.lstm_cell.weight_hh, 4)):
+        assert jnp.array_equal(
+            block, orthogonal_init(lstm_keys[i + 4], block.shape, block.dtype)
+        )
+
+    h, c = jnp.split(latent, 2)
+    cell_input = jnp.asarray([1.0, 1.0, 0.0, 0.0])
+    h_new, c_new = module.lstm_cell(cell_input, (h, c))
+    outputs = module(jnp.asarray(0.0), inputs)
+    assert jnp.allclose(
+        outputs.SCL_latent_derivative, jnp.concatenate([h_new - h, c_new - c])
+    )
+    readout = jnp.concatenate([h, inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs])
+    assert jnp.allclose(
+        outputs.SCL_modeled_BiologicalOde_rates,
+        module.rate_head(readout),
+    )
+    assert jnp.allclose(
+        outputs.SCL_modeled_Inflows_rates,
+        jax.nn.softplus(module.inflow_head(readout)),
+    )
+    assert jnp.allclose(
+        outputs.SCL_modeled_Outflows_rates,
+        -jax.nn.softplus(module.outflow_head(readout)),
+    )
+
+
+@pytest.mark.parametrize(
+    ("module_class", "width_kwargs", "cell_name", "latent_size"),
+    [
+        (DefaultGruReactionModule, {"n_latent": 2}, "gru_cell", 2),
+        (DefaultLstmReactionModule, {"hidden_width": 2}, "lstm_cell", 4),
+    ],
+)
+def test_default_stateful_mixed_axes_size_recurrent_input(
+    module_class, width_kwargs, cell_name, latent_size
+):
+    dimensions = {
+        "n_rmcs": 2,
+        "n_modeled_pvs": 1,
+        "n_modeled_inflows": 1,
+        "n_modeled_outflows": 2,
+        "n_controlled_inflows": 3,
+        "n_controlled_outflows": 4,
+        "n_controlled_pvs": 5,
+    }
+    module = module_class(
         key=jax.random.key(19),
-        n_latent=2,
-        **default_stateful_scale_kwargs(
-            n_rmcs=2,
-            n_modeled_inflows=1,
-            n_modeled_outflows=2,
-            n_controlled_inflows=3,
-            n_controlled_outflows=4,
-            n_controlled_pvs=5,
-        ),
+        **width_kwargs,
+        **default_stateful_scale_kwargs(**dimensions),
     )
 
     assert module.n_modeled_Inflows == 1
     assert module.n_modeled_Outflows == 2
     assert module.n_controlled_Inflows == 3
     assert module.n_controlled_Outflows == 4
-    assert module.gru_cell.weight_ih.shape[1] == 25
+    assert getattr(module, cell_name).weight_ih.shape[1] == 26
+    latent = jnp.arange(1, latent_size + 1, dtype=jnp.float64) / 10
+    inputs = _inputs(latent, **dimensions, distinct=True)
+    expected_cell_input = jnp.concatenate(
+        [
+            inputs.SCL_modeled_RMCs,
+            inputs.SCL_modeled_PVs,
+            jnp.atleast_1d(inputs.SCL_modeled_V),
+            inputs.SCL_modeled_Inflows_cumulative,
+            inputs.SCL_modeled_Outflows_cumulative,
+            inputs.SCL_controlled_Inflows_cumulative,
+            inputs.SCL_controlled_Inflows_rates,
+            inputs.SCL_controlled_Outflows_cumulative,
+            inputs.SCL_controlled_Outflows_rates,
+            inputs.SCL_controlled_PVs,
+        ]
+    )
+    outputs = module(jnp.asarray(0.0), inputs)
+    if cell_name == "gru_cell":
+        h = latent
+        h_new = module.gru_cell(expected_cell_input, h)
+        expected_derivative = h_new - h
+    else:
+        h, c = jnp.split(latent, 2)
+        h_new, c_new = module.lstm_cell(expected_cell_input, (h, c))
+        expected_derivative = jnp.concatenate([h_new - h, c_new - c])
+    assert jnp.allclose(outputs.SCL_latent_derivative, expected_derivative)
+
+    current_readout = jnp.concatenate(
+        [h, inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs]
+    )
+    updated_readout = jnp.concatenate(
+        [h_new, inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs]
+    )
+    assert not jnp.allclose(
+        module.rate_head(current_readout), module.rate_head(updated_readout)
+    )
+    assert jnp.allclose(
+        outputs.SCL_modeled_BiologicalOde_rates,
+        module.rate_head(current_readout),
+    )
+    assert jnp.allclose(
+        outputs.SCL_modeled_Inflows_rates,
+        jax.nn.softplus(module.inflow_head(current_readout)),
+    )
+    assert jnp.allclose(
+        outputs.SCL_modeled_Outflows_rates,
+        -jax.nn.softplus(module.outflow_head(current_readout)),
+    )
 
 
 def test_default_stateful_gru_initialization_is_per_gate_and_trainable():
     key = jax.random.key(17)
-    module = DefaultStatefulReactionModule(key=key, n_latent=3, **_SCALE_KWARGS)
+    module = DefaultGruReactionModule(key=key, n_latent=3, **_SCALE_KWARGS)
     gru_keys, rate_init_key, _, _ = _initialization_keys(key)
     glorot_init = jax.nn.initializers.glorot_uniform(in_axis=1, out_axis=0)
     orthogonal_init = jax.nn.initializers.orthogonal()
@@ -161,7 +360,7 @@ def test_default_stateful_empty_rate_head_skips_glorot(monkeypatch):
         return guarded_initializer
 
     monkeypatch.setattr(jax.nn.initializers, "glorot_uniform", guarded_glorot)
-    module = DefaultStatefulReactionModule(
+    module = DefaultGruReactionModule(
         key=jax.random.key(3),
         n_latent=3,
         **{
@@ -176,9 +375,18 @@ def test_default_stateful_empty_rate_head_skips_glorot(monkeypatch):
     assert module.rate_head.bias.size == 0
 
 
-def test_default_stateful_flow_heads_are_calibrated_and_signed():
+@pytest.mark.parametrize(
+    ("module_class", "width_kwargs", "latent_size"),
+    [
+        (DefaultGruReactionModule, {"n_latent": 3}, 3),
+        (DefaultLstmReactionModule, {"hidden_width": 3}, 6),
+    ],
+)
+def test_default_stateful_flow_heads_are_calibrated_and_signed(
+    module_class, width_kwargs, latent_size
+):
     key = jax.random.key(23)
-    module = DefaultStatefulReactionModule(key=key, n_latent=3, **_flow_scale_kwargs())
+    module = module_class(key=key, **width_kwargs, **_flow_scale_kwargs())
     _, _, inflow_init_key, outflow_init_key = _initialization_keys(key)
     glorot_init = jax.nn.initializers.glorot_uniform(in_axis=1, out_axis=0)
 
@@ -213,7 +421,7 @@ def test_default_stateful_flow_heads_are_calibrated_and_signed():
         assert jnp.all(gradient.weight != 0)
         assert jnp.all(gradient.bias != 0)
 
-    inputs = _inputs(jnp.zeros(3), n_modeled_inflows=1, n_modeled_outflows=1)
+    inputs = _inputs(jnp.zeros(latent_size), n_modeled_inflows=1, n_modeled_outflows=1)
     outputs = module(jnp.asarray(0.0), inputs)
     assert jnp.all(outputs.SCL_modeled_Inflows_rates > 0)
     assert jnp.all(outputs.SCL_modeled_Outflows_rates < 0)
@@ -235,13 +443,13 @@ def test_default_stateful_flow_heads_are_calibrated_and_signed():
 
 
 def test_default_stateful_initialization_is_deterministic_per_key():
-    first = DefaultStatefulReactionModule(
+    first = DefaultGruReactionModule(
         key=jax.random.key(29), n_latent=3, **_SCALE_KWARGS
     )
-    second = DefaultStatefulReactionModule(
+    second = DefaultGruReactionModule(
         key=jax.random.key(29), n_latent=3, **_SCALE_KWARGS
     )
-    different = DefaultStatefulReactionModule(
+    different = DefaultGruReactionModule(
         key=jax.random.key(30), n_latent=3, **_SCALE_KWARGS
     )
     first_leaves = jax.tree_util.tree_leaves(first)
@@ -259,7 +467,7 @@ def test_default_stateful_initialization_is_deterministic_per_key():
 
 
 def test_default_stateful_module_call_is_pure_for_identical_inputs():
-    module = DefaultStatefulReactionModule(
+    module = DefaultGruReactionModule(
         key=jax.random.key(2), n_latent=2, **_SCALE_KWARGS
     )
     h = jnp.asarray([0.2, -0.3])

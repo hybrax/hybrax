@@ -5,71 +5,23 @@ the CURRENT state. A stateful module (``n_latent > 0``) adds its own hidden
 state, integrated as extra ODE dimensions alongside the physical ones, so the
 rates can depend on the process's recent history too.
 
-hybrax.train's own default stateful module uses a GRU cell (see
-``DefaultStatefulReactionModule`` in ``hybrax/train/defaults.py``); this one uses
-an LSTM cell instead, to show the same trick applies to any recurrent cell
-with a fixed-size hidden state.
+Use ``DefaultLstmReactionModule`` for this standard LSTM. Implement a custom
+stateful reaction module only when a different recurrent architecture or input
+layout is required.
 """
 
-import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from hybrax.train import (
-    EstimatedScales,
-    ReactionInputs,
-    ReactionOutputs,
-    UserReactionModule,
-    trainable_field,
-)
-
-
-class LSTMReactionModule(UserReactionModule):
-    """Cell state and hidden state are both integrated ODE latents, each
-    pulled toward the LSTM cell's discrete target at every solver step."""
-
-    lstm_cell: eqx.nn.LSTMCell = trainable_field()
-    rate_head: eqx.nn.Linear = trainable_field()
-    n_hidden: int = eqx.field(static=True)
-
-    def __init__(self, *, key, n_hidden=4, **scale_kwargs):
-        # SCL_latent holds [hidden | cell], so its width is 2 * n_hidden.
-        scale_kwargs = {**scale_kwargs, "SCALE_latent": jnp.ones(2 * n_hidden)}
-        super().__init__(**scale_kwargs)
-        self.n_hidden = n_hidden
-        key_cell, key_head = jax.random.split(key)
-        self.lstm_cell = eqx.nn.LSTMCell(
-            input_size=self.n_modeled_RMCs, hidden_size=n_hidden, key=key_cell
-        )
-        self.rate_head = eqx.nn.Linear(
-            in_features=n_hidden + self.n_modeled_RMCs,
-            out_features=self.n_modeled_BiologicalOde_rates,
-            key=key_head,
-        )
-
-    def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
-        del t
-        h, c = jnp.split(inputs.SCL_latent, 2)
-        h_new, c_new = self.lstm_cell(inputs.SCL_modeled_RMCs, (h, c))
-        # The continuous-time-RNN trick: an ODE derivative that pulls the
-        # latent toward the cell's one-step target, rather than the discrete
-        # jump an LSTM normally takes. At convergence h tracks h_new.
-        latent_derivative = jnp.concatenate([h_new, c_new]) - inputs.SCL_latent
-        # Read out from h (not h_new): the CURRENT hidden state, consistent
-        # with every other input the reaction module receives at time t.
-        readout = jnp.concatenate([h, inputs.SCL_modeled_RMCs])
-        return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.rate_head(readout),
-            SCL_modeled_Outflows_rates=jnp.zeros(0),
-            SCL_modeled_Inflows_rates=jnp.zeros(0),
-            SCL_latent_derivative=latent_derivative,
-        )
+from hybrax.train import DefaultLstmReactionModule, EstimatedScales
 
 
 def build_reaction_module(*, seed, **kwargs):
     scale_kwargs = {k: v for k, v in kwargs.items() if k.startswith("SCALE_")}
-    return LSTMReactionModule(key=jax.random.key(seed), **scale_kwargs)
+    return DefaultLstmReactionModule(
+        key=jax.random.key(seed), hidden_width=4, **scale_kwargs
+    )
 
 
 def estimate_all_scales(runtime_data, target_names, config):
@@ -98,9 +50,8 @@ def estimate_all_scales(runtime_data, target_names, config):
 
     rate_scale = [rate_scale_for(name[2:]) for name in rhs.name_modeled_rates]
 
-    # Note: no SCALE_latent here. LSTMReactionModule.__init__ sizes and sets
-    # it itself from n_hidden, since the latent has no physical counterpart
-    # in the data for this hook to estimate a magnitude from.
+    # Note: no SCALE_latent here. DefaultLstmReactionModule sizes it from
+    # hidden_width; latent state has no physical scale to estimate.
     empty = jnp.zeros(0)
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),

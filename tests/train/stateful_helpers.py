@@ -36,6 +36,7 @@ from hybrax.train.wrapper import HybridOdeWrapper
 def default_stateful_scale_kwargs(
     *,
     n_rmcs: int = 1,
+    n_modeled_pvs: int = 0,
     n_modeled_inflows: int = 0,
     n_modeled_outflows: int = 0,
     n_controlled_inflows: int = 1,
@@ -44,6 +45,7 @@ def default_stateful_scale_kwargs(
 ):
     return {
         "SCALE_modeled_RMCs": jnp.ones(n_rmcs),
+        "SCALE_modeled_PVs": jnp.ones(n_modeled_pvs),
         "SCALE_V_in_cumulative": jnp.asarray(1.0),
         "SCALE_modeled_Inflows_cumulative": jnp.ones(n_modeled_inflows),
         "SCALE_modeled_Outflows_cumulative": jnp.ones(n_modeled_outflows),
