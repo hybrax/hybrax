@@ -10,7 +10,7 @@
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -777,16 +777,22 @@
 <span class="sd">    part of this block.</span>
 
 <span class="sd">    Attributes:</span>
-<span class="sd">        algebraic: Mapping ``name -&gt; expression string``. Algebraic (no time</span>
-<span class="sd">            derivative), recomputed every RHS call. Must be acyclic.</span>
-<span class="sd">        rates: Mapping ``name -&gt; Bounds``. Names of abstract specific rates</span>
-<span class="sd">            that the runtime supplies; ``len(rates)`` is the rate-vector</span>
-<span class="sd">            dimension. Each value is a ``(lower, upper)`` tuple with ``None``</span>
-<span class="sd">            on either side meaning unbounded; use ``(None, None)`` (i.e.</span>
-<span class="sd">            ``_NO_BOUNDS``) for rates without bounds.</span>
-<span class="sd">        derivatives: Mapping ``state_name -&gt; expression string`` giving the</span>
-<span class="sd">            reaction contribution to ``d(state)/dt``. Every dynamic state must</span>
-<span class="sd">            have an entry; use ``"0"`` to declare no reaction dynamics.</span>
+<span class="sd">        algebraic: Mapping ``name -&gt; expression``. Use these variables in</span>
+<span class="sd">            ``derivatives`` or other ``algebraic`` expressions. They are</span>
+<span class="sd">            recomputed on every RHS call, never integrated, and must form an</span>
+<span class="sd">            acyclic dependency graph.</span>
+<span class="sd">        rates: Mapping ``name -&gt; (lower, upper)``. The keys declare the names</span>
+<span class="sd">            and insertion order of rates supplied later by a reaction module.</span>
+<span class="sd">            The values give optional lower and upper bounds; ``None`` means</span>
+<span class="sd">            unbounded. ``hybrax.format`` does not enforce these bounds, but</span>
+<span class="sd">            downstream code can use them, for example to add a bounds loss</span>
+<span class="sd">            during training.</span>
+<span class="sd">        derivatives: Mapping ``state -&gt; expression``. Defines each state's</span>
+<span class="sd">            continuous reaction contribution to ``d(state)/dt``, excluding</span>
+<span class="sd">            transport and discrete event jumps. Expressions can describe</span>
+<span class="sd">            biological conversion, abiotic chemistry, or other intrinsic</span>
+<span class="sd">            dynamics. Every dynamic state needs an entry; use ``"0"`` to</span>
+<span class="sd">            declare no reaction dynamics.</span>
 <span class="sd">    """</span>
 
     <span class="n">algebraic</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>

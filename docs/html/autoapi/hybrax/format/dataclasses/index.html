@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -847,16 +847,22 @@ part of this block.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Variables<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>algebraic</strong> – Mapping <code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">-&gt;</span> <span class="pre">expression</span> <span class="pre">string</span></code>. Algebraic (no time
-derivative), recomputed every RHS call. Must be acyclic.</p></li>
-<li><p><strong>rates</strong> – Mapping <code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">-&gt;</span> <span class="pre">Bounds</span></code>. Names of abstract specific rates
-that the runtime supplies; <code class="docutils literal notranslate"><span class="pre">len(rates)</span></code> is the rate-vector
-dimension. Each value is a <code class="docutils literal notranslate"><span class="pre">(lower,</span> <span class="pre">upper)</span></code> tuple with <code class="docutils literal notranslate"><span class="pre">None</span></code>
-on either side meaning unbounded; use <code class="docutils literal notranslate"><span class="pre">(None,</span> <span class="pre">None)</span></code> (i.e.
-<code class="docutils literal notranslate"><span class="pre">_NO_BOUNDS</span></code>) for rates without bounds.</p></li>
-<li><p><strong>derivatives</strong> – Mapping <code class="docutils literal notranslate"><span class="pre">state_name</span> <span class="pre">-&gt;</span> <span class="pre">expression</span> <span class="pre">string</span></code> giving the
-reaction contribution to <code class="docutils literal notranslate"><span class="pre">d(state)/dt</span></code>. Every dynamic state must
-have an entry; use <code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code> to declare no reaction dynamics.</p></li>
+<li><p><strong>algebraic</strong> – Mapping <code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">-&gt;</span> <span class="pre">expression</span></code>. Use these variables in
+<code class="docutils literal notranslate"><span class="pre">derivatives</span></code> or other <code class="docutils literal notranslate"><span class="pre">algebraic</span></code> expressions. They are
+recomputed on every RHS call, never integrated, and must form an
+acyclic dependency graph.</p></li>
+<li><p><strong>rates</strong> – Mapping <code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">-&gt;</span> <span class="pre">(lower,</span> <span class="pre">upper)</span></code>. The keys declare the names
+and insertion order of rates supplied later by a reaction module.
+The values give optional lower and upper bounds; <code class="docutils literal notranslate"><span class="pre">None</span></code> means
+unbounded. <code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> does not enforce these bounds, but
+downstream code can use them, for example to add a bounds loss
+during training.</p></li>
+<li><p><strong>derivatives</strong> – Mapping <code class="docutils literal notranslate"><span class="pre">state</span> <span class="pre">-&gt;</span> <span class="pre">expression</span></code>. Defines each state’s
+continuous reaction contribution to <code class="docutils literal notranslate"><span class="pre">d(state)/dt</span></code>, excluding
+transport and discrete event jumps. Expressions can describe
+biological conversion, abiotic chemistry, or other intrinsic
+dynamics. Every dynamic state needs an entry; use <code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code> to
+declare no reaction dynamics.</p></li>
 </ul>
 </dd>
 </dl>

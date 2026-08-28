@@ -361,16 +361,22 @@ class ReactionOde:
     part of this block.
 
     Attributes:
-        algebraic: Mapping ``name -> expression string``. Algebraic (no time
-            derivative), recomputed every RHS call. Must be acyclic.
-        rates: Mapping ``name -> Bounds``. Names of abstract specific rates
-            that the runtime supplies; ``len(rates)`` is the rate-vector
-            dimension. Each value is a ``(lower, upper)`` tuple with ``None``
-            on either side meaning unbounded; use ``(None, None)`` (i.e.
-            ``_NO_BOUNDS``) for rates without bounds.
-        derivatives: Mapping ``state_name -> expression string`` giving the
-            reaction contribution to ``d(state)/dt``. Every dynamic state must
-            have an entry; use ``"0"`` to declare no reaction dynamics.
+        algebraic: Mapping ``name -> expression``. Use these variables in
+            ``derivatives`` or other ``algebraic`` expressions. They are
+            recomputed on every RHS call, never integrated, and must form an
+            acyclic dependency graph.
+        rates: Mapping ``name -> (lower, upper)``. The keys declare the names
+            and insertion order of rates supplied later by a reaction module.
+            The values give optional lower and upper bounds; ``None`` means
+            unbounded. ``hybrax.format`` does not enforce these bounds, but
+            downstream code can use them, for example to add a bounds loss
+            during training.
+        derivatives: Mapping ``state -> expression``. Defines each state's
+            continuous reaction contribution to ``d(state)/dt``, excluding
+            transport and discrete event jumps. Expressions can describe
+            biological conversion, abiotic chemistry, or other intrinsic
+            dynamics. Every dynamic state needs an entry; use ``"0"`` to
+            declare no reaction dynamics.
     """
 
     algebraic: Dict[str, str] = field(default_factory=dict)
