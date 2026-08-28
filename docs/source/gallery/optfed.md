@@ -241,7 +241,7 @@ executed run is at `./source/_data/out/runs/gallery_optfed/`.
   `trainable_field`, and everything else a `UserReactionModule` can return.
 - [The Bioprocess ODE](../format/bioprocess_ode.md): `biological_ode`,
   `algebraic`, and the `X_active` pattern this page reuses.
-- [Glutamine Decay](glutamine_decay.md): a smaller worked example of the same
+- [Glutamine Degradation](glutamine_decay.md): a smaller worked example of the same
   "true value must fall inside the sampled range to be identifiable" lesson.
 
 ## References

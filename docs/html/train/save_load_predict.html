@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -261,7 +261,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/dense_loss.html">Custom Losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/stateful.html">Stateful Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/loo.html">Cross-Validation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/gaussian_process.html">Gaussian Processes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
@@ -393,7 +393,7 @@ alongside.</p>
 <li><p><strong>The <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> is part of the model.</strong> Reconstruction runs your hooks again, so a run
 directory without it cannot be loaded.</p></li>
 </ul>
-<p>Every run <em>and</em> checkpoint directory is self-contained:</p>
+<p>Every run, and by default every checkpoint directory, is self-contained:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>run/
 ├── config.json          exactly what was run
 ├── custom.py            your hooks, frozen
@@ -459,9 +459,11 @@ optimizer’s momentum intact rather than restarting cold. Checkpoint frequency:
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"checkpoint"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"every"</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
-<p>Because each checkpoint is self-contained, it re-exports predictions and re-writes the
-bundled data. On a fast run that can dominate the wall clock: set <code class="docutils literal notranslate"><span class="pre">every</span></code> coarse enough
-that checkpointing is not the bottleneck.</p>
+<p>Because each checkpoint is self-contained by default, it re-exports predictions and
+re-writes the bundled data. On a fast run that can dominate the wall clock: set <code class="docutils literal notranslate"><span class="pre">every</span></code>
+coarse enough that checkpointing is not the bottleneck. To omit <code class="docutils literal notranslate"><span class="pre">prepared.json.gz</span></code> from
+checkpoints, set <code class="docutils literal notranslate"><span class="pre">&quot;bundle_prepared&quot;:</span> <span class="pre">false</span></code>; those checkpoints cannot be loaded or
+reconstructed independently and require the run’s prepared data.</p>
 <p>For LOO, resuming is a first-class command: <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">loo</span> <span class="pre">--resume</span> <span class="pre">RUN_DIR</span></code> re-runs only
 the folds that never finished. See <a class="reference internal" href="loo.html"><span class="std std-doc">Cross-Validation</span></a>.</p>
 </section>

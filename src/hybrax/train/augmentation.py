@@ -367,9 +367,11 @@ def augment_process_collection(
                 **vars(deepcopy(parent)),
                 parent_process=parent_name,
             )
-            child.metadata.name = child_name
-            if hasattr(child.metadata, "_pre_transform_key"):
-                del child.metadata._pre_transform_key
+            if child.metadata is not None:
+                child.metadata.name = child_name
+                # Children are new processes, not renames of their parent.
+                if hasattr(child.metadata, "_pre_transform_key"):
+                    del child.metadata._pre_transform_key
             times = child_times[parent_name, child_index]
 
             for state_name in modeled_names:

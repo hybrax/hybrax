@@ -76,7 +76,8 @@ raises immediately, and the message tells you to supply your own `biological_ode
 
 ## Writing your own
 
-`BiologicalOde` has three fields, all plain dictionaries of strings.
+`BiologicalOde` wraps three dicts: `algebraic`, `rates`, and `derivatives`.
+Let's look at an example:
 
 ```{code-cell} ipython3
 process.biological_ode = hxf.BiologicalOde(
@@ -95,9 +96,9 @@ print(ok, "|", message)
 
 | Field | Meaning |
 |---|---|
-| `algebraic` | `name -> expression`. Recomputed every RHS call, never integrated. Must be acyclic. |
-| `rates` | `name -> (lower, upper)`. Declares the rate vector: its length *is* the rate dimension. Bounds are metadata. |
-| `derivatives` | `state -> expression` for the **biological** contribution only. |
+| `algebraic` | `name -> expression`. Use this to define variables that you want to re-use in your `derivatives` (or in other `algebraic` expressions). They are recomputed on every RHS call, never integrated, and must form an acyclic dependency graph. |
+| `rates` | `name -> (lower, upper)`. This dict pulls double duty: the keys declare the names and insertion order of rates to be supplied by a reaction module (e.g. using a neural network) later on and the values are the (optional) lower and upper bounds of these rates. The bounds are not enforced by `hybrax.format` itself, but can be used downstream (e.g. in `hybrax.train` to include a bounds violation loss term in training). |
+| `derivatives` | `state -> expression`. Defines each state's continuous local contribution to `d(state)/dt`, excluding transport (inflow, outflow) and discrete event jumps. Expressions can describe biological conversion, abiotic chemistry, or purely physical dynamics (see [glutamine degradation](../gallery/glutamine_decay.md) for an example of a non-biological derivative). |
 
 That example is the standard intracellular-product pattern: measured biomass includes the
 product accumulating inside the cells, so growth is driven by the *active* fraction, and
@@ -117,7 +118,7 @@ states, algebraic quantities, or declared rates. Two or more states added togeth
 from that check: `-q_a * a - r_b * b` is fine even when `a` and `b` differ, since each
 rate is trusted to carry whatever unit bridges its own term, the same trust already
 extended to a lone `rate * state` product. See [Gallery: glutamine
-decay](../gallery/glutamine_decay.md) for a worked example: one rate feeding two
+degradation](../gallery/glutamine_decay.md) for a worked example: one rate feeding two
 derivatives across a `g/L` state and a `mol/L` state.
 
 ## Layout: `ProcessOrdering`
@@ -188,7 +189,7 @@ Related helpers, for when you are building your own integrator:
 - [The Reaction Module](../train/reaction_module.md): what supplies the rates.
 - [Gallery: mechanistic models](../gallery/mechanistic_rates.md): real kinetics in place
   of a bare network.
-- [Gallery: glutamine decay](../gallery/glutamine_decay.md): one declared rate feeding
+- [Gallery: glutamine degradation](../gallery/glutamine_decay.md): one declared rate feeding
   two coupled derivatives at once.
 - [Gallery: a modeled process variable](../gallery/modeled_pv.md): a dynamic process
   variable's own rate, `r_p`, and why it is never diluted the way a component's `q_c` is.

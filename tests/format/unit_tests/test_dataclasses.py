@@ -133,6 +133,18 @@ def test_reactor_medium_component_static():
     assert isinstance(rc.concentration, StaticVariable)
 
 
+@pytest.mark.parametrize(
+    "component_class", [FeedMediumComponent, ReactorMediumComponent]
+)
+def test_medium_component_rejects_scalar_concentration(component_class):
+    with pytest.raises(TypeError, match="concentration must be a TimeSeries"):
+        component_class(
+            name="glucose",
+            unit="g/L",
+            concentration=1.0,  # type: ignore[arg-type]
+        )
+
+
 # ---------------------------------------------------------------------------
 # Medium-level structures
 # ---------------------------------------------------------------------------

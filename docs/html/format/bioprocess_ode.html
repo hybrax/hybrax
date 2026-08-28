@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -261,7 +261,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/dense_loss.html">Custom Losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/stateful.html">Stateful Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/loo.html">Cross-Validation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/gaussian_process.html">Gaussian Processes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
@@ -480,7 +480,8 @@ raises immediately, and the message tells you to supply your own <code class="do
 </section>
 <section id="writing-your-own">
 <h2>Writing your own<a class="headerlink" href="#writing-your-own" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">BiologicalOde</span></code> has three fields, all plain dictionaries of strings.</p>
+<p><code class="docutils literal notranslate"><span class="pre">BiologicalOde</span></code> wraps three dicts: <code class="docutils literal notranslate"><span class="pre">algebraic</span></code>, <code class="docutils literal notranslate"><span class="pre">rates</span></code>, and <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>.
+Let’s look at an example:</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">BiologicalOde</span><span class="p">(</span>
@@ -514,13 +515,13 @@ raises immediately, and the message tells you to supply your own <code class="do
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">algebraic</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">-&gt;</span> <span class="pre">expression</span></code>. Recomputed every RHS call, never integrated. Must be acyclic.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">-&gt;</span> <span class="pre">expression</span></code>. Use this to define variables that you want to re-use in your <code class="docutils literal notranslate"><span class="pre">derivatives</span></code> (or in other <code class="docutils literal notranslate"><span class="pre">algebraic</span></code> expressions). They are recomputed on every RHS call, never integrated, and must form an acyclic dependency graph.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">rates</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">-&gt;</span> <span class="pre">(lower,</span> <span class="pre">upper)</span></code>. Declares the rate vector: its length <em>is</em> the rate dimension. Bounds are metadata.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">-&gt;</span> <span class="pre">(lower,</span> <span class="pre">upper)</span></code>. This dict pulls double duty: the keys declare the names and insertion order of rates to be supplied by a reaction module (e.g. using a neural network) later on and the values are the (optional) lower and upper bounds of these rates. The bounds are not enforced by <code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> itself, but can be used downstream (e.g. in <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> to include a bounds violation loss term in training).</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">derivatives</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">state</span> <span class="pre">-&gt;</span> <span class="pre">expression</span></code> for the <strong>biological</strong> contribution only.</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">state</span> <span class="pre">-&gt;</span> <span class="pre">expression</span></code>. Defines each state’s continuous local contribution to <code class="docutils literal notranslate"><span class="pre">d(state)/dt</span></code>, excluding transport (inflow, outflow) and discrete event jumps. Expressions can describe biological conversion, abiotic chemistry, or purely physical dynamics (see <a class="reference internal" href="../gallery/glutamine_decay.html"><span class="std std-doc">glutamine degradation</span></a> for an example of a non-biological derivative).</p></td>
 </tr>
 </tbody>
 </table>
@@ -541,7 +542,7 @@ states, algebraic quantities, or declared rates. Two or more states added togeth
 from that check: <code class="docutils literal notranslate"><span class="pre">-q_a</span> <span class="pre">*</span> <span class="pre">a</span> <span class="pre">-</span> <span class="pre">r_b</span> <span class="pre">*</span> <span class="pre">b</span></code> is fine even when <code class="docutils literal notranslate"><span class="pre">a</span></code> and <code class="docutils literal notranslate"><span class="pre">b</span></code> differ, since each
 rate is trusted to carry whatever unit bridges its own term, the same trust already
 extended to a lone <code class="docutils literal notranslate"><span class="pre">rate</span> <span class="pre">*</span> <span class="pre">state</span></code> product. See <a class="reference internal" href="../gallery/glutamine_decay.html"><span class="std std-doc">Gallery: glutamine
-decay</span></a> for a worked example: one rate feeding two
+degradation</span></a> for a worked example: one rate feeding two
 derivatives across a <code class="docutils literal notranslate"><span class="pre">g/L</span></code> state and a <code class="docutils literal notranslate"><span class="pre">mol/L</span></code> state.</p>
 </section>
 <section id="layout-processordering">
@@ -632,7 +633,7 @@ aborts loudly rather than producing infinities.</p></li>
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: what supplies the rates.</p></li>
 <li><p><a class="reference internal" href="../gallery/mechanistic_rates.html"><span class="std std-doc">Gallery: mechanistic models</span></a>: real kinetics in place
 of a bare network.</p></li>
-<li><p><a class="reference internal" href="../gallery/glutamine_decay.html"><span class="std std-doc">Gallery: glutamine decay</span></a>: one declared rate feeding
+<li><p><a class="reference internal" href="../gallery/glutamine_decay.html"><span class="std std-doc">Gallery: glutamine degradation</span></a>: one declared rate feeding
 two coupled derivatives at once.</p></li>
 <li><p><a class="reference internal" href="../gallery/modeled_pv.html"><span class="std std-doc">Gallery: a modeled process variable</span></a>: a dynamic process
 variable’s own rate, <code class="docutils literal notranslate"><span class="pre">r_p</span></code>, and why it is never diluted the way a component’s <code class="docutils literal notranslate"><span class="pre">q_c</span></code> is.</p></li>

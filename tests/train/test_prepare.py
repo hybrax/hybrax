@@ -660,6 +660,27 @@ def test_prepare_artifact_can_rename_processes(tmp_path):
     ]
 
 
+def test_prepare_artifact_accepts_missing_process_metadata(tmp_path):
+    collection = _make_explicit_ode_collection()
+    collection.processes["p1"].metadata = None
+
+    prepared = _prepare_from_collection(
+        collection,
+        tmp_path,
+        tmp_path / "prepared-no-process-metadata",
+        prepare_config={"process_rename_map": {"p1": "renamed_p1"}},
+    )
+
+    assert list(prepared.processes) == ["renamed_p1"]
+    assert prepared.processes["renamed_p1"].metadata is None
+    # Rename provenance must survive without a metadata breadcrumb.
+    provenance = prepared.metadata["hybrax.train"]["semantics_provenance"]["processes"]
+    assert provenance["renamed_p1"]["raw"] is not None
+    assert provenance["renamed_p1"]["changed_by_hooks"] == [
+        "transform_process_collection"
+    ]
+
+
 def test_prepare_artifact_rename_provenance_tracks_changes(tmp_path):
     """Provenance must detect changes even when processes are renamed."""
     output_dir = tmp_path / "prepared-renamed-provenance"

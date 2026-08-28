@@ -1162,6 +1162,7 @@ def test_holdout_runs_once_at_periodic_final_collision(tmp_path, monkeypatch):
         config=TrainHarnessConfig(
             process_names=("p1",),
             holdout_processes=("p2",),
+            holdout_prediction_processes=("p2",),
             epochs=2,
             batch_size=1,
             checkpoint_dir=tmp_path / "checkpoints",
@@ -1238,10 +1239,26 @@ def test_holdout_batches_weight_valid_samples_and_ignore_padding(tmp_path, monke
         )
 
     monkeypatch.setattr(harness_module, "_iter_batched_loss_outputs", fake_batches)
+    exported_processes = []
+
+    def fake_dense_exports(
+        measurement_t,
+        measurement_save_outputs,
+        wrapper,
+        process_names,
+        *,
+        prediction_valid,
+    ):
+        del measurement_save_outputs, wrapper
+        exported_processes.extend(process_names)
+        assert measurement_t.shape == (1, 1)
+        assert prediction_valid.shape == (1, 1)
+        return {}
+
     monkeypatch.setattr(
         harness_module,
         "dense_exports_from_save_outputs",
-        lambda *_args, **_kwargs: {},
+        fake_dense_exports,
     )
     result = train_collection(
         store,
@@ -1250,6 +1267,7 @@ def test_holdout_batches_weight_valid_samples_and_ignore_padding(tmp_path, monke
         config=TrainHarnessConfig(
             process_names=("p1",),
             holdout_processes=holdout_names,
+            holdout_prediction_processes=("p2",),
             epochs=1,
             batch_size=1,
             checkpoint_dir=tmp_path / "checkpoints",
@@ -1259,6 +1277,7 @@ def test_holdout_batches_weight_valid_samples_and_ignore_padding(tmp_path, monke
 
     assert result.holdout_loss_by_step[1] == pytest.approx(10.0)
     assert result.holdout_per_target_by_step[1] == pytest.approx((10.0,))
+    assert exported_processes == ["p2"]
 
 
 def test_train_from_collection_warns_and_logs_when_targets_default(monkeypatch, caplog):
@@ -1662,12 +1681,17 @@ def test_prepare_training_preserves_all_original_prediction_parents():
 
     prepared = prepare_training_from_runtime_artifact(
         artifact,
-        config=TrainHarnessConfig(process_names=("p3",), epochs=1),
+        config=TrainHarnessConfig(
+            process_names=("p3",),
+            holdout_processes=("p1", "p3"),
+            epochs=1,
+        ),
         custom_module=None,
         custom_cfg={},
     )
 
     assert prepared.config.process_names == ("p3",)
+    assert prepared.config.holdout_prediction_processes == ("p1",)
     assert prepared.prediction_parent_process_names == ("p1", "p2")
 
 

@@ -429,6 +429,18 @@ def test_training_data_store_rejects_controlled_target_in_configured_order(tmp_p
         TrainingDataStore.from_json(prepared_json, target_variable_order=["CF"])
 
 
+def test_training_data_errors_use_collection_key_without_process_metadata():
+    collection = _make_two_process_collection()
+    collection.processes["p1"].metadata = None
+
+    with pytest.raises(ValueError, match="p1: configured target variables missing"):
+        TrainingDataStore.from_collection(
+            collection,
+            target_variable_order=["missing"],
+            target_source="process_variables",
+        )
+
+
 def test_training_data_store_supports_reactor_component_targets():
     store = TrainingDataStore.from_collection(
         _make_reactor_target_collection(),
@@ -774,6 +786,21 @@ def test_selected_rows_keep_modeled_outflow_cumulative_state_zero():
     # Modeled cumulative states are integration states and always start at zero,
     # even when the source cumulative trace has a nonzero selected-row offset.
     np.testing.assert_array_equal(np.asarray(store.y0_measured[:, -1]), [0.0, 0.0])
+
+
+def test_combined_target_error_uses_key_without_process_metadata():
+    collection = _make_combined_collection()
+    process = collection.processes["p1"]
+    process.metadata = None
+    process.process_variables["ratio"].values = TimeSeries(
+        times=jnp.asarray([]), values=jnp.asarray([])
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="p1: target_source='combined' requires every modeled PV",
+    ):
+        TrainingDataStore.from_collection(collection, target_source="combined")
 
 
 def test_training_data_combined_fits_rmcs_and_pvs(tmp_path):

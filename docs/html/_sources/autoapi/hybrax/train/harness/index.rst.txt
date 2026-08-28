@@ -218,6 +218,12 @@ Module Contents
 
 
 
+   .. py:attribute:: bundle_prepared
+      :type:  bool
+      :value: True
+
+
+
    .. py:attribute:: checkpoint_dir
       :type:  pathlib.Path | None
       :value: None
@@ -245,6 +251,12 @@ Module Contents
    .. py:attribute:: holdout_label
       :type:  str
       :value: 'holdout'
+
+
+
+   .. py:attribute:: holdout_prediction_processes
+      :type:  tuple[str, ...] | None
+      :value: None
 
 
 

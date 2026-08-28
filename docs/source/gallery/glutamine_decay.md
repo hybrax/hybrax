@@ -10,7 +10,7 @@ kernelspec:
   name: python3
 ---
 
-# Glutamine Decay
+# Glutamine Degradation
 
 > This page declares one physical rate that feeds two different derivatives at once: a
 > sink in one, a source in the other. Training recovers that single shared value from
@@ -113,7 +113,7 @@ print("matches the real declared biological_ode:", glutamine_ode == process.biol
 ```
 
 `Gln`'s derivative has two terms: `-q_Gln * biomass`, ordinary uptake tied to growth,
-and `-r_Gln * Gln`, the chemical decay this page is about. `NH4`'s derivative is just
+and `-r_Gln * Gln`, the chemical degradation this page is about. `NH4`'s derivative is just
 `r_Gln * Gln`, the same `r_Gln` symbol, reused verbatim. There is no wiring connecting
 the two beyond that shared name: `hybrax.format` parses each expression independently, so
 whatever value training settles on for `r_Gln` has to simultaneously explain

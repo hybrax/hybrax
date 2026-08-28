@@ -98,4 +98,4 @@ The five tutorials use one batch dataset and nothing else. Everything below is i
 | A PLS-shaped component reading media composition alongside state | [PLS-dFBA](../gallery/pls_dfba.md) |
 | Learnable per-edge functions (a KAN) instead of a neural network's fixed activations | [A KAN model](../gallery/kan.md) |
 | A real published rate law with a controlled variable (temperature) feeding the kinetics directly | [OptFed](../gallery/optfed.md) |
-| One declared rate feeding two coupled derivatives at once | [Glutamine decay](../gallery/glutamine_decay.md) |
+| One declared rate feeding two coupled derivatives at once | [Glutamine degradation](../gallery/glutamine_decay.md) |

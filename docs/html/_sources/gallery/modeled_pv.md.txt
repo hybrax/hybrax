@@ -227,7 +227,7 @@ itself unaffected.
   `SCALE_modeled_PVs` from `estimate_all_scales`.** It is required only for a dataset
   that has modeled process variables (a PV-free dataset defaults to an empty scaler),
   so a reaction module copied from a
-  page like [Glutamine Decay](glutamine_decay.md) that never had one will raise a
+  page like [Glutamine Degradation](glutamine_decay.md) that never had one will raise a
   shape-mismatch error the moment a modeled PV is added; add the axis explicitly, as
   this page's `custom.py` does.
 - **Dilution reaching a modeled process variable is architecturally unreachable.**

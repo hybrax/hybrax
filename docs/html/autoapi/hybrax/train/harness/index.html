@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -261,7 +261,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/dense_loss.html">Custom Losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/stateful.html">Stateful Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/loo.html">Cross-Validation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
@@ -634,6 +634,11 @@ selection, checkpointing, logging, and the public entry points.</p>
 <dd></dd></dl>
 
 <dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.bundle_prepared">
+<span class="sig-name descname"><span class="pre">bundle_prepared</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.bundle_prepared" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.checkpoint_dir">
 <span class="sig-name descname"><span class="pre">checkpoint_dir</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">pathlib.Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.checkpoint_dir" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -656,6 +661,11 @@ selection, checkpointing, logging, and the public entry points.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.holdout_label">
 <span class="sig-name descname"><span class="pre">holdout_label</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'holdout'</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.holdout_label" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.holdout_prediction_processes">
+<span class="sig-name descname"><span class="pre">holdout_prediction_processes</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.holdout_prediction_processes" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -1283,11 +1293,13 @@ paths.</p>
 <li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.allow_stateful_models"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.allow_stateful_models</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.batch_seed"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.batch_seed</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.batch_size"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.batch_size</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.bundle_prepared"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.bundle_prepared</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.checkpoint_dir"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.checkpoint_dir</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.checkpoint_every"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.checkpoint_every</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.epochs"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.epochs</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.grad_clip_norm"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.grad_clip_norm</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.holdout_label"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.holdout_label</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.holdout_prediction_processes"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.holdout_prediction_processes</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.holdout_processes"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.holdout_processes</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.learning_rate"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.learning_rate</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.log_decimals"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.log_decimals</span></code></a></li>

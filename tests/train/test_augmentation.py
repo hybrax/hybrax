@@ -152,6 +152,7 @@ def _prepare_collection(
     *,
     collection: BioProcessCollection | None = None,
     augmentation: dict | None = None,
+    process_rename_map: dict[str, str] | None = None,
     custom_py: Path | None = None,
 ) -> BioProcessCollection:
     raw_path = tmp_path / f"{output_name}-raw.json"
@@ -163,6 +164,8 @@ def _prepare_collection(
     }
     if augmentation is not None:
         prepare["augmentation"] = augmentation
+    if process_rename_map is not None:
+        prepare["process_rename_map"] = process_rename_map
     raw_config = {"prepare": prepare}
     if custom_py is not None:
         raw_config["custom_py"] = str(custom_py)
@@ -196,6 +199,22 @@ def test_no_config_leaves_collection_unchanged():
 
     assert augment_process_collection(collection, config) is collection
     assert list(collection.processes) == ["p1"]
+
+
+def test_prepare_augmentation_does_not_claim_parent_rename(tmp_path):
+    prepared = _prepare_collection(
+        tmp_path,
+        "prepared-rename-augmented",
+        augmentation=_augmentation_dict(n_children_per_process=1),
+        process_rename_map={"p1": "renamed_p1"},
+    )
+
+    provenance = prepared.metadata["hybrax.train"]["semantics_provenance"]["processes"]
+    assert list(prepared.processes) == ["renamed_p1", "renamed_p1__aug_000"]
+    assert provenance["renamed_p1"]["changed_by_hooks"] == [
+        "transform_process_collection"
+    ]
+    assert provenance["renamed_p1__aug_000"]["changed_by_hooks"] == ["augmentation"]
 
 
 def test_prepare_with_augmentation_writes_plot(tmp_path, monkeypatch):
@@ -556,6 +575,15 @@ def test_late_unlisted_spline_trace_warns_about_implicit_extrapolation():
     assert (
         sum("spline for 'ratio' is extrapolated" in str(w.message) for w in caught) == 1
     )
+
+
+def test_augmentation_accepts_missing_process_metadata():
+    collection = _collection()
+    collection.processes["p1"].metadata = None
+
+    augmented = augment_process_collection(collection, _config())
+
+    assert augmented.processes["p1__aug_000"].metadata is None
 
 
 def test_children_have_independent_deterministic_common_endpoint_grids():

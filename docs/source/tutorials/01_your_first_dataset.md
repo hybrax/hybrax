@@ -24,7 +24,7 @@ Here, we build a simple **batch** run with three measured species and no volume
 changes. However, the `Hybrax` data format is designed to accomodate a diverse set of bioprocess conditions, for example
 * [feeds, boluses and sampling volume changes](../gallery/fed_batch.md),
 <!-- UNLOCK -->
-* [chemical decay rates](../gallery/glutamine_decay.md), and
+* [chemical degradation rates](../gallery/glutamine_decay.md), and
 * [modeled process variables](../gallery/glutamine_decay.md).
 
 

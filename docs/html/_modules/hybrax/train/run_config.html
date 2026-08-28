@@ -10,7 +10,7 @@
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -260,7 +260,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom Losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
@@ -552,19 +552,22 @@
 <span class="k">class</span><span class="w"> </span><span class="nc">CheckpointConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Checkpoint cadence for ``train`` and ``loo``.</span>
 
-<span class="sd">    ``every`` (optional, in epochs) is how often a full, self-contained</span>
-<span class="sd">    checkpoint is written (parameters, optimizer state, config,</span>
-<span class="sd">    ``custom.py``, and the prepared data, plus re-exported predictions per</span>
-<span class="sd">    ``output.predictions``). ``None`` (default) selects an automatic</span>
+<span class="sd">    ``every`` (optional, in epochs) is how often a checkpoint is written.</span>
+<span class="sd">    ``None`` (default) selects an automatic</span>
 <span class="sd">    cadence: at least every 5 epochs, at most 20 checkpoints over the whole</span>
 <span class="sd">    run. ``0`` disables periodic checkpointing, but the final checkpoint at</span>
 <span class="sd">    the end of training is always written regardless. Must be finite.</span>
+
+<span class="sd">    ``bundle_prepared`` (default ``True``) includes prepared data so every</span>
+<span class="sd">    checkpoint is self-contained; disable it to reduce repeated disk use.</span>
+
 <span class="sd">    Checkpointing re-exports predictions and re-writes the bundled data, so</span>
 <span class="sd">    on a fast run it can dominate the wall clock — set it coarse enough</span>
 <span class="sd">    that it is not the bottleneck.</span>
 <span class="sd">    """</span>
 
     <span class="n">every</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">bundle_prepared</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
 
     <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">"every"</span><span class="p">)</span>
     <span class="nd">@classmethod</span>

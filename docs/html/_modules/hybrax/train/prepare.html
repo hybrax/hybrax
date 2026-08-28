@@ -10,7 +10,7 @@
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -260,7 +260,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom Losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
@@ -676,8 +676,17 @@
         <span class="n">process_name</span><span class="p">:</span> <span class="n">summarize_process_semantics</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">process_name</span><span class="p">,</span> <span class="n">process</span> <span class="ow">in</span> <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
     <span class="p">}</span>
+    <span class="c1"># Metadata carries the rename breadcrumb through deepcopy when available.</span>
+    <span class="c1"># For metadata-free processes, object identity still covers in-place renames.</span>
+    <span class="n">metadata_free_pre_transform_processes</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">BioProcess</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">for</span> <span class="n">process_name</span><span class="p">,</span> <span class="n">process</span> <span class="ow">in</span> <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-        <span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">_pre_transform_key</span> <span class="o">=</span> <span class="n">process_name</span>
+        <span class="k">if</span> <span class="n">process</span><span class="o">.</span><span class="n">metadata</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">metadata_free_pre_transform_processes</span><span class="p">[</span><span class="nb">id</span><span class="p">(</span><span class="n">process</span><span class="p">)]</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">process</span><span class="p">,</span>
+                <span class="n">process_name</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">_pre_transform_key</span> <span class="o">=</span> <span class="n">process_name</span>
     <span class="n">collection</span> <span class="o">=</span> <span class="n">transform_process_collection</span><span class="p">(</span><span class="n">collection</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
     <span class="n">transformed_process_names</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">)</span>
     <span class="n">collection</span> <span class="o">=</span> <span class="n">augment_process_collection</span><span class="p">(</span>
@@ -688,9 +697,16 @@
     <span class="n">augmentation_created_names</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">)</span> <span class="o">-</span> <span class="n">transformed_process_names</span>
     <span class="n">tagged_processes</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">process_name</span><span class="p">,</span> <span class="n">process</span> <span class="ow">in</span> <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-        <span class="n">old_name</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="p">,</span> <span class="s2">"_pre_transform_key"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">process</span><span class="o">.</span><span class="n">metadata</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">original</span> <span class="o">=</span> <span class="n">metadata_free_pre_transform_processes</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="nb">id</span><span class="p">(</span><span class="n">process</span><span class="p">))</span>
+            <span class="n">old_name</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">original</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">original</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">original</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">is</span> <span class="n">process</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">old_name</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="p">,</span> <span class="s2">"_pre_transform_key"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">old_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">del</span> <span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">_pre_transform_key</span>
         <span class="k">if</span> <span class="n">old_name</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">del</span> <span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">_pre_transform_key</span>
             <span class="n">tagged_processes</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">process_name</span><span class="p">,</span> <span class="n">old_name</span><span class="p">))</span>
 
     <span class="n">tag_claims_by_old_name</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>

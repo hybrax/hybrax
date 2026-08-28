@@ -39,7 +39,9 @@ TARGET_SOURCES = {
 }
 
 
-def _combined_measured_targets(process, rhs_ode) -> tuple[list[str], list[str]]:
+def _combined_measured_targets(
+    process, process_name: str, rhs_ode
+) -> tuple[list[str], list[str]]:
     """Measured (RMC, PV) target names for ``TARGET_SOURCE_COMBINED``, each
     ordered to match the integrated state (``rhs_ode.name_modeled_RMCs`` then
     ``rhs_ode.name_modeled_PVs``). Every modeled RMC and PV must have a time
@@ -50,7 +52,7 @@ def _combined_measured_targets(process, rhs_ode) -> tuple[list[str], list[str]]:
         component = components.get(name)
         if component is None or not _is_timeseries_compatible(component.concentration):
             raise ValueError(
-                f"{process.metadata.name}: target_source='combined' requires every "
+                f"{process_name}: target_source='combined' requires every "
                 f"modeled RMC to carry a time series; {name!r} does not."
             )
         rmc_targets.append(name)
@@ -59,7 +61,7 @@ def _combined_measured_targets(process, rhs_ode) -> tuple[list[str], list[str]]:
         variable = process.process_variables.get(name)
         if variable is None or not _is_timeseries_compatible(variable.values):
             raise ValueError(
-                f"{process.metadata.name}: target_source='combined' requires every "
+                f"{process_name}: target_source='combined' requires every "
                 f"modeled PV to carry a time series; {name!r} does not."
             )
         pv_targets.append(name)
@@ -205,6 +207,7 @@ def _resolve_target_source(
 
 def _measurement_targets(
     process,
+    process_name: str,
     configured_order: list[str] | None,
     target_source: str,
 ) -> list[str]:
@@ -218,7 +221,7 @@ def _measurement_targets(
         ]
         if missing:
             raise ValueError(
-                f"{process.metadata.name}: configured target variables missing "
+                f"{process_name}: configured target variables missing "
                 f"from process variables: {missing}"
             )
         controlled = [
@@ -228,7 +231,7 @@ def _measurement_targets(
         ]
         if controlled:
             raise ValueError(
-                f"{process.metadata.name}: configured target variables must be "
+                f"{process_name}: configured target variables must be "
                 f"measured (is_controlled=False), got controlled targets: "
                 f"{controlled}"
             )
@@ -242,7 +245,7 @@ def _measurement_targets(
         missing = [name for name in configured_order if name not in components]
         if missing:
             raise ValueError(
-                f"{process.metadata.name}: configured target components missing from "
+                f"{process_name}: configured target components missing from "
                 f"reactor_medium.components: {missing}"
             )
         invalid = [
@@ -252,7 +255,7 @@ def _measurement_targets(
         ]
         if invalid:
             raise ValueError(
-                f"{process.metadata.name}: configured target components must be "
+                f"{process_name}: configured target components must be "
                 "time-series compatible (times+values), got: "
                 f"{invalid}"
             )
@@ -272,6 +275,7 @@ def _target_values(process, target_name: str, target_source: str):
 
 def _initial_value_numpy(
     process,
+    process_name: str,
     target_name: str,
     target_source: str,
     t0: float,
@@ -283,20 +287,21 @@ def _initial_value_numpy(
         matches = np.flatnonzero(np.isclose(ts, t0, atol=1e-9))
         if matches.size == 0:
             raise ValueError(
-                f"{process.metadata.name}: state {target_name!r} has no "
+                f"{process_name}: state {target_name!r} has no "
                 f"initial value at t={t0:.6g}"
             )
         return float(ys[int(matches[0])])
     if hasattr(values, "value"):
         return float(values.value)
     raise ValueError(
-        f"{process.metadata.name}: state {target_name!r} must be a time-series "
+        f"{process_name}: state {target_name!r} must be a time-series "
         "or static variable"
     )
 
 
 def _timeseries_numpy(
     process,
+    process_name: str,
     target_name: str,
     target_source: str,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -304,19 +309,18 @@ def _timeseries_numpy(
     values = _target_values(process, target_name, target_source)
     if not hasattr(values, "times") or not hasattr(values, "values"):
         raise ValueError(
-            f"{process.metadata.name}: target {target_name!r} must be a "
+            f"{process_name}: target {target_name!r} must be a "
             "time-series variable with times and values"
         )
     ts = np.asarray(values.times, dtype=float)
     ys = np.asarray(values.values, dtype=float)
     if ts.ndim != 1 or ys.ndim != 1 or ts.size != ys.size:
         raise ValueError(
-            f"{process.metadata.name}: target {target_name!r} has invalid "
-            "time/value shape"
+            f"{process_name}: target {target_name!r} has invalid time/value shape"
         )
     if ts.size == 0:
         raise ValueError(
-            f"{process.metadata.name}: target {target_name!r} has no measurement points"
+            f"{process_name}: target {target_name!r} has no measurement points"
         )
     return ts, ys
 
@@ -349,7 +353,7 @@ def replace_rhs_ode_process_matrices(
 class PerProcessTrainingData(eqx.Module):
     """Per-process active view over padded training-data tensors."""
 
-    # Canonical process key from prepared metadata.
+    # Canonical collection process key.
     process_name: str
     # Integer row index into collection-level stacked arrays.
     process_index: int
@@ -531,7 +535,9 @@ class TrainingDataStore(eqx.Module):
         for process_name, rhs_ode in zip(process_order, rhs_odes, strict=True):
             process = collection.processes[process_name]
             if resolved_target_source == TARGET_SOURCE_COMBINED:
-                rmc_targets, pv_targets = _combined_measured_targets(process, rhs_ode)
+                rmc_targets, pv_targets = _combined_measured_targets(
+                    process, process_name, rhs_ode
+                )
                 current_targets = rmc_targets + pv_targets
                 current_sources = [TARGET_SOURCE_REACTOR_COMPONENTS] * len(
                     rmc_targets
@@ -539,6 +545,7 @@ class TrainingDataStore(eqx.Module):
             else:
                 current_targets = _measurement_targets(
                     process,
+                    process_name,
                     target_order,
                     resolved_target_source,
                 )
@@ -622,6 +629,7 @@ class TrainingDataStore(eqx.Module):
             ):
                 ts, ys = _timeseries_numpy(
                     process,
+                    process_name,
                     target_name,
                     col_source,
                 )
@@ -694,6 +702,7 @@ class TrainingDataStore(eqx.Module):
                     *(
                         _initial_value_numpy(
                             process,
+                            process_name,
                             name,
                             TARGET_SOURCE_REACTOR_COMPONENTS,
                             t0_union,
@@ -703,6 +712,7 @@ class TrainingDataStore(eqx.Module):
                     *(
                         _initial_value_numpy(
                             process,
+                            process_name,
                             name,
                             TARGET_SOURCE_PROCESS_VARIABLES,
                             t0_union,

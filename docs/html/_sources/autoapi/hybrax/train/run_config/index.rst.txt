@@ -138,16 +138,24 @@ Module Contents
 
    Checkpoint cadence for ``train`` and ``loo``.
 
-   ``every`` (optional, in epochs) is how often a full, self-contained
-   checkpoint is written (parameters, optimizer state, config,
-   ``custom.py``, and the prepared data, plus re-exported predictions per
-   ``output.predictions``). ``None`` (default) selects an automatic
+   ``every`` (optional, in epochs) is how often a checkpoint is written.
+   ``None`` (default) selects an automatic
    cadence: at least every 5 epochs, at most 20 checkpoints over the whole
    run. ``0`` disables periodic checkpointing, but the final checkpoint at
    the end of training is always written regardless. Must be finite.
+
+   ``bundle_prepared`` (default ``True``) includes prepared data so every
+   checkpoint is self-contained; disable it to reduce repeated disk use.
+
    Checkpointing re-exports predictions and re-writes the bundled data, so
    on a fast run it can dominate the wall clock — set it coarse enough
    that it is not the bottleneck.
+
+
+   .. py:attribute:: bundle_prepared
+      :type:  bool
+      :value: True
+
 
 
    .. py:attribute:: every

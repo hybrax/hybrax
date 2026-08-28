@@ -9,7 +9,7 @@
 <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -259,7 +259,7 @@
 <li class="toctree-l1"><a class="reference internal" href="gallery/mechanistic_rates.html">Mechanistic Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="gallery/dense_loss.html">Custom Losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="gallery/stateful.html">Stateful Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="gallery/loo.html">Cross-Validation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="gallery/gaussian_process.html">Gaussian Processes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
@@ -558,10 +558,10 @@
           <li><a href="autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.PerProcessControls.bolus_event_volumes">(hybrax.train.controls_store.PerProcessControls attribute)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/bounds_loss/index.html#hybrax.train.bounds_loss.BoundsViolationLossModule.bound_records">bound_records (hybrax.train.bounds_loss.BoundsViolationLossModule attribute)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/bounds_loss/index.html#hybrax.train.bounds_loss.bound_records_from_collection">bound_records_from_collection() (in module hybrax.train.bounds_loss)</a>
 </li>
         <li><a href="autoapi/hybrax/train/bounds_loss/index.html#hybrax.train.bounds_loss.BoundDeclaration">BoundDeclaration (in module hybrax.train.bounds_loss)</a>
@@ -618,6 +618,12 @@
 </li>
         <li><a href="autoapi/hybrax/train/dense/index.html#hybrax.train.dense.build_union_time_grid">build_union_time_grid() (in module hybrax.train.dense)</a>
 </li>
+        <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessConfig.bundle_prepared">bundle_prepared (hybrax.train.harness.TrainHarnessConfig attribute)</a>
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.CheckpointConfig.bundle_prepared">(hybrax.train.run_config.CheckpointConfig attribute)</a>
+</li>
+        </ul></li>
     </ul></td>
   </tr></table>
 </section>
@@ -1287,6 +1293,8 @@
         <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessResult.holdout_loss_by_step">holdout_loss_by_step (hybrax.train.harness.TrainHarnessResult attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessResult.holdout_per_target_by_step">holdout_per_target_by_step (hybrax.train.harness.TrainHarnessResult attribute)</a>
+</li>
+        <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessConfig.holdout_prediction_processes">holdout_prediction_processes (hybrax.train.harness.TrainHarnessConfig attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessConfig.holdout_processes">holdout_processes (hybrax.train.harness.TrainHarnessConfig attribute)</a>
 </li>

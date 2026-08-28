@@ -18,7 +18,7 @@ Three consequences worth knowing:
 - **The `custom.py` is part of the model.** Reconstruction runs your hooks again, so a run
   directory without it cannot be loaded.
 
-Every run *and* checkpoint directory is self-contained:
+Every run, and by default every checkpoint directory, is self-contained:
 
 ```
 run/
@@ -94,9 +94,11 @@ optimizer's momentum intact rather than restarting cold. Checkpoint frequency:
 { "checkpoint": { "every": 100 } }
 ```
 
-Because each checkpoint is self-contained, it re-exports predictions and re-writes the
-bundled data. On a fast run that can dominate the wall clock: set `every` coarse enough
-that checkpointing is not the bottleneck.
+Because each checkpoint is self-contained by default, it re-exports predictions and
+re-writes the bundled data. On a fast run that can dominate the wall clock: set `every`
+coarse enough that checkpointing is not the bottleneck. To omit `prepared.json.gz` from
+checkpoints, set `"bundle_prepared": false`; those checkpoints cannot be loaded or
+reconstructed independently and require the run's prepared data.
 
 For LOO, resuming is a first-class command: `hybrax loo --resume RUN_DIR` re-runs only
 the folds that never finished. See [Cross-Validation](loo.md).

@@ -173,6 +173,13 @@ class FeedMediumComponent:
     concentration: TimeSeries | StaticVariable
     is_controlled: bool = False
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.concentration, (TimeSeries, StaticVariable)):
+            raise TypeError(
+                "FeedMediumComponent.concentration must be a TimeSeries or "
+                f"StaticVariable, got {type(self.concentration).__name__}"
+            )
+
 
 @dataclass
 class ReactorMediumComponent:
@@ -185,6 +192,13 @@ class ReactorMediumComponent:
     concentration: TimeSeries | StaticVariable
     pseudobatch_concentration: TimeSeries | StaticVariable | None = None
     bounds: Bounds = _DEFAULT_RMC_BOUNDS
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.concentration, (TimeSeries, StaticVariable)):
+            raise TypeError(
+                "ReactorMediumComponent.concentration must be a TimeSeries or "
+                f"StaticVariable, got {type(self.concentration).__name__}"
+            )
 
 
 @dataclass

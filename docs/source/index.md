@@ -110,7 +110,7 @@ Freezing Parameters <gallery/freezing>
 Mechanistic Models <gallery/mechanistic_rates>
 Custom Losses <gallery/dense_loss>
 Stateful Models <gallery/stateful>
-Glutamine Decay <gallery/glutamine_decay>
+Glutamine Degradation <gallery/glutamine_decay>
 Cross-Validation <gallery/loo>
 Gaussian Processes <gallery/gaussian_process>
 Knowledge Transfer <gallery/knowledge_transfer>

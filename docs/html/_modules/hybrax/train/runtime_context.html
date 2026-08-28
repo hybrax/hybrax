@@ -10,7 +10,7 @@
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -260,7 +260,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom Losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
@@ -588,7 +588,8 @@
             <span class="p">)</span>
             <span class="n">state_traces</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
                 <span class="nb">tuple</span><span class="p">(</span>
-                    <span class="n">_raw_state_trace</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">state_names</span>
+                    <span class="n">_raw_state_trace</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">process_name</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">state_names</span>
                 <span class="p">)</span>
             <span class="p">)</span>
             <span class="n">sample_traces</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">_sample_volume_events</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">process_name</span><span class="p">))</span>
@@ -865,14 +866,16 @@
 
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_raw_state_trace</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">start</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">end</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RawTrace</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_raw_state_trace</span><span class="p">(</span>
+    <span class="n">process</span><span class="p">,</span> <span class="n">process_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">start</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">end</span><span class="p">:</span> <span class="nb">float</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RawTrace</span><span class="p">:</span>
     <span class="k">if</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">:</span>
         <span class="n">value</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">concentration</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">value</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">StaticVariable</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">_readonly_trace</span><span class="p">([</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">],</span> <span class="p">[</span><span class="n">value</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="n">value</span><span class="o">.</span><span class="n">value</span><span class="p">])</span>
-    <span class="k">return</span> <span class="n">_trace</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"modeled state </span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_trace</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">process_name</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"modeled state </span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2">"</span><span class="p">)</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_sample_volume_events</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">process_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RawTrace</span><span class="p">:</span>

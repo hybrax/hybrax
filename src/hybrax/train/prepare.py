@@ -302,8 +302,17 @@ def prepare_artifact(
         process_name: summarize_process_semantics(process)
         for process_name, process in collection.processes.items()
     }
+    # Metadata carries the rename breadcrumb through deepcopy when available.
+    # For metadata-free processes, object identity still covers in-place renames.
+    metadata_free_pre_transform_processes: dict[int, tuple[BioProcess, str]] = {}
     for process_name, process in collection.processes.items():
-        process.metadata._pre_transform_key = process_name
+        if process.metadata is None:
+            metadata_free_pre_transform_processes[id(process)] = (
+                process,
+                process_name,
+            )
+        else:
+            process.metadata._pre_transform_key = process_name
     collection = transform_process_collection(collection, config)
     transformed_process_names = set(collection.processes)
     collection = augment_process_collection(
@@ -314,9 +323,16 @@ def prepare_artifact(
     augmentation_created_names = set(collection.processes) - transformed_process_names
     tagged_processes: list[tuple[str, str]] = []
     for process_name, process in collection.processes.items():
-        old_name = getattr(process.metadata, "_pre_transform_key", None)
+        if process.metadata is None:
+            original = metadata_free_pre_transform_processes.get(id(process))
+            old_name = (
+                original[1] if original is not None and original[0] is process else None
+            )
+        else:
+            old_name = getattr(process.metadata, "_pre_transform_key", None)
+            if old_name is not None:
+                del process.metadata._pre_transform_key
         if old_name is not None:
-            del process.metadata._pre_transform_key
             tagged_processes.append((process_name, old_name))
 
     tag_claims_by_old_name: dict[str, list[str]] = {}
