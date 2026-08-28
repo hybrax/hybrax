@@ -75,6 +75,30 @@ Exact fields, types and defaults are in the
 [API reference](../autoapi/hybrax/train/run_config/index): not repeated here, because they
 change and this page would be wrong first.
 
+## Persistent JAX compilation cache
+
+JAX compile times can be sped up by enabling persistent caching. When enabled,
+JAX can reuse compiled programs across train, forward, and LOO processes. You
+can enable it by setting two environment variables in your shell before running
+Hybrax:
+
+```bash
+export JAX_COMPILATION_CACHE_DIR=/absolute/path/to/cache
+export JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS=0
+
+hybrax loo --config loo-config.json
+```
+
+The exported variables also apply to subsequent `train` and `forward` commands in the
+same shell. LOO fold subprocesses inherit them from the parent process. Use an absolute,
+writable location outside the run directory.
+
+JAX's minimum compile-time threshold defaults to one second. Setting it to zero
+also caches shorter compilations, which can create more files and filesystem
+traffic but leads to larger compile time improvements. Cache reuse requires
+compatible JAX/XLA versions, devices, and program signatures. A shared cache can
+help or hurt depending on the filesystem and workload.
+
 ## A realistic config
 
 ```json

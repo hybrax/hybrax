@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -395,13 +395,13 @@ kinetics in depth).</p>
 <p>The walkthrough below shows the file in pieces, next to the reasoning for each one.</p>
 <section id="the-rate-law-declared">
 <h2>The Rate Law, Declared<a class="headerlink" href="#the-rate-law-declared" title="Link to this heading">¶</a></h2>
-<p>Everything this page’s kinetics need lives in the dataset’s own <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>
+<p>Everything this page’s kinetics need lives in the dataset’s own <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>
 block. This is exactly what was declared when the dataset was built:</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">process</span> <span class="o">=</span> <span class="n">_collection</span><span class="o">.</span><span class="n">processes</span><span class="p">[</span><span class="s2">"run_1"</span><span class="p">]</span>
 
-<span class="n">glutamine_ode</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">BiologicalOde</span><span class="p">(</span>
+<span class="n">glutamine_ode</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">ReactionOde</span><span class="p">(</span>
     <span class="n">rates</span><span class="o">=</span><span class="p">{</span><span class="s2">"q_biomass"</span><span class="p">:</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="s2">"q_Gln"</span><span class="p">:</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
            <span class="s2">"r_Gln"</span><span class="p">:</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)},</span>
     <span class="n">derivatives</span><span class="o">=</span><span class="p">{</span>
@@ -410,12 +410,12 @@ block. This is exactly what was declared when the dataset was built:</p>
         <span class="s2">"NH4"</span><span class="p">:</span> <span class="s2">"r_Gln * Gln"</span><span class="p">,</span>
     <span class="p">},</span>
 <span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="s2">"matches the real declared biological_ode:"</span><span class="p">,</span> <span class="n">glutamine_ode</span> <span class="o">==</span> <span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"matches the real declared reaction_ode:"</span><span class="p">,</span> <span class="n">glutamine_ode</span> <span class="o">==</span> <span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>matches the real declared biological_ode: True
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>matches the real declared reaction_ode: True
 </pre></div>
 </div>
 </div>
@@ -444,7 +444,7 @@ glutamine’s own decline <em>and</em> NH4’s rise, from the same number.</p>
 +----------------------------------------------------------------------------------+
 | Derivatives                                                                      |
 +----------------------------------------------------------------------------------+
-| State   | Unit    | Biological                     | Feed | Dilution / retention |
+| State   | Unit    | Reaction                       | Feed | Dilution / retention |
 | Gln     | [mol/L] | -q_Gln * biomass - r_Gln * Gln |      |                      |
 | NH4     | [mol/L] | r_Gln * Gln                    |      |                      |
 | biomass | [g/L]   | q_biomass * biomass            |      |                      |
@@ -471,7 +471,7 @@ each trusted to carry whatever unit bridges their own term. See
 </section>
 <section id="the-reaction-module">
 <h2>The Reaction Module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">GlutamineDecayModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">GlutamineDecayModule</span><span class="p">(</span><span class="n">RateModule</span><span class="p">):</span>
 <span class="linenos"> 2</span>    <span class="n">log_q_biomass</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
 <span class="linenos"> 3</span>    <span class="n">log_q_Gln</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
 <span class="linenos"> 4</span>    <span class="n">log_r_Gln</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
@@ -493,7 +493,7 @@ each trusted to carry whatever unit bridges their own term. See
 <span class="linenos">20</span>            <span class="p">]</span>
 <span class="linenos">21</span>        <span class="p">)</span>
 <span class="linenos">22</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos">23</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_BiologicalOde_rates</span><span class="p">(</span>
+<span class="linenos">23</span>            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_ReactionOde_rates</span><span class="p">(</span>
 <span class="linenos">24</span>                <span class="n">RAW_rates</span>
 <span class="linenos">25</span>            <span class="p">),</span>
 </pre></div>
@@ -506,7 +506,7 @@ All of this page’s actual complexity is in the derivative strings above.</p>
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:11:51 INFO __main__: training complete: first_mean_loss=0.378586 last_mean_loss=0.000245517 delta=-0.37834
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-28 19:10:42 INFO __main__: training complete: first_mean_loss=0.378586 last_mean_loss=0.000245517 delta=-0.37834
 run directory: ./source/_data/out/runs/gallery_glutamine_decay/run
 </pre></div>
 </div>
@@ -544,7 +544,7 @@ r_Gln        0.00362208       0.0036
 </div>
 <p>All three come back close to their true values, <code class="docutils literal notranslate"><span class="pre">r_Gln</span></code> included: the same number
 that explains glutamine’s own decline also correctly predicts NH4’s rise, because
-training only ever fit the single number declared in <code class="docutils literal notranslate"><span class="pre">biological_ode.rates</span></code>. That is
+training only ever fit the single number declared in <code class="docutils literal notranslate"><span class="pre">reaction_ode.rates</span></code>. That is
 the actual demonstration this page exists to make;
 everything above it is setup.</p>
 </section>
@@ -558,7 +558,7 @@ carry whatever unit bridges it. See <a class="reference internal" href="../forma
 <li><p><strong>A slow rate needs a long enough window to be identifiable.</strong> <code class="docutils literal notranslate"><span class="pre">r_Gln</span></code>’s ~8-day
 half-life would leave almost no visible trace over a 10-15 h batch window; this
 page’s 120 h duration exists specifically so the effect is separable from noise,
-the same lesson <a class="reference internal" href="optfed.html#gotchas"><span class="std std-ref">OptFed</span></a>’s temperature-optimum Gotcha teaches
+the same lesson <a class="reference internal" href="optfed.html#gotchas"><span class="std std-ref">OptFed</span></a>’s Eyring-identifiability Gotcha teaches
 for a different rate.</p></li>
 <li><p><strong>This page’s unusual rate shape (one rate feeding two derivatives) needs no custom
 reaction module at all, technically.</strong> <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s default reaction module sizes
@@ -574,14 +574,14 @@ own value, which is the entire verification this page is built around.</p></li>
 <code class="docutils literal notranslate"><span class="pre">examples/gallery_glutamine_decay/</span></code> at the repo root, no docs build required. This
 page’s own executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_glutamine_decay/</span></code>.</p>
 <ul class="simple">
-<li><p><a class="reference internal" href="../format/bioprocess_ode.html"><span class="std std-doc">The Bioprocess ODE</span></a>: <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>, <code class="docutils literal notranslate"><span class="pre">rates</span></code>,
+<li><p><a class="reference internal" href="../format/bioprocess_ode.html"><span class="std std-doc">The Bioprocess ODE</span></a>: <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>, <code class="docutils literal notranslate"><span class="pre">rates</span></code>,
 <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>, and the unit-consistency rule this page relies on.</p></li>
 <li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic Models</span></a>: the same “did it recover the true
 parameters” question, asked of a Monod-form rate law instead.</p></li>
 <li><p><a class="reference internal" href="optfed.html"><span class="std std-doc">OptFed</span></a>: a rate law with real kinetic structure, and the same
 “identifiability needs the true value inside the sampled range” lesson.</p></li>
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: <code class="docutils literal notranslate"><span class="pre">trainable_field</span></code> and
-everything else a <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code> can return.</p></li>
+everything else a <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> can return.</p></li>
 </ul>
 </section>
 <section id="references">

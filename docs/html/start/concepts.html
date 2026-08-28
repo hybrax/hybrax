@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -400,7 +400,7 @@ BioProcess                ONE experimental run
   ├── reactor_medium      what is in the vessel        → components
   ├── volume              everything that moves volume → volume_changes
   ├── process_variables   everything else measured
-  └── biological_ode      the biology, as expressions
+  └── reaction_ode      the biology, as expressions
 </pre></div>
 </div>
 <p>Set <code class="docutils literal notranslate"><span class="pre">case_id</span></code>/<code class="docutils literal notranslate"><span class="pre">organism</span></code>/<code class="docutils literal notranslate"><span class="pre">citation</span></code> when the data belongs to one publication or
@@ -429,7 +429,7 @@ objects.</p>
 </tr>
 <tr class="row-odd"><td><p><strong>modeled</strong> (<code class="docutils literal notranslate"><span class="pre">is_controlled=False</span></code>)</p></td>
 <td><p>A dynamic state. The model has to produce a <code class="docutils literal notranslate"><span class="pre">d/dt</span></code> for it.</p></td>
-<td><p>Integrated. Needs an entry in <code class="docutils literal notranslate"><span class="pre">biological_ode.derivatives</span></code>.</p></td>
+<td><p>Integrated. Needs an entry in <code class="docutils literal notranslate"><span class="pre">reaction_ode.derivatives</span></code>.</p></td>
 </tr>
 </tbody>
 </table>
@@ -518,7 +518,7 @@ it.</p>
 </tbody>
 </table>
 </div>
-<p>If you do not write a <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> yourself, hybrax.format generates this one:</p>
+<p>If you do not write a <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> yourself, hybrax.format generates this one:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>rates:        q_biomass, q_glucose, q_product, …   (one per RMC, biomass first)
 derivatives:  d(glucose)/dt  =  q_glucose * biomass
 </pre></div>

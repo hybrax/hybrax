@@ -260,7 +260,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom Losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
@@ -430,12 +430,12 @@
     <span class="k">return</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">""</span>
 
 
-<div class="viewcode-block" id="validate_biological_ode">
-<a class="viewcode-back" href="../../../autoapi/hybrax/format/validate/index.html#hybrax.format.validate.validate_biological_ode">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">validate_biological_ode</span><span class="p">(</span><span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">"""Validate ``process.biological_ode`` if present.</span>
+<div class="viewcode-block" id="validate_reaction_ode">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/validate/index.html#hybrax.format.validate.validate_reaction_ode">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_reaction_ode</span><span class="p">(</span><span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Validate ``process.reaction_ode`` if present.</span>
 
-<span class="sd">    Checks (skipped when ``biological_ode is None``):</span>
+<span class="sd">    Checks (skipped when ``reaction_ode is None``):</span>
 
 <span class="sd">    - Every reactor-medium component and uncontrolled process variable</span>
 <span class="sd">      (the dynamic states) must have an entry in ``derivatives``.</span>
@@ -448,12 +448,12 @@
 <span class="sd">    - Rate names do not collide with state, algebraic, or controlled-PV names.</span>
 <span class="sd">    - All bounds tuples are sane (``lo &lt;= hi`` when both set).</span>
 <span class="sd">    """</span>
-    <span class="n">bo</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span>
+    <span class="n">bo</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span>
     <span class="k">if</span> <span class="n">bo</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
             <span class="s2">"SKIP"</span><span class="p">,</span>
-            <span class="s2">"biological_ode"</span><span class="p">,</span>
-            <span class="s2">"process.biological_ode is None: structural checks skipped"</span><span class="p">,</span>
+            <span class="s2">"reaction_ode"</span><span class="p">,</span>
+            <span class="s2">"process.reaction_ode is None: structural checks skipped"</span><span class="p">,</span>
         <span class="p">)</span>
 
     <span class="kn">import</span><span class="w"> </span><span class="nn">sympy</span>
@@ -507,7 +507,7 @@
     <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
         <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
             <span class="sa">f</span><span class="s2">"derivatives missing entries for dynamic state(s): </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2">. "</span>
-            <span class="s1">'Use "0" to declare no biological dynamics.'</span>
+            <span class="s1">'Use "0" to declare no reaction dynamics.'</span>
         <span class="p">)</span>
     <span class="n">extra</span> <span class="o">=</span> <span class="n">deriv_keys</span> <span class="o">-</span> <span class="n">state_names</span>
     <span class="k">if</span> <span class="n">extra</span><span class="p">:</span>
@@ -610,11 +610,11 @@
 
     <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"biological_ode"</span><span class="p">,</span> <span class="n">_join_details</span><span class="p">(</span><span class="n">errors</span><span class="p">,</span> <span class="n">bulleted</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"reaction_ode"</span><span class="p">,</span> <span class="n">_join_details</span><span class="p">(</span><span class="n">errors</span><span class="p">,</span> <span class="n">bulleted</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
         <span class="s2">"PASS"</span><span class="p">,</span>
-        <span class="s2">"biological_ode"</span><span class="p">,</span>
+        <span class="s2">"reaction_ode"</span><span class="p">,</span>
         <span class="p">(</span>
             <span class="s2">"derivatives/algebraic/rates parse, resolve, and are acyclic "</span>
             <span class="s2">"with consistent units"</span>
@@ -623,12 +623,12 @@
 
 
 
-<div class="viewcode-block" id="validate_biological_ode_equivalence">
-<a class="viewcode-back" href="../../../autoapi/hybrax/format/validate/index.html#hybrax.format.validate.validate_biological_ode_equivalence">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">validate_biological_ode_equivalence</span><span class="p">(</span>
+<div class="viewcode-block" id="validate_reaction_ode_equivalence">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/validate/index.html#hybrax.format.validate.validate_reaction_ode_equivalence">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_reaction_ode_equivalence</span><span class="p">(</span>
     <span class="n">container</span><span class="p">:</span> <span class="s2">"BioProcessCollection"</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">"""Verify all processes in *container* share the same ``biological_ode``.</span>
+<span class="w">    </span><span class="sd">"""Verify all processes in *container* share the same ``reaction_ode``.</span>
 
 <span class="sd">    Equivalence requires identical ``algebraic``, ``derivatives``, and</span>
 <span class="sd">    ``rates`` dicts (same keys mapped to the same values). Containers with</span>
@@ -638,7 +638,7 @@
 <span class="sd">    """</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">container</span><span class="p">,</span> <span class="n">BioProcessCollection</span><span class="p">):</span>
         <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
-            <span class="s2">"validate_biological_ode_equivalence() expects a "</span>
+            <span class="s2">"validate_reaction_ode_equivalence() expects a "</span>
             <span class="sa">f</span><span class="s2">"BioProcessCollection, got </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">container</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">!r}</span><span class="s2">"</span>
         <span class="p">)</span>
 
@@ -646,43 +646,42 @@
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">procs</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
             <span class="s2">"PASS"</span><span class="p">,</span>
-            <span class="s2">"biological_ode_equivalence"</span><span class="p">,</span>
+            <span class="s2">"reaction_ode_equivalence"</span><span class="p">,</span>
             <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">procs</span><span class="p">)</span><span class="si">}</span><span class="s2"> process(es): trivially equivalent"</span><span class="p">,</span>
         <span class="p">)</span>
 
     <span class="n">first_name</span><span class="p">,</span> <span class="n">first_proc</span> <span class="o">=</span> <span class="n">procs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-    <span class="n">ref_bo</span> <span class="o">=</span> <span class="n">first_proc</span><span class="o">.</span><span class="n">biological_ode</span>
+    <span class="n">ref_bo</span> <span class="o">=</span> <span class="n">first_proc</span><span class="o">.</span><span class="n">reaction_ode</span>
 
     <span class="n">errors</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">proc</span> <span class="ow">in</span> <span class="n">procs</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
-        <span class="n">bo</span> <span class="o">=</span> <span class="n">proc</span><span class="o">.</span><span class="n">biological_ode</span>
+        <span class="n">bo</span> <span class="o">=</span> <span class="n">proc</span><span class="o">.</span><span class="n">reaction_ode</span>
         <span class="k">if</span> <span class="p">(</span><span class="n">ref_bo</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">)</span> <span class="o">!=</span> <span class="p">(</span><span class="n">bo</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
             <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">"process '</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">' biological_ode presence differs from '</span><span class="si">{</span><span class="n">first_name</span><span class="si">}</span><span class="s2">'"</span>
+                <span class="sa">f</span><span class="s2">"process '</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">' reaction_ode presence differs from '</span><span class="si">{</span><span class="n">first_name</span><span class="si">}</span><span class="s2">'"</span>
             <span class="p">)</span>
             <span class="k">continue</span>
         <span class="k">if</span> <span class="n">ref_bo</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">continue</span>
         <span class="k">if</span> <span class="nb">dict</span><span class="p">(</span><span class="n">bo</span><span class="o">.</span><span class="n">algebraic</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">ref_bo</span><span class="o">.</span><span class="n">algebraic</span><span class="p">):</span>
             <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">"process '</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">' biological_ode.algebraic differs from '</span><span class="si">{</span><span class="n">first_name</span><span class="si">}</span><span class="s2">'"</span>
+                <span class="sa">f</span><span class="s2">"process '</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">' reaction_ode.algebraic differs from '</span><span class="si">{</span><span class="n">first_name</span><span class="si">}</span><span class="s2">'"</span>
             <span class="p">)</span>
         <span class="k">if</span> <span class="nb">dict</span><span class="p">(</span><span class="n">bo</span><span class="o">.</span><span class="n">derivatives</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">ref_bo</span><span class="o">.</span><span class="n">derivatives</span><span class="p">):</span>
             <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">"process '</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">' biological_ode.derivatives differs from "</span>
-                <span class="sa">f</span><span class="s2">"'</span><span class="si">{</span><span class="n">first_name</span><span class="si">}</span><span class="s2">'"</span>
+                <span class="sa">f</span><span class="s2">"process '</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">' reaction_ode.derivatives differs from '</span><span class="si">{</span><span class="n">first_name</span><span class="si">}</span><span class="s2">'"</span>
             <span class="p">)</span>
         <span class="k">if</span> <span class="nb">dict</span><span class="p">(</span><span class="n">bo</span><span class="o">.</span><span class="n">rates</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">ref_bo</span><span class="o">.</span><span class="n">rates</span><span class="p">):</span>
             <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">"process '</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">' biological_ode.rates differs from '</span><span class="si">{</span><span class="n">first_name</span><span class="si">}</span><span class="s2">'"</span>
+                <span class="sa">f</span><span class="s2">"process '</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">' reaction_ode.rates differs from '</span><span class="si">{</span><span class="n">first_name</span><span class="si">}</span><span class="s2">'"</span>
             <span class="p">)</span>
 
     <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-            <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"biological_ode_equivalence"</span><span class="p">,</span> <span class="n">_join_details</span><span class="p">(</span><span class="n">errors</span><span class="p">,</span> <span class="n">bulleted</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="s2">"FAIL"</span><span class="p">,</span> <span class="s2">"reaction_ode_equivalence"</span><span class="p">,</span> <span class="n">_join_details</span><span class="p">(</span><span class="n">errors</span><span class="p">,</span> <span class="n">bulleted</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="n">_check_result</span><span class="p">(</span>
-        <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"biological_ode_equivalence"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"identical across </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">procs</span><span class="p">)</span><span class="si">}</span><span class="s2"> processes"</span>
+        <span class="s2">"PASS"</span><span class="p">,</span> <span class="s2">"reaction_ode_equivalence"</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"identical across </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">procs</span><span class="p">)</span><span class="si">}</span><span class="s2"> processes"</span>
     <span class="p">)</span></div>
 
 
@@ -772,9 +771,9 @@
 <span class="sd">    the actual scalar (``StaticVariable``) or ``TimeSeries.values`` array</span>
 <span class="sd">    against ``(lo, hi)`` and reports how many datapoints violate the bound.</span>
 
-<span class="sd">    Out of scope: ``BiologicalOde.rates`` bounds. No rate-inversion</span>
+<span class="sd">    Out of scope: ``ReactionOde.rates`` bounds. No rate-inversion</span>
 <span class="sd">    machinery exists to compute a measured rate value to check against them</span>
-<span class="sd">    (see ``validate_biological_ode``'s tuple-only sanity check on rates).</span>
+<span class="sd">    (see ``validate_reaction_ode``'s tuple-only sanity check on rates).</span>
 <span class="sd">    """</span>
     <span class="n">errors</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
 
@@ -1301,7 +1300,7 @@
 <span class="sd">    - Measurement/sampling timestamp alignment.</span>
 <span class="sd">    - Bounds tuple sanity.</span>
 <span class="sd">    - Measured data falls within its own declared ``Bounds``.</span>
-<span class="sd">    - Biological ODE structure.</span>
+<span class="sd">    - Reaction ODE structure.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        process: BioProcess object to validate.</span>
@@ -1391,8 +1390,8 @@
     <span class="c1"># --- Bounds vs. actual data ---</span>
     <span class="n">_record</span><span class="p">(</span><span class="n">validate_bounds_against_data</span><span class="p">(</span><span class="n">process</span><span class="p">))</span>
 
-    <span class="c1"># --- User-defined biological ODE ---</span>
-    <span class="n">_record</span><span class="p">(</span><span class="n">validate_biological_ode</span><span class="p">(</span><span class="n">process</span><span class="p">))</span>
+    <span class="c1"># --- User-defined reaction ODE ---</span>
+    <span class="n">_record</span><span class="p">(</span><span class="n">validate_reaction_ode</span><span class="p">(</span><span class="n">process</span><span class="p">))</span>
 
     <span class="k">return</span> <span class="n">all_valid</span><span class="p">,</span> <span class="n">results</span></div>
 

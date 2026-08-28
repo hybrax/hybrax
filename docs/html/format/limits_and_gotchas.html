@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -415,7 +415,7 @@ supports, for example, cell retention in perfusion and solute retention during
 evaporation. Missing components have zero retention and leave at the well-mixed bulk
 concentration.</p>
 <p>The last one deserves emphasis: units are used for exactly two checks, that quantities
-you <em>add</em> in a <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> expression share a unit, and that processes in a case
+you <em>add</em> in a <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> expression share a unit, and that processes in a case
 study agree. <code class="docutils literal notranslate"><span class="pre">&quot;g/L&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;g/l&quot;</span></code> are different strings. Pick one spelling.</p>
 </section>
 <section id="things-that-raise">
@@ -424,7 +424,7 @@ study agree. <code class="docutils literal notranslate"><span class="pre">&quot;
 alternative.</p>
 <p><strong>At construction</strong></p>
 <ul class="simple">
-<li><p><strong>No <code class="docutils literal notranslate"><span class="pre">biomass</span></code> component</strong> and no explicit <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> → <code class="docutils literal notranslate"><span class="pre">BioProcess(...)</span></code> raises.
+<li><p><strong>No <code class="docutils literal notranslate"><span class="pre">biomass</span></code> component</strong> and no explicit <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> → <code class="docutils literal notranslate"><span class="pre">BioProcess(...)</span></code> raises.
 Auto-generated rates are specific, so they need a biomass.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> with neither samples nor spline</strong> → raises. So does <code class="docutils literal notranslate"><span class="pre">times</span></code> without
 <code class="docutils literal notranslate"><span class="pre">values</span></code>, non-increasing <code class="docutils literal notranslate"><span class="pre">times</span></code>, or a <code class="docutils literal notranslate"><span class="pre">coeffs</span></code>/<code class="docutils literal notranslate"><span class="pre">breaks</span></code> shape mismatch.</p></li>

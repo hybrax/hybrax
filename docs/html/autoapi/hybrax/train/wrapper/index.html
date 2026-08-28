@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -383,7 +383,7 @@ reaction module.</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.wrapper.HybridOdeWrapper" title="hybrax.train.wrapper.HybridOdeWrapper"><code class="xref py py-obj docutils literal notranslate"><span class="pre">HybridOdeWrapper</span></code></a></p></td>
-<td><p>RAW physical-state wrapper around a user reaction module.</p></td>
+<td><p>RAW physical-state wrapper around a rate module.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.wrapper.SaveOutputs" title="hybrax.train.wrapper.SaveOutputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SaveOutputs</span></code></a></p></td>
 <td><p>Diffrax-saveable wrapper outputs.</p></td>
@@ -410,7 +410,7 @@ reaction module.</p>
 <dt class="sig sig-object py" id="hybrax.train.wrapper.HybridOdeWrapper">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.wrapper.</span></span><span class="sig-name descname"><span class="pre">HybridOdeWrapper</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/wrapper.html#HybridOdeWrapper"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.wrapper.HybridOdeWrapper" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">equinox.Module</span></code></p>
-<p>RAW physical-state wrapper around a user reaction module.</p>
+<p>RAW physical-state wrapper around a rate module.</p>
 <p><code class="docutils literal notranslate"><span class="pre">physical_solve</span></code> owns the scaled ODE reparameterization. This wrapper sees
 RAW integrated state <code class="docutils literal notranslate"><span class="pre">[RMCs</span> <span class="pre">|</span> <span class="pre">PVs</span> <span class="pre">|</span> <span class="pre">V</span> <span class="pre">|</span> <span class="pre">modeled_cum</span> <span class="pre">|</span> <span class="pre">latent]</span></code>, builds
 scaled <code class="docutils literal notranslate"><span class="pre">ReactionInputs</span></code> for the module, and returns RAW derivatives/save
@@ -428,7 +428,7 @@ slice so MLP gradient flow survives transient negative excursions.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>reaction_module</strong> (<a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.UserReactionModule" title="hybrax.train.model_api.UserReactionModule"><em>hybrax.train.model_api.UserReactionModule</em></a>) – Trained/untrained reaction module; its
+<li><p><strong>reaction_module</strong> (<a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.RateModule" title="hybrax.train.model_api.RateModule"><em>hybrax.train.model_api.RateModule</em></a>) – Trained/untrained reaction module; its
 <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code> fields are validated against <code class="docutils literal notranslate"><span class="pre">process</span></code>.</p></li>
 <li><p><strong>process</strong> (<a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>) – Process the <code class="docutils literal notranslate"><span class="pre">RhsOde</span></code> template is built from.</p></li>
 <li><p><strong>controls</strong> (<a class="reference internal" href="../controls_store/index.html#hybrax.train.controls_store.PerProcessControls" title="hybrax.train.controls_store.PerProcessControls"><em>hybrax.train.controls_store.PerProcessControls</em></a>) – This process’s controls; see <a class="reference internal" href="#hybrax.train.wrapper.HybridOdeWrapper.from_rhs_ode" title="hybrax.train.wrapper.HybridOdeWrapper.from_rhs_ode"><code class="xref py py-func docutils literal notranslate"><span class="pre">from_rhs_ode()</span></code></a>.</p></li>
@@ -449,13 +449,13 @@ slice so MLP gradient flow survives transient negative excursions.</p>
 <dt class="sig sig-object py" id="hybrax.train.wrapper.HybridOdeWrapper.from_rhs_ode">
 <span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_rhs_ode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">reaction_module</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rhs_ode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">controls</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_state_indices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">loss_module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/wrapper.html#HybridOdeWrapper.from_rhs_ode"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.wrapper.HybridOdeWrapper.from_rhs_ode" title="Link to this definition">¶</a></dt>
 <dd><p>Build a wrapper from an existing RhsOde runtime template.</p>
-<p>Scales are read from <code class="docutils literal notranslate"><span class="pre">reaction_module</span></code> (a <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code>
+<p>Scales are read from <code class="docutils literal notranslate"><span class="pre">reaction_module</span></code> (a <code class="docutils literal notranslate"><span class="pre">RateModule</span></code>
 subclass with <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code> fields). The constructor validates each
 <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code> shape against the RhsOde / controls layout.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>reaction_module</strong> (<a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.UserReactionModule" title="hybrax.train.model_api.UserReactionModule"><em>hybrax.train.model_api.UserReactionModule</em></a>) – Reaction module supplying every <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code>
+<li><p><strong>reaction_module</strong> (<a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.RateModule" title="hybrax.train.model_api.RateModule"><em>hybrax.train.model_api.RateModule</em></a>) – Reaction module supplying every <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code>
 field and the model’s <code class="docutils literal notranslate"><span class="pre">__call__</span></code>.</p></li>
 <li><p><strong>rhs_ode</strong> (<a class="reference internal" href="../../format/mechanistic/index.html#hybrax.format.mechanistic.RhsOde" title="hybrax.format.mechanistic.RhsOde"><em>hybrax.format.mechanistic.RhsOde</em></a>) – Canonical ODE structure this process’s controls must
 agree with.</p></li>
@@ -584,7 +584,7 @@ stateful latent observable is not emitted via
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.wrapper.HybridOdeWrapper.reaction_module">
-<span class="sig-name descname"><span class="pre">reaction_module</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.UserReactionModule" title="hybrax.train.model_api.UserReactionModule"><span class="pre">hybrax.train.model_api.UserReactionModule</span></a></span><a class="headerlink" href="#hybrax.train.wrapper.HybridOdeWrapper.reaction_module" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">reaction_module</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.RateModule" title="hybrax.train.model_api.RateModule"><span class="pre">hybrax.train.model_api.RateModule</span></a></span><a class="headerlink" href="#hybrax.train.wrapper.HybridOdeWrapper.reaction_module" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -618,11 +618,6 @@ exporting to CSV/JSONL.</p>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.wrapper.SaveOutputs.RAW_modeled_BiologicalOde_rates">
-<span class="sig-name descname"><span class="pre">RAW_modeled_BiologicalOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.wrapper.SaveOutputs.RAW_modeled_BiologicalOde_rates" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.wrapper.SaveOutputs.RAW_modeled_Inflows_rates">
 <span class="sig-name descname"><span class="pre">RAW_modeled_Inflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.wrapper.SaveOutputs.RAW_modeled_Inflows_rates" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -630,6 +625,11 @@ exporting to CSV/JSONL.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.wrapper.SaveOutputs.RAW_modeled_Outflows_rates">
 <span class="sig-name descname"><span class="pre">RAW_modeled_Outflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.wrapper.SaveOutputs.RAW_modeled_Outflows_rates" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.wrapper.SaveOutputs.RAW_modeled_ReactionOde_rates">
+<span class="sig-name descname"><span class="pre">RAW_modeled_ReactionOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.wrapper.SaveOutputs.RAW_modeled_ReactionOde_rates" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -743,9 +743,9 @@ exporting to CSV/JSONL.</p>
 <li><a class="reference internal" href="#hybrax.train.wrapper.SaveOutputs"><code class="docutils literal notranslate"><span class="pre">SaveOutputs</span></code></a><ul>
 <li><a class="reference internal" href="#hybrax.train.wrapper.SaveOutputs.RAW_V"><code class="docutils literal notranslate"><span class="pre">SaveOutputs.RAW_V</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.wrapper.SaveOutputs.RAW_V_export"><code class="docutils literal notranslate"><span class="pre">SaveOutputs.RAW_V_export</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.wrapper.SaveOutputs.RAW_modeled_BiologicalOde_rates"><code class="docutils literal notranslate"><span class="pre">SaveOutputs.RAW_modeled_BiologicalOde_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.wrapper.SaveOutputs.RAW_modeled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">SaveOutputs.RAW_modeled_Inflows_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.wrapper.SaveOutputs.RAW_modeled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">SaveOutputs.RAW_modeled_Outflows_rates</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.wrapper.SaveOutputs.RAW_modeled_ReactionOde_rates"><code class="docutils literal notranslate"><span class="pre">SaveOutputs.RAW_modeled_ReactionOde_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.wrapper.SaveOutputs.SCL_states"><code class="docutils literal notranslate"><span class="pre">SaveOutputs.SCL_states</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.wrapper.SaveOutputs.auxiliary"><code class="docutils literal notranslate"><span class="pre">SaveOutputs.auxiliary</span></code></a></li>
 </ul>

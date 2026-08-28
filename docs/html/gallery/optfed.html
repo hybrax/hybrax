@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -394,64 +394,73 @@ pipeline.</p>
 <section id="the-rate-law">
 <h2>The Rate Law<a class="headerlink" href="#the-rate-law" title="Link to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">def</span><span class="w"> </span><span class="nf">_eyring_rate_ceiling</span><span class="p">(</span><span class="n">T_K</span><span class="p">,</span> <span class="n">log_A</span><span class="p">,</span> <span class="n">log_Ea_R</span><span class="p">,</span> <span class="n">raw_Teq</span><span class="p">,</span> <span class="n">log_dHeq_R</span><span class="p">):</span>
-<span class="linenos"> 2</span><span class="w">    </span><span class="sd">"""Temperature-dependent rate ceiling (the Eyring equation): rises with</span>
-<span class="linenos"> 3</span><span class="sd">    heat, then collapses again past the enzyme's denaturation point.</span>
-<span class="linenos"> 4</span><span class="sd">    Vectorizes over any leading shape of the four parameter args."""</span>
-<span class="linenos"> 5</span>    <span class="n">A</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_A</span><span class="p">)</span>
-<span class="linenos"> 6</span>    <span class="n">Ea_R</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_Ea_R</span><span class="p">)</span>
-<span class="linenos"> 7</span>    <span class="n">Teq</span> <span class="o">=</span> <span class="mf">290.0</span> <span class="o">+</span> <span class="mf">40.0</span> <span class="o">*</span> <span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">sigmoid</span><span class="p">(</span><span class="n">raw_Teq</span><span class="p">)</span>
-<span class="linenos"> 8</span>    <span class="n">dHeq_R</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_dHeq_R</span><span class="p">)</span>
-<span class="linenos"> 9</span>    <span class="k">return</span> <span class="p">(</span>
-<span class="linenos">10</span>        <span class="n">A</span>
-<span class="linenos">11</span>        <span class="o">*</span> <span class="n">T_K</span>
-<span class="linenos">12</span>        <span class="o">*</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">Ea_R</span> <span class="o">/</span> <span class="n">T_K</span><span class="p">)</span>
-<span class="linenos">13</span>        <span class="o">/</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">dHeq_R</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">Teq</span> <span class="o">-</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">T_K</span><span class="p">)))</span>
-<span class="linenos">14</span>    <span class="p">)</span>
-<span class="linenos">15</span>
-<span class="linenos">16</span>
-<span class="linenos">17</span><span class="k">def</span><span class="w"> </span><span class="nf">_inhibition_product</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">log_K</span><span class="p">):</span>
-<span class="linenos">18</span>    <span class="n">K</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_K</span><span class="p">)</span>
-<span class="linenos">19</span>    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="o">/</span> <span class="n">K</span><span class="p">))</span>
-<span class="linenos">20</span>
-<span class="linenos">21</span>
-<span class="linenos">22</span><span class="k">def</span><span class="w"> </span><span class="nf">_activation_product</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">log_K</span><span class="p">):</span>
+<span class="linenos"> 2</span><span class="w">    </span><span class="sd">"""Algebraically reparameterized Eq. 4e, vectorized over parameter arrays."""</span>
+<span class="linenos"> 3</span>    <span class="n">A</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_A</span><span class="p">)</span>
+<span class="linenos"> 4</span>    <span class="n">Ea_R</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_Ea_R</span><span class="p">)</span>
+<span class="linenos"> 5</span>    <span class="n">Teq</span> <span class="o">=</span> <span class="mf">290.0</span> <span class="o">+</span> <span class="mf">40.0</span> <span class="o">*</span> <span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">sigmoid</span><span class="p">(</span><span class="n">raw_Teq</span><span class="p">)</span>
+<span class="linenos"> 6</span>    <span class="n">dHeq_R</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_dHeq_R</span><span class="p">)</span>
+<span class="linenos"> 7</span>    <span class="k">return</span> <span class="p">(</span>
+<span class="linenos"> 8</span>        <span class="n">A</span>
+<span class="linenos"> 9</span>        <span class="o">*</span> <span class="n">T_K</span>
+<span class="linenos">10</span>        <span class="o">*</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">Ea_R</span> <span class="o">/</span> <span class="n">T_K</span><span class="p">)</span>
+<span class="linenos">11</span>        <span class="o">/</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">dHeq_R</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">Teq</span> <span class="o">-</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">T_K</span><span class="p">)))</span>
+<span class="linenos">12</span>    <span class="p">)</span>
+<span class="linenos">13</span>
+<span class="linenos">14</span>
+<span class="linenos">15</span><span class="k">def</span><span class="w"> </span><span class="nf">_inhibition_product</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">log_K</span><span class="p">):</span>
+<span class="linenos">16</span>    <span class="n">K</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_K</span><span class="p">)</span>
+<span class="linenos">17</span>    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="o">/</span> <span class="n">K</span><span class="p">))</span>
+<span class="linenos">18</span>
+<span class="linenos">19</span>
+<span class="linenos">20</span><span class="k">def</span><span class="w"> </span><span class="nf">_activation_product</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">log_K</span><span class="p">):</span>
+<span class="linenos">21</span>    <span class="n">K</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_K</span><span class="p">)</span>
+<span class="linenos">22</span>    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="o">/</span> <span class="n">K</span><span class="p">)</span>
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">_eyring_rate_ceiling</span></code> computes the temperature term above, vectorized: given a scalar
-temperature and arrays of its four constants, it returns one rate ceiling per instance
-at once. <code class="docutils literal notranslate"><span class="pre">_inhibition_product</span></code>/<code class="docutils literal notranslate"><span class="pre">_activation_product</span></code> are the paper’s own
-independent-multiplicative-terms idea: each named influence variable contributes its
-own factor, <code class="docutils literal notranslate"><span class="pre">1/(1+v/K)</span></code> to suppress a rate, <code class="docutils literal notranslate"><span class="pre">1+v/K</span></code> to boost it, and the factors
-multiply.</p>
+<p><code class="docutils literal notranslate"><span class="pre">_eyring_rate_ceiling</span></code> is an algebraically reparameterized Eq. 4e, vectorized
+over its three instances. It combines the Eyring transition-state factor with
+a reversible-inactivation equilibrium factor and returns temperature-dependent
+maximum prefactors for uptake and production and a minimum prefactor for
+maintenance. <code class="docutils literal notranslate"><span class="pre">_inhibition_product</span></code>/<code class="docutils literal notranslate"><span class="pre">_activation_product</span></code> are the paper’s own
+independent-multiplicative-terms idea (Eq. 4a-4c): each named influence
+variable contributes its own factor, <code class="docutils literal notranslate"><span class="pre">1/(1+v/K)</span></code> to suppress a rate,
+<code class="docutils literal notranslate"><span class="pre">1+v/K</span></code> to boost it, and the factors multiply.</p>
 </section>
 <section id="the-reaction-module">
 <h2>The Reaction Module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span>
-<span class="linenos"> 2</span>
-<span class="linenos"> 3</span><span class="k">class</span><span class="w"> </span><span class="nc">OptFedModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
-<span class="linenos"> 4</span><span class="w">    </span><span class="sd">"""Eyring axis order: [0]=gamma_deg (uptake), [1]=gamma_pi (production),</span>
-<span class="linenos"> 5</span><span class="sd">    [2]=gamma_alpha (maintenance)."""</span>
-<span class="linenos"> 6</span>
-<span class="linenos"> 7</span>    <span class="n">eyring_log_A</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 8</span>    <span class="n">eyring_log_Ea_R</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 9</span>    <span class="n">eyring_raw_Teq</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos">10</span>    <span class="n">eyring_log_dHeq_R</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos">11</span>    <span class="n">log_Km</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (2,) [Km_deg, Km_pi]</span>
-<span class="linenos">12</span>    <span class="n">log_K_inhib</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="p">(</span>
-<span class="linenos">13</span>        <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos">14</span>    <span class="p">)</span>  <span class="c1"># (2, 2) [[deg_px, deg_x], [pi_px, pi_x]]</span>
-<span class="linenos">15</span>    <span class="n">log_K_activ</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (2,) [a_deg, a_x]</span>
-<span class="linenos">16</span>    <span class="n">Y_XrG</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">frozen_field</span><span class="p">()</span>
-<span class="linenos">17</span>    <span class="n">Y_PG</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">frozen_field</span><span class="p">()</span>
-<span class="linenos">18</span>
-<span class="linenos">19</span>    <span class="n">i_biomass</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="linenos">20</span>    <span class="n">i_glucose</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="linenos">21</span>    <span class="n">i_product</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="linenos">22</span>
-<span class="linenos">23</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">i_biomass</span><span class="p">,</span> <span class="n">i_glucose</span><span class="p">,</span> <span class="n">i_product</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
-<span class="linenos">24</span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
-<span class="linenos">25</span>        <span class="bp">self</span><span class="o">.</span><span class="n">i_biomass</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">i_glucose</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">i_product</span> <span class="o">=</span> <span class="n">i_biomass</span><span class="p">,</span> <span class="n">i_glucose</span><span class="p">,</span> <span class="n">i_product</span>
-<span class="linenos">26</span>        <span class="c1"># Deliberately mediocre starting guesses: the point is that they move.</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">OptFedModule</span><span class="p">(</span><span class="n">RateModule</span><span class="p">):</span>
+<span class="linenos"> 2</span><span class="w">    </span><span class="sd">"""Eyring axis order: [0]=gamma_deg (uptake), [1]=gamma_pi (production),</span>
+<span class="linenos"> 3</span><span class="sd">    [2]=gamma_alpha (maintenance)."""</span>
+<span class="linenos"> 4</span>
+<span class="linenos"> 5</span>    <span class="n">eyring_log_A</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
+<span class="linenos"> 6</span>    <span class="n">eyring_log_Ea_R</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
+<span class="linenos"> 7</span>    <span class="n">eyring_raw_Teq</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
+<span class="linenos"> 8</span>    <span class="n">eyring_log_dHeq_R</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
+<span class="linenos"> 9</span>    <span class="n">log_Km</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (2,) [Km_deg, Km_pi]</span>
+<span class="linenos">10</span>    <span class="n">log_K_inhib</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="p">(</span>
+<span class="linenos">11</span>        <span class="n">trainable_field</span><span class="p">()</span>
+<span class="linenos">12</span>    <span class="p">)</span>  <span class="c1"># (2, 2) [[deg_px, deg_x], [pi_px, pi_x]]</span>
+<span class="linenos">13</span>    <span class="n">log_K_activ</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (2,) [a_deg, a_x]</span>
+<span class="linenos">14</span>    <span class="n">Y_XrG</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">frozen_field</span><span class="p">()</span>
+<span class="linenos">15</span>    <span class="n">Y_PG</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">frozen_field</span><span class="p">()</span>
+<span class="linenos">16</span>
+<span class="linenos">17</span>    <span class="n">i_biomass</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="linenos">18</span>    <span class="n">i_glucose</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="linenos">19</span>    <span class="n">i_product</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="linenos">20</span>
+<span class="linenos">21</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">i_biomass</span><span class="p">,</span> <span class="n">i_glucose</span><span class="p">,</span> <span class="n">i_product</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
+<span class="linenos">22</span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
+<span class="linenos">23</span>        <span class="bp">self</span><span class="o">.</span><span class="n">i_biomass</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">i_glucose</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">i_product</span> <span class="o">=</span> <span class="n">i_biomass</span><span class="p">,</span> <span class="n">i_glucose</span><span class="p">,</span> <span class="n">i_product</span>
+<span class="linenos">24</span>        <span class="c1"># Deliberately mediocre starting guesses: the point is that they move.</span>
+<span class="linenos">25</span>        <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_A</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">]))</span>
+<span class="linenos">26</span>        <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_Ea_R</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1000.0</span><span class="p">,</span> <span class="mf">1000.0</span><span class="p">,</span> <span class="mf">1000.0</span><span class="p">]))</span>
+<span class="linenos">27</span>        <span class="bp">self</span><span class="o">.</span><span class="n">eyring_raw_Teq</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>  <span class="c1"># sigmoid(0)=0.5 -&gt; Teq=310 K</span>
+<span class="linenos">28</span>        <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_dHeq_R</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">10000.0</span><span class="p">,</span> <span class="mf">10000.0</span><span class="p">,</span> <span class="mf">10000.0</span><span class="p">]))</span>
+<span class="linenos">29</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_Km</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]))</span>
+<span class="linenos">30</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_K_inhib</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">]]))</span>
+<span class="linenos">31</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_K_activ</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">]))</span>
+<span class="linenos">32</span>        <span class="bp">self</span><span class="o">.</span><span class="n">Y_XrG</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="mf">0.45</span><span class="p">)</span>
+<span class="linenos">33</span>        <span class="bp">self</span><span class="o">.</span><span class="n">Y_PG</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="mf">0.25</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>Twenty trainable scalars: 4 per temperature term (<code class="docutils literal notranslate"><span class="pre">log_A</span></code>, <code class="docutils literal notranslate"><span class="pre">log_Ea_R</span></code>,
@@ -459,41 +468,55 @@ multiply.</p>
 and the four inhibition/activation constants. <code class="docutils literal notranslate"><span class="pre">Y_XrG</span></code>/<code class="docutils literal notranslate"><span class="pre">Y_PG</span></code> are
 <code class="docutils literal notranslate"><span class="pre">frozen_field()</span></code>s: the paper itself states these yields come from a genome-scale
 model, so they stay fixed rather than fitted.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span>        <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_Ea_R</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1000.0</span><span class="p">,</span> <span class="mf">1000.0</span><span class="p">,</span> <span class="mf">1000.0</span><span class="p">]))</span>
-<span class="linenos"> 2</span>        <span class="bp">self</span><span class="o">.</span><span class="n">eyring_raw_Teq</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>  <span class="c1"># sigmoid(0)=0.5 -&gt; Teq=310 K</span>
-<span class="linenos"> 3</span>        <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_dHeq_R</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">10000.0</span><span class="p">,</span> <span class="mf">10000.0</span><span class="p">,</span> <span class="mf">10000.0</span><span class="p">]))</span>
-<span class="linenos"> 4</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_Km</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]))</span>
-<span class="linenos"> 5</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_K_inhib</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">]]))</span>
-<span class="linenos"> 6</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_K_activ</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">]))</span>
-<span class="linenos"> 7</span>        <span class="bp">self</span><span class="o">.</span><span class="n">Y_XrG</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="mf">0.45</span><span class="p">)</span>
-<span class="linenos"> 8</span>        <span class="bp">self</span><span class="o">.</span><span class="n">Y_PG</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="mf">0.25</span><span class="p">)</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
+<span class="linenos"> 2</span>        <span class="k">del</span> <span class="n">t</span>
+<span class="linenos"> 3</span>        <span class="n">RAW</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unscale_modeled_RMCs</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">)</span>
+<span class="linenos"> 4</span>        <span class="n">X</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">RAW</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">i_biomass</span><span class="p">],</span> <span class="mf">1e-6</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<span class="linenos"> 5</span>        <span class="n">G</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">RAW</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">i_glucose</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<span class="linenos"> 6</span>        <span class="n">P</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">RAW</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">i_product</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<span class="linenos"> 7</span>        <span class="n">T_K</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unscale_controlled_PVs</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_PVs</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mf">273.15</span>
+<span class="linenos"> 8</span>        <span class="n">px</span> <span class="o">=</span> <span class="n">P</span> <span class="o">/</span> <span class="n">X</span>
 <span class="linenos"> 9</span>
-<span class="linenos">10</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
-<span class="linenos">11</span>        <span class="k">del</span> <span class="n">t</span>
-<span class="linenos">12</span>        <span class="n">RAW</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unscale_modeled_RMCs</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">)</span>
-<span class="linenos">13</span>        <span class="n">X</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">RAW</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">i_biomass</span><span class="p">],</span> <span class="mf">1e-6</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<span class="linenos">14</span>        <span class="n">G</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">RAW</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">i_glucose</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<span class="linenos">15</span>        <span class="n">P</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">RAW</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">i_product</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<span class="linenos">16</span>        <span class="n">T_K</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unscale_controlled_PVs</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_PVs</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mf">273.15</span>
-<span class="linenos">17</span>        <span class="n">px</span> <span class="o">=</span> <span class="n">P</span> <span class="o">/</span> <span class="n">X</span>
-<span class="linenos">18</span>
-<span class="linenos">19</span>        <span class="n">gdeg_max</span><span class="p">,</span> <span class="n">gpi_max</span><span class="p">,</span> <span class="n">galpha_min</span> <span class="o">=</span> <span class="n">_eyring_rate_ceiling</span><span class="p">(</span>
-<span class="linenos">20</span>            <span class="n">T_K</span><span class="p">,</span>
-<span class="linenos">21</span>            <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_A</span><span class="p">,</span>
-<span class="linenos">22</span>            <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_Ea_R</span><span class="p">,</span>
-<span class="linenos">23</span>            <span class="bp">self</span><span class="o">.</span><span class="n">eyring_raw_Teq</span><span class="p">,</span>
-<span class="linenos">24</span>            <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_dHeq_R</span><span class="p">,</span>
-<span class="linenos">25</span>        <span class="p">)</span>
-<span class="linenos">26</span>
-<span class="linenos">27</span>        <span class="n">Km_deg</span><span class="p">,</span> <span class="n">Km_pi</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_Km</span><span class="p">)</span>
-<span class="linenos">28</span>        <span class="n">gdeg</span> <span class="o">=</span> <span class="p">(</span>
-<span class="linenos">29</span>            <span class="n">gdeg_max</span>
-<span class="linenos">30</span>            <span class="o">*</span> <span class="p">(</span><span class="n">G</span> <span class="o">/</span> <span class="p">(</span><span class="n">Km_deg</span> <span class="o">+</span> <span class="n">G</span><span class="p">))</span>
-<span class="linenos">31</span>            <span class="o">*</span> <span class="n">_inhibition_product</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">px</span><span class="p">,</span> <span class="n">X</span><span class="p">]),</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_K_inhib</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-<span class="linenos">32</span>        <span class="p">)</span>
-<span class="linenos">33</span>
-<span class="linenos">34</span>        <span class="n">galpha</span> <span class="o">=</span> <span class="n">galpha_min</span> <span class="o">*</span> <span class="n">_activation_product</span><span class="p">(</span>
-<span class="linenos">35</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">gdeg</span><span class="p">,</span> <span class="n">X</span><span class="p">]),</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_K_activ</span>
+<span class="linenos">10</span>        <span class="n">gdeg_max</span><span class="p">,</span> <span class="n">gpi_max</span><span class="p">,</span> <span class="n">galpha_min</span> <span class="o">=</span> <span class="n">_eyring_rate_ceiling</span><span class="p">(</span>
+<span class="linenos">11</span>            <span class="n">T_K</span><span class="p">,</span>
+<span class="linenos">12</span>            <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_A</span><span class="p">,</span>
+<span class="linenos">13</span>            <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_Ea_R</span><span class="p">,</span>
+<span class="linenos">14</span>            <span class="bp">self</span><span class="o">.</span><span class="n">eyring_raw_Teq</span><span class="p">,</span>
+<span class="linenos">15</span>            <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_dHeq_R</span><span class="p">,</span>
+<span class="linenos">16</span>        <span class="p">)</span>
+<span class="linenos">17</span>
+<span class="linenos">18</span>        <span class="n">Km_deg</span><span class="p">,</span> <span class="n">Km_pi</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_Km</span><span class="p">)</span>
+<span class="linenos">19</span>        <span class="n">gdeg</span> <span class="o">=</span> <span class="p">(</span>
+<span class="linenos">20</span>            <span class="n">gdeg_max</span>
+<span class="linenos">21</span>            <span class="o">*</span> <span class="p">(</span><span class="n">G</span> <span class="o">/</span> <span class="p">(</span><span class="n">Km_deg</span> <span class="o">+</span> <span class="n">G</span><span class="p">))</span>
+<span class="linenos">22</span>            <span class="o">*</span> <span class="n">_inhibition_product</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">px</span><span class="p">,</span> <span class="n">X</span><span class="p">]),</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_K_inhib</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+<span class="linenos">23</span>        <span class="p">)</span>
+<span class="linenos">24</span>
+<span class="linenos">25</span>        <span class="n">galpha</span> <span class="o">=</span> <span class="n">galpha_min</span> <span class="o">*</span> <span class="n">_activation_product</span><span class="p">(</span>
+<span class="linenos">26</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">gdeg</span><span class="p">,</span> <span class="n">X</span><span class="p">]),</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_K_activ</span>
+<span class="linenos">27</span>        <span class="p">)</span>
+<span class="linenos">28</span>
+<span class="linenos">29</span>        <span class="n">driver</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">gdeg</span> <span class="o">-</span> <span class="n">galpha</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+<span class="linenos">30</span>        <span class="n">gpi</span> <span class="o">=</span> <span class="p">(</span>
+<span class="linenos">31</span>            <span class="n">gpi_max</span>
+<span class="linenos">32</span>            <span class="o">*</span> <span class="p">(</span><span class="n">driver</span> <span class="o">/</span> <span class="p">(</span><span class="n">Km_pi</span> <span class="o">+</span> <span class="n">driver</span><span class="p">))</span>
+<span class="linenos">33</span>            <span class="o">*</span> <span class="n">_inhibition_product</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">px</span><span class="p">,</span> <span class="n">X</span><span class="p">]),</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_K_inhib</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<span class="linenos">34</span>        <span class="p">)</span>
+<span class="linenos">35</span>
+<span class="linenos">36</span>        <span class="n">gmu</span> <span class="o">=</span> <span class="n">gdeg</span> <span class="o">-</span> <span class="n">gpi</span> <span class="o">-</span> <span class="n">galpha</span>
+<span class="linenos">37</span>
+<span class="linenos">38</span>        <span class="n">q_biomass</span> <span class="o">=</span> <span class="n">gmu</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">Y_XrG</span>
+<span class="linenos">39</span>        <span class="n">q_product</span> <span class="o">=</span> <span class="n">gpi</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">Y_PG</span>
+<span class="linenos">40</span>        <span class="n">q_glucose</span> <span class="o">=</span> <span class="n">gdeg</span>
+<span class="linenos">41</span>
+<span class="linenos">42</span>        <span class="n">RAW_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">q_biomass</span><span class="p">,</span> <span class="n">q_glucose</span><span class="p">,</span> <span class="n">q_product</span><span class="p">])</span>
+<span class="linenos">43</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
+<span class="linenos">44</span>            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_ReactionOde_rates</span><span class="p">(</span>
+<span class="linenos">45</span>                <span class="n">RAW_rates</span>
+<span class="linenos">46</span>            <span class="p">),</span>
+<span class="linenos">47</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+<span class="linenos">48</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+<span class="linenos">49</span>        <span class="p">)</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">temperature</span></code> comes in through <code class="docutils literal notranslate"><span class="pre">unscale_controlled_PVs(inputs.SCL_controlled_PVs)</span></code>,
@@ -503,7 +526,7 @@ layer. <code class="docutils literal notranslate"><span class="pre">gamma_deg</s
 next since it uses <code class="docutils literal notranslate"><span class="pre">gamma_deg</span></code> as one of its own activation variables (the
 paper’s real coupling: more total uptake activates more maintenance), then
 <code class="docutils literal notranslate"><span class="pre">gamma_pi</span></code> (production) saturates in <code class="docutils literal notranslate"><span class="pre">gamma_deg</span> <span class="pre">-</span> <span class="pre">gamma_alpha</span></code>. <code class="docutils literal notranslate"><span class="pre">X_active</span></code>
-(declared in the dataset’s <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> block as <code class="docutils literal notranslate"><span class="pre">biomass</span> <span class="pre">-</span> <span class="pre">product</span></code>)
+(declared in the dataset’s <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> block as <code class="docutils literal notranslate"><span class="pre">biomass</span> <span class="pre">-</span> <span class="pre">product</span></code>)
 does the rest for every rate except <code class="docutils literal notranslate"><span class="pre">q_glucose</span></code>. <code class="docutils literal notranslate"><span class="pre">q_biomass</span></code> and <code class="docutils literal notranslate"><span class="pre">q_product</span></code> are
 <em>specific</em> (per unit active biomass), so no manual <code class="docutils literal notranslate"><span class="pre">Xr/X</span></code> correction is needed inside
 <code class="docutils literal notranslate"><span class="pre">__call__</span></code> for them. <code class="docutils literal notranslate"><span class="pre">X_active</span></code> in the declared derivative strings does that
@@ -517,7 +540,7 @@ self-consistent.</p>
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:22:10 INFO __main__: training complete: first_mean_loss=0.551404 last_mean_loss=0.00026526 delta=-0.551138
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-28 19:27:46 INFO __main__: training complete: first_mean_loss=0.551404 last_mean_loss=0.000265368 delta=-0.551138
 run directory: ./source/_data/out/runs/gallery_optfed/run
 </pre></div>
 </div>
@@ -534,42 +557,41 @@ product    R2 = 0.9971
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/5ebbfe888b1761ec5b4a712498e501ee864528c790cb87b0fab59cb0414d5a0a.png" src="../_images/5ebbfe888b1761ec5b4a712498e501ee864528c790cb87b0fab59cb0414d5a0a.png" />
+<img alt="../_images/6832cbcbfac7e4ffbe6bff5541a522119a91ca83443b64ab04498c346ce5c8a7.png" src="../_images/6832cbcbfac7e4ffbe6bff5541a522119a91ca83443b64ab04498c346ce5c8a7.png" />
 </div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">T_high</span></code> (40°C, the hottest of this page’s six runs) is worth looking at
-specifically: glucose visibly accumulates instead of being consumed, the
-temperature term genuinely suppressing uptake capacity at high temperature.</p>
+specifically: reversible inactivation has reduced the temperature-dependent
+uptake prefactor enough that feed exceeds cellular uptake and glucose
+concentration rises.</p>
 </section>
-<section id="did-it-recover-the-true-parameters">
-<h2>Did It Recover the True Parameters?<a class="headerlink" href="#did-it-recover-the-true-parameters" title="Link to this heading">¶</a></h2>
+<section id="what-did-it-learn-about-the-eyring-parameters">
+<h2>What Did It Learn About the Eyring Parameters?<a class="headerlink" href="#what-did-it-learn-about-the-eyring-parameters" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>rate           fitted Teq     true Teq
-uptake            31.6 °C      35.9 °C
+uptake            31.7 °C      35.9 °C
 production        33.0 °C      32.9 °C
 maintenance       32.1 °C      46.9 °C
 </pre></div>
 </div>
 </div>
 </div>
-<p>Uptake’s and production’s fitted thermal optima land within a couple of
-degrees of the true values: both denaturation cliffs sit inside this page’s
-28-40°C training range, so there is real data on both sides of the curve.
-Maintenance’s true optimum (46.85°C) sits <em>above</em> every temperature this page
-trains on, and the fit shows it: nothing in the data distinguishes a
-denaturation cliff at 47°C from one further away still, so gradient descent
-settles for a curve that merely fits the mild, still-rising behavior actually
-observed. That is a structural identifiability limit: parameters whose defining
-feature sits outside the sampled operating envelope come back looking however
-gradient descent found cheapest.</p>
+<p><code class="docutils literal notranslate"><span class="pre">Teq</span></code> locates the midpoint of the reversible-inactivation equilibrium, where
+the active-enzyme fraction in <code class="docutils literal notranslate"><span class="pre">_eyring_rate_ceiling</span></code> is one half. For example,
+the rendered uptake fit is 31.7°C versus a true <code class="docutils literal notranslate"><span class="pre">Teq</span></code> of 35.9°C, a 4.2°C
+difference. Trajectories can fit despite this mismatch because <code class="docutils literal notranslate"><span class="pre">A</span></code>, <code class="docutils literal notranslate"><span class="pre">Ea_R</span></code>,
+<code class="docutils literal notranslate"><span class="pre">Teq</span></code>, and <code class="docutils literal notranslate"><span class="pre">dHeq_R</span></code> jointly shape the temperature response. Estimating their
+individual values requires experiments that distinguish the activation and
+reversible-inactivation regimes.</p>
 </section>
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><strong>A rate’s own optimum has to fall inside the training temperature range to
-be identifiable.</strong> See “maintenance” above: fitting a denaturation cliff
-from data that never reaches it asks the model to extrapolate.</p></li>
+<li><p><strong>Eyring parameters are jointly identified by the temperature response.</strong>
+<code class="docutils literal notranslate"><span class="pre">A</span></code>, <code class="docutils literal notranslate"><span class="pre">Ea_R</span></code>, <code class="docutils literal notranslate"><span class="pre">Teq</span></code>, and <code class="docutils literal notranslate"><span class="pre">dHeq_R</span></code> can compensate for one another over a narrow
+temperature range. Use experiments that distinguish the activation and
+reversible-inactivation regimes before interpreting individual values.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">gamma_mu</span> <span class="pre">=</span> <span class="pre">gamma_deg</span> <span class="pre">-</span> <span class="pre">gamma_pi</span> <span class="pre">-</span> <span class="pre">gamma_alpha</span></code> can go transiently
 negative early in training.</strong> It is left unclipped, matching the paper’s own
 rate law literally; a bad early step just means slower growth.</p></li>
@@ -592,11 +614,11 @@ the same “did it recover the true parameters” question asked there too.</p><
 -input mechanism, there feeding a learned component instead of closed-form
 kinetics.</p></li>
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: <code class="docutils literal notranslate"><span class="pre">frozen_field</span></code>,
-<code class="docutils literal notranslate"><span class="pre">trainable_field</span></code>, and everything else a <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code> can return.</p></li>
-<li><p><a class="reference internal" href="../format/bioprocess_ode.html"><span class="std std-doc">The Bioprocess ODE</span></a>: <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>,
+<code class="docutils literal notranslate"><span class="pre">trainable_field</span></code>, and everything else a <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> can return.</p></li>
+<li><p><a class="reference internal" href="../format/bioprocess_ode.html"><span class="std std-doc">The Bioprocess ODE</span></a>: <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>,
 <code class="docutils literal notranslate"><span class="pre">algebraic</span></code>, and the <code class="docutils literal notranslate"><span class="pre">X_active</span></code> pattern this page reuses.</p></li>
-<li><p><a class="reference internal" href="glutamine_decay.html"><span class="std std-doc">Glutamine Degradation</span></a>: a smaller worked example of the same
-“true value must fall inside the sampled range to be identifiable” lesson.</p></li>
+<li><p><a class="reference internal" href="glutamine_decay.html"><span class="std std-doc">Glutamine Degradation</span></a>: a smaller worked example of
+identifiability requiring observations that distinguish a rate’s effect.</p></li>
 </ul>
 </section>
 <section id="references">
@@ -671,7 +693,7 @@ Journal</em>, 23, 3651-3661.
 <li><a class="reference internal" href="#the-rate-law">The Rate Law</a></li>
 <li><a class="reference internal" href="#the-reaction-module">The Reaction Module</a></li>
 <li><a class="reference internal" href="#training">Training</a></li>
-<li><a class="reference internal" href="#did-it-recover-the-true-parameters">Did It Recover the True Parameters?</a></li>
+<li><a class="reference internal" href="#what-did-it-learn-about-the-eyring-parameters">What Did It Learn About the Eyring Parameters?</a></li>
 <li><a class="reference internal" href="#gotchas">Gotchas</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>
 <li><a class="reference internal" href="#references">References</a></li>

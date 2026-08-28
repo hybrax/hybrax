@@ -24,7 +24,7 @@ network, and `hybrax.train` has no LP solver in its training loop. The fix, from
 Guillén-Gosálbez's FBA-Hyb <a href="#ref-fbahyb">[1]</a>: fit a closed-form,
 pole-free surrogate of the FBA solution **once, offline** (10,000 real linear
 programs solved outside the training loop), then embed that surrogate directly
-inside an ordinary `UserReactionModule`. No LP solve ever happens during training.
+inside an ordinary `RateModule`. No LP solve ever happens during training.
 
 The surrogate here is fit fresh against `e_coli_core.xml`
 <a href="#ref-ecolicore">[2]</a>, a small, real, published teaching model (95
@@ -223,7 +223,7 @@ executed run is at `./source/_data/out/runs/gallery_fba_hyb/`.
 - [Gaussian process reaction module](gaussian_process.md): another closed-form,
   non-neural-network reaction module, same `auxiliary` mechanism.
 - [The Reaction Module](../train/reaction_module.md): `auxiliary`, and everything
-  else a `UserReactionModule` can return.
+  else a `RateModule` can return.
 
 ## References
 

@@ -10,7 +10,7 @@
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -371,6 +371,9 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">operator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Protocol</span><span class="p">,</span> <span class="n">SupportsIndex</span><span class="p">,</span> <span class="n">cast</span>
+
 <span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
@@ -385,7 +388,7 @@
     <span class="n">ReactionOutputs</span><span class="p">,</span>
     <span class="n">Scaler</span><span class="p">,</span>
     <span class="n">UserLossModule</span><span class="p">,</span>
-    <span class="n">UserReactionModule</span><span class="p">,</span>
+    <span class="n">RateModule</span><span class="p">,</span>
     <span class="n">trainable_field</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.run_config</span><span class="w"> </span><span class="kn">import</span> <span class="n">RunConfig</span>
@@ -420,9 +423,9 @@
 
 
 
-<div class="viewcode-block" id="DefaultStatefulReactionModule">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultStatefulReactionModule">[docs]</a>
-<span class="k">class</span><span class="w"> </span><span class="nc">DefaultStatefulReactionModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
+<div class="viewcode-block" id="DefaultGruReactionModule">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultGruReactionModule">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DefaultGruReactionModule</span><span class="p">(</span><span class="n">RateModule</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Standard-GRU latent-ODE reaction model with calibrated output heads.</span>
 
 <span class="sd">    The GRU consumes physical and control inputs, with ``h`` passed only as its</span>
@@ -435,26 +438,27 @@
     <span class="n">inflow_head</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
     <span class="n">outflow_head</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">n_latent</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">n_latent</span><span class="p">:</span> <span class="n">SupportsIndex</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""Build the GRU cell and output heads, sized from ``scale_kwargs``.</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            key: PRNG key for weight initialization.</span>
 <span class="sd">            n_latent: Latent state width; sizes ``SCALE_latent`` and the GRU's</span>
 <span class="sd">                hidden state. Must be positive.</span>
-<span class="sd">            **scale_kwargs: Forwarded to :class:`UserReactionModule.__init__`;</span>
+<span class="sd">            **scale_kwargs: Forwarded to :class:`RateModule.__init__`;</span>
 <span class="sd">                must not include ``SCALE_latent`` (sized here from</span>
 <span class="sd">                ``n_latent``).</span>
 
 <span class="sd">        Raises:</span>
-<span class="sd">            ValueError: If ``n_latent &lt;= 0`` or ``scale_kwargs`` includes</span>
-<span class="sd">                ``SCALE_latent``.</span>
+<span class="sd">            ValueError: If ``n_latent`` is not a positive integer or</span>
+<span class="sd">                ``scale_kwargs`` includes ``SCALE_latent``.</span>
 <span class="sd">        """</span>
-        <span class="k">if</span> <span class="n">n_latent</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"DefaultStatefulReactionModule requires n_latent &gt; 0"</span><span class="p">)</span>
+        <span class="n">n_latent</span> <span class="o">=</span> <span class="n">_positive_width</span><span class="p">(</span>
+            <span class="n">n_latent</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"n_latent"</span><span class="p">,</span> <span class="n">module_name</span><span class="o">=</span><span class="s2">"DefaultGruReactionModule"</span>
+        <span class="p">)</span>
         <span class="k">if</span> <span class="s2">"SCALE_latent"</span> <span class="ow">in</span> <span class="n">scale_kwargs</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="s2">"DefaultStatefulReactionModule sizes SCALE_latent from n_latent"</span>
+                <span class="s2">"DefaultGruReactionModule sizes SCALE_latent from n_latent"</span>
             <span class="p">)</span>
         <span class="n">scale_kwargs</span> <span class="o">=</span> <span class="p">{</span>
             <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">,</span>
@@ -466,18 +470,7 @@
         <span class="n">rate_key</span><span class="p">,</span> <span class="n">rate_init_key</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key_rate</span><span class="p">)</span>
         <span class="n">inflow_key</span><span class="p">,</span> <span class="n">inflow_init_key</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key_inflow</span><span class="p">)</span>
         <span class="n">outflow_key</span><span class="p">,</span> <span class="n">outflow_init_key</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key_outflow</span><span class="p">)</span>
-        <span class="n">n_input</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span>
-            <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_PVs</span>
-            <span class="o">+</span> <span class="mi">1</span>  <span class="c1"># V</span>
-            <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Inflows</span>
-            <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Outflows</span>
-            <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_controlled_Inflows</span>  <span class="c1"># controlled-Inflow cumulatives</span>
-            <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_controlled_Inflows</span>  <span class="c1"># controlled-Inflow rates</span>
-            <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_controlled_Outflows</span>  <span class="c1"># controlled-Outflow cumulatives</span>
-            <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_controlled_Outflows</span>  <span class="c1"># controlled-Outflow rates</span>
-            <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_controlled_PVs</span>
-        <span class="p">)</span>
+        <span class="n">n_input</span> <span class="o">=</span> <span class="n">_stateful_input_size</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">gru_cell</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">GRUCell</span><span class="p">(</span>
             <span class="n">input_size</span><span class="o">=</span><span class="n">n_input</span><span class="p">,</span>
             <span class="n">hidden_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_latent</span><span class="p">,</span>
@@ -511,112 +504,274 @@
             <span class="p">),</span>
         <span class="p">)</span>
         <span class="n">n_readout</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_latent</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_PVs</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">rate_head</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span>
-            <span class="n">in_features</span><span class="o">=</span><span class="n">n_readout</span><span class="p">,</span>
-            <span class="n">out_features</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_BiologicalOde_rates</span><span class="p">,</span>
-            <span class="n">key</span><span class="o">=</span><span class="n">rate_key</span><span class="p">,</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rate_head</span> <span class="o">=</span> <span class="n">_calibrated_rate_head</span><span class="p">(</span>
+            <span class="n">n_readout</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_ReactionOde_rates</span><span class="p">,</span>
+            <span class="n">rate_key</span><span class="p">,</span>
+            <span class="n">rate_init_key</span><span class="p">,</span>
         <span class="p">)</span>
-        <span class="n">rate_weight</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rate_head</span><span class="o">.</span><span class="n">weight</span>
-        <span class="k">if</span> <span class="n">rate_weight</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
-            <span class="n">rate_weight</span> <span class="o">=</span> <span class="mf">0.01</span> <span class="o">*</span> <span class="n">glorot_init</span><span class="p">(</span>
-                <span class="n">rate_init_key</span><span class="p">,</span> <span class="n">rate_weight</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">rate_weight</span><span class="o">.</span><span class="n">dtype</span>
-            <span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">rate_head</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">tree_at</span><span class="p">(</span>
-            <span class="k">lambda</span> <span class="n">head</span><span class="p">:</span> <span class="p">(</span><span class="n">head</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span> <span class="n">head</span><span class="o">.</span><span class="n">bias</span><span class="p">),</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">rate_head</span><span class="p">,</span>
-            <span class="p">(</span><span class="n">rate_weight</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rate_head</span><span class="o">.</span><span class="n">bias</span><span class="p">)),</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">inflow_head</span> <span class="o">=</span> <span class="n">_calibrated_flow_head</span><span class="p">(</span>
+            <span class="n">n_readout</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Inflows</span><span class="p">,</span>
+            <span class="n">inflow_key</span><span class="p">,</span>
+            <span class="n">inflow_init_key</span><span class="p">,</span>
         <span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">inflow_head</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span>
-                <span class="n">in_features</span><span class="o">=</span><span class="n">n_readout</span><span class="p">,</span>
-                <span class="n">out_features</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Inflows</span><span class="p">,</span>
-                <span class="n">key</span><span class="o">=</span><span class="n">inflow_key</span><span class="p">,</span>
-            <span class="p">)</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Inflows</span>
-            <span class="k">else</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">outflow_head</span> <span class="o">=</span> <span class="n">_calibrated_flow_head</span><span class="p">(</span>
+            <span class="n">n_readout</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Outflows</span><span class="p">,</span>
+            <span class="n">outflow_key</span><span class="p">,</span>
+            <span class="n">outflow_init_key</span><span class="p">,</span>
         <span class="p">)</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inflow_head</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">inflow_weight</span> <span class="o">=</span> <span class="mf">0.01</span> <span class="o">*</span> <span class="n">glorot_init</span><span class="p">(</span>
-                <span class="n">inflow_init_key</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">inflow_head</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">inflow_head</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span>
-            <span class="p">)</span>
-            <span class="n">inflow_bias</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">inflow_head</span><span class="o">.</span><span class="n">bias</span><span class="p">)</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span>
-                <span class="n">jnp</span><span class="o">.</span><span class="n">expm1</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">inflow_head</span><span class="o">.</span><span class="n">bias</span><span class="o">.</span><span class="n">dtype</span><span class="p">))</span>
-            <span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">inflow_head</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">tree_at</span><span class="p">(</span>
-                <span class="k">lambda</span> <span class="n">head</span><span class="p">:</span> <span class="p">(</span><span class="n">head</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span> <span class="n">head</span><span class="o">.</span><span class="n">bias</span><span class="p">),</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">inflow_head</span><span class="p">,</span>
-                <span class="p">(</span><span class="n">inflow_weight</span><span class="p">,</span> <span class="n">inflow_bias</span><span class="p">),</span>
-            <span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">outflow_head</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span>
-                <span class="n">in_features</span><span class="o">=</span><span class="n">n_readout</span><span class="p">,</span>
-                <span class="n">out_features</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Outflows</span><span class="p">,</span>
-                <span class="n">key</span><span class="o">=</span><span class="n">outflow_key</span><span class="p">,</span>
-            <span class="p">)</span>
-            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Outflows</span>
-            <span class="k">else</span> <span class="kc">None</span>
-        <span class="p">)</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">outflow_head</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">outflow_weight</span> <span class="o">=</span> <span class="mf">0.01</span> <span class="o">*</span> <span class="n">glorot_init</span><span class="p">(</span>
-                <span class="n">outflow_init_key</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">outflow_head</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">outflow_head</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span>
-            <span class="p">)</span>
-            <span class="n">outflow_bias</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">outflow_head</span><span class="o">.</span><span class="n">bias</span><span class="p">)</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span>
-                <span class="n">jnp</span><span class="o">.</span><span class="n">expm1</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">outflow_head</span><span class="o">.</span><span class="n">bias</span><span class="o">.</span><span class="n">dtype</span><span class="p">))</span>
-            <span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">outflow_head</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">tree_at</span><span class="p">(</span>
-                <span class="k">lambda</span> <span class="n">head</span><span class="p">:</span> <span class="p">(</span><span class="n">head</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span> <span class="n">head</span><span class="o">.</span><span class="n">bias</span><span class="p">),</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">outflow_head</span><span class="p">,</span>
-                <span class="p">(</span><span class="n">outflow_weight</span><span class="p">,</span> <span class="n">outflow_bias</span><span class="p">),</span>
-            <span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">ReactionInputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""One GRU step from ``inputs`` to SCL rates plus the latent derivative."""</span>
         <span class="k">del</span> <span class="n">t</span>
         <span class="n">h</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_latent</span>
-        <span class="n">cell_input</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
+        <span class="n">cell_input</span> <span class="o">=</span> <span class="n">_stateful_cell_input</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>
+        <span class="n">dh_dt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">gru_cell</span><span class="p">(</span><span class="n">cell_input</span><span class="p">,</span> <span class="n">h</span><span class="p">)</span> <span class="o">-</span> <span class="n">h</span>
+        <span class="k">return</span> <span class="n">_stateful_outputs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">dh_dt</span><span class="p">)</span></div>
+
+
+
+<span class="c1"># Kept for existing custom modules; use DefaultGruReactionModule for new code.</span>
+<span class="n">DefaultStatefulReactionModule</span> <span class="o">=</span> <span class="n">DefaultGruReactionModule</span>
+
+
+<div class="viewcode-block" id="DefaultLstmReactionModule">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultLstmReactionModule">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DefaultLstmReactionModule</span><span class="p">(</span><span class="n">RateModule</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Standard-LSTM latent-ODE reaction model with calibrated output heads.</span>
+
+<span class="sd">    ``hidden_width`` is the LSTM hidden width. ``SCL_latent`` stores ``[hidden |</span>
+<span class="sd">    cell]`` and therefore has width ``2 * hidden_width``. Both halves use the</span>
+<span class="sd">    continuous-time recurrent-state derivative ``cell(input, state) - state``.</span>
+<span class="sd">    """</span>
+
+    <span class="n">lstm_cell</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">LSTMCell</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
+    <span class="n">rate_head</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
+    <span class="n">inflow_head</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
+    <span class="n">outflow_head</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">hidden_width</span><span class="p">:</span> <span class="n">SupportsIndex</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Build an LSTM with a paired hidden and cell state.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            key: PRNG key for weight initialization.</span>
+<span class="sd">            hidden_width: LSTM hidden width. The integrated latent has twice</span>
+<span class="sd">                this width because it includes both hidden and cell states.</span>
+<span class="sd">            **scale_kwargs: Forwarded to :class:`RateModule.__init__`;</span>
+<span class="sd">                must not include ``SCALE_latent``.</span>
+<span class="sd">        """</span>
+        <span class="n">hidden_width</span> <span class="o">=</span> <span class="n">_positive_width</span><span class="p">(</span>
+            <span class="n">hidden_width</span><span class="p">,</span>
+            <span class="n">name</span><span class="o">=</span><span class="s2">"hidden_width"</span><span class="p">,</span>
+            <span class="n">module_name</span><span class="o">=</span><span class="s2">"DefaultLstmReactionModule"</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="s2">"SCALE_latent"</span> <span class="ow">in</span> <span class="n">scale_kwargs</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"DefaultLstmReactionModule sizes SCALE_latent from hidden_width"</span>
+            <span class="p">)</span>
+        <span class="n">scale_kwargs</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">,</span>
+            <span class="s2">"SCALE_latent"</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">hidden_width</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+        <span class="p">}</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
+        <span class="n">key_lstm</span><span class="p">,</span> <span class="n">key_rate</span><span class="p">,</span> <span class="n">key_inflow</span><span class="p">,</span> <span class="n">key_outflow</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+        <span class="n">lstm_key</span><span class="p">,</span> <span class="n">lstm_init_key</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key_lstm</span><span class="p">)</span>
+        <span class="n">rate_key</span><span class="p">,</span> <span class="n">rate_init_key</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key_rate</span><span class="p">)</span>
+        <span class="n">inflow_key</span><span class="p">,</span> <span class="n">inflow_init_key</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key_inflow</span><span class="p">)</span>
+        <span class="n">outflow_key</span><span class="p">,</span> <span class="n">outflow_init_key</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key_outflow</span><span class="p">)</span>
+        <span class="n">n_input</span> <span class="o">=</span> <span class="n">_stateful_input_size</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lstm_cell</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">LSTMCell</span><span class="p">(</span>
+            <span class="n">input_size</span><span class="o">=</span><span class="n">n_input</span><span class="p">,</span> <span class="n">hidden_size</span><span class="o">=</span><span class="n">hidden_width</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">lstm_key</span>
+        <span class="p">)</span>
+        <span class="n">lstm_keys</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">lstm_init_key</span><span class="p">,</span> <span class="mi">8</span><span class="p">)</span>
+        <span class="n">glorot_init</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">initializers</span><span class="o">.</span><span class="n">glorot_uniform</span><span class="p">(</span><span class="n">in_axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">out_axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">orthogonal_init</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">initializers</span><span class="o">.</span><span class="n">orthogonal</span><span class="p">()</span>
+        <span class="n">input_blocks</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lstm_cell</span><span class="o">.</span><span class="n">weight_ih</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+        <span class="n">recurrent_blocks</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lstm_cell</span><span class="o">.</span><span class="n">weight_hh</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+        <span class="n">weight_ih</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
             <span class="p">[</span>
-                <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">,</span>
-                <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_PVs</span><span class="p">,</span>
-                <span class="n">jnp</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_V</span><span class="p">),</span>
-                <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_Inflows_cumulative</span><span class="p">,</span>
-                <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_Outflows_cumulative</span><span class="p">,</span>
-                <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_Inflows_cumulative</span><span class="p">,</span>
-                <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_Inflows_rates</span><span class="p">,</span>
-                <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_Outflows_cumulative</span><span class="p">,</span>
-                <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_Outflows_rates</span><span class="p">,</span>
-                <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_PVs</span><span class="p">,</span>
+                <span class="n">glorot_init</span><span class="p">(</span><span class="n">lstm_keys</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">block</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">block</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">block</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">input_blocks</span><span class="p">)</span>
             <span class="p">]</span>
         <span class="p">)</span>
-        <span class="n">dh_dt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">gru_cell</span><span class="p">(</span><span class="n">cell_input</span><span class="p">,</span> <span class="n">h</span><span class="p">)</span> <span class="o">-</span> <span class="n">h</span>
-        <span class="n">readout</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">h</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_PVs</span><span class="p">])</span>
-        <span class="n">bio_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rate_head</span><span class="p">(</span><span class="n">readout</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">h</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">inflow_head</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">inflow_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">0</span><span class="p">,),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">h</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">inflow_rates</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">softplus</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">inflow_head</span><span class="p">(</span><span class="n">readout</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">h</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">outflow_head</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">outflow_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">0</span><span class="p">,),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">h</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">outflow_rates</span> <span class="o">=</span> <span class="o">-</span><span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">softplus</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">outflow_head</span><span class="p">(</span><span class="n">readout</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">h</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">bio_rates</span><span class="p">,</span>
-            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">inflow_rates</span><span class="p">,</span>
-            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">outflow_rates</span><span class="p">,</span>
-            <span class="n">SCL_latent_derivative</span><span class="o">=</span><span class="n">dh_dt</span><span class="p">,</span>
-        <span class="p">)</span></div>
+        <span class="n">weight_hh</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">orthogonal_init</span><span class="p">(</span><span class="n">lstm_keys</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">4</span><span class="p">],</span> <span class="n">block</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">block</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">block</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">recurrent_blocks</span><span class="p">)</span>
+            <span class="p">]</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lstm_cell</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">tree_at</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">cell</span><span class="p">:</span> <span class="p">(</span><span class="n">cell</span><span class="o">.</span><span class="n">weight_ih</span><span class="p">,</span> <span class="n">cell</span><span class="o">.</span><span class="n">weight_hh</span><span class="p">,</span> <span class="n">cell</span><span class="o">.</span><span class="n">bias</span><span class="p">),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">lstm_cell</span><span class="p">,</span>
+            <span class="p">(</span><span class="n">weight_ih</span><span class="p">,</span> <span class="n">weight_hh</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lstm_cell</span><span class="o">.</span><span class="n">bias</span><span class="p">)),</span>
+        <span class="p">)</span>
+        <span class="n">n_readout</span> <span class="o">=</span> <span class="n">hidden_width</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_PVs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rate_head</span> <span class="o">=</span> <span class="n">_calibrated_rate_head</span><span class="p">(</span>
+            <span class="n">n_readout</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_ReactionOde_rates</span><span class="p">,</span>
+            <span class="n">rate_key</span><span class="p">,</span>
+            <span class="n">rate_init_key</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">inflow_head</span> <span class="o">=</span> <span class="n">_calibrated_flow_head</span><span class="p">(</span>
+            <span class="n">n_readout</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Inflows</span><span class="p">,</span>
+            <span class="n">inflow_key</span><span class="p">,</span>
+            <span class="n">inflow_init_key</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">outflow_head</span> <span class="o">=</span> <span class="n">_calibrated_flow_head</span><span class="p">(</span>
+            <span class="n">n_readout</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Outflows</span><span class="p">,</span>
+            <span class="n">outflow_key</span><span class="p">,</span>
+            <span class="n">outflow_init_key</span><span class="p">,</span>
+        <span class="p">)</span>
 
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">hidden_width</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Width of each hidden/cell half of the integrated latent state."""</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_latent</span> <span class="o">//</span> <span class="mi">2</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">ReactionInputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""One LSTM step as a continuous-time latent derivative."""</span>
+        <span class="k">del</span> <span class="n">t</span>
+        <span class="n">h</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_latent</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="n">cell_input</span> <span class="o">=</span> <span class="n">_stateful_cell_input</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>
+        <span class="n">h_new</span><span class="p">,</span> <span class="n">c_new</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lstm_cell</span><span class="p">(</span><span class="n">cell_input</span><span class="p">,</span> <span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">c</span><span class="p">))</span>
+        <span class="n">latent_derivative</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">h_new</span> <span class="o">-</span> <span class="n">h</span><span class="p">,</span> <span class="n">c_new</span> <span class="o">-</span> <span class="n">c</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">_stateful_outputs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">latent_derivative</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_positive_width</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">SupportsIndex</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">module_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Return a positive integer width, accepting NumPy integer scalars."""</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">module_name</span><span class="si">}</span><span class="s2"> requires </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> to be a positive integer"</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">width</span> <span class="o">=</span> <span class="n">operator</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">TypeError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">module_name</span><span class="si">}</span><span class="s2"> requires </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> to be a positive integer"</span>
+        <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+    <span class="k">if</span> <span class="n">width</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">module_name</span><span class="si">}</span><span class="s2"> requires </span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2"> to be a positive integer"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">width</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_stateful_input_size</span><span class="p">(</span><span class="n">module</span><span class="p">:</span> <span class="n">RateModule</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Number of physical and control features consumed by a recurrent cell."""</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">module</span><span class="o">.</span><span class="n">n_modeled_RMCs</span>
+        <span class="o">+</span> <span class="n">module</span><span class="o">.</span><span class="n">n_modeled_PVs</span>
+        <span class="o">+</span> <span class="mi">1</span>
+        <span class="o">+</span> <span class="n">module</span><span class="o">.</span><span class="n">n_modeled_Inflows</span>
+        <span class="o">+</span> <span class="n">module</span><span class="o">.</span><span class="n">n_modeled_Outflows</span>
+        <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">module</span><span class="o">.</span><span class="n">n_controlled_Inflows</span>
+        <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">module</span><span class="o">.</span><span class="n">n_controlled_Outflows</span>
+        <span class="o">+</span> <span class="n">module</span><span class="o">.</span><span class="n">n_controlled_PVs</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_stateful_cell_input</span><span class="p">(</span><span class="n">inputs</span><span class="p">:</span> <span class="n">ReactionInputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Physical and control features shared by the built-in recurrent cells."""</span>
+    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">,</span>
+            <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_PVs</span><span class="p">,</span>
+            <span class="n">jnp</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_V</span><span class="p">),</span>
+            <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_Inflows_cumulative</span><span class="p">,</span>
+            <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_Outflows_cumulative</span><span class="p">,</span>
+            <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_Inflows_cumulative</span><span class="p">,</span>
+            <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_Inflows_rates</span><span class="p">,</span>
+            <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_Outflows_cumulative</span><span class="p">,</span>
+            <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_Outflows_rates</span><span class="p">,</span>
+            <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_PVs</span><span class="p">,</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_RecurrentReadout</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Output heads shared by the built-in recurrent modules."""</span>
+
+    <span class="n">rate_head</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span>
+    <span class="n">inflow_head</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span> <span class="o">|</span> <span class="kc">None</span>
+    <span class="n">outflow_head</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span> <span class="o">|</span> <span class="kc">None</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_stateful_outputs</span><span class="p">(</span>
+    <span class="n">module</span><span class="p">:</span> <span class="n">_RecurrentReadout</span><span class="p">,</span>
+    <span class="n">h</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+    <span class="n">inputs</span><span class="p">:</span> <span class="n">ReactionInputs</span><span class="p">,</span>
+    <span class="n">latent_derivative</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Evaluate shared recurrent readout heads."""</span>
+    <span class="n">readout</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">h</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_PVs</span><span class="p">])</span>
+    <span class="n">bio_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">rate_head</span><span class="p">(</span><span class="n">readout</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">h</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">module</span><span class="o">.</span><span class="n">inflow_head</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">inflow_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">0</span><span class="p">,),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">h</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">inflow_rates</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">softplus</span><span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">inflow_head</span><span class="p">(</span><span class="n">readout</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">h</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">module</span><span class="o">.</span><span class="n">outflow_head</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">outflow_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">0</span><span class="p">,),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">h</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">outflow_rates</span> <span class="o">=</span> <span class="o">-</span><span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">softplus</span><span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">outflow_head</span><span class="p">(</span><span class="n">readout</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">h</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
+        <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="n">bio_rates</span><span class="p">,</span>
+        <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">inflow_rates</span><span class="p">,</span>
+        <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">outflow_rates</span><span class="p">,</span>
+        <span class="n">SCL_latent_derivative</span><span class="o">=</span><span class="n">latent_derivative</span><span class="p">,</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_calibrated_rate_head</span><span class="p">(</span>
+    <span class="n">n_readout</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">n_outputs</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">key</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+    <span class="n">init_key</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Create a near-zero linear biological-rate head."""</span>
+    <span class="n">head</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">in_features</span><span class="o">=</span><span class="n">n_readout</span><span class="p">,</span> <span class="n">out_features</span><span class="o">=</span><span class="n">n_outputs</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">key</span><span class="p">)</span>
+    <span class="n">weight</span> <span class="o">=</span> <span class="n">head</span><span class="o">.</span><span class="n">weight</span>
+    <span class="k">if</span> <span class="n">weight</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
+        <span class="n">glorot_init</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">initializers</span><span class="o">.</span><span class="n">glorot_uniform</span><span class="p">(</span><span class="n">in_axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">out_axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">weight</span> <span class="o">=</span> <span class="mf">0.01</span> <span class="o">*</span> <span class="n">glorot_init</span><span class="p">(</span><span class="n">init_key</span><span class="p">,</span> <span class="n">weight</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">weight</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cast</span><span class="p">(</span>
+        <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">,</span>
+        <span class="n">eqx</span><span class="o">.</span><span class="n">tree_at</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">linear</span><span class="p">:</span> <span class="p">(</span><span class="n">linear</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span> <span class="n">linear</span><span class="o">.</span><span class="n">bias</span><span class="p">),</span>
+            <span class="n">head</span><span class="p">,</span>
+            <span class="p">(</span><span class="n">weight</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">head</span><span class="o">.</span><span class="n">bias</span><span class="p">)),</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_calibrated_flow_head</span><span class="p">(</span>
+    <span class="n">n_readout</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">n_outputs</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">key</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+    <span class="n">init_key</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Create a near-zero Softplus flow head, or no head for an empty axis."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">n_outputs</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">head</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">in_features</span><span class="o">=</span><span class="n">n_readout</span><span class="p">,</span> <span class="n">out_features</span><span class="o">=</span><span class="n">n_outputs</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">key</span><span class="p">)</span>
+    <span class="n">glorot_init</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">initializers</span><span class="o">.</span><span class="n">glorot_uniform</span><span class="p">(</span><span class="n">in_axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">out_axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">weight</span> <span class="o">=</span> <span class="mf">0.01</span> <span class="o">*</span> <span class="n">glorot_init</span><span class="p">(</span><span class="n">init_key</span><span class="p">,</span> <span class="n">head</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="n">head</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+    <span class="n">bias</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">head</span><span class="o">.</span><span class="n">bias</span><span class="p">)</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span>
+        <span class="n">jnp</span><span class="o">.</span><span class="n">expm1</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">head</span><span class="o">.</span><span class="n">bias</span><span class="o">.</span><span class="n">dtype</span><span class="p">))</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">cast</span><span class="p">(</span>
+        <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">,</span>
+        <span class="n">eqx</span><span class="o">.</span><span class="n">tree_at</span><span class="p">(</span><span class="k">lambda</span> <span class="n">linear</span><span class="p">:</span> <span class="p">(</span><span class="n">linear</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span> <span class="n">linear</span><span class="o">.</span><span class="n">bias</span><span class="p">),</span> <span class="n">head</span><span class="p">,</span> <span class="p">(</span><span class="n">weight</span><span class="p">,</span> <span class="n">bias</span><span class="p">)),</span>
+    <span class="p">)</span>
 
 
 <div class="viewcode-block" id="DefaultReactionModule">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultReactionModule">[docs]</a>
-<span class="k">class</span><span class="w"> </span><span class="nc">DefaultReactionModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">DefaultReactionModule</span><span class="p">(</span><span class="n">RateModule</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Minimal default reaction model for harness runs.</span>
 
-<span class="sd">    Predicts ``SCL_modeled_BiologicalOde_rates`` (which includes any ``r_&lt;pv&gt;``</span>
+<span class="sd">    Predicts ``SCL_modeled_ReactionOde_rates`` (which includes any ``r_&lt;pv&gt;``</span>
 <span class="sd">    PV rates) from the SCL species + modeled-PV slices. Ignores controls; emits</span>
 <span class="sd">    zero-valued modeled Inflow and Outflow rates. Uses tanh/Glorot for shallow</span>
 <span class="sd">    networks and SiLU/He for deeper networks. The rate head starts near zero.</span>
@@ -640,14 +795,14 @@
 <span class="sd">                ``&lt;= 3`` uses tanh/Glorot, deeper uses SiLU/He.</span>
 <span class="sd">            width_size: Hidden layer width, or ``None`` to derive it from the</span>
 <span class="sd">                input/output sizes.</span>
-<span class="sd">            **scale_kwargs: Forwarded to :class:`UserReactionModule.__init__`.</span>
+<span class="sd">            **scale_kwargs: Forwarded to :class:`RateModule.__init__`.</span>
 
 <span class="sd">        Raises:</span>
 <span class="sd">            ValueError: If ``depth &lt; 0`` or the resolved ``width_size &lt;= 0``.</span>
 <span class="sd">        """</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
         <span class="n">n_in</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_PVs</span>
-        <span class="n">n_out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_BiologicalOde_rates</span>
+        <span class="n">n_out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_ReactionOde_rates</span>
         <span class="k">if</span> <span class="n">depth</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"depth must be non-negative"</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">width_size</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -694,11 +849,11 @@
         <span class="n">SCL_features</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
             <span class="p">[</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_PVs</span><span class="p">]</span>
         <span class="p">)</span>
-        <span class="n">SCL_modeled_BiologicalOde_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
+        <span class="n">SCL_modeled_ReactionOde_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">(</span><span class="n">SCL_features</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span>
         <span class="p">)</span>
         <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">SCL_modeled_BiologicalOde_rates</span><span class="p">,</span>
+            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="n">SCL_modeled_ReactionOde_rates</span><span class="p">,</span>
             <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Inflows</span><span class="p">,),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">),</span>
             <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span>
                 <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Outflows</span><span class="p">,),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span>
@@ -717,7 +872,7 @@
     <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">training_parent_collection</span><span class="p">:</span> <span class="n">BioProcessCollection</span><span class="p">,</span>
     <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">:</span> <span class="n">Scaler</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">UserReactionModule</span><span class="p">:</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RateModule</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Default train hook for reaction-module construction.</span>
 
 <span class="sd">    Derives the rates head size from the prepared canonical</span>
@@ -878,7 +1033,7 @@
         <span class="s2">"SCALE_modeled_Inflows_Cin"</span><span class="p">:</span> <span class="n">LinearScaler</span><span class="p">(</span>
             <span class="n">jnp</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="n">n_modeled_Inflows</span><span class="p">,</span> <span class="n">n_RMCs</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
         <span class="p">),</span>
-        <span class="s2">"SCALE_modeled_BiologicalOde_rates"</span><span class="p">:</span> <span class="n">LinearScaler</span><span class="p">(</span>
+        <span class="s2">"SCALE_modeled_ReactionOde_rates"</span><span class="p">:</span> <span class="n">LinearScaler</span><span class="p">(</span>
             <span class="n">jnp</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">n_rates</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
         <span class="p">),</span>
         <span class="s2">"SCALE_modeled_Inflows_rates"</span><span class="p">:</span> <span class="n">LinearScaler</span><span class="p">(</span>

@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -376,8 +376,8 @@
           <section class="tex2jax_ignore mathjax_ignore" id="stateful-models">
 <h1>Stateful Models<a class="headerlink" href="#stateful-models" title="Link to this heading">¶</a></h1>
 <blockquote>
-<div><p>A reaction module with its own memory: a continuous-time LSTM whose hidden and cell
-state are integrated as extra ODE dimensions, plus the opt-in that guards it.</p>
+<div><p>Hybrax’s built-in continuous-time LSTM integrates its hidden and cell states
+as extra ODE dimensions, guarded by an explicit stateful-model opt-in.</p>
 </div></blockquote>
 <p>Every module so far predicts rates from the <em>current</em> state alone. That is a real
 modeling assumption: it says the biology has no memory beyond what is currently
@@ -391,59 +391,27 @@ dimension, and its derivative is the discrepancy between <code class="docutils l
 have jumped to next: <code class="docutils literal notranslate"><span class="pre">d(h)/dt</span> <span class="pre">=</span> <span class="pre">cell(input,</span> <span class="pre">h)</span> <span class="pre">-</span> <span class="pre">h</span></code>. As training pulls the residual to
 zero, <code class="docutils literal notranslate"><span class="pre">h</span></code> tracks the same trajectory the discrete cell would have taken, but now it is a
 proper flow that Diffrax can integrate and differentiate through like any other state.</p>
-<p>This is exactly how <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s own built-in stateful model works:
-<code class="docutils literal notranslate"><span class="pre">DefaultStatefulReactionModule</span></code> in <code class="docutils literal notranslate"><span class="pre">hybrax/train/defaults.py</span></code> uses this trick with a GRU
-cell. What follows applies the identical trick to an LSTM, to show it is a general
-pattern that works for any recurrent cell.</p>
-<p>The walkthrough below shows the file in pieces, next to the reasoning for each one.</p>
+<p><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> provides this pattern directly: <code class="docutils literal notranslate"><span class="pre">DefaultGruReactionModule</span></code> and
+<code class="docutils literal notranslate"><span class="pre">DefaultLstmReactionModule</span></code> are built-in stateful defaults. The latter stores
+<code class="docutils literal notranslate"><span class="pre">[hidden</span> <span class="pre">|</span> <span class="pre">cell]</span></code> in <code class="docutils literal notranslate"><span class="pre">SCL_latent</span></code>; its <code class="docutils literal notranslate"><span class="pre">hidden_width</span></code> constructor argument sets
+the LSTM width, so the integrated latent width is <code class="docutils literal notranslate"><span class="pre">2</span> <span class="pre">*</span> <span class="pre">hidden_width</span></code>. The legacy
+<code class="docutils literal notranslate"><span class="pre">DefaultStatefulReactionModule</span></code> name remains an alias for the GRU default.</p>
+<p>The walkthrough below shows the example’s configuration hook and explains the
+stateful behavior.</p>
 </section>
 <section id="the-module">
 <h2>The Module<a class="headerlink" href="#the-module" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="w">    </span><span class="sd">"""Cell state and hidden state are both integrated ODE latents, each</span>
-<span class="linenos"> 2</span><span class="sd">    pulled toward the LSTM cell's discrete target at every solver step."""</span>
-<span class="linenos"> 3</span>
-<span class="linenos"> 4</span>    <span class="n">lstm_cell</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">LSTMCell</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 5</span>    <span class="n">rate_head</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 6</span>    <span class="n">n_hidden</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="linenos"> 7</span>
-<span class="linenos"> 8</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">n_hidden</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
-<span class="linenos"> 9</span>        <span class="c1"># SCL_latent holds [hidden | cell], so its width is 2 * n_hidden.</span>
-<span class="linenos">10</span>        <span class="n">scale_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">,</span> <span class="s2">"SCALE_latent"</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">n_hidden</span><span class="p">)}</span>
-<span class="linenos">11</span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
-<span class="linenos">12</span>        <span class="bp">self</span><span class="o">.</span><span class="n">n_hidden</span> <span class="o">=</span> <span class="n">n_hidden</span>
-<span class="linenos">13</span>        <span class="n">key_cell</span><span class="p">,</span> <span class="n">key_head</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
-<span class="linenos">14</span>        <span class="bp">self</span><span class="o">.</span><span class="n">lstm_cell</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">LSTMCell</span><span class="p">(</span>
-<span class="linenos">15</span>            <span class="n">input_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span><span class="p">,</span> <span class="n">hidden_size</span><span class="o">=</span><span class="n">n_hidden</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">key_cell</span>
-<span class="linenos">16</span>        <span class="p">)</span>
-<span class="linenos">17</span>        <span class="bp">self</span><span class="o">.</span><span class="n">rate_head</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span>
-<span class="linenos">18</span>            <span class="n">in_features</span><span class="o">=</span><span class="n">n_hidden</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span><span class="p">,</span>
-<span class="linenos">19</span>            <span class="n">out_features</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_BiologicalOde_rates</span><span class="p">,</span>
-<span class="linenos">20</span>            <span class="n">key</span><span class="o">=</span><span class="n">key_head</span><span class="p">,</span>
-<span class="linenos">21</span>        <span class="p">)</span>
-<span class="linenos">22</span>
-<span class="linenos">23</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">ReactionInputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
-<span class="linenos">24</span>        <span class="k">del</span> <span class="n">t</span>
-<span class="linenos">25</span>        <span class="n">h</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_latent</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
-<span class="linenos">26</span>        <span class="n">h_new</span><span class="p">,</span> <span class="n">c_new</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lstm_cell</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">,</span> <span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">c</span><span class="p">))</span>
-<span class="linenos">27</span>        <span class="c1"># The continuous-time-RNN trick: an ODE derivative that pulls the</span>
-<span class="linenos">28</span>        <span class="c1"># latent toward the cell's one-step target, rather than the discrete</span>
-<span class="linenos">29</span>        <span class="c1"># jump an LSTM normally takes. At convergence h tracks h_new.</span>
-<span class="linenos">30</span>        <span class="n">latent_derivative</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">h_new</span><span class="p">,</span> <span class="n">c_new</span><span class="p">])</span> <span class="o">-</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_latent</span>
-<span class="linenos">31</span>        <span class="c1"># Read out from h (not h_new): the CURRENT hidden state, consistent</span>
-<span class="linenos">32</span>        <span class="c1"># with every other input the reaction module receives at time t.</span>
-<span class="linenos">33</span>        <span class="n">readout</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">h</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">])</span>
-<span class="linenos">34</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos">35</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">rate_head</span><span class="p">(</span><span class="n">readout</span><span class="p">),</span>
-<span class="linenos">36</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos">37</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos">38</span>            <span class="n">SCL_latent_derivative</span><span class="o">=</span><span class="n">latent_derivative</span><span class="p">,</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">build_reaction_module</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">seed</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+    <span class="n">scale_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"SCALE_"</span><span class="p">)}</span>
+    <span class="k">return</span> <span class="n">DefaultLstmReactionModule</span><span class="p">(</span>
+        <span class="n">key</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">key</span><span class="p">(</span><span class="n">seed</span><span class="p">),</span> <span class="n">hidden_width</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span>
+    <span class="p">)</span>
 </pre></div>
 </div>
-<p>An LSTM cell has <em>two</em> pieces of memory (the hidden state and the cell state), so
-<code class="docutils literal notranslate"><span class="pre">SCL_latent</span></code> here holds both, concatenated. Everything else is the same trick as
-above: compute where the cell would jump to, emit the difference as the derivative, and
-read the rates out of the <em>current</em> hidden state so the module stays
-consistent with every other input it receives at time <code class="docutils literal notranslate"><span class="pre">t</span></code>.</p>
+<p>An LSTM cell has <em>two</em> pieces of memory, hidden and cell state, so <code class="docutils literal notranslate"><span class="pre">SCL_latent</span></code>
+holds both concatenated. The built-in computes its discrete target, emits the
+difference as the derivative, and reads rates from the <em>current</em> hidden state
+(not the target).</p>
 <p><code class="docutils literal notranslate"><span class="pre">ReactionOutputs</span></code> gains a field we have not used before, <code class="docutils literal notranslate"><span class="pre">SCL_latent_derivative</span></code>, aligned
 with <code class="docutils literal notranslate"><span class="pre">SCL_latent</span></code>. It defaults to an empty array: every non-stateful module in these docs
 has been quietly relying on that default.</p>
@@ -470,7 +438,7 @@ means that <code class="docutils literal notranslate"><span class="pre">hybrax.t
 <h2>Training It<a class="headerlink" href="#training-it" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:05:27 INFO __main__: training complete: first_mean_loss=0.228993 last_mean_loss=0.000775314 delta=-0.228217
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-28 18:59:36 INFO __main__: training complete: first_mean_loss=0.231356 last_mean_loss=0.00409163 delta=-0.227264
 run directory: ./source/_data/out/runs/gallery_stateful/run
 </pre></div>
 </div>
@@ -478,7 +446,7 @@ run directory: ./source/_data/out/runs/gallery_stateful/run
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/205ece05f8d11c7ab5496b60cd4a6d4f1a22c0a8c33a30499abf0c5e107e9c69.png" src="../_images/205ece05f8d11c7ab5496b60cd4a6d4f1a22c0a8c33a30499abf0c5e107e9c69.png" />
+<img alt="../_images/580a1a7cf1f231d240237d1497e9a1b2ca66d3a847cc9abb44956628a13b00cb.png" src="../_images/580a1a7cf1f231d240237d1497e9a1b2ca66d3a847cc9abb44956628a13b00cb.png" />
 </div>
 </div>
 </section>
@@ -487,7 +455,7 @@ run directory: ./source/_data/out/runs/gallery_stateful/run
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>n_latent = 8
-+--------------------------- UserReactionModule Structure ---------------------------+
++------------------------------- RateModule Structure -------------------------------+
 | name                                                       |     shape |    status |
 +------------------------------------------------------------------------------------+
 | rhs_ode.Cin_controlled_Inflows                             |    (0, 3) |    frozen |
@@ -506,11 +474,11 @@ run directory: ./source/_data/out/runs/gallery_stateful/run
 | reaction_module.SCALE_controlled_Outflows_rates.scale      |      (0,) |    frozen |
 | reaction_module.SCALE_controlled_PVs.scale                 |      (0,) |    frozen |
 | reaction_module.SCALE_modeled_Inflows_Cin.scale            |    (0, 3) |    frozen |
-| reaction_module.SCALE_modeled_BiologicalOde_rates.scale    |      (3,) |    frozen |
+| reaction_module.SCALE_modeled_ReactionOde_rates.scale      |      (3,) |    frozen |
 | reaction_module.SCALE_modeled_Inflows_rates.scale          |      (0,) |    frozen |
 | reaction_module.SCALE_modeled_Outflows_rates.scale         |      (0,) |    frozen |
 | reaction_module.SCALE_latent.scale                         |      (8,) |    frozen |
-| reaction_module.lstm_cell.weight_ih                        |   (16, 3) | trainable |
+| reaction_module.lstm_cell.weight_ih                        |   (16, 4) | trainable |
 | reaction_module.lstm_cell.weight_hh                        |   (16, 4) | trainable |
 | reaction_module.lstm_cell.bias                             |     (16,) | trainable |
 | reaction_module.rate_head.weight                           |    (3, 7) | trainable |
@@ -535,8 +503,8 @@ run directory: ./source/_data/out/runs/gallery_stateful/run
 </div>
 </div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">n_latent</span></code> is <code class="docutils literal notranslate"><span class="pre">2</span> <span class="pre">*</span> <span class="pre">n_hidden</span></code> (hidden and cell state together) and both the LSTM’s gates
-and the readout head show up as trainable, exactly like any other reaction module.</p>
+<p><code class="docutils literal notranslate"><span class="pre">n_latent</span></code> is <code class="docutils literal notranslate"><span class="pre">2</span> <span class="pre">*</span> <span class="pre">hidden_width</span></code> (hidden and cell state together); both the LSTM gates
+and the rate head show up as trainable, exactly like any other reaction module.</p>
 </section>
 <section id="when-this-is-worth-the-extra-machinery">
 <h2>When This Is Worth the Extra Machinery<a class="headerlink" href="#when-this-is-worth-the-extra-machinery" title="Link to this heading">¶</a></h2>
@@ -553,9 +521,9 @@ to reach for this.</p>
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
 <ul class="simple">
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">allow_stateful_models:</span> <span class="pre">true</span></code> is required</strong>, or training raises before it starts.</p></li>
-<li><p><strong>Read out from the current latent</strong>: using <code class="docutils literal notranslate"><span class="pre">h_new</span></code> instead of <code class="docutils literal notranslate"><span class="pre">h</span></code> in
-the rate head quietly changes the model’s causal structure (the rate would depend on
-information from the <em>next</em> step).</p></li>
+<li><p><strong>The built-in reads from the current latent, not the target.</strong> Custom recurrent
+modules should do the same: using <code class="docutils literal notranslate"><span class="pre">h_new</span></code> instead of <code class="docutils literal notranslate"><span class="pre">h</span></code> in the rate head quietly
+changes the model’s causal structure.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">SCL_latent_derivative</span></code> has a default of empty.</strong> Forgetting to set it on a stateful
 module raises a shape mismatch.</p></li>
 <li><p><strong>This adds real parameters and real integration cost.</strong> Confirm a memoryless module
@@ -573,8 +541,9 @@ executed run is at <code class="docutils literal notranslate"><span class="pre">
 follows.</p></li>
 <li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic Models</span></a>: a reaction module built from explicit
 kinetics, no latent state at all.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">DefaultStatefulReactionModule</span></code> in <code class="docutils literal notranslate"><span class="pre">hybrax/train/defaults.py</span></code>: the built-in GRU version of
-this same pattern.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">DefaultGruReactionModule</span></code> and <code class="docutils literal notranslate"><span class="pre">DefaultLstmReactionModule</span></code> in
+<code class="docutils literal notranslate"><span class="pre">hybrax/train/defaults.py</span></code>: built-in recurrent defaults. The former name
+<code class="docutils literal notranslate"><span class="pre">DefaultStatefulReactionModule</span></code> remains a GRU alias.</p></li>
 </ul>
 </section>
 </section>

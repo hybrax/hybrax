@@ -184,7 +184,7 @@ SCL_state = [ modeled_RMCs | modeled_PVs | V | modeled_Inflows_cumulative | mode
 
 Because scaling is linear, the same factor converts a value and its time-derivative
 (`d(x/k)/dt = (dx/dt)/k`), so `scale_*` / `unscale_*` work for states and rates alike.
-**Single source of truth:** every `SCALE_*` vector lives on the `UserReactionModule`
+**Single source of truth:** every `SCALE_*` vector lives on the `RateModule`
 (frozen fields); the wrapper, trainer, and loss module all read them there: scales are
 never duplicated onto inputs.
 

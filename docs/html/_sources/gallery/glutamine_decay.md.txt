@@ -94,13 +94,13 @@ def r2_by_target(run_dir):
 
 ## The Rate Law, Declared
 
-Everything this page's kinetics need lives in the dataset's own `biological_ode`
+Everything this page's kinetics need lives in the dataset's own `reaction_ode`
 block. This is exactly what was declared when the dataset was built:
 
 ```{code-cell} ipython3
 process = _collection.processes["run_1"]
 
-glutamine_ode = hxf.BiologicalOde(
+glutamine_ode = hxf.ReactionOde(
     rates={"q_biomass": (None, None), "q_Gln": (None, None),
            "r_Gln": (None, None)},
     derivatives={
@@ -109,7 +109,7 @@ glutamine_ode = hxf.BiologicalOde(
         "NH4": "r_Gln * Gln",
     },
 )
-print("matches the real declared biological_ode:", glutamine_ode == process.biological_ode)
+print("matches the real declared reaction_ode:", glutamine_ode == process.reaction_ode)
 ```
 
 `Gln`'s derivative has two terms: `-q_Gln * biomass`, ordinary uptake tied to growth,
@@ -204,7 +204,7 @@ for name in truth:
 
 All three come back close to their true values, `r_Gln` included: the same number
 that explains glutamine's own decline also correctly predicts NH4's rise, because
-training only ever fit the single number declared in `biological_ode.rates`. That is
+training only ever fit the single number declared in `reaction_ode.rates`. That is
 the actual demonstration this page exists to make;
 everything above it is setup.
 
@@ -217,7 +217,7 @@ everything above it is setup.
 - **A slow rate needs a long enough window to be identifiable.** `r_Gln`'s ~8-day
   half-life would leave almost no visible trace over a 10-15 h batch window; this
   page's 120 h duration exists specifically so the effect is separable from noise,
-  the same lesson [OptFed](optfed.md#gotchas)'s temperature-optimum Gotcha teaches
+  the same lesson [OptFed](optfed.md#gotchas)'s Eyring-identifiability Gotcha teaches
   for a different rate.
 - **This page's unusual rate shape (one rate feeding two derivatives) needs no custom
   reaction module at all, technically.** `hybrax.train`'s default reaction module sizes
@@ -232,14 +232,14 @@ The full, runnable example (`custom.py`, configs, data) lives in
 `examples/gallery_glutamine_decay/` at the repo root, no docs build required. This
 page's own executed run is at `./source/_data/out/runs/gallery_glutamine_decay/`.
 
-- [The Bioprocess ODE](../format/bioprocess_ode.md): `biological_ode`, `rates`,
+- [The Bioprocess ODE](../format/bioprocess_ode.md): `reaction_ode`, `rates`,
   `derivatives`, and the unit-consistency rule this page relies on.
 - [Mechanistic Models](mechanistic_rates.md): the same "did it recover the true
   parameters" question, asked of a Monod-form rate law instead.
 - [OptFed](optfed.md): a rate law with real kinetic structure, and the same
   "identifiability needs the true value inside the sampled range" lesson.
 - [The Reaction Module](../train/reaction_module.md): `trainable_field` and
-  everything else a `UserReactionModule` can return.
+  everything else a `RateModule` can return.
 
 ## References
 

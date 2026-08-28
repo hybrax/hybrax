@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -384,12 +384,6 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_augmented_parent_refs" title="hybrax.format.validate.validate_augmented_parent_refs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_augmented_parent_refs</span></code></a>(container)</p></td>
 <td><p>Verify <code class="docutils literal notranslate"><span class="pre">AugmentedBioProcess.parent_process</span></code> references in a container.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_biological_ode" title="hybrax.format.validate.validate_biological_ode"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_biological_ode</span></code></a>(process)</p></td>
-<td><p>Validate <code class="docutils literal notranslate"><span class="pre">process.biological_ode</span></code> if present.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_biological_ode_equivalence" title="hybrax.format.validate.validate_biological_ode_equivalence"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_biological_ode_equivalence</span></code></a>(container)</p></td>
-<td><p>Verify all processes in <em>container</em> share the same <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>.</p></td>
-</tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_biomass_in_reactor_medium" title="hybrax.format.validate.validate_biomass_in_reactor_medium"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_biomass_in_reactor_medium</span></code></a>(process)</p></td>
 <td><p>Check that the reactor medium contains a component whose name is</p></td>
 </tr>
@@ -419,6 +413,12 @@
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_process" title="hybrax.format.validate.validate_process"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_process</span></code></a>(process)</p></td>
 <td><p>Run all available validation checks on a single BioProcess.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_reaction_ode" title="hybrax.format.validate.validate_reaction_ode"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_reaction_ode</span></code></a>(process)</p></td>
+<td><p>Validate <code class="docutils literal notranslate"><span class="pre">process.reaction_ode</span></code> if present.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_reaction_ode_equivalence" title="hybrax.format.validate.validate_reaction_ode_equivalence"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_reaction_ode_equivalence</span></code></a>(container)</p></td>
+<td><p>Verify all processes in <em>container</em> share the same <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.validate.validate_time_axis" title="hybrax.format.validate.validate_time_axis"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_time_axis</span></code></a>(process)</p></td>
 <td><p>Check that the process time axis starts no later than it ends.</p></td>
@@ -471,51 +471,6 @@ augmentation is not supported in v1).</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="hybrax.format.validate.validate_biological_ode">
-<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_biological_ode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_biological_ode"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_biological_ode" title="Link to this definition">¶</a></dt>
-<dd><p>Validate <code class="docutils literal notranslate"><span class="pre">process.biological_ode</span></code> if present.</p>
-<p>Checks (skipped when <code class="docutils literal notranslate"><span class="pre">biological_ode</span> <span class="pre">is</span> <span class="pre">None</span></code>):</p>
-<ul class="simple">
-<li><p>Every reactor-medium component and uncontrolled process variable
-(the dynamic states) must have an entry in <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>.</p></li>
-<li><p>Every key in <code class="docutils literal notranslate"><span class="pre">derivatives</span></code> must correspond to a dynamic state.</p></li>
-<li><p>All expressions parse successfully via <code class="docutils literal notranslate"><span class="pre">sympy.sympify</span></code>.</p></li>
-<li><p>Every free symbol in any expression resolves to a dynamic state, a
-controlled process variable (input), an algebraic name, or a declared
-rate name.</p></li>
-<li><p>Algebraic-variable dependencies are acyclic.</p></li>
-<li><p>Rate names do not collide with state, algebraic, or controlled-PV names.</p></li>
-<li><p>All bounds tuples are sane (<code class="docutils literal notranslate"><span class="pre">lo</span> <span class="pre">&lt;=</span> <span class="pre">hi</span></code> when both set).</p></li>
-</ul>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple[bool, str]</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="hybrax.format.validate.validate_biological_ode_equivalence">
-<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_biological_ode_equivalence</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">container</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_biological_ode_equivalence"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_biological_ode_equivalence" title="Link to this definition">¶</a></dt>
-<dd><p>Verify all processes in <em>container</em> share the same <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>.</p>
-<p>Equivalence requires identical <code class="docutils literal notranslate"><span class="pre">algebraic</span></code>, <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">rates</span></code> dicts (same keys mapped to the same values). Containers with
-zero or one process trivially pass.</p>
-<p>Returns <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">message)</span></code>.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>container</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple[bool, str]</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="hybrax.format.validate.validate_biomass_in_reactor_medium">
 <span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_biomass_in_reactor_medium</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_biomass_in_reactor_medium"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_biomass_in_reactor_medium" title="Link to this definition">¶</a></dt>
 <dd><p>Check that the reactor medium contains a component whose name is
@@ -556,9 +511,9 @@ zero or one process trivially pass.</p>
 that carries a <em>set</em> Bounds tuple (either side non-<code class="docutils literal notranslate"><span class="pre">None</span></code>), compares
 the actual scalar (<code class="docutils literal notranslate"><span class="pre">StaticVariable</span></code>) or <code class="docutils literal notranslate"><span class="pre">TimeSeries.values</span></code> array
 against <code class="docutils literal notranslate"><span class="pre">(lo,</span> <span class="pre">hi)</span></code> and reports how many datapoints violate the bound.</p>
-<p>Out of scope: <code class="docutils literal notranslate"><span class="pre">BiologicalOde.rates</span></code> bounds. No rate-inversion
+<p>Out of scope: <code class="docutils literal notranslate"><span class="pre">ReactionOde.rates</span></code> bounds. No rate-inversion
 machinery exists to compute a measured rate value to check against them
-(see <code class="docutils literal notranslate"><span class="pre">validate_biological_ode</span></code>’s tuple-only sanity check on rates).</p>
+(see <code class="docutils literal notranslate"><span class="pre">validate_reaction_ode</span></code>’s tuple-only sanity check on rates).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
@@ -738,7 +693,7 @@ where <code class="docutils literal notranslate"><span class="pre">volume.initia
 <li><p>Measurement/sampling timestamp alignment.</p></li>
 <li><p>Bounds tuple sanity.</p></li>
 <li><p>Measured data falls within its own declared <code class="docutils literal notranslate"><span class="pre">Bounds</span></code>.</p></li>
-<li><p>Biological ODE structure.</p></li>
+<li><p>Reaction ODE structure.</p></li>
 </ul>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -754,6 +709,51 @@ when every individual check passes and <code class="docutils literal notranslate
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p>Tuple[bool, List[Tuple[bool, str]]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_reaction_ode">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_reaction_ode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_reaction_ode"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_reaction_ode" title="Link to this definition">¶</a></dt>
+<dd><p>Validate <code class="docutils literal notranslate"><span class="pre">process.reaction_ode</span></code> if present.</p>
+<p>Checks (skipped when <code class="docutils literal notranslate"><span class="pre">reaction_ode</span> <span class="pre">is</span> <span class="pre">None</span></code>):</p>
+<ul class="simple">
+<li><p>Every reactor-medium component and uncontrolled process variable
+(the dynamic states) must have an entry in <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>.</p></li>
+<li><p>Every key in <code class="docutils literal notranslate"><span class="pre">derivatives</span></code> must correspond to a dynamic state.</p></li>
+<li><p>All expressions parse successfully via <code class="docutils literal notranslate"><span class="pre">sympy.sympify</span></code>.</p></li>
+<li><p>Every free symbol in any expression resolves to a dynamic state, a
+controlled process variable (input), an algebraic name, or a declared
+rate name.</p></li>
+<li><p>Algebraic-variable dependencies are acyclic.</p></li>
+<li><p>Rate names do not collide with state, algebraic, or controlled-PV names.</p></li>
+<li><p>All bounds tuples are sane (<code class="docutils literal notranslate"><span class="pre">lo</span> <span class="pre">&lt;=</span> <span class="pre">hi</span></code> when both set).</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[bool, str]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.validate.validate_reaction_ode_equivalence">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.validate.</span></span><span class="sig-name descname"><span class="pre">validate_reaction_ode_equivalence</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">container</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/validate.html#validate_reaction_ode_equivalence"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.validate.validate_reaction_ode_equivalence" title="Link to this definition">¶</a></dt>
+<dd><p>Verify all processes in <em>container</em> share the same <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>.</p>
+<p>Equivalence requires identical <code class="docutils literal notranslate"><span class="pre">algebraic</span></code>, <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">rates</span></code> dicts (same keys mapped to the same values). Containers with
+zero or one process trivially pass.</p>
+<p>Returns <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">message)</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>container</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>Tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -968,8 +968,6 @@ volume changes, in the process’s volume unit).</p></li>
 <li><a class="reference internal" href="#functions">Functions</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li><a class="reference internal" href="#hybrax.format.validate.validate_augmented_parent_refs"><code class="docutils literal notranslate"><span class="pre">validate_augmented_parent_refs()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.format.validate.validate_biological_ode"><code class="docutils literal notranslate"><span class="pre">validate_biological_ode()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.format.validate.validate_biological_ode_equivalence"><code class="docutils literal notranslate"><span class="pre">validate_biological_ode_equivalence()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.validate.validate_biomass_in_reactor_medium"><code class="docutils literal notranslate"><span class="pre">validate_biomass_in_reactor_medium()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.validate.validate_bounds"><code class="docutils literal notranslate"><span class="pre">validate_bounds()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.validate.validate_bounds_against_data"><code class="docutils literal notranslate"><span class="pre">validate_bounds_against_data()</span></code></a></li>
@@ -980,6 +978,8 @@ volume changes, in the process’s volume unit).</p></li>
 <li><a class="reference internal" href="#hybrax.format.validate.validate_measurement_sampling_alignment"><code class="docutils literal notranslate"><span class="pre">validate_measurement_sampling_alignment()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.validate.validate_outflow_retention"><code class="docutils literal notranslate"><span class="pre">validate_outflow_retention()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.validate.validate_process"><code class="docutils literal notranslate"><span class="pre">validate_process()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_reaction_ode"><code class="docutils literal notranslate"><span class="pre">validate_reaction_ode()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.validate.validate_reaction_ode_equivalence"><code class="docutils literal notranslate"><span class="pre">validate_reaction_ode_equivalence()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.validate.validate_time_axis"><code class="docutils literal notranslate"><span class="pre">validate_time_axis()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.validate.validate_timeseries_shape"><code class="docutils literal notranslate"><span class="pre">validate_timeseries_shape()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.validate.validate_timestamp_bounds"><code class="docutils literal notranslate"><span class="pre">validate_timestamp_bounds()</span></code></a></li>

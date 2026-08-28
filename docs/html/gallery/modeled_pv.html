@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -405,24 +405,24 @@ represents physically.</p>
 <section id="the-rate-law-declared">
 <h2>The Rate Law, Declared<a class="headerlink" href="#the-rate-law-declared" title="Link to this heading">¶</a></h2>
 <p>Everything this page’s kinetics need lives declaratively in the dataset’s own
-<code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> block. This is exactly what was declared when the dataset was built:</p>
+<code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> block. This is exactly what was declared when the dataset was built:</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">process</span> <span class="o">=</span> <span class="n">_collection</span><span class="o">.</span><span class="n">processes</span><span class="p">[</span><span class="s2">"run_1"</span><span class="p">]</span>
 
-<span class="n">modeled_pv_ode</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">BiologicalOde</span><span class="p">(</span>
+<span class="n">modeled_pv_ode</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">ReactionOde</span><span class="p">(</span>
     <span class="n">rates</span><span class="o">=</span><span class="p">{</span><span class="s2">"q_biomass"</span><span class="p">:</span> <span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="s2">"r_glyco_frac"</span><span class="p">:</span> <span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)},</span>
     <span class="n">derivatives</span><span class="o">=</span><span class="p">{</span>
         <span class="s2">"biomass"</span><span class="p">:</span> <span class="s2">"q_biomass * biomass"</span><span class="p">,</span>
         <span class="s2">"glyco_frac"</span><span class="p">:</span> <span class="s2">"-r_glyco_frac * glyco_frac"</span><span class="p">,</span>
     <span class="p">},</span>
 <span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="s2">"matches the real declared biological_ode:"</span><span class="p">,</span> <span class="n">modeled_pv_ode</span> <span class="o">==</span> <span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"matches the real declared reaction_ode:"</span><span class="p">,</span> <span class="n">modeled_pv_ode</span> <span class="o">==</span> <span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>matches the real declared biological_ode: True
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>matches the real declared reaction_ode: True
 </pre></div>
 </div>
 </div>
@@ -449,7 +449,7 @@ component’s.</p>
 +-------------------------------------------------------------------------------+
 | Derivatives                                                                   |
 +-------------------------------------------------------------------------------+
-| State      | Unit  | Biological                 | Feed | Dilution / retention |
+| State      | Unit  | Reaction                   | Feed | Dilution / retention |
 | biomass    | [g/L] | q_biomass * biomass        |      |                      |
 | glyco_frac | [-]   | -r_glyco_frac * glyco_frac |      |                      |
 +-------------------------------------------------------------------------------+
@@ -473,7 +473,7 @@ lump event.</p>
 </section>
 <section id="the-reaction-module">
 <h2>The Reaction Module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">ModeledPVModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">ModeledPVModule</span><span class="p">(</span><span class="n">RateModule</span><span class="p">):</span>
 <span class="linenos"> 2</span>    <span class="n">log_q_biomass</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
 <span class="linenos"> 3</span>    <span class="n">log_r_glyco_frac</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
 <span class="linenos"> 4</span>
@@ -492,7 +492,7 @@ lump event.</p>
 <span class="linenos">17</span>            <span class="p">]</span>
 <span class="linenos">18</span>        <span class="p">)</span>
 <span class="linenos">19</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos">20</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_BiologicalOde_rates</span><span class="p">(</span>
+<span class="linenos">20</span>            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_ReactionOde_rates</span><span class="p">(</span>
 <span class="linenos">21</span>                <span class="n">RAW_rates</span>
 <span class="linenos">22</span>            <span class="p">),</span>
 </pre></div>
@@ -505,7 +505,7 @@ page’s actual complexity lives in the derivative strings and the bolus event a
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:18:38 INFO __main__: training complete: first_mean_loss=0.0918845 last_mean_loss=0.00022645 delta=-0.091658
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-28 19:21:11 INFO __main__: training complete: first_mean_loss=0.0918845 last_mean_loss=0.00022645 delta=-0.091658
 run directory: ./source/_data/out/runs/gallery_modeled_pv/run
 </pre></div>
 </div>
@@ -558,7 +558,7 @@ once you actually want it trained.</strong> Left on the <code class="docutils li
 <code class="docutils literal notranslate"><span class="pre">glyco_frac</span></code> and dropping <code class="docutils literal notranslate"><span class="pre">biomass</span></code> from the loss entirely, with nothing louder than a
 warning. Set <code class="docutils literal notranslate"><span class="pre">target_source</span></code> explicitly the moment a dataset has both kinds of
 targets; see <a class="reference internal" href="../train/config.html#target-source"><span class="std std-ref">Configuration</span></a>.</p></li>
-<li><p><strong>A <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code> with modeled process variables must return
+<li><p><strong>A <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> with modeled process variables must return
 <code class="docutils literal notranslate"><span class="pre">SCALE_modeled_PVs</span></code> from <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code>.</strong> It is required only for a dataset
 that has modeled process variables (a PV-free dataset defaults to an empty scaler),
 so a reaction module copied from a
@@ -583,13 +583,13 @@ of the contrast.</p></li>
 <code class="docutils literal notranslate"><span class="pre">examples/gallery_modeled_pv/</span></code> at the repo root, no docs build required. This page’s
 own executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_modeled_pv/</span></code>.</p>
 <ul class="simple">
-<li><p><a class="reference internal" href="../format/bioprocess_ode.html"><span class="std std-doc">The Bioprocess ODE</span></a>: <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>, <code class="docutils literal notranslate"><span class="pre">rates</span></code>,
+<li><p><a class="reference internal" href="../format/bioprocess_ode.html"><span class="std std-doc">The Bioprocess ODE</span></a>: <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>, <code class="docutils literal notranslate"><span class="pre">rates</span></code>,
 <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>, and writing your own expressions.</p></li>
 <li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic Models</span></a>: its own Gotchas section raises this
 exact idea (a well-constrained process variable resolving an identifiability
 problem) without building it; this page is that example.</p></li>
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: <code class="docutils literal notranslate"><span class="pre">trainable_field</span></code> and
-everything else a <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code> can return, including <code class="docutils literal notranslate"><span class="pre">SCALE_modeled_PVs</span></code>.</p></li>
+everything else a <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> can return, including <code class="docutils literal notranslate"><span class="pre">SCALE_modeled_PVs</span></code>.</p></li>
 <li><p><a class="reference internal" href="../train/config.html"><span class="std std-doc">Configuration</span></a>: <code class="docutils literal notranslate"><span class="pre">target_source</span></code> and the rest of the config
 schema.</p></li>
 </ul>

@@ -14,14 +14,14 @@ hybrax.train.model_api
    - ``Scaler`` / ``LinearScaler`` / ``AffineScaler`` — RAW (physical) <-> SCL
      (solver) unit transforms, one per semantic axis of the state/control vectors.
    - ``ReactionInputs`` / ``ReactionOutputs`` / ``EstimatedScales`` /
-     ``UserReactionModule`` — the reaction-model contract: subclass
-     ``UserReactionModule``, implement ``__call__``, and the ``scale_*``/``unscale_*``
+     ``RateModule`` — the reaction-model contract: subclass
+     ``RateModule``, implement ``__call__``, and the ``scale_*``/``unscale_*``
      delegates handle every RAW/SCL conversion the ODE RHS needs.
    - ``LossInputs`` / ``LossOutputs`` / ``UserLossModule`` — the loss contract:
      subclass ``UserLossModule`` and implement ``__call__`` to turn one sample's
      predictions and measurements into named loss terms.
 
-   Both ``UserReactionModule`` and ``UserLossModule`` are abstract base classes:
+   Both ``RateModule`` and ``UserLossModule`` are abstract base classes:
    their ``__call__`` (and, for the reaction module, every ``scale_*``/``unscale_*``
    helper) raise ``NotImplementedError`` until a subclass provides them. The
    training harness (``harness.py``, ``trainer.py``) drives instances of these
@@ -47,11 +47,11 @@ Classes
    hybrax.train.model_api.LinearScaler
    hybrax.train.model_api.LossInputs
    hybrax.train.model_api.LossOutputs
+   hybrax.train.model_api.RateModule
    hybrax.train.model_api.ReactionInputs
    hybrax.train.model_api.ReactionOutputs
    hybrax.train.model_api.Scaler
    hybrax.train.model_api.UserLossModule
-   hybrax.train.model_api.UserReactionModule
 
 
 Functions
@@ -187,10 +187,6 @@ Module Contents
       :type:  jax.Array | Scaler
 
 
-   .. py:attribute:: SCALE_modeled_BiologicalOde_rates
-      :type:  jax.Array | Scaler
-
-
    .. py:attribute:: SCALE_modeled_Inflows_Cin
       :type:  jax.Array | Scaler
 
@@ -216,6 +212,10 @@ Module Contents
 
 
    .. py:attribute:: SCALE_modeled_RMCs
+      :type:  jax.Array | Scaler
+
+
+   .. py:attribute:: SCALE_modeled_ReactionOde_rates
       :type:  jax.Array | Scaler
 
 
@@ -314,15 +314,15 @@ Module Contents
       :type:  jax.Array
 
 
-   .. py:attribute:: RAW_modeled_BiologicalOde_rates
-      :type:  jax.Array
-
-
    .. py:attribute:: RAW_modeled_Inflows_rates
       :type:  jax.Array
 
 
    .. py:attribute:: RAW_modeled_Outflows_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: RAW_modeled_ReactionOde_rates
       :type:  jax.Array
 
 
@@ -334,15 +334,15 @@ Module Contents
       :type:  jax.Array
 
 
-   .. py:attribute:: SCL_modeled_BiologicalOde_rates
-      :type:  jax.Array
-
-
    .. py:attribute:: SCL_modeled_Inflows_rates
       :type:  jax.Array
 
 
    .. py:attribute:: SCL_modeled_Outflows_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_modeled_ReactionOde_rates
       :type:  jax.Array
 
 
@@ -374,12 +374,6 @@ Module Contents
 
 
 
-   .. py:attribute:: dense_RAW_modeled_BiologicalOde_rates
-      :type:  jax.Array | None
-      :value: None
-
-
-
    .. py:attribute:: dense_RAW_modeled_Inflows_rates
       :type:  jax.Array | None
       :value: None
@@ -387,6 +381,12 @@ Module Contents
 
 
    .. py:attribute:: dense_RAW_modeled_Outflows_rates
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: dense_RAW_modeled_ReactionOde_rates
       :type:  jax.Array | None
       :value: None
 
@@ -404,12 +404,6 @@ Module Contents
 
 
 
-   .. py:attribute:: dense_SCL_modeled_BiologicalOde_rates
-      :type:  jax.Array | None
-      :value: None
-
-
-
    .. py:attribute:: dense_SCL_modeled_Inflows_rates
       :type:  jax.Array | None
       :value: None
@@ -417,6 +411,12 @@ Module Contents
 
 
    .. py:attribute:: dense_SCL_modeled_Outflows_rates
+      :type:  jax.Array | None
+      :value: None
+
+
+
+   .. py:attribute:: dense_SCL_modeled_ReactionOde_rates
       :type:  jax.Array | None
       :value: None
 
@@ -465,7 +465,7 @@ Module Contents
 
 
    .. py:attribute:: reaction_module
-      :type:  UserReactionModule
+      :type:  RateModule
 
 
    .. py:attribute:: step
@@ -496,12 +496,428 @@ Module Contents
       :type:  dict[str, jax.Array]
 
 
+.. py:class:: RateModule(**kwargs)
+
+   Bases: :py:obj:`equinox.Module`
+
+
+   Base for user-defined reaction modules.
+
+   The module is the single source of truth for every ``SCALE_*`` vector in
+   hybrax.train. The wrapper queries scales via ``self.reaction_module.SCALE_*``;
+   the trainer reads ``SCALE_state`` to convert measurements to SCL space.
+
+   Subclasses inherit the scale fields below — they do NOT redeclare them;
+   instead they pass values to ``super().__init__(**scale_kwargs)``. Each
+   ``SCALE_*`` field holds a :class:`Scaler` (frozen, never trained); the
+   harness promotes bare arrays from the ``estimate_all_scales`` hook to
+   :class:`LinearScaler` so the default path is pure division.
+
+   Most ``scale_*`` / ``unscale_*`` helpers below operate on VALUES. The three
+   ``*_rates`` helper pairs use derivative semantics. Under pure division
+   (``LinearScaler``) a value and its time-derivative scale identically, but
+   that interchangeability is NOT general: under an affine transform the
+   derivative must NOT subtract the offset (``d((RAW-b)/s)/dt = (dRAW/dt)/s``).
+   ``wrapper.py`` unscales the reaction module's latent derivative;
+   ``physical_solve.py`` then scales the full RAW ODE derivative.
+
+
+   .. py:method:: initial_latent(RAW_phys_y0)
+
+      Initial RAW latent state appended to the physical initial state.
+
+
+
+   .. py:method:: observe(states)
+
+      Optional post-hoc observation map; default identity on physical state.
+
+
+
+   .. py:method:: scale_V_in_cumulative(RAW_V_in_cumulative)
+
+      RAW -> SCL for cumulative volume added by every Inflow.
+
+
+
+   .. py:method:: scale_controlled_Inflows_Cin(RAW_controlled_Inflows_Cin)
+
+      RAW -> SCL for controlled Inflow feed concentrations.
+
+
+
+   .. py:method:: scale_controlled_Inflows_cumulative(RAW_controlled_Inflows_cumulative)
+
+      RAW -> SCL for cumulative controlled Inflow volume.
+
+
+
+   .. py:method:: scale_controlled_Inflows_rates(RAW_controlled_Inflows_rates)
+
+      RAW -> SCL for controlled Inflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: scale_controlled_Outflows_cumulative(RAW_controlled_Outflows_cumulative)
+
+      RAW -> SCL for cumulative controlled Outflow volume.
+
+
+
+   .. py:method:: scale_controlled_Outflows_rates(RAW_controlled_Outflows_rates)
+
+      RAW -> SCL for controlled Outflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: scale_controlled_PVs(RAW_controlled_PVs)
+
+      RAW -> SCL for controlled process variables.
+
+
+
+   .. py:method:: scale_latent(RAW_latent)
+
+      RAW -> SCL for the latent state, via ``SCALE_latent``.
+
+
+
+   .. py:method:: scale_modeled_Inflows_Cin(RAW_modeled_Inflows_Cin)
+
+      RAW -> SCL for modeled Inflow feed concentrations.
+
+
+
+   .. py:method:: scale_modeled_Inflows_cumulative(RAW_modeled_Inflows_cumulative)
+
+      RAW -> SCL for cumulative modeled Inflow volume.
+
+
+
+   .. py:method:: scale_modeled_Inflows_rates(RAW_modeled_Inflows_rates)
+
+      RAW -> SCL for modeled Inflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: scale_modeled_Outflows_cumulative(RAW_modeled_Outflows_cumulative)
+
+      RAW -> SCL for cumulative modeled Outflow volume.
+
+
+
+   .. py:method:: scale_modeled_Outflows_rates(RAW_modeled_Outflows_rates)
+
+      RAW -> SCL for modeled Outflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: scale_modeled_PVs(RAW_modeled_PVs)
+
+      RAW -> SCL for modeled process variables.
+
+
+
+   .. py:method:: scale_modeled_RMCs(RAW_modeled_RMCs)
+
+      RAW -> SCL for modeled reactor-medium components.
+
+
+
+   .. py:method:: scale_modeled_ReactionOde_rates(RAW_modeled_ReactionOde_rates)
+
+      RAW -> SCL for modeled ``reaction_ode`` rates (offset-free
+      derivative op).
+
+
+
+   .. py:method:: scale_modeled_V(RAW_modeled_V)
+
+      RAW -> SCL for the modeled reactor volume.
+
+
+
+   .. py:method:: scale_state(RAW_state)
+
+      RAW -> SCL for the full integrated state, via ``SCALE_state``.
+
+
+
+   .. py:method:: unscale_V_in_cumulative(SCL_V_in_cumulative)
+
+      SCL -> RAW for cumulative volume added by every Inflow.
+
+
+
+   .. py:method:: unscale_controlled_Inflows_Cin(SCL_controlled_Inflows_Cin)
+
+      SCL -> RAW for controlled Inflow feed concentrations.
+
+
+
+   .. py:method:: unscale_controlled_Inflows_cumulative(SCL_controlled_Inflows_cumulative)
+
+      SCL -> RAW for cumulative controlled Inflow volume.
+
+
+
+   .. py:method:: unscale_controlled_Inflows_rates(SCL_controlled_Inflows_rates)
+
+      SCL -> RAW for controlled Inflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: unscale_controlled_Outflows_cumulative(SCL_controlled_Outflows_cumulative)
+
+      SCL -> RAW for cumulative controlled Outflow volume.
+
+
+
+   .. py:method:: unscale_controlled_Outflows_rates(SCL_controlled_Outflows_rates)
+
+      SCL -> RAW for controlled Outflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: unscale_controlled_PVs(SCL_controlled_PVs)
+
+      SCL -> RAW for controlled process variables.
+
+
+
+   .. py:method:: unscale_latent(SCL_latent)
+
+      SCL -> RAW for the latent state, via ``SCALE_latent``.
+
+
+
+   .. py:method:: unscale_modeled_Inflows_Cin(SCL_modeled_Inflows_Cin)
+
+      SCL -> RAW for modeled Inflow feed concentrations.
+
+
+
+   .. py:method:: unscale_modeled_Inflows_cumulative(SCL_modeled_Inflows_cumulative)
+
+      SCL -> RAW for cumulative modeled Inflow volume.
+
+
+
+   .. py:method:: unscale_modeled_Inflows_rates(SCL_modeled_Inflows_rates)
+
+      SCL -> RAW for modeled Inflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: unscale_modeled_Outflows_cumulative(SCL_modeled_Outflows_cumulative)
+
+      SCL -> RAW for cumulative modeled Outflow volume.
+
+
+
+   .. py:method:: unscale_modeled_Outflows_rates(SCL_modeled_Outflows_rates)
+
+      SCL -> RAW for modeled Outflow rates (offset-free derivative op).
+
+
+
+   .. py:method:: unscale_modeled_PVs(SCL_modeled_PVs)
+
+      SCL -> RAW for modeled process variables.
+
+
+
+   .. py:method:: unscale_modeled_RMCs(SCL_modeled_RMCs)
+
+      SCL -> RAW for modeled reactor-medium components.
+
+
+
+   .. py:method:: unscale_modeled_ReactionOde_rates(SCL_modeled_ReactionOde_rates)
+
+      SCL -> RAW for modeled ``reaction_ode`` rates (offset-free
+      derivative op).
+
+
+
+   .. py:method:: unscale_modeled_V(SCL_modeled_V)
+
+      SCL -> RAW for the modeled reactor volume.
+
+
+
+   .. py:method:: unscale_state(SCL_state)
+
+      SCL -> RAW for the full integrated state, via ``SCALE_state``.
+
+
+
+   .. py:attribute:: SCALE_V_in_cumulative
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_controlled_Inflows_Cin
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_controlled_Inflows_cumulative
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_controlled_Inflows_rates
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_controlled_Outflows_cumulative
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_controlled_Outflows_rates
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_controlled_PVs
+      :type:  Scaler
+
+
+   .. py:property:: SCALE_integrated_state
+      :type: Scaler
+
+
+      State scaler used by the ODE solver, incl. trailing latent state.
+
+
+   .. py:attribute:: SCALE_latent
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_Inflows_Cin
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_Inflows_cumulative
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_Inflows_rates
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_Outflows_cumulative
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_Outflows_rates
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_PVs
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_RMCs
+      :type:  Scaler
+
+
+   .. py:attribute:: SCALE_modeled_ReactionOde_rates
+      :type:  Scaler
+
+
+   .. py:property:: SCALE_modeled_V
+      :type: Scaler
+
+
+      Real-volume scale shares the V_in_cumulative scale (same units, L).
+
+
+   .. py:property:: SCALE_state
+      :type: Scaler
+
+
+      Composed state scaler.
+
+      Layout: ``[modeled_RMCs | modeled_PVs | V | modeled_Inflows_cumulative |
+      modeled_Outflows_cumulative]``.
+      Zero-width parts (e.g. an empty PV axis) are preserved in the concat to
+      reproduce ``jnp.concatenate`` dtype promotion exactly — do NOT filter.
+
+
+   .. py:property:: latent_observables
+      :type: tuple[str, ...]
+
+
+      Names of observables that require live latent state during the solve.
+
+
+   .. py:property:: n_controlled_Inflows
+      :type: int
+
+
+      Number of continuous controlled Inflows.
+
+
+   .. py:property:: n_controlled_Outflows
+      :type: int
+
+
+      Number of continuous controlled Outflows.
+
+
+   .. py:property:: n_controlled_PVs
+      :type: int
+
+
+      Number of controlled process-variable signals.
+
+
+   .. py:property:: n_latent
+      :type: int
+
+
+      Number of integrated latent-state dimensions.
+
+
+   .. py:property:: n_modeled_Inflows
+      :type: int
+
+
+      Number of modeled Inflows.
+
+
+   .. py:property:: n_modeled_Outflows
+      :type: int
+
+
+      Number of modeled Outflows.
+
+
+   .. py:property:: n_modeled_PVs
+      :type: int
+
+
+      Number of modeled (uncontrolled, dynamic) process variables.
+
+
+   .. py:property:: n_modeled_RMCs
+      :type: int
+
+
+      Number of modeled RMCs (species).
+
+
+   .. py:property:: n_modeled_ReactionOde_rates
+      :type: int
+
+
+      Number of rates emitted by the ReactionOde block.
+
+
 .. py:class:: ReactionInputs
 
    Bases: :py:obj:`equinox.Module`
 
 
-   All inputs to a UserReactionModule call, one per semantic axis.
+   All inputs to a RateModule call, one per semantic axis.
 
    Built by HybridOdeWrapper at each RHS evaluation. Modeled RMC inputs remain
    unclipped so gradient flow survives transient negative excursions near
@@ -575,7 +991,7 @@ Module Contents
    Bases: :py:obj:`equinox.Module`
 
 
-   Structured return value from a UserReactionModule.__call__.
+   Structured return value from a RateModule.__call__.
 
    Rate fields are in SCALED space — the module divides its physical
    output by the matching SCALE_* axis (typically via ``self.scale_*`` helpers)
@@ -584,8 +1000,8 @@ Module Contents
 
    Attributes
    ----------
-   SCL_modeled_BiologicalOde_rates:
-       Rates emitted by the BiologicalOde block, aligned with
+   SCL_modeled_ReactionOde_rates:
+       Rates emitted by the ReactionOde block, aligned with
        ``rhs_ode.name_modeled_rates``. Not 1:1 with RMCs — algebraic rates
        (e.g. ``q_X_active`` in TUB) live here without a corresponding RMC.
    SCL_modeled_Inflows_rates:
@@ -606,15 +1022,15 @@ Module Contents
       :type:  jax.Array
 
 
-   .. py:attribute:: SCL_modeled_BiologicalOde_rates
-      :type:  jax.Array
-
-
    .. py:attribute:: SCL_modeled_Inflows_rates
       :type:  jax.Array
 
 
    .. py:attribute:: SCL_modeled_Outflows_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: SCL_modeled_ReactionOde_rates
       :type:  jax.Array
 
 
@@ -716,7 +1132,7 @@ Module Contents
    Bases: :py:obj:`equinox.Module`
 
 
-   Base for user-defined loss modules. Mirrors ``UserReactionModule``.
+   Base for user-defined loss modules. Mirrors ``RateModule``.
 
    Subclasses declare any trainable / frozen state via ``trainable_field()`` /
    ``frozen_field()`` (e.g. Kendall uncertainty weights), exactly like a
@@ -755,422 +1171,6 @@ Module Contents
 
 
       Stable ordered term/panel names. MUST equal ``named_losses`` keys.
-
-
-.. py:class:: UserReactionModule(**kwargs)
-
-   Bases: :py:obj:`equinox.Module`
-
-
-   Base for user-defined reaction modules.
-
-   The module is the single source of truth for every ``SCALE_*`` vector in
-   hybrax.train. The wrapper queries scales via ``self.reaction_module.SCALE_*``;
-   the trainer reads ``SCALE_state`` to convert measurements to SCL space.
-
-   Subclasses inherit the scale fields below — they do NOT redeclare them;
-   instead they pass values to ``super().__init__(**scale_kwargs)``. Each
-   ``SCALE_*`` field holds a :class:`Scaler` (frozen, never trained); the
-   harness promotes bare arrays from the ``estimate_all_scales`` hook to
-   :class:`LinearScaler` so the default path is pure division.
-
-   Most ``scale_*`` / ``unscale_*`` helpers below operate on VALUES. The three
-   ``*_rates`` helper pairs use derivative semantics. Under pure division
-   (``LinearScaler``) a value and its time-derivative scale identically, but
-   that interchangeability is NOT general: under an affine transform the
-   derivative must NOT subtract the offset (``d((RAW-b)/s)/dt = (dRAW/dt)/s``).
-   ``wrapper.py`` unscales the reaction module's latent derivative;
-   ``physical_solve.py`` then scales the full RAW ODE derivative.
-
-
-   .. py:method:: initial_latent(RAW_phys_y0)
-
-      Initial RAW latent state appended to the physical initial state.
-
-
-
-   .. py:method:: observe(states)
-
-      Optional post-hoc observation map; default identity on physical state.
-
-
-
-   .. py:method:: scale_V_in_cumulative(RAW_V_in_cumulative)
-
-      RAW -> SCL for cumulative volume added by every Inflow.
-
-
-
-   .. py:method:: scale_controlled_Inflows_Cin(RAW_controlled_Inflows_Cin)
-
-      RAW -> SCL for controlled Inflow feed concentrations.
-
-
-
-   .. py:method:: scale_controlled_Inflows_cumulative(RAW_controlled_Inflows_cumulative)
-
-      RAW -> SCL for cumulative controlled Inflow volume.
-
-
-
-   .. py:method:: scale_controlled_Inflows_rates(RAW_controlled_Inflows_rates)
-
-      RAW -> SCL for controlled Inflow rates (offset-free derivative op).
-
-
-
-   .. py:method:: scale_controlled_Outflows_cumulative(RAW_controlled_Outflows_cumulative)
-
-      RAW -> SCL for cumulative controlled Outflow volume.
-
-
-
-   .. py:method:: scale_controlled_Outflows_rates(RAW_controlled_Outflows_rates)
-
-      RAW -> SCL for controlled Outflow rates (offset-free derivative op).
-
-
-
-   .. py:method:: scale_controlled_PVs(RAW_controlled_PVs)
-
-      RAW -> SCL for controlled process variables.
-
-
-
-   .. py:method:: scale_latent(RAW_latent)
-
-      RAW -> SCL for the latent state, via ``SCALE_latent``.
-
-
-
-   .. py:method:: scale_modeled_BiologicalOde_rates(RAW_modeled_BiologicalOde_rates)
-
-      RAW -> SCL for modeled ``biological_ode`` rates (offset-free
-      derivative op).
-
-
-
-   .. py:method:: scale_modeled_Inflows_Cin(RAW_modeled_Inflows_Cin)
-
-      RAW -> SCL for modeled Inflow feed concentrations.
-
-
-
-   .. py:method:: scale_modeled_Inflows_cumulative(RAW_modeled_Inflows_cumulative)
-
-      RAW -> SCL for cumulative modeled Inflow volume.
-
-
-
-   .. py:method:: scale_modeled_Inflows_rates(RAW_modeled_Inflows_rates)
-
-      RAW -> SCL for modeled Inflow rates (offset-free derivative op).
-
-
-
-   .. py:method:: scale_modeled_Outflows_cumulative(RAW_modeled_Outflows_cumulative)
-
-      RAW -> SCL for cumulative modeled Outflow volume.
-
-
-
-   .. py:method:: scale_modeled_Outflows_rates(RAW_modeled_Outflows_rates)
-
-      RAW -> SCL for modeled Outflow rates (offset-free derivative op).
-
-
-
-   .. py:method:: scale_modeled_PVs(RAW_modeled_PVs)
-
-      RAW -> SCL for modeled process variables.
-
-
-
-   .. py:method:: scale_modeled_RMCs(RAW_modeled_RMCs)
-
-      RAW -> SCL for modeled reactor-medium components.
-
-
-
-   .. py:method:: scale_modeled_V(RAW_modeled_V)
-
-      RAW -> SCL for the modeled reactor volume.
-
-
-
-   .. py:method:: scale_state(RAW_state)
-
-      RAW -> SCL for the full integrated state, via ``SCALE_state``.
-
-
-
-   .. py:method:: unscale_V_in_cumulative(SCL_V_in_cumulative)
-
-      SCL -> RAW for cumulative volume added by every Inflow.
-
-
-
-   .. py:method:: unscale_controlled_Inflows_Cin(SCL_controlled_Inflows_Cin)
-
-      SCL -> RAW for controlled Inflow feed concentrations.
-
-
-
-   .. py:method:: unscale_controlled_Inflows_cumulative(SCL_controlled_Inflows_cumulative)
-
-      SCL -> RAW for cumulative controlled Inflow volume.
-
-
-
-   .. py:method:: unscale_controlled_Inflows_rates(SCL_controlled_Inflows_rates)
-
-      SCL -> RAW for controlled Inflow rates (offset-free derivative op).
-
-
-
-   .. py:method:: unscale_controlled_Outflows_cumulative(SCL_controlled_Outflows_cumulative)
-
-      SCL -> RAW for cumulative controlled Outflow volume.
-
-
-
-   .. py:method:: unscale_controlled_Outflows_rates(SCL_controlled_Outflows_rates)
-
-      SCL -> RAW for controlled Outflow rates (offset-free derivative op).
-
-
-
-   .. py:method:: unscale_controlled_PVs(SCL_controlled_PVs)
-
-      SCL -> RAW for controlled process variables.
-
-
-
-   .. py:method:: unscale_latent(SCL_latent)
-
-      SCL -> RAW for the latent state, via ``SCALE_latent``.
-
-
-
-   .. py:method:: unscale_modeled_BiologicalOde_rates(SCL_modeled_BiologicalOde_rates)
-
-      SCL -> RAW for modeled ``biological_ode`` rates (offset-free
-      derivative op).
-
-
-
-   .. py:method:: unscale_modeled_Inflows_Cin(SCL_modeled_Inflows_Cin)
-
-      SCL -> RAW for modeled Inflow feed concentrations.
-
-
-
-   .. py:method:: unscale_modeled_Inflows_cumulative(SCL_modeled_Inflows_cumulative)
-
-      SCL -> RAW for cumulative modeled Inflow volume.
-
-
-
-   .. py:method:: unscale_modeled_Inflows_rates(SCL_modeled_Inflows_rates)
-
-      SCL -> RAW for modeled Inflow rates (offset-free derivative op).
-
-
-
-   .. py:method:: unscale_modeled_Outflows_cumulative(SCL_modeled_Outflows_cumulative)
-
-      SCL -> RAW for cumulative modeled Outflow volume.
-
-
-
-   .. py:method:: unscale_modeled_Outflows_rates(SCL_modeled_Outflows_rates)
-
-      SCL -> RAW for modeled Outflow rates (offset-free derivative op).
-
-
-
-   .. py:method:: unscale_modeled_PVs(SCL_modeled_PVs)
-
-      SCL -> RAW for modeled process variables.
-
-
-
-   .. py:method:: unscale_modeled_RMCs(SCL_modeled_RMCs)
-
-      SCL -> RAW for modeled reactor-medium components.
-
-
-
-   .. py:method:: unscale_modeled_V(SCL_modeled_V)
-
-      SCL -> RAW for the modeled reactor volume.
-
-
-
-   .. py:method:: unscale_state(SCL_state)
-
-      SCL -> RAW for the full integrated state, via ``SCALE_state``.
-
-
-
-   .. py:attribute:: SCALE_V_in_cumulative
-      :type:  Scaler
-
-
-   .. py:attribute:: SCALE_controlled_Inflows_Cin
-      :type:  Scaler
-
-
-   .. py:attribute:: SCALE_controlled_Inflows_cumulative
-      :type:  Scaler
-
-
-   .. py:attribute:: SCALE_controlled_Inflows_rates
-      :type:  Scaler
-
-
-   .. py:attribute:: SCALE_controlled_Outflows_cumulative
-      :type:  Scaler
-
-
-   .. py:attribute:: SCALE_controlled_Outflows_rates
-      :type:  Scaler
-
-
-   .. py:attribute:: SCALE_controlled_PVs
-      :type:  Scaler
-
-
-   .. py:property:: SCALE_integrated_state
-      :type: Scaler
-
-
-      State scaler used by the ODE solver, incl. trailing latent state.
-
-
-   .. py:attribute:: SCALE_latent
-      :type:  Scaler
-
-
-   .. py:attribute:: SCALE_modeled_BiologicalOde_rates
-      :type:  Scaler
-
-
-   .. py:attribute:: SCALE_modeled_Inflows_Cin
-      :type:  Scaler
-
-
-   .. py:attribute:: SCALE_modeled_Inflows_cumulative
-      :type:  Scaler
-
-
-   .. py:attribute:: SCALE_modeled_Inflows_rates
-      :type:  Scaler
-
-
-   .. py:attribute:: SCALE_modeled_Outflows_cumulative
-      :type:  Scaler
-
-
-   .. py:attribute:: SCALE_modeled_Outflows_rates
-      :type:  Scaler
-
-
-   .. py:attribute:: SCALE_modeled_PVs
-      :type:  Scaler
-
-
-   .. py:attribute:: SCALE_modeled_RMCs
-      :type:  Scaler
-
-
-   .. py:property:: SCALE_modeled_V
-      :type: Scaler
-
-
-      Real-volume scale shares the V_in_cumulative scale (same units, L).
-
-
-   .. py:property:: SCALE_state
-      :type: Scaler
-
-
-      Composed state scaler.
-
-      Layout: ``[modeled_RMCs | modeled_PVs | V | modeled_Inflows_cumulative |
-      modeled_Outflows_cumulative]``.
-      Zero-width parts (e.g. an empty PV axis) are preserved in the concat to
-      reproduce ``jnp.concatenate`` dtype promotion exactly — do NOT filter.
-
-
-   .. py:property:: latent_observables
-      :type: tuple[str, ...]
-
-
-      Names of observables that require live latent state during the solve.
-
-
-   .. py:property:: n_controlled_Inflows
-      :type: int
-
-
-      Number of continuous controlled Inflows.
-
-
-   .. py:property:: n_controlled_Outflows
-      :type: int
-
-
-      Number of continuous controlled Outflows.
-
-
-   .. py:property:: n_controlled_PVs
-      :type: int
-
-
-      Number of controlled process-variable signals.
-
-
-   .. py:property:: n_latent
-      :type: int
-
-
-      Number of integrated latent-state dimensions.
-
-
-   .. py:property:: n_modeled_BiologicalOde_rates
-      :type: int
-
-
-      Number of rates emitted by the BiologicalOde block.
-
-
-   .. py:property:: n_modeled_Inflows
-      :type: int
-
-
-      Number of modeled Inflows.
-
-
-   .. py:property:: n_modeled_Outflows
-      :type: int
-
-
-      Number of modeled Outflows.
-
-
-   .. py:property:: n_modeled_PVs
-      :type: int
-
-
-      Number of modeled (uncontrolled, dynamic) process variables.
-
-
-   .. py:property:: n_modeled_RMCs
-      :type: int
-
-
-      Number of modeled RMCs (species).
 
 
 .. py:function:: frozen_field(**kwargs)

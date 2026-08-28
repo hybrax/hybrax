@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -396,7 +396,7 @@ BioProcess
   ├── reactor_medium        ReactorMedium(name, density, …, components)
   ├── process_variables     {name: ProcessVariable} = {}
   ├── discrete_events       Optional[DiscreteEvents] = None
-  ├── biological_ode        Optional[BiologicalOde(algebraic, rates, derivatives)] = None
+  ├── reaction_ode        Optional[ReactionOde(algebraic, rates, derivatives)] = None
   └── pseudobatch_transform Optional[PseudobatchTransform] = None
 </pre></div>
 </div>
@@ -543,14 +543,14 @@ in every training config.</p>
 <h2>Units<a class="headerlink" href="#units" title="Link to this heading">¶</a></h2>
 <p>Units are <em>free-form strings</em> which we require for data completeness. There is no unit engine, no parsing and no conversion.</p>
 <p>They are used for exactly two things: checking that quantities you <em>add together</em> in a
-<code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> expression share a unit, and checking that processes in one case study
+<code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> expression share a unit, and checking that processes in one case study
 agree with each other. <code class="docutils literal notranslate"><span class="pre">&quot;g/L&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;g/l&quot;</span></code> are different strings and will be reported as
 a mismatch. Pick a spelling and stay with it.</p>
 </section>
 <section id="where-the-biology-goes">
 <h2>Where the Biology Goes<a class="headerlink" href="#where-the-biology-goes" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">hybrax-format</span></code> guesses standard biology by default. If a species needs something more, an intracellular pool, a chemical decay, any mechanism the default doesn’t cover, you write it out yourself in <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>, algebraic relationships included:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">BiologicalOde</span><span class="p">(</span>
+<p><code class="docutils literal notranslate"><span class="pre">hybrax-format</span></code> guesses standard biology by default. If a species needs something more, an intracellular pool, a chemical decay, any mechanism the default doesn’t cover, you write it out yourself in <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>, algebraic relationships included:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">ReactionOde</span><span class="p">(</span>
     <span class="n">algebraic</span><span class="o">=</span><span class="p">{</span><span class="s2">"X_active"</span><span class="p">:</span> <span class="s2">"biomass - product_intracellular"</span><span class="p">},</span>
     <span class="n">rates</span><span class="o">=</span><span class="p">{</span><span class="s2">"q_biomass"</span><span class="p">:</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="s2">"q_glucose"</span><span class="p">:</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)},</span>
     <span class="n">derivatives</span><span class="o">=</span><span class="p">{</span><span class="s2">"biomass"</span><span class="p">:</span> <span class="s2">"q_biomass * X_active"</span><span class="p">,</span> <span class="o">...</span><span class="p">},</span>

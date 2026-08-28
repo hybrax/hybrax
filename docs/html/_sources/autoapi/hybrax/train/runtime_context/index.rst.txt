@@ -255,7 +255,7 @@ Module Contents
 
    Build the shared RhsOde of a parent collection, rejecting disagreement.
 
-   Every parent must declare an equivalent ``BiologicalOde``, so the first
+   Every parent must declare an equivalent ``ReactionOde``, so the first
    one's ``RhsOde`` speaks for all of them.
 
    :param collection: Parent process collection.
@@ -265,7 +265,7 @@ Module Contents
    :returns: The shared :class:`~hybrax.format.mechanistic.RhsOde`.
 
    :raises ValueError: If ``collection`` is empty, or its parents declare
-       non-equivalent ``biological_ode`` blocks.
+       non-equivalent ``reaction_ode`` blocks.
 
 
 .. py:function:: select_parent_collection(collection, parent_names)

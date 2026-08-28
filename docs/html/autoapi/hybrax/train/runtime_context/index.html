@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -785,7 +785,7 @@ canonical parent order, so there is no augmentation mapping to carry.</p>
 <dt class="sig sig-object py" id="hybrax.train.runtime_context.rhs_ode_from_training_parents">
 <span class="sig-prename descclassname"><span class="pre">hybrax.train.runtime_context.</span></span><span class="sig-name descname"><span class="pre">rhs_ode_from_training_parents</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">empty_message</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'requires</span> <span class="pre">a</span> <span class="pre">non-empty</span> <span class="pre">collection'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/runtime_context.html#rhs_ode_from_training_parents"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.runtime_context.rhs_ode_from_training_parents" title="Link to this definition">¶</a></dt>
 <dd><p>Build the shared RhsOde of a parent collection, rejecting disagreement.</p>
-<p>Every parent must declare an equivalent <code class="docutils literal notranslate"><span class="pre">BiologicalOde</span></code>, so the first
+<p>Every parent must declare an equivalent <code class="docutils literal notranslate"><span class="pre">ReactionOde</span></code>, so the first
 one’s <code class="docutils literal notranslate"><span class="pre">RhsOde</span></code> speaks for all of them.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -800,7 +800,7 @@ so the diagnostic reads in the caller’s terms.</p></li>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">collection</span></code> is empty, or its parents declare
-non-equivalent <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> blocks.</p>
+non-equivalent <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> blocks.</p>
 </dd>
 </dl>
 </dd></dl>

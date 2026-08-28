@@ -107,13 +107,13 @@ Module Contents
 
    Accepts a :class:`BioProcess` or a
    :class:`BioProcessCollection`. For multi-process containers,
-   :func:`hybrax.format.validate.validate_biological_ode_equivalence` is
+   :func:`hybrax.format.validate.validate_reaction_ode_equivalence` is
    invoked first and the title represents the whole container. The
    individual process picked to render is not exposed.
 
-   The Derivatives sub-table separates the *Biological* expression
-   (verbatim from ``biological_ode.derivatives``) from the physical flow
-   contributions that hybrax.format adds on top. Inflows contribute
+   The Derivatives sub-table separates the *Reaction* expression (verbatim from
+   ``reaction_ode.derivatives``) from the transport contributions that
+   hybrax.format adds on top. Inflows contribute
    ``+ feed(...)`` and ``− dilution(...)``. Retained material contributes
    ``+ retention(<Outflow>=<fraction>)`` for each affected RMC; unretained
    Outflows have no concentration contribution. The Volume sub-table lists
@@ -121,6 +121,6 @@ Module Contents
    (``− |<Outflow sum>|``) columns.
 
    :raises ValueError: if a multi-process container's processes do not share
-       equivalent ``biological_ode`` blocks.
+       equivalent ``reaction_ode`` blocks.
 
 

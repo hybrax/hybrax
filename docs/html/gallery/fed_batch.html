@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -426,7 +426,7 @@ sampling at every offline measurement. See the assembled ODE:</p>
 +-----------------------------------------------------------------------------------------+
 | Derivatives                                                                             |
 +-----------------------------------------------------------------------------------------+
-| State   | Unit  | Biological          | Feed                 | Dilution / retention     |
+| State   | Unit  | Reaction            | Feed                 | Dilution / retention     |
 | biomass | [g/L] | q_biomass * biomass |                      | − dilution(glucose_feed) |
 | glucose | [g/L] | q_glucose * biomass | + feed(glucose_feed) | − dilution(glucose_feed) |
 | lactate | [g/L] | q_lactate * biomass |                      | − dilution(glucose_feed) |
@@ -457,7 +457,7 @@ inputs beyond the state:</p>
 <span class="linenos"> 7</span>        <span class="n">n_in</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_controlled_Inflows</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_controlled_PVs</span>
 <span class="linenos"> 8</span>        <span class="bp">self</span><span class="o">.</span><span class="n">mlp</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span><span class="p">(</span>
 <span class="linenos"> 9</span>            <span class="n">in_size</span><span class="o">=</span><span class="n">n_in</span><span class="p">,</span>
-<span class="linenos">10</span>            <span class="n">out_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_BiologicalOde_rates</span><span class="p">,</span>
+<span class="linenos">10</span>            <span class="n">out_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_ReactionOde_rates</span><span class="p">,</span>
 <span class="linenos">11</span>            <span class="n">width_size</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span>
 <span class="linenos">12</span>            <span class="n">depth</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
 <span class="linenos">13</span>            <span class="n">activation</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">tanh</span><span class="p">,</span>
@@ -503,7 +503,7 @@ process has no controlled feed or PV axes to estimate. See
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:09:18 INFO __main__: training complete: first_mean_loss=4.53101 last_mean_loss=0.00018778 delta=-4.53082
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-28 19:05:50 INFO __main__: training complete: first_mean_loss=4.53101 last_mean_loss=0.000187796 delta=-4.53082
 run directory: ./source/_data/out/runs/gallery_fed_batch/run
 </pre></div>
 </div>
@@ -511,7 +511,7 @@ run directory: ./source/_data/out/runs/gallery_fed_batch/run
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/7122cb8c1c27a2e770e3e870b42fb75ef957c8f0b607b7feb8d591cbd0e8632a.png" src="../_images/7122cb8c1c27a2e770e3e870b42fb75ef957c8f0b607b7feb8d591cbd0e8632a.png" />
+<img alt="../_images/041e55c9d12dc5dd1b091fc02340fc92a0e0d5dbb563aeec0051edb541221c55.png" src="../_images/041e55c9d12dc5dd1b091fc02340fc92a0e0d5dbb563aeec0051edb541221c55.png" />
 </div>
 </div>
 <p>Look at the bottom-right panel (<code class="docutils literal notranslate"><span class="pre">volume_changes</span></code>) before anything else. It plots every

@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -394,12 +394,12 @@ fitting.</p>
 <h2>1. Bounds, from the Data Itself<a class="headerlink" href="#bounds-from-the-data-itself" title="Link to this heading">¶</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">ReactorMediumComponent.bounds</span></code> is metadata hybrax.format already carries: <code class="docutils literal notranslate"><span class="pre">demo_batch</span></code>
 declares <code class="docutils literal notranslate"><span class="pre">(0.0,</span> <span class="pre">None)</span></code> on every species, because a concentration cannot be negative. But
-<code class="docutils literal notranslate"><span class="pre">BiologicalOde.rates</span></code> bounds default to unbounded, since auto-generation has no way to
+<code class="docutils literal notranslate"><span class="pre">ReactionOde.rates</span></code> bounds default to unbounded, since auto-generation has no way to
 know what a plausible rate range is. Attaching them is one <code class="docutils literal notranslate"><span class="pre">transform_process_collection</span></code>
 hook:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">1</span>
 <span class="linenos">2</span><span class="c1"># --------------------------------------------------------------------------</span>
-<span class="linenos">3</span><span class="c1"># 3. Attach rate bounds. hybrax.format's auto-generated BiologicalOde leaves every</span>
+<span class="linenos">3</span><span class="c1"># 3. Attach rate bounds. hybrax.format's auto-generated ReactionOde leaves every</span>
 <span class="linenos">4</span><span class="c1">#    rate unbounded (Bounds = (None, None)); here we declare what we actually</span>
 <span class="linenos">5</span><span class="c1">#    know about the biology, so the loss below has something to read.</span>
 <span class="linenos">6</span><span class="c1"># --------------------------------------------------------------------------</span>
@@ -457,7 +457,7 @@ automatically: the loss module below reads them itself, once, at construction:</
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">-inf</span></code>/<code class="docutils literal notranslate"><span class="pre">+inf</span></code> for an unbounded side falls straight out of the <code class="docutils literal notranslate"><span class="pre">clip</span></code>, so there is no
 branching on which bounds are set. The penalty is evaluated on <code class="docutils literal notranslate"><span class="pre">dense_RAW_states</span></code> and
-<code class="docutils literal notranslate"><span class="pre">dense_RAW_modeled_BiologicalOde_rates</span></code> (<strong>RAW</strong>, because “negative” and “above 1.0 1/h”
+<code class="docutils literal notranslate"><span class="pre">dense_RAW_modeled_ReactionOde_rates</span></code> (<strong>RAW</strong>, because “negative” and “above 1.0 1/h”
 only mean something in physical units) and masked by <code class="docutils literal notranslate"><span class="pre">dense_valid_time</span></code>, the dense
 grid’s own post-solver-failure mask.</p>
 </section>
@@ -467,7 +467,7 @@ grid’s own post-solver-failure mask.</p>
 <span class="linenos"> 2</span>            <span class="n">inputs</span><span class="o">.</span><span class="n">dense_RAW_states</span><span class="p">[:,</span> <span class="p">:</span><span class="n">n_state_bounds</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">state_lo</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">state_hi</span>
 <span class="linenos"> 3</span>        <span class="p">)</span>
 <span class="linenos"> 4</span>        <span class="n">rate_penalty</span> <span class="o">=</span> <span class="n">hinge</span><span class="p">(</span>
-<span class="linenos"> 5</span>            <span class="n">inputs</span><span class="o">.</span><span class="n">dense_RAW_modeled_BiologicalOde_rates</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rate_lo</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rate_hi</span>
+<span class="linenos"> 5</span>            <span class="n">inputs</span><span class="o">.</span><span class="n">dense_RAW_modeled_ReactionOde_rates</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rate_lo</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rate_hi</span>
 <span class="linenos"> 6</span>        <span class="p">)</span>
 <span class="linenos"> 7</span>        <span class="n">bounds</span> <span class="o">=</span> <span class="p">(</span>
 <span class="linenos"> 8</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">state_penalty</span> <span class="o">*</span> <span class="n">valid</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">])</span>
@@ -493,7 +493,7 @@ smooth. <code class="docutils literal notranslate"><span class="pre">demo_batch<
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:05:30 INFO __main__: training complete: first_mean_loss=0.136489 last_mean_loss=0.00040269 delta=-0.136086
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-28 18:59:39 INFO __main__: training complete: first_mean_loss=0.136489 last_mean_loss=0.00040269 delta=-0.136086
 run directory: ./source/_data/out/runs/gallery_dense_loss/run_full
 </pre></div>
 </div>

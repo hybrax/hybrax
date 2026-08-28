@@ -188,7 +188,7 @@ Module Contents
 
 
    .. py:attribute:: reaction_module
-      :type:  hybrax.train.model_api.UserReactionModule
+      :type:  hybrax.train.model_api.RateModule
 
 
    .. py:attribute:: store

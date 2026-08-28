@@ -238,7 +238,7 @@ printer, and it is the fastest way to stop guessing at slicing:
 hxt.print_reaction_schema(wrapper)
 ```
 
-That is where `in_size=self.n_modeled_RMCs` and `out_size=self.n_modeled_BiologicalOde_rates`
+That is where `in_size=self.n_modeled_RMCs` and `out_size=self.n_modeled_ReactionOde_rates`
 came from, and it confirms the output order is `q_biomass, q_glucose, q_product`.
 
 :::{admonition} A misspelled hook name is silent

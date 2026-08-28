@@ -90,7 +90,7 @@ def transform_process_collection(collection, config):
 
 Three things it is genuinely used for:
 
-**Making a fixed derivative learnable.** If your `biological_ode` drives a process
+**Making a fixed derivative learnable.** If your `reaction_ode` drives a process
 variable with a hard-coded relaxation and you would rather learn it, swap the derivative
 for a named rate and declare it: the reaction module then predicts it:
 
@@ -98,7 +98,7 @@ for a named rate and declare it: the reaction module then predicts it:
 def transform_process_collection(collection, config):
     del config
     for process in collection.processes.values():
-        ode = process.biological_ode
+        ode = process.reaction_ode
         if ode is None or "product_ratio" not in ode.derivatives:
             continue
         ode.derivatives["product_ratio"] = "r_product_ratio"

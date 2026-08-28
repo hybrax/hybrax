@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -422,7 +422,7 @@ discovering issues one failed run at a time.</p>
   (True, 'PASS measurement_sampling_alignment: no reactor-medium measurement times are suspiciously close to sampling events')
   (True, 'PASS bounds: lo &lt;= hi holds for reactor components, process variables, volume')
   (True, 'PASS bounds_against_data: all measured datapoints with declared bounds fall within them')
-  (True, 'PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units')
+  (True, 'PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units')
 </pre></div>
 </div>
 </div>
@@ -471,7 +471,7 @@ be applied to another.</p>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">validate_timeseries_shape</span></code></p></td>
 <td><p>Mismatched <code class="docutils literal notranslate"><span class="pre">times</span></code>/<code class="docutils literal notranslate"><span class="pre">values</span></code> lengths.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">validate_biological_ode</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">validate_reaction_ode</span></code></p></td>
 <td><p>A dynamic state with no derivative entry. Omission is rejected; write <code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code> if you mean no dynamics.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">validate_bounds</span></code></p></td>
@@ -589,7 +589,7 @@ before inoculation.</p>
 +-----------------------------------------------------------------------------------------+
 | Derivatives                                                                             |
 +-----------------------------------------------------------------------------------------+
-| State   | Unit  | Biological          | Feed                 | Dilution / retention     |
+| State   | Unit  | Reaction            | Feed                 | Dilution / retention     |
 | biomass | [g/L] | q_biomass * biomass |                      | − dilution(glucose_feed) |
 | glucose | [g/L] | q_glucose * biomass | + feed(glucose_feed) | − dilution(glucose_feed) |
 | lactate | [g/L] | q_lactate * biomass |                      | − dilution(glucose_feed) |

@@ -318,7 +318,7 @@ page's own executed run is at `./source/_data/out/runs/gallery_gaussian_process/
 - [Mechanistic Models](mechanistic_rates.md): a reaction module built from explicit
   kinetics instead.
 - [The Reaction Module](../train/reaction_module.md): `auxiliary`, and everything else
-  a `UserReactionModule` can return.
+  a `RateModule` can return.
 - [The Loss Module](../train/loss_module.md): `LossInputs.reaction_module`, and
   everything else a custom `UserLossModule` can do.
 

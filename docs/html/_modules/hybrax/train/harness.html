@@ -10,7 +10,7 @@
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -428,7 +428,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">.model_api</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">EstimatedScales</span><span class="p">,</span>
     <span class="n">UserLossModule</span><span class="p">,</span>
-    <span class="n">UserReactionModule</span><span class="p">,</span>
+    <span class="n">RateModule</span><span class="p">,</span>
     <span class="n">_as_scaler</span><span class="p">,</span>
     <span class="n">partition_trainable</span><span class="p">,</span>
 <span class="p">)</span>
@@ -1033,7 +1033,7 @@
     <span class="n">store</span><span class="p">:</span> <span class="n">TrainingDataStore</span><span class="p">,</span>
     <span class="n">scales</span><span class="p">:</span> <span class="n">EstimatedScales</span><span class="p">,</span>
     <span class="n">training_parent_collection</span><span class="p">:</span> <span class="n">BioProcessCollection</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">UserReactionModule</span><span class="p">:</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RateModule</span><span class="p">:</span>
     <span class="n">hook</span> <span class="o">=</span> <span class="n">get_hook</span><span class="p">(</span>
         <span class="n">custom_module</span><span class="p">,</span>
         <span class="s2">"build_reaction_module"</span><span class="p">,</span>
@@ -1050,10 +1050,8 @@
             <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">fields</span><span class="p">(</span><span class="n">EstimatedScales</span><span class="p">)</span>
         <span class="p">},</span>
     <span class="p">)</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">UserReactionModule</span><span class="p">):</span>
-        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
-            <span class="s2">"build_reaction_module(...) must return a UserReactionModule instance"</span>
-        <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">RateModule</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"build_reaction_module(...) must return a RateModule instance"</span><span class="p">)</span>
     <span class="n">_require_stateful_opt_in</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">allow_stateful_models</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">module</span>
 
@@ -1136,7 +1134,7 @@
     <span class="n">custom_module</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
     <span class="n">custom_config</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
     <span class="n">build_loss</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">UserReactionModule</span><span class="p">,</span> <span class="n">UserLossModule</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">RateModule</span><span class="p">,</span> <span class="n">UserLossModule</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">"""Build reaction and loss modules behind the same parent-key guards."""</span>
     <span class="n">_validate_training_parent_collection</span><span class="p">(</span><span class="n">training_parent_collection</span><span class="p">,</span> <span class="n">expected_parents</span><span class="p">)</span>
     <span class="n">reaction_module</span> <span class="o">=</span> <span class="n">_build_reaction_module</span><span class="p">(</span>
@@ -1168,7 +1166,7 @@
     <span class="n">custom_module</span><span class="p">,</span>
     <span class="n">custom_config</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
     <span class="n">build_loss</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">UserReactionModule</span><span class="p">,</span> <span class="n">UserLossModule</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">RateModule</span><span class="p">,</span> <span class="n">UserLossModule</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">"""Build runtime hook modules once from parent-selected scale evidence."""</span>
     <span class="n">scale_data</span> <span class="o">=</span> <span class="n">ProducerCollectionData</span><span class="o">.</span><span class="n">from_collection</span><span class="p">(</span>
         <span class="n">store</span><span class="p">,</span> <span class="n">collection</span>
@@ -1289,7 +1287,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">_build_template_wrapper</span><span class="p">(</span>
     <span class="n">store</span><span class="p">:</span> <span class="n">TrainingDataStore</span><span class="p">,</span>
     <span class="o">*</span><span class="p">,</span>
-    <span class="n">reaction_module</span><span class="p">:</span> <span class="n">UserReactionModule</span><span class="p">,</span>
+    <span class="n">reaction_module</span><span class="p">:</span> <span class="n">RateModule</span><span class="p">,</span>
     <span class="n">selected_processes</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
     <span class="n">loss_module</span><span class="p">:</span> <span class="n">UserLossModule</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">HybridOdeWrapper</span><span class="p">:</span>
@@ -1611,7 +1609,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">train_collection</span><span class="p">(</span>
     <span class="n">store</span><span class="p">:</span> <span class="n">TrainingDataStore</span><span class="p">,</span>
     <span class="o">*</span><span class="p">,</span>
-    <span class="n">reaction_module</span><span class="p">:</span> <span class="n">UserReactionModule</span><span class="p">,</span>
+    <span class="n">reaction_module</span><span class="p">:</span> <span class="n">RateModule</span><span class="p">,</span>
     <span class="n">loss_module</span><span class="p">:</span> <span class="n">UserLossModule</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">config</span><span class="p">:</span> <span class="n">TrainHarnessConfig</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">optimizer</span><span class="p">:</span> <span class="n">optax</span><span class="o">.</span><span class="n">GradientTransformation</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -2627,7 +2625,7 @@
 <span class="w">    </span><span class="sd">"""Collection-free inputs for :func:`train_collection`."""</span>
 
     <span class="n">store</span><span class="p">:</span> <span class="n">TrainingDataStore</span>
-    <span class="n">reaction_module</span><span class="p">:</span> <span class="n">UserReactionModule</span>
+    <span class="n">reaction_module</span><span class="p">:</span> <span class="n">RateModule</span>
     <span class="n">loss_module</span><span class="p">:</span> <span class="n">UserLossModule</span>
     <span class="n">config</span><span class="p">:</span> <span class="n">TrainHarnessConfig</span>
     <span class="n">optimizer</span><span class="p">:</span> <span class="n">optax</span><span class="o">.</span><span class="n">GradientTransformation</span>

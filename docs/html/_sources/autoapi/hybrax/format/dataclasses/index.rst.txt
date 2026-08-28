@@ -27,7 +27,6 @@ Classes
    hybrax.format.dataclasses.BioProcess
    hybrax.format.dataclasses.BioProcessCollection
    hybrax.format.dataclasses.BioProcessMetadata
-   hybrax.format.dataclasses.BiologicalOde
    hybrax.format.dataclasses.DiscreteEvents
    hybrax.format.dataclasses.FeedMedium
    hybrax.format.dataclasses.FeedMediumComponent
@@ -36,6 +35,7 @@ Classes
    hybrax.format.dataclasses.ProcessOrdering
    hybrax.format.dataclasses.ProcessVariable
    hybrax.format.dataclasses.PseudobatchTransform
+   hybrax.format.dataclasses.ReactionOde
    hybrax.format.dataclasses.ReactorMedium
    hybrax.format.dataclasses.ReactorMediumComponent
    hybrax.format.dataclasses.StaticVariable
@@ -83,15 +83,9 @@ Module Contents
 
    Single experimental bioprocess run: time axis, volume, media, and variables.
 
-   ``biological_ode`` auto-generates from ``reactor_medium``/
+   ``reaction_ode`` auto-generates from ``reactor_medium``/
    ``process_variables`` if not supplied; see
-   ``_auto_generate_biological_ode``.
-
-
-   .. py:attribute:: biological_ode
-      :type:  Optional[BiologicalOde]
-      :value: None
-
+   ``_auto_generate_reaction_ode``.
 
 
    .. py:attribute:: discrete_events
@@ -110,6 +104,12 @@ Module Contents
 
    .. py:attribute:: pseudobatch_transform
       :type:  Optional[PseudobatchTransform]
+      :value: None
+
+
+
+   .. py:attribute:: reaction_ode
+      :type:  Optional[ReactionOde]
       :value: None
 
 
@@ -182,41 +182,6 @@ Module Contents
 
    .. py:attribute:: process_type
       :type:  str
-
-
-.. py:class:: BiologicalOde
-
-   User-defined per-state biological RHS expressions.
-
-   Describes only the *biological* part of ``dc/dt``. Physical contributions
-   (feed inflow, dilution, sample outflow, volume dynamics) continue to be
-   added by hybrax.format from the existing :class:`VolumeChange` machinery and
-   are not part of this block.
-
-   :ivar algebraic: Mapping ``name -> expression string``. Algebraic (no time
-                    derivative), recomputed every RHS call. Must be acyclic.
-   :ivar rates: Mapping ``name -> Bounds``. Names of abstract specific rates
-                that the runtime supplies; ``len(rates)`` is the rate-vector
-                dimension. Each value is a ``(lower, upper)`` tuple with ``None``
-                on either side meaning unbounded; use ``(None, None)`` (i.e.
-                ``_NO_BOUNDS``) for rates without bounds.
-   :ivar derivatives: Mapping ``state_name -> expression string`` giving the
-                      biological contribution to ``d(state)/dt``. Every dynamic state
-                      must have an entry; use ``"0"`` to declare no biological
-                      dynamics.
-
-
-
-   .. py:attribute:: algebraic
-      :type:  Dict[str, str]
-
-
-   .. py:attribute:: derivatives
-      :type:  Dict[str, str]
-
-
-   .. py:attribute:: rates
-      :type:  Dict[str, Bounds]
 
 
 .. py:class:: DiscreteEvents
@@ -334,7 +299,7 @@ Module Contents
    Ordering rules:
 
    - ``name_modeled_rates`` preserves the user-supplied insertion order of
-     ``BiologicalOde.rates`` (downstream consumers such as ``hybrax.train``
+     ``ReactionOde.rates`` (downstream consumers such as ``hybrax.train``
      pass rate vectors in this order).
    - ``name_modeled_algebraic`` is topo-sorted by inter-algebraic
      dependencies; ties broken alphabetically.
@@ -440,6 +405,41 @@ Module Contents
       :type:  Optional[hybrax.format.time_series.TimeSeries]
       :value: None
 
+
+
+.. py:class:: ReactionOde
+
+   User-defined per-state reaction RHS expressions.
+
+   Describes the reaction part of ``dc/dt``: intrinsic biological, abiotic, or
+   other user-defined dynamics. Transport contributions (feed inflow,
+   dilution, sample outflow, and volume dynamics) continue to be added by
+   hybrax.format from the existing :class:`VolumeChange` machinery and are not
+   part of this block.
+
+   :ivar algebraic: Mapping ``name -> expression string``. Algebraic (no time
+                    derivative), recomputed every RHS call. Must be acyclic.
+   :ivar rates: Mapping ``name -> Bounds``. Names of abstract specific rates
+                that the runtime supplies; ``len(rates)`` is the rate-vector
+                dimension. Each value is a ``(lower, upper)`` tuple with ``None``
+                on either side meaning unbounded; use ``(None, None)`` (i.e.
+                ``_NO_BOUNDS``) for rates without bounds.
+   :ivar derivatives: Mapping ``state_name -> expression string`` giving the
+                      reaction contribution to ``d(state)/dt``. Every dynamic state must
+                      have an entry; use ``"0"`` to declare no reaction dynamics.
+
+
+
+   .. py:attribute:: algebraic
+      :type:  Dict[str, str]
+
+
+   .. py:attribute:: derivatives
+      :type:  Dict[str, str]
+
+
+   .. py:attribute:: rates
+      :type:  Dict[str, Bounds]
 
 
 .. py:class:: ReactorMedium

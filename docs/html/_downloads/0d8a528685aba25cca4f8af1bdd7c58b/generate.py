@@ -202,7 +202,7 @@ def _batch_process(name: str, meas: dict[str, np.ndarray]) -> hxf.BioProcess:
             density_unit="kg/L",
             components=components,
         ),
-        # biological_ode is left None on purpose -> hybrax.format auto-generates
+        # reaction_ode is left None on purpose -> hybrax.format auto-generates
         #   q_biomass, q_glucose, q_product  with  d<c>/dt = q_<c> * biomass
     )
 
@@ -1313,7 +1313,7 @@ def build_demo_optfed() -> None:
             ),
             process_variables=process_variables,
         )
-        processes[name].biological_ode = hxf.BiologicalOde(
+        processes[name].reaction_ode = hxf.ReactionOde(
             algebraic={"X_active": "biomass - product"},
             rates={
                 "q_biomass": (None, None),
@@ -1484,7 +1484,7 @@ def build_demo_glutamine_decay() -> None:
                 components=components,
             ),
         )
-        processes[name].biological_ode = hxf.BiologicalOde(
+        processes[name].reaction_ode = hxf.ReactionOde(
             rates={
                 "q_biomass": (None, None),
                 "q_Gln": (None, None),
@@ -1653,7 +1653,7 @@ def build_demo_modeled_pv() -> None:
                     bounds=(0.0, 1.0),
                 ),
             },
-            biological_ode=hxf.BiologicalOde(
+            reaction_ode=hxf.ReactionOde(
                 rates={"q_biomass": (0.0, None), "r_glyco_frac": (0.0, None)},
                 derivatives={
                     "biomass": "q_biomass * biomass",
@@ -1688,7 +1688,7 @@ def build_demo_modeled_pv() -> None:
 # demo_spline_jump
 # ===========================================================================
 # One species, first-order decay (a physical/chemical rate, not growth-linked,
-# so no biomass is needed: biological_ode is supplied explicitly). One feed
+# so no biomass is needed: reaction_ode is supplied explicitly). One feed
 # bolus part-way through jumps mass and volume together. Both phases are
 # closed-form exponential decay at constant volume, so the dense ground truth
 # below is exact, not an RK4 approximation. It is the one dataset in this file
@@ -1794,7 +1794,7 @@ def build_demo_spline_jump() -> None:
                 ),
             },
         ),
-        biological_ode=hxf.BiologicalOde(
+        reaction_ode=hxf.ReactionOde(
             rates={"k_solute": (0.0, None)},
             derivatives={"solute": "-k_solute * solute", "biomass": "0"},
         ),
@@ -1995,7 +1995,7 @@ def build_demo_continuous_overflow() -> None:
             density_unit="kg/L",
             components=components,
         ),
-        biological_ode=hxf.BiologicalOde(
+        reaction_ode=hxf.ReactionOde(
             rates={"mu": (None, None)},
             derivatives={
                 "biomass": "mu * biomass",

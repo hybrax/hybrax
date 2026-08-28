@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -389,24 +389,24 @@ that is actually yours. On real data, the default MLP is rarely what you want.</
 state and controls, and returns the rates. Everything else (the mass balance, the
 dilution, the events) is hybrax.format’s.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.train</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">UserReactionModule</span><span class="p">,</span> <span class="n">ReactionInputs</span><span class="p">,</span> <span class="n">ReactionOutputs</span><span class="p">,</span> <span class="n">trainable_field</span><span class="p">,</span>
+    <span class="n">RateModule</span><span class="p">,</span> <span class="n">ReactionInputs</span><span class="p">,</span> <span class="n">ReactionOutputs</span><span class="p">,</span> <span class="n">trainable_field</span><span class="p">,</span>
 <span class="p">)</span>
 
-<span class="k">class</span><span class="w"> </span><span class="nc">MyReactionModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">MyReactionModule</span><span class="p">(</span><span class="n">RateModule</span><span class="p">):</span>
     <span class="n">mlp</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>       <span class="c1"># always; the base owns the scales</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">mlp</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span><span class="p">(</span>
             <span class="n">in_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span><span class="p">,</span>
-            <span class="n">out_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_BiologicalOde_rates</span><span class="p">,</span>
+            <span class="n">out_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_ReactionOde_rates</span><span class="p">,</span>
             <span class="n">width_size</span><span class="o">=</span><span class="mi">32</span><span class="p">,</span> <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">key</span><span class="p">,</span>
         <span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">):</span>
         <span class="k">del</span> <span class="n">t</span>
         <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mlp</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">),</span>
+            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mlp</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">),</span>
             <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Inflows</span><span class="p">),</span>
             <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Outflows</span><span class="p">),</span>
         <span class="p">)</span>
@@ -417,9 +417,9 @@ dilution, the events) is hybrax.format’s.</p>
 <section id="the-hook">
 <h2>The hook<a class="headerlink" href="#the-hook" title="Link to this heading">¶</a></h2>
 <p><strong>Fires:</strong> at training setup, after <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code>.
-<strong>Signature:</strong> <code class="docutils literal notranslate"><span class="pre">(*,</span> <span class="pre">target_names,</span> <span class="pre">process_names,</span> <span class="pre">config,</span> <span class="pre">seed,</span> <span class="pre">training_parent_collection,</span> <span class="pre">**scale_kwargs)</span> <span class="pre">-&gt;</span> <span class="pre">UserReactionModule</span></code>
+<strong>Signature:</strong> <code class="docutils literal notranslate"><span class="pre">(*,</span> <span class="pre">target_names,</span> <span class="pre">process_names,</span> <span class="pre">config,</span> <span class="pre">seed,</span> <span class="pre">training_parent_collection,</span> <span class="pre">**scale_kwargs)</span> <span class="pre">-&gt;</span> <span class="pre">RateModule</span></code>
 <strong>Default:</strong> <code class="docutils literal notranslate"><span class="pre">DefaultReactionModule</span></code>, a 2-layer MLP.
-<strong>Type-checked:</strong> returning something that is not a <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code> raises <code class="docutils literal notranslate"><span class="pre">TypeError</span></code>.</p>
+<strong>Type-checked:</strong> returning something that is not a <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> raises <code class="docutils literal notranslate"><span class="pre">TypeError</span></code>.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">build_reaction_module</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">seed</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
     <span class="n">scale_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"SCALE_"</span><span class="p">)}</span>
     <span class="k">return</span> <span class="n">MyReactionModule</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">key</span><span class="p">(</span><span class="n">seed</span><span class="p">),</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
@@ -480,7 +480,7 @@ that knows what hour it is, which is rarely what you mean.</p>
 <section id="what-you-must-return">
 <h2>What you must return<a class="headerlink" href="#what-you-must-return" title="Link to this heading">¶</a></h2>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">ReactionOutputs</span><span class="p">(</span>
-    <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=...</span><span class="p">,</span>   <span class="c1"># (n_modeled_BiologicalOde_rates,)</span>
+    <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=...</span><span class="p">,</span>   <span class="c1"># (n_modeled_ReactionOde_rates,)</span>
     <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=...</span><span class="p">,</span>            <span class="c1"># (n_modeled_Inflows,)</span>
     <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=...</span><span class="p">,</span>           <span class="c1"># (n_modeled_Outflows,)</span>
 <span class="p">)</span>
@@ -495,7 +495,7 @@ into a run.</p>
 </div>
 <p>The rate vector is <strong>flat and positional</strong>, aligned with <code class="docutils literal notranslate"><span class="pre">rhs_ode.name_modeled_rates</span></code>:
 not a dict, not a <code class="docutils literal notranslate"><span class="pre">(q,</span> <span class="pre">r)</span></code> tuple. Its order is the insertion order of
-<code class="docutils literal notranslate"><span class="pre">BiologicalOde.rates</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">ReactionOde.rates</span></code>.</p>
 <div class="warning admonition">
 <p class="admonition-title">Modeled feed rates must be non-negative</p>
 <p>Nothing enforces it. A feed pump cannot run backwards, so apply your own
@@ -519,7 +519,7 @@ the inputs, compute in RAW, then scale the result back:</p>
     <span class="n">mu</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mu_max</span> <span class="o">*</span> <span class="n">S</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">K_s</span> <span class="o">+</span> <span class="n">S</span><span class="p">)</span>        <span class="c1"># honest physical units</span>
     <span class="n">RAW_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">mu</span><span class="p">,</span> <span class="o">-</span><span class="n">mu</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">Y_xs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">alpha</span> <span class="o">*</span> <span class="n">mu</span><span class="p">])</span>
     <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-        <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_BiologicalOde_rates</span><span class="p">(</span><span class="n">RAW_rates</span><span class="p">),</span>
+        <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_ReactionOde_rates</span><span class="p">(</span><span class="n">RAW_rates</span><span class="p">),</span>
         <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
         <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
     <span class="p">)</span>
@@ -562,7 +562,10 @@ different model class, and it requires explicit opt-in:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"allow_stateful_models"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
-<p>Without it you get a clear <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>. See <a class="reference internal" href="../gallery/index.html"><span class="std std-doc">Gallery</span></a>.</p>
+<p>Without it you get a clear <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>. Hybrax exports
+<code class="docutils literal notranslate"><span class="pre">DefaultGruReactionModule</span></code> and <code class="docutils literal notranslate"><span class="pre">DefaultLstmReactionModule</span></code> for the standard
+recurrent cases; the LSTM integrates <code class="docutils literal notranslate"><span class="pre">[hidden</span> <span class="pre">|</span> <span class="pre">cell]</span></code>, so its latent width is
+twice <code class="docutils literal notranslate"><span class="pre">hidden_width</span></code>. See the <a class="reference internal" href="../gallery/stateful.html"><span class="std std-doc">stateful gallery</span></a>.</p>
 </section>
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>

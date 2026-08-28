@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -383,13 +383,13 @@ see <a class="reference internal" href="silent_failures.html"><span class="std s
 here is the design working. Search this page for a fragment of your message.</p>
 <section id="getting-data-in">
 <h2>Getting data in<a class="headerlink" href="#getting-data-in" title="Link to this heading">¶</a></h2>
-<section id="auto-generated-biologicalode-requires-a-biomass-component">
-<h3><code class="docutils literal notranslate"><span class="pre">auto-generated</span> <span class="pre">BiologicalOde</span> <span class="pre">requires</span> <span class="pre">a</span> <span class="pre">'biomass'</span> <span class="pre">component</span></code><a class="headerlink" href="#auto-generated-biologicalode-requires-a-biomass-component" title="Link to this heading">¶</a></h3>
+<section id="auto-generated-reactionode-requires-a-biomass-component">
+<h3><code class="docutils literal notranslate"><span class="pre">auto-generated</span> <span class="pre">ReactionOde</span> <span class="pre">requires</span> <span class="pre">a</span> <span class="pre">'biomass'</span> <span class="pre">component</span></code><a class="headerlink" href="#auto-generated-reactionode-requires-a-biomass-component" title="Link to this heading">¶</a></h3>
 <p>Raised when you construct a <code class="docutils literal notranslate"><span class="pre">BioProcess</span></code>.</p>
 <p><strong>Why.</strong> Auto-generated dynamics use <em>specific</em> rates (per unit biomass) so there has to
 be a biomass to be specific to. The lookup is case-insensitive on the component name.</p>
 <p><strong>Fix.</strong> Either name your biomass component <code class="docutils literal notranslate"><span class="pre">biomass</span></code>, or write
-<a class="reference internal" href="../format/bioprocess_ode.html#writing-your-own"><span class="std std-ref"><code class="docutils literal notranslate"><span class="pre">biological_ode</span></code></span></a> yourself. A dataset with
+<a class="reference internal" href="../format/bioprocess_ode.html#writing-your-own"><span class="std std-ref"><code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code></span></a> yourself. A dataset with
 no biomass at all (a chemical process, an abiotic control) needs the explicit form.</p>
 </section>
 <section id="provide-discrete-samples-and-or-spline-representation">
@@ -460,7 +460,7 @@ layout; a cycle in <code class="docutils literal notranslate"><span class="pre">
 </tr>
 <tr class="row-odd"><td><p>missing derivative</p></td>
 <td><p>A dynamic state has no <code class="docutils literal notranslate"><span class="pre">derivatives</span></code> entry</p></td>
-<td><p>Add one; write <code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code> if it has no biological dynamics</p></td>
+<td><p>Add one; write <code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code> if it has no reaction dynamics</p></td>
 </tr>
 <tr class="row-even"><td><p>additive unit mismatch</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">biomass</span> <span class="pre">-</span> <span class="pre">product</span></code> with different units</p></td>
@@ -511,7 +511,7 @@ state changes what the model <em>is</em>, not just its size.</p>
 <h3><code class="docutils literal notranslate"><span class="pre">TypeError</span></code> from a hook return value<a class="headerlink" href="#typeerror-from-a-hook-return-value" title="Link to this heading">¶</a></h3>
 <p><strong>Why.</strong> <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code>, <code class="docutils literal notranslate"><span class="pre">build_reaction_module</span></code> and <code class="docutils literal notranslate"><span class="pre">build_loss_module</span></code> are
 type-checked.</p>
-<p><strong>Fix.</strong> Return <code class="docutils literal notranslate"><span class="pre">EstimatedScales</span></code>, a <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code> and a <code class="docutils literal notranslate"><span class="pre">UserLossModule</span></code>
+<p><strong>Fix.</strong> Return <code class="docutils literal notranslate"><span class="pre">EstimatedScales</span></code>, a <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> and a <code class="docutils literal notranslate"><span class="pre">UserLossModule</span></code>
 respectively. The other four hooks are not checked.</p>
 </section>
 <section id="reactionoutputs-init-missing-1-required-positional-argument-scl-modeled-inflows-rates">
@@ -648,7 +648,7 @@ are on <code class="docutils literal notranslate"><span class="pre">hxf.serializ
             <ul>
 <li><a class="reference internal" href="#">Errors</a><ul>
 <li><a class="reference internal" href="#getting-data-in">Getting data in</a><ul>
-<li><a class="reference internal" href="#auto-generated-biologicalode-requires-a-biomass-component"><code class="docutils literal notranslate"><span class="pre">auto-generated</span> <span class="pre">BiologicalOde</span> <span class="pre">requires</span> <span class="pre">a</span> <span class="pre">'biomass'</span> <span class="pre">component</span></code></a></li>
+<li><a class="reference internal" href="#auto-generated-reactionode-requires-a-biomass-component"><code class="docutils literal notranslate"><span class="pre">auto-generated</span> <span class="pre">ReactionOde</span> <span class="pre">requires</span> <span class="pre">a</span> <span class="pre">'biomass'</span> <span class="pre">component</span></code></a></li>
 <li><a class="reference internal" href="#provide-discrete-samples-and-or-spline-representation"><code class="docutils literal notranslate"><span class="pre">Provide</span> <span class="pre">discrete</span> <span class="pre">samples</span> <span class="pre">and/or</span> <span class="pre">spline</span> <span class="pre">representation</span></code></a></li>
 <li><a class="reference internal" href="#a-float32-array-raises-instead-of-being-accepted">A float32 array raises instead of being accepted</a></li>
 <li><a class="reference internal" href="#a-state-with-no-time-axis-cannot-be-integrated"><code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">state</span> <span class="pre">with</span> <span class="pre">no</span> <span class="pre">time</span> <span class="pre">axis</span> <span class="pre">cannot</span> <span class="pre">be</span> <span class="pre">integrated</span></code></a></li>

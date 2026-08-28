@@ -34,7 +34,7 @@ BioProcess
   ├── reactor_medium        ReactorMedium(name, density, …, components)
   ├── process_variables     {name: ProcessVariable} = {}
   ├── discrete_events       Optional[DiscreteEvents] = None
-  ├── biological_ode        Optional[BiologicalOde(algebraic, rates, derivatives)] = None
+  ├── reaction_ode        Optional[ReactionOde(algebraic, rates, derivatives)] = None
   └── pseudobatch_transform Optional[PseudobatchTransform] = None
 ```
 
@@ -162,17 +162,17 @@ in every training config.
 Units are *free-form strings* which we require for data completeness. There is no unit engine, no parsing and no conversion.
 
 They are used for exactly two things: checking that quantities you *add together* in a
-`biological_ode` expression share a unit, and checking that processes in one case study
+`reaction_ode` expression share a unit, and checking that processes in one case study
 agree with each other. `"g/L"` and `"g/l"` are different strings and will be reported as
 a mismatch. Pick a spelling and stay with it.
 
 ## Where the Biology Goes
 
-`hybrax-format` guesses standard biology by default. If a species needs something more, an intracellular pool, a chemical decay, any mechanism the default doesn't cover, you write it out yourself in `biological_ode`, algebraic relationships included:
+`hybrax-format` guesses standard biology by default. If a species needs something more, an intracellular pool, a chemical decay, any mechanism the default doesn't cover, you write it out yourself in `reaction_ode`, algebraic relationships included:
 
 
 ```python
-BiologicalOde(
+ReactionOde(
     algebraic={"X_active": "biomass - product_intracellular"},
     rates={"q_biomass": (None, None), "q_glucose": (None, None)},
     derivatives={"biomass": "q_biomass * X_active", ...},

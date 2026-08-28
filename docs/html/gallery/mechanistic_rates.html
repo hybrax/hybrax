@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -386,7 +386,7 @@ law you already believe in, with a handful of trainable scalars instead of a net
 <p>The walkthrough below shows the file in pieces, next to the reasoning for each one.</p>
 <section id="the-reaction-module">
 <h2>The Reaction Module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">MonodModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">MonodModule</span><span class="p">(</span><span class="n">RateModule</span><span class="p">):</span>
 <span class="linenos"> 2</span><span class="w">    </span><span class="sd">"""mu = mu_max·S/(Ks+S);</span>
 <span class="linenos"> 3</span><span class="sd">    q_S = -(mu/Yxs + ms·sigma);</span>
 <span class="linenos"> 4</span><span class="sd">    q_P = alpha·mu + beta·sigma.</span>
@@ -432,7 +432,7 @@ law you already believe in, with a handful of trainable scalars instead of a net
 <span class="linenos">44</span>
 <span class="linenos">45</span>        <span class="n">RAW_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">mu</span><span class="p">,</span> <span class="n">q_glucose</span><span class="p">,</span> <span class="n">q_product</span><span class="p">])</span>
 <span class="linenos">46</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos">47</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_BiologicalOde_rates</span><span class="p">(</span>
+<span class="linenos">47</span>            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_ReactionOde_rates</span><span class="p">(</span>
 <span class="linenos">48</span>                <span class="n">RAW_rates</span>
 </pre></div>
 </div>
@@ -455,7 +455,7 @@ position. If someone reorders the dataset’s components, this still works.</p>
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:18:06 INFO __main__: training complete: first_mean_loss=0.15896 last_mean_loss=0.0002096 delta=-0.158751
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-28 19:20:14 INFO __main__: training complete: first_mean_loss=0.15896 last_mean_loss=0.0002096 delta=-0.158751
 run directory: ./source/_data/out/runs/gallery_structured_rates/run
 </pre></div>
 </div>

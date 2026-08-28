@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -428,7 +428,7 @@ range it was actually fit over.</p>
 </section>
 <section id="the-reaction-module">
 <h2>The Reaction Module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">KANReactionModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">KANReactionModule</span><span class="p">(</span><span class="n">RateModule</span><span class="p">):</span>
 <span class="linenos"> 2</span>    <span class="n">l1</span><span class="p">:</span> <span class="n">KANLayer</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
 <span class="linenos"> 3</span>    <span class="n">l2</span><span class="p">:</span> <span class="n">KANLayer</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
 <span class="linenos"> 4</span>    <span class="n">prod_a</span><span class="p">:</span> <span class="n">KANLayer</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
@@ -437,7 +437,7 @@ range it was actually fit over.</p>
 <span class="linenos"> 7</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="n">hidden</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span> <span class="n">grid</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
 <span class="linenos"> 8</span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
 <span class="linenos"> 9</span>        <span class="n">n_in</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span>
-<span class="linenos">10</span>        <span class="n">n_out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_BiologicalOde_rates</span>
+<span class="linenos">10</span>        <span class="n">n_out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_ReactionOde_rates</span>
 <span class="linenos">11</span>        <span class="n">k1</span><span class="p">,</span> <span class="n">k2</span><span class="p">,</span> <span class="n">ka</span><span class="p">,</span> <span class="n">kb</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
 <span class="linenos">12</span>        <span class="c1"># Hidden layer full-scale; output layer near-zero so the ODE starts flat</span>
 <span class="linenos">13</span>        <span class="c1"># yet both layers receive gradient at step 0 (avoids an all-zero cold start).</span>
@@ -456,7 +456,7 @@ range it was actually fit over.</p>
 <span class="linenos">26</span>        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">l1</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">)</span>
 <span class="linenos">27</span>        <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">l2</span><span class="p">(</span><span class="n">h</span><span class="p">)</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">prod_a</span><span class="p">(</span><span class="n">h</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">1</span><span class="p">])</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">prod_b</span><span class="p">(</span><span class="n">h</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">2</span><span class="p">])</span>
 <span class="linenos">28</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos">29</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">out</span><span class="p">,</span>
+<span class="linenos">29</span>            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="n">out</span><span class="p">,</span>
 <span class="linenos">30</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
 <span class="linenos">31</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
 <span class="linenos">32</span>        <span class="p">)</span>
@@ -492,7 +492,7 @@ starting point the way addition does not.</p>
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:12:30 INFO __main__: training complete: first_mean_loss=0.235398 last_mean_loss=0.000211724 delta=-0.235187
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-28 19:11:48 INFO __main__: training complete: first_mean_loss=0.235398 last_mean_loss=0.000211724 delta=-0.235187
 run directory: ./source/_data/out/runs/gallery_kan/run
 </pre></div>
 </div>
@@ -617,7 +617,7 @@ exactly flat.</p></li>
 executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_kan/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: <code class="docutils literal notranslate"><span class="pre">auxiliary</span></code>, and
-everything else a <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code> can return.</p></li>
+everything else a <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> can return.</p></li>
 <li><p><a class="reference internal" href="gaussian_process.html"><span class="std std-doc">Gaussian process reaction module</span></a>: another
 reaction-module architecture, with its own way of reading out what it
 learned.</p></li>

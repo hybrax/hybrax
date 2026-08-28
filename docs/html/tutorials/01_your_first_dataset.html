@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -591,11 +591,11 @@ your real world data contains volume changes, see
 </div>
 </div>
 <p>That is the whole process. Notice what you did <strong>not</strong> write: any dynamics. hybrax.format
-generated a default biological ODE for you:</p>
+generated a default reaction ODE for you:</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">"rates      :"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span><span class="o">.</span><span class="n">rates</span><span class="p">))</span>
-<span class="nb">print</span><span class="p">(</span><span class="s2">"derivatives:"</span><span class="p">,</span> <span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span><span class="o">.</span><span class="n">derivatives</span><span class="p">)</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">"rates      :"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span><span class="o">.</span><span class="n">rates</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"derivatives:"</span><span class="p">,</span> <span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span><span class="o">.</span><span class="n">derivatives</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -613,7 +613,7 @@ derivatives: {'biomass': 'q_biomass * biomass', 'glucose': 'q_glucose * biomass'
 <p>Auto-generation makes every rate <em>specific</em> (per unit biomass) so it needs to know
 which component the biomass is. Without one, constructing the <code class="docutils literal notranslate"><span class="pre">BioProcess</span></code> raises
 immediately. If your data has no biomass, or you want different dynamics, write
-<code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> yourself: <a class="reference internal" href="../format/bioprocess_ode.html"><span class="std std-doc">The Bioprocess ODE</span></a>.</p>
+<code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> yourself: <a class="reference internal" href="../format/bioprocess_ode.html"><span class="std std-doc">The Bioprocess ODE</span></a>.</p>
 </div>
 </section>
 <section id="collect-and-save">
@@ -841,7 +841,7 @@ container either way.</p>
 <span class="w">        </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="s2">"L"</span><span class="p">,</span>
 <span class="w">        </span><span class="nt">"volume_changes"</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
 <span class="w">      </span><span class="p">},</span>
-<span class="w">      </span><span class="nt">"biological_ode"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"reaction_ode"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">        </span><span class="nt">"algebraic"</span><span class="p">:</span><span class="w"> </span><span class="p">{},</span>
 <span class="w">        </span><span class="nt">"rates"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">          </span><span class="nt">"q_biomass"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>

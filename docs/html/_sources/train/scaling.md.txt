@@ -127,7 +127,7 @@ affine scaling, useful when a quantity varies over a narrow band far from zero
 :class: warning
 Rate scaling must be offset-free, because the value/derivative equivalence above only
 holds for a pure multiplication. Supplying an `AffineScaler` with a non-zero offset for
-`SCALE_modeled_BiologicalOde_rates`, `SCALE_controlled_Inflows_rates`,
+`SCALE_modeled_ReactionOde_rates`, `SCALE_controlled_Inflows_rates`,
 `SCALE_controlled_Outflows_rates`, `SCALE_modeled_Inflows_rates` or
 `SCALE_modeled_Outflows_rates` is rejected.
 :::

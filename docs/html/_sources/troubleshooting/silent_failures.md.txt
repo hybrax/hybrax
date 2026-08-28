@@ -113,7 +113,7 @@ because they depend on what the network is defined to emit:
 - `examples/00_e2e_sim/custom.py` emits SCL directly and its comments warn against
   re-scaling;
 - `tests/fixtures/martens_single/custom.py` computes in RAW and *does* call
-  `scale_modeled_BiologicalOde_rates`.
+  `scale_modeled_ReactionOde_rates`.
 
 A beginner comparing the two concludes the code is inconsistent. It is not: they are
 answering different questions.

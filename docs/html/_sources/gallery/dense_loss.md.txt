@@ -98,7 +98,7 @@ def dense_diagnostics(run_dir):
 
 `ReactorMediumComponent.bounds` is metadata hybrax.format already carries: `demo_batch`
 declares `(0.0, None)` on every species, because a concentration cannot be negative. But
-`BiologicalOde.rates` bounds default to unbounded, since auto-generation has no way to
+`ReactionOde.rates` bounds default to unbounded, since auto-generation has no way to
 know what a plausible rate range is. Attaching them is one `transform_process_collection`
 hook:
 
@@ -129,7 +129,7 @@ automatically: the loss module below reads them itself, once, at construction:
 
 `-inf`/`+inf` for an unbounded side falls straight out of the `clip`, so there is no
 branching on which bounds are set. The penalty is evaluated on `dense_RAW_states` and
-`dense_RAW_modeled_BiologicalOde_rates` (**RAW**, because "negative" and "above 1.0 1/h"
+`dense_RAW_modeled_ReactionOde_rates` (**RAW**, because "negative" and "above 1.0 1/h"
 only mean something in physical units) and masked by `dense_valid_time`, the dense
 grid's own post-solver-failure mask.
 

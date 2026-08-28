@@ -10,7 +10,7 @@
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -384,7 +384,7 @@
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.mechanistic</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_rhs_ode</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.time_series.timeseries</span><span class="w"> </span><span class="kn">import</span> <span class="n">TimeSeries</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.validate</span><span class="w"> </span><span class="kn">import</span> <span class="n">validate_biological_ode_equivalence</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.validate</span><span class="w"> </span><span class="kn">import</span> <span class="n">validate_reaction_ode_equivalence</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">.training_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">TrainingDataStore</span>
 
@@ -842,7 +842,7 @@
 <span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Build the shared RhsOde of a parent collection, rejecting disagreement.</span>
 
-<span class="sd">    Every parent must declare an equivalent ``BiologicalOde``, so the first</span>
+<span class="sd">    Every parent must declare an equivalent ``ReactionOde``, so the first</span>
 <span class="sd">    one's ``RhsOde`` speaks for all of them.</span>
 
 <span class="sd">    Args:</span>
@@ -855,11 +855,11 @@
 
 <span class="sd">    Raises:</span>
 <span class="sd">        ValueError: If ``collection`` is empty, or its parents declare</span>
-<span class="sd">            non-equivalent ``biological_ode`` blocks.</span>
+<span class="sd">            non-equivalent ``reaction_ode`` blocks.</span>
 <span class="sd">    """</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">empty_message</span><span class="p">)</span>
-    <span class="n">equivalent</span><span class="p">,</span> <span class="n">message</span> <span class="o">=</span> <span class="n">validate_biological_ode_equivalence</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
+    <span class="n">equivalent</span><span class="p">,</span> <span class="n">message</span> <span class="o">=</span> <span class="n">validate_reaction_ode_equivalence</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">equivalent</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">build_rhs_ode</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">values</span><span class="p">())))</span></div>

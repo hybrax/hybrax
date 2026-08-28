@@ -260,7 +260,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom Losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
@@ -401,7 +401,7 @@
 
 <span class="sd">    ``q_rates`` is aligned with ``rhs_ode.name_modeled_rates`` (the modeled</span>
 <span class="sd">    biological rate vector), not with ``modeled_RMC_names``. Under a</span>
-<span class="sd">    user-defined ``BiologicalOde`` these orderings differ. Modeled Inflow and</span>
+<span class="sd">    user-defined ``ReactionOde`` these orderings differ. Modeled Inflow and</span>
 <span class="sd">    Outflow rates remain separate physical arrays with their storage signs.</span>
 <span class="sd">    """</span>
 
@@ -521,7 +521,7 @@
     <span class="n">t_np</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">prediction_t</span><span class="p">)</span>
     <span class="n">prediction_valid_np</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">prediction_valid</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
     <span class="n">v_real_np</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">prediction_save_outputs</span><span class="o">.</span><span class="n">RAW_V_export</span><span class="p">)</span>
-    <span class="n">q_np</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">prediction_save_outputs</span><span class="o">.</span><span class="n">RAW_modeled_BiologicalOde_rates</span><span class="p">)</span>
+    <span class="n">q_np</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">prediction_save_outputs</span><span class="o">.</span><span class="n">RAW_modeled_ReactionOde_rates</span><span class="p">)</span>
     <span class="n">inflow_rates_np</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">prediction_save_outputs</span><span class="o">.</span><span class="n">RAW_modeled_Inflows_rates</span><span class="p">)</span>
     <span class="n">outflow_rates_np</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">prediction_save_outputs</span><span class="o">.</span><span class="n">RAW_modeled_Outflows_rates</span><span class="p">)</span>
     <span class="n">auxiliary</span> <span class="o">=</span> <span class="n">prediction_save_outputs</span><span class="o">.</span><span class="n">auxiliary</span>

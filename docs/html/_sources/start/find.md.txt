@@ -32,7 +32,7 @@ learned; scan for your row.
 
 | I want to… | Go to |
 |---|---|
-| write my own biological ODE instead of the default | [The Bioprocess ODE](../format/bioprocess_ode.md) |
+| write my own reaction ODE instead of the default | [The Bioprocess ODE](../format/bioprocess_ode.md) |
 | model a species that accumulates inside cells | `algebraic` expressions: [The Bioprocess ODE](../format/bioprocess_ode.md) |
 | interpolate a measurement continuously | [Time series and splines](../format/time_series_and_splines.md) |
 | remove dilution from fed-batch concentrations | Pseudobatch: [Time series and splines](../format/time_series_and_splines.md) |

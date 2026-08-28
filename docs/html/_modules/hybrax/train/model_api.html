@@ -260,7 +260,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom Losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
@@ -376,14 +376,14 @@
 <span class="sd">- ``Scaler`` / ``LinearScaler`` / ``AffineScaler`` — RAW (physical) &lt;-&gt; SCL</span>
 <span class="sd">  (solver) unit transforms, one per semantic axis of the state/control vectors.</span>
 <span class="sd">- ``ReactionInputs`` / ``ReactionOutputs`` / ``EstimatedScales`` /</span>
-<span class="sd">  ``UserReactionModule`` — the reaction-model contract: subclass</span>
-<span class="sd">  ``UserReactionModule``, implement ``__call__``, and the ``scale_*``/``unscale_*``</span>
+<span class="sd">  ``RateModule`` — the reaction-model contract: subclass</span>
+<span class="sd">  ``RateModule``, implement ``__call__``, and the ``scale_*``/``unscale_*``</span>
 <span class="sd">  delegates handle every RAW/SCL conversion the ODE RHS needs.</span>
 <span class="sd">- ``LossInputs`` / ``LossOutputs`` / ``UserLossModule`` — the loss contract:</span>
 <span class="sd">  subclass ``UserLossModule`` and implement ``__call__`` to turn one sample's</span>
 <span class="sd">  predictions and measurements into named loss terms.</span>
 
-<span class="sd">Both ``UserReactionModule`` and ``UserLossModule`` are abstract base classes:</span>
+<span class="sd">Both ``RateModule`` and ``UserLossModule`` are abstract base classes:</span>
 <span class="sd">their ``__call__`` (and, for the reaction module, every ``scale_*``/``unscale_*``</span>
 <span class="sd">helper) raise ``NotImplementedError`` until a subclass provides them. The</span>
 <span class="sd">training harness (``harness.py``, ``trainer.py``) drives instances of these</span>
@@ -890,7 +890,7 @@
 <div class="viewcode-block" id="ReactionInputs">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionInputs">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ReactionInputs</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""All inputs to a UserReactionModule call, one per semantic axis.</span>
+<span class="w">    </span><span class="sd">"""All inputs to a RateModule call, one per semantic axis.</span>
 
 <span class="sd">    Built by HybridOdeWrapper at each RHS evaluation. Modeled RMC inputs remain</span>
 <span class="sd">    unclipped so gradient flow survives transient negative excursions near</span>
@@ -926,7 +926,7 @@
 <div class="viewcode-block" id="ReactionOutputs">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionOutputs">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">ReactionOutputs</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""Structured return value from a UserReactionModule.__call__.</span>
+<span class="w">    </span><span class="sd">"""Structured return value from a RateModule.__call__.</span>
 
 <span class="sd">    Rate fields are in SCALED space — the module divides its physical</span>
 <span class="sd">    output by the matching SCALE_* axis (typically via ``self.scale_*`` helpers)</span>
@@ -935,8 +935,8 @@
 
 <span class="sd">    Attributes</span>
 <span class="sd">    ----------</span>
-<span class="sd">    SCL_modeled_BiologicalOde_rates:</span>
-<span class="sd">        Rates emitted by the BiologicalOde block, aligned with</span>
+<span class="sd">    SCL_modeled_ReactionOde_rates:</span>
+<span class="sd">        Rates emitted by the ReactionOde block, aligned with</span>
 <span class="sd">        ``rhs_ode.name_modeled_rates``. Not 1:1 with RMCs — algebraic rates</span>
 <span class="sd">        (e.g. ``q_X_active`` in TUB) live here without a corresponding RMC.</span>
 <span class="sd">    SCL_modeled_Inflows_rates:</span>
@@ -953,7 +953,7 @@
 <span class="sd">        and stable keys across calls.</span>
 <span class="sd">    """</span>
 
-    <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="n">SCL_modeled_ReactionOde_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
     <span class="n">SCL_modeled_Inflows_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
     <span class="n">SCL_modeled_Outflows_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
     <span class="n">SCL_latent_derivative</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span>
@@ -991,7 +991,7 @@
     <span class="n">SCALE_controlled_Outflows_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="n">Scaler</span>
     <span class="n">SCALE_controlled_PVs</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="n">Scaler</span>
     <span class="n">SCALE_modeled_Inflows_Cin</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="n">Scaler</span>
-    <span class="n">SCALE_modeled_BiologicalOde_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="n">Scaler</span>
+    <span class="n">SCALE_modeled_ReactionOde_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="n">Scaler</span>
     <span class="n">SCALE_modeled_Inflows_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="n">Scaler</span>
     <span class="n">SCALE_modeled_Outflows_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="n">Scaler</span>
     <span class="c1"># Defaults to empty (no modeled PVs); processes with uncontrolled,</span>
@@ -1002,9 +1002,9 @@
 
 
 
-<div class="viewcode-block" id="UserReactionModule">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule">[docs]</a>
-<span class="k">class</span><span class="w"> </span><span class="nc">UserReactionModule</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<div class="viewcode-block" id="RateModule">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">RateModule</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Base for user-defined reaction modules.</span>
 
 <span class="sd">    The module is the single source of truth for every ``SCALE_*`` vector in</span>
@@ -1067,7 +1067,7 @@
     <span class="n">SCALE_modeled_Inflows_Cin</span><span class="p">:</span> <span class="n">Scaler</span> <span class="o">=</span> <span class="n">frozen_field</span><span class="p">(</span>
         <span class="n">default_factory</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="n">LinearScaler</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">float64</span><span class="p">))</span>
     <span class="p">)</span>
-    <span class="n">SCALE_modeled_BiologicalOde_rates</span><span class="p">:</span> <span class="n">Scaler</span> <span class="o">=</span> <span class="n">frozen_field</span><span class="p">(</span>
+    <span class="n">SCALE_modeled_ReactionOde_rates</span><span class="p">:</span> <span class="n">Scaler</span> <span class="o">=</span> <span class="n">frozen_field</span><span class="p">(</span>
         <span class="n">default_factory</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="n">LinearScaler</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">float64</span><span class="p">))</span>
     <span class="p">)</span>
     <span class="n">SCALE_modeled_Inflows_rates</span><span class="p">:</span> <span class="n">Scaler</span> <span class="o">=</span> <span class="n">frozen_field</span><span class="p">(</span>
@@ -1092,12 +1092,10 @@
 <span class="sd">        ``super().__init__()``.</span>
 <span class="sd">        """</span>
         <span class="n">module_fields</span> <span class="o">=</span> <span class="p">{</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">:</span> <span class="n">f</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="p">))}</span>
-        <span class="n">scale_fields</span> <span class="o">=</span> <span class="p">{</span><span class="n">f</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">)}</span>
+        <span class="n">scale_fields</span> <span class="o">=</span> <span class="p">{</span><span class="n">f</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">(</span><span class="n">RateModule</span><span class="p">)}</span>
         <span class="n">unknown</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-</span> <span class="nb">set</span><span class="p">(</span><span class="n">module_fields</span><span class="p">))</span>
         <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">"Unknown UserReactionModule field(s): </span><span class="si">{</span><span class="s1">', '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">unknown</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
-            <span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Unknown RateModule field(s): </span><span class="si">{</span><span class="s1">', '</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">unknown</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">module_fields</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
             <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">name</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="p">:</span>
                 <span class="n">value</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">]</span>
@@ -1138,9 +1136,9 @@
         <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Outflows_cumulative</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 
     <span class="nd">@property</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">n_modeled_BiologicalOde_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""Number of rates emitted by the BiologicalOde block."""</span>
-        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_BiologicalOde_rates</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">n_modeled_ReactionOde_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Number of rates emitted by the ReactionOde block."""</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_ReactionOde_rates</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">n_controlled_Inflows</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
@@ -1207,15 +1205,15 @@
 <span class="w">        </span><span class="sd">"""Names of observables that require live latent state during the solve."""</span>
         <span class="k">return</span> <span class="p">()</span>
 
-<div class="viewcode-block" id="UserReactionModule.observe">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.observe">[docs]</a>
+<div class="viewcode-block" id="RateModule.observe">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.observe">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">observe</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">states</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Optional post-hoc observation map; default identity on physical state."""</span>
         <span class="k">return</span> <span class="n">states</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.initial_latent">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.initial_latent">[docs]</a>
+<div class="viewcode-block" id="RateModule.initial_latent">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.initial_latent">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">initial_latent</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_phys_y0</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Initial RAW latent state appended to the physical initial state."""</span>
         <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_latent</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">RAW_phys_y0</span><span class="p">)</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span></div>
@@ -1227,92 +1225,92 @@
     <span class="c1"># ``unscale_derivative`` (offset-free).</span>
     <span class="c1"># ------------------------------------------------------------------</span>
 
-<div class="viewcode-block" id="UserReactionModule.scale_state">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_state">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_state">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_state">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_state</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for the full integrated state, via ``SCALE_state``."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_state</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span><span class="n">RAW_state</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_state">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_state">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_state">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_state">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_state</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for the full integrated state, via ``SCALE_state``."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_state</span><span class="o">.</span><span class="n">unscale_value</span><span class="p">(</span><span class="n">SCL_state</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_latent">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_latent">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_latent">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_latent">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_latent</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_latent</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for the latent state, via ``SCALE_latent``."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_latent</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span><span class="n">RAW_latent</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_latent">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_latent">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_latent">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_latent">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_latent</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_latent</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for the latent state, via ``SCALE_latent``."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_latent</span><span class="o">.</span><span class="n">unscale_value</span><span class="p">(</span><span class="n">SCL_latent</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_modeled_RMCs">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_RMCs">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_modeled_RMCs">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_RMCs">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_modeled_RMCs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_modeled_RMCs</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for modeled reactor-medium components."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_RMCs</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span><span class="n">RAW_modeled_RMCs</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_modeled_RMCs">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_RMCs">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_modeled_RMCs">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_RMCs">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_modeled_RMCs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_modeled_RMCs</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for modeled reactor-medium components."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_RMCs</span><span class="o">.</span><span class="n">unscale_value</span><span class="p">(</span><span class="n">SCL_modeled_RMCs</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_modeled_PVs">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_PVs">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_modeled_PVs">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_PVs">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_modeled_PVs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_modeled_PVs</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for modeled process variables."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_PVs</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span><span class="n">RAW_modeled_PVs</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_modeled_PVs">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_PVs">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_modeled_PVs">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_PVs">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_modeled_PVs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_modeled_PVs</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for modeled process variables."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_PVs</span><span class="o">.</span><span class="n">unscale_value</span><span class="p">(</span><span class="n">SCL_modeled_PVs</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_modeled_V">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_V">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_modeled_V">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_V">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_modeled_V</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_modeled_V</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for the modeled reactor volume."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_V</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span><span class="n">RAW_modeled_V</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_modeled_V">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_V">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_modeled_V">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_V">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_modeled_V</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_modeled_V</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for the modeled reactor volume."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_V</span><span class="o">.</span><span class="n">unscale_value</span><span class="p">(</span><span class="n">SCL_modeled_V</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_V_in_cumulative">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_V_in_cumulative">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_V_in_cumulative">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_V_in_cumulative">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_V_in_cumulative</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_V_in_cumulative</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for cumulative volume added by every Inflow."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_V_in_cumulative</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span><span class="n">RAW_V_in_cumulative</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_V_in_cumulative">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_V_in_cumulative">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_V_in_cumulative">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_V_in_cumulative">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_V_in_cumulative</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_V_in_cumulative</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for cumulative volume added by every Inflow."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_V_in_cumulative</span><span class="o">.</span><span class="n">unscale_value</span><span class="p">(</span><span class="n">SCL_V_in_cumulative</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_modeled_Inflows_cumulative">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_Inflows_cumulative">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_modeled_Inflows_cumulative">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_Inflows_cumulative">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_modeled_Inflows_cumulative</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_modeled_Inflows_cumulative</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for cumulative modeled Inflow volume."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Inflows_cumulative</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span>
@@ -1320,8 +1318,8 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_modeled_Inflows_cumulative">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_Inflows_cumulative">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_modeled_Inflows_cumulative">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_Inflows_cumulative">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_modeled_Inflows_cumulative</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_modeled_Inflows_cumulative</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for cumulative modeled Inflow volume."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Inflows_cumulative</span><span class="o">.</span><span class="n">unscale_value</span><span class="p">(</span>
@@ -1329,8 +1327,8 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_modeled_Outflows_cumulative">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_Outflows_cumulative">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_modeled_Outflows_cumulative">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_Outflows_cumulative">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_modeled_Outflows_cumulative</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_modeled_Outflows_cumulative</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for cumulative modeled Outflow volume."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Outflows_cumulative</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span>
@@ -1338,8 +1336,8 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_modeled_Outflows_cumulative">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_Outflows_cumulative">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_modeled_Outflows_cumulative">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_Outflows_cumulative">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_modeled_Outflows_cumulative</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_modeled_Outflows_cumulative</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for cumulative modeled Outflow volume."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Outflows_cumulative</span><span class="o">.</span><span class="n">unscale_value</span><span class="p">(</span>
@@ -1347,8 +1345,8 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_controlled_Inflows_cumulative">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_controlled_Inflows_cumulative">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_controlled_Inflows_cumulative">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_controlled_Inflows_cumulative">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_controlled_Inflows_cumulative</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_controlled_Inflows_cumulative</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for cumulative controlled Inflow volume."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_Inflows_cumulative</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span>
@@ -1356,8 +1354,8 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_controlled_Inflows_cumulative">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_controlled_Inflows_cumulative">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_controlled_Inflows_cumulative">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_controlled_Inflows_cumulative">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_controlled_Inflows_cumulative</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_controlled_Inflows_cumulative</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for cumulative controlled Inflow volume."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_Inflows_cumulative</span><span class="o">.</span><span class="n">unscale_value</span><span class="p">(</span>
@@ -1365,8 +1363,8 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_controlled_Inflows_rates">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_controlled_Inflows_rates">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_controlled_Inflows_rates">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_controlled_Inflows_rates">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_controlled_Inflows_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_controlled_Inflows_rates</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for controlled Inflow rates (offset-free derivative op)."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_Inflows_rates</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span>
@@ -1374,8 +1372,8 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_controlled_Inflows_rates">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_controlled_Inflows_rates">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_controlled_Inflows_rates">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_controlled_Inflows_rates">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_controlled_Inflows_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_controlled_Inflows_rates</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for controlled Inflow rates (offset-free derivative op)."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_Inflows_rates</span><span class="o">.</span><span class="n">unscale_derivative</span><span class="p">(</span>
@@ -1383,15 +1381,15 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_controlled_Inflows_Cin">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_controlled_Inflows_Cin">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_controlled_Inflows_Cin">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_controlled_Inflows_Cin">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_controlled_Inflows_Cin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_controlled_Inflows_Cin</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for controlled Inflow feed concentrations."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_Inflows_Cin</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span><span class="n">RAW_controlled_Inflows_Cin</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_controlled_Inflows_Cin">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_controlled_Inflows_Cin">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_controlled_Inflows_Cin">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_controlled_Inflows_Cin">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_controlled_Inflows_Cin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_controlled_Inflows_Cin</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for controlled Inflow feed concentrations."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_Inflows_Cin</span><span class="o">.</span><span class="n">unscale_value</span><span class="p">(</span>
@@ -1399,8 +1397,8 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_controlled_Outflows_cumulative">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_controlled_Outflows_cumulative">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_controlled_Outflows_cumulative">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_controlled_Outflows_cumulative">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_controlled_Outflows_cumulative</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_controlled_Outflows_cumulative</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for cumulative controlled Outflow volume."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_Outflows_cumulative</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span>
@@ -1408,8 +1406,8 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_controlled_Outflows_cumulative">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_controlled_Outflows_cumulative">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_controlled_Outflows_cumulative">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_controlled_Outflows_cumulative">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_controlled_Outflows_cumulative</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span> <span class="n">SCL_controlled_Outflows_cumulative</span>
     <span class="p">):</span>
@@ -1419,8 +1417,8 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_controlled_Outflows_rates">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_controlled_Outflows_rates">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_controlled_Outflows_rates">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_controlled_Outflows_rates">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_controlled_Outflows_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_controlled_Outflows_rates</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for controlled Outflow rates (offset-free derivative op)."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_Outflows_rates</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span>
@@ -1428,8 +1426,8 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_controlled_Outflows_rates">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_controlled_Outflows_rates">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_controlled_Outflows_rates">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_controlled_Outflows_rates">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_controlled_Outflows_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_controlled_Outflows_rates</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for controlled Outflow rates (offset-free derivative op)."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_Outflows_rates</span><span class="o">.</span><span class="n">unscale_derivative</span><span class="p">(</span>
@@ -1437,58 +1435,58 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_controlled_PVs">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_controlled_PVs">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_controlled_PVs">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_controlled_PVs">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_controlled_PVs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_controlled_PVs</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for controlled process variables."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_PVs</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span><span class="n">RAW_controlled_PVs</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_controlled_PVs">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_controlled_PVs">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_controlled_PVs">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_controlled_PVs">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_controlled_PVs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_controlled_PVs</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for controlled process variables."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_PVs</span><span class="o">.</span><span class="n">unscale_value</span><span class="p">(</span><span class="n">SCL_controlled_PVs</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_modeled_Inflows_Cin">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_Inflows_Cin">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_modeled_Inflows_Cin">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_Inflows_Cin">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_modeled_Inflows_Cin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_modeled_Inflows_Cin</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for modeled Inflow feed concentrations."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Inflows_Cin</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span><span class="n">RAW_modeled_Inflows_Cin</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_modeled_Inflows_Cin">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_Inflows_Cin">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_modeled_Inflows_Cin">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_Inflows_Cin">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_modeled_Inflows_Cin</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_modeled_Inflows_Cin</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for modeled Inflow feed concentrations."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Inflows_Cin</span><span class="o">.</span><span class="n">unscale_value</span><span class="p">(</span><span class="n">SCL_modeled_Inflows_Cin</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_modeled_BiologicalOde_rates">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_BiologicalOde_rates">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">scale_modeled_BiologicalOde_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_modeled_BiologicalOde_rates</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""RAW -&gt; SCL for modeled ``biological_ode`` rates (offset-free</span>
+<div class="viewcode-block" id="RateModule.scale_modeled_ReactionOde_rates">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_ReactionOde_rates">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">scale_modeled_ReactionOde_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_modeled_ReactionOde_rates</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""RAW -&gt; SCL for modeled ``reaction_ode`` rates (offset-free</span>
 <span class="sd">        derivative op).</span>
 <span class="sd">        """</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_BiologicalOde_rates</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span>
-            <span class="n">RAW_modeled_BiologicalOde_rates</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_ReactionOde_rates</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span>
+            <span class="n">RAW_modeled_ReactionOde_rates</span>
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_modeled_BiologicalOde_rates">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_BiologicalOde_rates">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">unscale_modeled_BiologicalOde_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""SCL -&gt; RAW for modeled ``biological_ode`` rates (offset-free</span>
+<div class="viewcode-block" id="RateModule.unscale_modeled_ReactionOde_rates">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_ReactionOde_rates">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">unscale_modeled_ReactionOde_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_modeled_ReactionOde_rates</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""SCL -&gt; RAW for modeled ``reaction_ode`` rates (offset-free</span>
 <span class="sd">        derivative op).</span>
 <span class="sd">        """</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_BiologicalOde_rates</span><span class="o">.</span><span class="n">unscale_derivative</span><span class="p">(</span>
-            <span class="n">SCL_modeled_BiologicalOde_rates</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_ReactionOde_rates</span><span class="o">.</span><span class="n">unscale_derivative</span><span class="p">(</span>
+            <span class="n">SCL_modeled_ReactionOde_rates</span>
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_modeled_Inflows_rates">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_Inflows_rates">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_modeled_Inflows_rates">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_Inflows_rates">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_modeled_Inflows_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_modeled_Inflows_rates</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for modeled Inflow rates (offset-free derivative op)."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Inflows_rates</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span>
@@ -1496,8 +1494,8 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_modeled_Inflows_rates">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_Inflows_rates">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_modeled_Inflows_rates">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_Inflows_rates">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_modeled_Inflows_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_modeled_Inflows_rates</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for modeled Inflow rates (offset-free derivative op)."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Inflows_rates</span><span class="o">.</span><span class="n">unscale_derivative</span><span class="p">(</span>
@@ -1505,8 +1503,8 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.scale_modeled_Outflows_rates">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_Outflows_rates">[docs]</a>
+<div class="viewcode-block" id="RateModule.scale_modeled_Outflows_rates">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_Outflows_rates">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_modeled_Outflows_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_modeled_Outflows_rates</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""RAW -&gt; SCL for modeled Outflow rates (offset-free derivative op)."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Outflows_rates</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span>
@@ -1514,8 +1512,8 @@
         <span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="UserReactionModule.unscale_modeled_Outflows_rates">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_Outflows_rates">[docs]</a>
+<div class="viewcode-block" id="RateModule.unscale_modeled_Outflows_rates">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_Outflows_rates">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_modeled_Outflows_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_modeled_Outflows_rates</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""SCL -&gt; RAW for modeled Outflow rates (offset-free derivative op)."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Outflows_rates</span><span class="o">.</span><span class="n">unscale_derivative</span><span class="p">(</span>
@@ -1567,8 +1565,8 @@
     <span class="c1"># Predictions over measurement times (n_meas, ...)</span>
     <span class="n">SCL_states</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
     <span class="n">RAW_states</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
-    <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
-    <span class="n">RAW_modeled_BiologicalOde_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="n">SCL_modeled_ReactionOde_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="n">RAW_modeled_ReactionOde_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
     <span class="n">SCL_modeled_Inflows_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
     <span class="n">RAW_modeled_Inflows_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
     <span class="n">SCL_modeled_Outflows_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
@@ -1590,7 +1588,7 @@
     <span class="n">n_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
 
     <span class="c1"># Single source of SCALE_* (frozen reference, not a copy)</span>
-    <span class="n">reaction_module</span><span class="p">:</span> <span class="n">UserReactionModule</span>
+    <span class="n">reaction_module</span><span class="p">:</span> <span class="n">RateModule</span>
 
     <span class="c1"># Training step; -1 in forward-eval contexts. For schedules / annealing.</span>
     <span class="n">step</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
@@ -1609,8 +1607,8 @@
     <span class="n">dense_t</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">dense_SCL_states</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">dense_RAW_states</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">dense_SCL_modeled_BiologicalOde_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">dense_RAW_modeled_BiologicalOde_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">dense_SCL_modeled_ReactionOde_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">dense_RAW_modeled_ReactionOde_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">dense_SCL_modeled_Inflows_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">dense_RAW_modeled_Inflows_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">dense_SCL_modeled_Outflows_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
@@ -1650,7 +1648,7 @@
 <div class="viewcode-block" id="UserLossModule">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserLossModule">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">UserLossModule</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""Base for user-defined loss modules. Mirrors ``UserReactionModule``.</span>
+<span class="w">    </span><span class="sd">"""Base for user-defined loss modules. Mirrors ``RateModule``.</span>
 
 <span class="sd">    Subclasses declare any trainable / frozen state via ``trainable_field()`` /</span>
 <span class="sd">    ``frozen_field()`` (e.g. Kendall uncertainty weights), exactly like a</span>

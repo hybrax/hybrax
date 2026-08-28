@@ -355,7 +355,7 @@ The full, runnable example (`custom.py`, configs, data) lives in
 executed run is at `./source/_data/out/runs/gallery_kan/`.
 
 - [The Reaction Module](../train/reaction_module.md): `auxiliary`, and
-  everything else a `UserReactionModule` can return.
+  everything else a `RateModule` can return.
 - [Gaussian process reaction module](gaussian_process.md): another
   reaction-module architecture, with its own way of reading out what it
   learned.

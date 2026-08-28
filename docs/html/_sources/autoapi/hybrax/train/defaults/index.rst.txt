@@ -9,14 +9,23 @@ hybrax.train.defaults
 
 
 
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.defaults.DefaultStatefulReactionModule
+
+
 Classes
 -------
 
 .. autoapisummary::
 
+   hybrax.train.defaults.DefaultGruReactionModule
    hybrax.train.defaults.DefaultLossModule
+   hybrax.train.defaults.DefaultLstmReactionModule
    hybrax.train.defaults.DefaultReactionModule
-   hybrax.train.defaults.DefaultStatefulReactionModule
 
 
 Functions
@@ -31,6 +40,34 @@ Functions
 
 Module Contents
 ---------------
+
+.. py:class:: DefaultGruReactionModule(*, key, n_latent, **scale_kwargs)
+
+   Bases: :py:obj:`hybrax.train.model_api.RateModule`
+
+
+   Standard-GRU latent-ODE reaction model with calibrated output heads.
+
+   The GRU consumes physical and control inputs, with ``h`` passed only as its
+   hidden state. Input kernels use per-gate Glorot initialization, recurrent
+   kernels are per-gate orthogonal, and internal biases start at zero.
+
+
+   .. py:attribute:: gru_cell
+      :type:  equinox.nn.GRUCell
+
+
+   .. py:attribute:: inflow_head
+      :type:  equinox.nn.Linear | None
+
+
+   .. py:attribute:: outflow_head
+      :type:  equinox.nn.Linear | None
+
+
+   .. py:attribute:: rate_head
+      :type:  equinox.nn.Linear
+
 
 .. py:class:: DefaultLossModule(*, target_names)
 
@@ -64,41 +101,31 @@ Module Contents
       :type:  tuple[str, ...]
 
 
-.. py:class:: DefaultReactionModule(*, key, depth = 2, width_size = None, **scale_kwargs)
+.. py:class:: DefaultLstmReactionModule(*, key, hidden_width, **scale_kwargs)
 
-   Bases: :py:obj:`hybrax.train.model_api.UserReactionModule`
-
-
-   Minimal default reaction model for harness runs.
-
-   Predicts ``SCL_modeled_BiologicalOde_rates`` (which includes any ``r_<pv>``
-   PV rates) from the SCL species + modeled-PV slices. Ignores controls; emits
-   zero-valued modeled Inflow and Outflow rates. Uses tanh/Glorot for shallow
-   networks and SiLU/He for deeper networks. The rate head starts near zero.
+   Bases: :py:obj:`hybrax.train.model_api.RateModule`
 
 
-   .. py:attribute:: model
-      :type:  equinox.nn.MLP
+   Standard-LSTM latent-ODE reaction model with calibrated output heads.
+
+   ``hidden_width`` is the LSTM hidden width. ``SCL_latent`` stores ``[hidden |
+   cell]`` and therefore has width ``2 * hidden_width``. Both halves use the
+   continuous-time recurrent-state derivative ``cell(input, state) - state``.
 
 
-.. py:class:: DefaultStatefulReactionModule(*, key, n_latent, **scale_kwargs)
-
-   Bases: :py:obj:`hybrax.train.model_api.UserReactionModule`
-
-
-   Standard-GRU latent-ODE reaction model with calibrated output heads.
-
-   The GRU consumes physical and control inputs, with ``h`` passed only as its
-   hidden state. Input kernels use per-gate Glorot initialization, recurrent
-   kernels are per-gate orthogonal, and internal biases start at zero.
+   .. py:property:: hidden_width
+      :type: int
 
 
-   .. py:attribute:: gru_cell
-      :type:  equinox.nn.GRUCell
+      Width of each hidden/cell half of the integrated latent state.
 
 
    .. py:attribute:: inflow_head
       :type:  equinox.nn.Linear | None
+
+
+   .. py:attribute:: lstm_cell
+      :type:  equinox.nn.LSTMCell
 
 
    .. py:attribute:: outflow_head
@@ -107,6 +134,23 @@ Module Contents
 
    .. py:attribute:: rate_head
       :type:  equinox.nn.Linear
+
+
+.. py:class:: DefaultReactionModule(*, key, depth = 2, width_size = None, **scale_kwargs)
+
+   Bases: :py:obj:`hybrax.train.model_api.RateModule`
+
+
+   Minimal default reaction model for harness runs.
+
+   Predicts ``SCL_modeled_ReactionOde_rates`` (which includes any ``r_<pv>``
+   PV rates) from the SCL species + modeled-PV slices. Ignores controls; emits
+   zero-valued modeled Inflow and Outflow rates. Uses tanh/Glorot for shallow
+   networks and SiLU/He for deeper networks. The rate head starts near zero.
+
+
+   .. py:attribute:: model
+      :type:  equinox.nn.MLP
 
 
 .. py:function:: default_build_loss_module(*, target_names, process_names, config, seed, training_parent_collection)
@@ -131,4 +175,6 @@ Module Contents
 
    Default prep hook for process-collection transformation.
 
+
+.. py:data:: DefaultStatefulReactionModule
 

@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -420,7 +420,7 @@ dip tube begins spilling from the simulated volume. Here the start time is known
 equal prescribed rates make the level balance exact after the vessel reaches 1 L.</p>
 <p><code class="docutils literal notranslate"><span class="pre">process_type=&quot;continuous&quot;</span></code> is useful metadata, while the <code class="docutils literal notranslate"><span class="pre">Inflow</span></code>, <code class="docutils literal notranslate"><span class="pre">Outflow</span></code>, and their
 time series are what actually create this behavior.</p>
-<p>The biological ODE declares one specific rate, growth (<code class="docutils literal notranslate"><span class="pre">mu</span></code>). Transport terms for feed,
+<p>The reaction ODE declares one specific rate, growth (<code class="docutils literal notranslate"><span class="pre">mu</span></code>). Transport terms for feed,
 outflow, and changing volume are assembled separately from the process description:</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
@@ -437,7 +437,7 @@ outflow, and changing volume are assembled separately from the process descripti
 +-----------------------------------------------------------------------------+
 | Derivatives                                                                 |
 +-----------------------------------------------------------------------------+
-| State   | Unit  | Biological          | Feed         | Dilution / retention |
+| State   | Unit  | Reaction            | Feed         | Dilution / retention |
 | biomass | [g/L] | mu * biomass        |              | − dilution(feed)     |
 | glucose | [g/L] | -mu * biomass / 0.5 | + feed(feed) | − dilution(feed)     |
 +-----------------------------------------------------------------------------+
@@ -476,9 +476,9 @@ retains epochs 1, 50, and 200, reconstructs dense physical trajectories with
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>training monod model...
 training ann model...
 {
-  "fitted_mu_max": 0.504756355785169,
-  "fitted_Ks": 0.5456589969091471,
-  "ann_rate_rmse": 0.0047650922474698045,
+  "fitted_mu_max": 0.5047563557851721,
+  "fitted_Ks": 0.545658996909181,
+  "ann_rate_rmse": 0.004765092246833584,
   "final_biomass": 24.410486715263367,
   "final_glucose": 0.12839198560395768,
   "maximum_volume": 0.9999999999999994,
@@ -507,7 +507,7 @@ that asymptote.</p>
 <p>The mechanistic candidate has only two trainable values, <code class="docutils literal notranslate"><span class="pre">mu_max</span></code> and <code class="docutils literal notranslate"><span class="pre">Ks</span></code>. Their logs
 are trained so both physical parameters remain positive. They start at 1.0 h⁻¹ and
 1.0 g/L, deliberately away from the ground truth.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">FittedMonodModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">FittedMonodModule</span><span class="p">(</span><span class="n">RateModule</span><span class="p">):</span>
 <span class="linenos"> 2</span><span class="w">    </span><span class="sd">"""Monod growth with positive, trainable ``mu_max`` and ``Ks``."""</span>
 <span class="linenos"> 3</span>
 <span class="linenos"> 4</span>    <span class="n">log_mu_max</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
@@ -526,8 +526,8 @@ are trained so both physical parameters remain positive. They start at 1.0 h⁻�
 <span class="linenos">17</span>        <span class="n">glucose</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">states</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">i_glucose</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 <span class="linenos">18</span>        <span class="n">mu</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_mu_max</span><span class="p">)</span> <span class="o">*</span> <span class="n">glucose</span> <span class="o">/</span> <span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_ks</span><span class="p">)</span> <span class="o">+</span> <span class="n">glucose</span><span class="p">)</span>
 <span class="linenos">19</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos">20</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="p">(</span>
-<span class="linenos">21</span>                <span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_BiologicalOde_rates</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">mu</span><span class="p">]))</span>
+<span class="linenos">20</span>            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="p">(</span>
+<span class="linenos">21</span>                <span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_ReactionOde_rates</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">mu</span><span class="p">]))</span>
 <span class="linenos">22</span>            <span class="p">),</span>
 <span class="linenos">23</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
 <span class="linenos">24</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
@@ -537,7 +537,7 @@ are trained so both physical parameters remain positive. They start at 1.0 h⁻�
 <p>The neural candidate sees only scaled glucose and emits the same declared growth rate.
 Its <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">→</span> <span class="pre">4</span> <span class="pre">→</span> <span class="pre">4</span> <span class="pre">→</span> <span class="pre">1</span></code> MLP has 33 trainable parameters. It does not receive time, biomass,
 feed rate, outflow rate, or volume.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">AnnGrowthModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">AnnGrowthModule</span><span class="p">(</span><span class="n">RateModule</span><span class="p">):</span>
 <span class="linenos"> 2</span><span class="w">    </span><span class="sd">"""A 33-parameter ``1 → 4 → 4 → 1`` glucose-to-growth network."""</span>
 <span class="linenos"> 3</span>
 <span class="linenos"> 4</span>    <span class="n">mlp</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
@@ -560,7 +560,7 @@ feed rate, outflow rate, or volume.</p>
 <span class="linenos">21</span>        <span class="n">glucose</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">i_glucose</span><span class="p">]</span>
 <span class="linenos">22</span>        <span class="n">mu</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mlp</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">glucose</span><span class="p">]))</span>
 <span class="linenos">23</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos">24</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">mu</span><span class="p">,</span>
+<span class="linenos">24</span>            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="n">mu</span><span class="p">,</span>
 <span class="linenos">25</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
 <span class="linenos">26</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
 <span class="linenos">27</span>        <span class="p">)</span>

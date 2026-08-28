@@ -15,8 +15,6 @@ Functions
 .. autoapisummary::
 
    hybrax.format.validate.validate_augmented_parent_refs
-   hybrax.format.validate.validate_biological_ode
-   hybrax.format.validate.validate_biological_ode_equivalence
    hybrax.format.validate.validate_biomass_in_reactor_medium
    hybrax.format.validate.validate_bounds
    hybrax.format.validate.validate_bounds_against_data
@@ -27,6 +25,8 @@ Functions
    hybrax.format.validate.validate_measurement_sampling_alignment
    hybrax.format.validate.validate_outflow_retention
    hybrax.format.validate.validate_process
+   hybrax.format.validate.validate_reaction_ode
+   hybrax.format.validate.validate_reaction_ode_equivalence
    hybrax.format.validate.validate_time_axis
    hybrax.format.validate.validate_timeseries_shape
    hybrax.format.validate.validate_timestamp_bounds
@@ -55,35 +55,6 @@ Module Contents
              ``PASS`` entry when there are none.
 
 
-.. py:function:: validate_biological_ode(process)
-
-   Validate ``process.biological_ode`` if present.
-
-   Checks (skipped when ``biological_ode is None``):
-
-   - Every reactor-medium component and uncontrolled process variable
-     (the dynamic states) must have an entry in ``derivatives``.
-   - Every key in ``derivatives`` must correspond to a dynamic state.
-   - All expressions parse successfully via ``sympy.sympify``.
-   - Every free symbol in any expression resolves to a dynamic state, a
-     controlled process variable (input), an algebraic name, or a declared
-     rate name.
-   - Algebraic-variable dependencies are acyclic.
-   - Rate names do not collide with state, algebraic, or controlled-PV names.
-   - All bounds tuples are sane (``lo <= hi`` when both set).
-
-
-.. py:function:: validate_biological_ode_equivalence(container)
-
-   Verify all processes in *container* share the same ``biological_ode``.
-
-   Equivalence requires identical ``algebraic``, ``derivatives``, and
-   ``rates`` dicts (same keys mapped to the same values). Containers with
-   zero or one process trivially pass.
-
-   Returns ``(is_valid, message)``.
-
-
 .. py:function:: validate_biomass_in_reactor_medium(process)
 
    Check that the reactor medium contains a component whose name is
@@ -109,9 +80,9 @@ Module Contents
    the actual scalar (``StaticVariable``) or ``TimeSeries.values`` array
    against ``(lo, hi)`` and reports how many datapoints violate the bound.
 
-   Out of scope: ``BiologicalOde.rates`` bounds. No rate-inversion
+   Out of scope: ``ReactionOde.rates`` bounds. No rate-inversion
    machinery exists to compute a measured rate value to check against them
-   (see ``validate_biological_ode``'s tuple-only sanity check on rates).
+   (see ``validate_reaction_ode``'s tuple-only sanity check on rates).
 
 
 .. py:function:: validate_cross_process_consistency(collection)
@@ -232,7 +203,7 @@ Module Contents
    - Measurement/sampling timestamp alignment.
    - Bounds tuple sanity.
    - Measured data falls within its own declared ``Bounds``.
-   - Biological ODE structure.
+   - Reaction ODE structure.
 
    :param process: BioProcess object to validate.
 
@@ -241,6 +212,35 @@ Module Contents
              ``(check_ok, message)`` pairs, one per check.
 
    :raises TypeError: If ``process`` is not a :class:`BioProcess` instance.
+
+
+.. py:function:: validate_reaction_ode(process)
+
+   Validate ``process.reaction_ode`` if present.
+
+   Checks (skipped when ``reaction_ode is None``):
+
+   - Every reactor-medium component and uncontrolled process variable
+     (the dynamic states) must have an entry in ``derivatives``.
+   - Every key in ``derivatives`` must correspond to a dynamic state.
+   - All expressions parse successfully via ``sympy.sympify``.
+   - Every free symbol in any expression resolves to a dynamic state, a
+     controlled process variable (input), an algebraic name, or a declared
+     rate name.
+   - Algebraic-variable dependencies are acyclic.
+   - Rate names do not collide with state, algebraic, or controlled-PV names.
+   - All bounds tuples are sane (``lo <= hi`` when both set).
+
+
+.. py:function:: validate_reaction_ode_equivalence(container)
+
+   Verify all processes in *container* share the same ``reaction_ode``.
+
+   Equivalence requires identical ``algebraic``, ``derivatives``, and
+   ``rates`` dicts (same keys mapped to the same values). Containers with
+   zero or one process trivially pass.
+
+   Returns ``(is_valid, message)``.
 
 
 .. py:function:: validate_time_axis(process)

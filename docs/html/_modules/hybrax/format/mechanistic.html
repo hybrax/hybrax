@@ -260,7 +260,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom Losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
@@ -584,11 +584,11 @@
     <span class="k">return</span> <span class="n">order</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_parse_biological_ode_expressions</span><span class="p">(</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_parse_reaction_ode_expressions</span><span class="p">(</span>
     <span class="n">bo</span><span class="p">,</span>
     <span class="n">allowed_names</span><span class="p">:</span> <span class="nb">set</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
-<span class="w">    </span><span class="sd">"""Sympify ``BiologicalOde.algebraic`` and ``derivatives`` strings.</span>
+<span class="w">    </span><span class="sd">"""Sympify ``ReactionOde.algebraic`` and ``derivatives`` strings.</span>
 
 <span class="sd">    Returns ``(algebraic_exprs, derivative_exprs)`` keyed by name. Raises</span>
 <span class="sd">    ``ValueError`` on parse failure.</span>
@@ -603,7 +603,7 @@
             <span class="n">algebraic_exprs</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">sympy</span><span class="o">.</span><span class="n">sympify</span><span class="p">(</span><span class="n">expr_str</span><span class="p">,</span> <span class="nb">locals</span><span class="o">=</span><span class="n">symbol_table</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">"biological_ode.algebraic[</span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2">] failed to parse: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span>
+                <span class="sa">f</span><span class="s2">"reaction_ode.algebraic[</span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2">] failed to parse: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span>
             <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
 
     <span class="n">derivative_exprs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
@@ -612,7 +612,7 @@
             <span class="n">derivative_exprs</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">sympy</span><span class="o">.</span><span class="n">sympify</span><span class="p">(</span><span class="n">expr_str</span><span class="p">,</span> <span class="nb">locals</span><span class="o">=</span><span class="n">symbol_table</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">"biological_ode.derivatives[</span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2">] failed to parse: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span>
+                <span class="sa">f</span><span class="s2">"reaction_ode.derivatives[</span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2">] failed to parse: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span>
             <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
 
     <span class="k">return</span> <span class="n">algebraic_exprs</span><span class="p">,</span> <span class="n">derivative_exprs</span>
@@ -642,7 +642,7 @@
 <span class="sd">      value must be in ``[0, 1]``, and discrete Outflows cannot set retention.</span>
 <span class="sd">    - Every non-controlled ``ProcessVariable`` must have a ``TimeSeries``</span>
 <span class="sd">      value carrier (static PVs must be ``is_controlled=True``).</span>
-<span class="sd">    - The ``BiologicalOde.algebraic`` graph must be acyclic.</span>
+<span class="sd">    - The ``ReactionOde.algebraic`` graph must be acyclic.</span>
 <span class="sd">    - All names across every group must be unique (no shared names between</span>
 <span class="sd">      states, rates, algebraic, controlled PVs, Inflows, Outflows).</span>
 <span class="sd">    """</span>
@@ -725,8 +725,8 @@
     <span class="k">if</span> <span class="n">retention_errors</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">retention_errors</span><span class="p">))</span>
 
-    <span class="c1"># ---- Biological ODE: rates (insertion order) and algebraic (topo-sorted)</span>
-    <span class="n">bo</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span>
+    <span class="c1"># ---- Reaction ODE: rates (insertion order) and algebraic (topo-sorted)</span>
+    <span class="n">bo</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span>
     <span class="k">if</span> <span class="n">bo</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">name_modeled_rates</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
         <span class="n">name_modeled_algebraic</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
@@ -734,7 +734,7 @@
         <span class="n">name_modeled_rates</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">bo</span><span class="o">.</span><span class="n">rates</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
         <span class="c1"># Need parsed algebraic expressions for topo-sort. Build a minimal</span>
         <span class="c1"># allowed-symbol set that lets sympify recognise every name. The</span>
-        <span class="c1"># full validation is done by validate_biological_ode.</span>
+        <span class="c1"># full validation is done by validate_reaction_ode.</span>
         <span class="n">allowed</span> <span class="o">=</span> <span class="p">(</span>
             <span class="nb">set</span><span class="p">(</span><span class="n">name_modeled_RMCs</span><span class="p">)</span>
             <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">name_modeled_PVs</span><span class="p">)</span>
@@ -742,7 +742,7 @@
             <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">bo</span><span class="o">.</span><span class="n">algebraic</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
             <span class="o">|</span> <span class="nb">set</span><span class="p">(</span><span class="n">name_modeled_rates</span><span class="p">)</span>
         <span class="p">)</span>
-        <span class="n">algebraic_exprs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">_parse_biological_ode_expressions</span><span class="p">(</span><span class="n">bo</span><span class="p">,</span> <span class="n">allowed</span><span class="p">)</span>
+        <span class="n">algebraic_exprs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">_parse_reaction_ode_expressions</span><span class="p">(</span><span class="n">bo</span><span class="p">,</span> <span class="n">allowed</span><span class="p">)</span>
         <span class="n">name_modeled_algebraic</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">_topo_sort_algebraic</span><span class="p">(</span><span class="n">algebraic_exprs</span><span class="p">))</span>
 
     <span class="c1"># ---- Cross-group name-collision check</span>
@@ -958,13 +958,13 @@
 <div class="viewcode-block" id="RhsOde">
 <a class="viewcode-back" href="../../../autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.RhsOde">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">RhsOde</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""JAX/Equinox module that evaluates the biological RHS for a process.</span>
+<span class="w">    </span><span class="sd">"""JAX/Equinox module that evaluates the RHS for a process.</span>
 
-<span class="sd">    Built by :func:`build_rhs_ode` from ``process.biological_ode``</span>
+<span class="sd">    Built by :func:`build_rhs_ode` from ``process.reaction_ode``</span>
 <span class="sd">    (auto-generated in :meth:`BioProcess.__post_init__` when not</span>
-<span class="sd">    user-supplied). The biological ``dc/dt`` per state comes from</span>
-<span class="sd">    user-written expression strings; hybrax.format adds the physical</span>
-<span class="sd">    contributions (feed, dilution, dV) on top.</span>
+<span class="sd">    user-supplied). The reaction ``dc/dt`` per state comes from user-written</span>
+<span class="sd">    expression strings; hybrax.format adds the transport contributions (feed,</span>
+<span class="sd">    dilution, dV) on top.</span>
 
 <span class="sd">    Call signature::</span>
 
@@ -1041,12 +1041,12 @@
             <span class="n">args</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">state_and_ctrl</span><span class="p">,</span> <span class="n">algebraic_arr</span><span class="p">,</span> <span class="n">rates</span><span class="p">])</span>
             <span class="n">algebraic_arr</span> <span class="o">=</span> <span class="n">algebraic_arr</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">fn</span><span class="p">(</span><span class="n">args</span><span class="p">))</span>
 
-        <span class="c1"># 2. Biological derivatives per dynamic state</span>
+        <span class="c1"># 2. Reaction derivatives per dynamic state</span>
         <span class="n">full_args</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">state_and_ctrl</span><span class="p">,</span> <span class="n">algebraic_arr</span><span class="p">,</span> <span class="n">rates</span><span class="p">])</span>
         <span class="n">biol_dc_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">fn</span><span class="p">(</span><span class="n">full_args</span><span class="p">)</span> <span class="k">for</span> <span class="n">fn</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">derivative_funcs</span><span class="p">]</span>
         <span class="n">biol_dc</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">biol_dc_list</span><span class="p">)</span> <span class="k">if</span> <span class="n">biol_dc_list</span> <span class="k">else</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
 
-        <span class="c1"># 3. Physical contributions on RMC states (PV states are biological-only).</span>
+        <span class="c1"># 3. Transport contributions on RMC states (PV states are reaction-only).</span>
         <span class="n">feed_term</span><span class="p">,</span> <span class="n">dV</span> <span class="o">=</span> <span class="n">_apply_feed_dilution</span><span class="p">(</span>
             <span class="n">c_RMCs</span><span class="p">,</span>
             <span class="n">V</span><span class="p">,</span>
@@ -1080,16 +1080,16 @@
     <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
     <span class="n">ordering</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ProcessOrdering</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhsOde</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Build a :class:`RhsOde` from a process whose ``biological_ode`` is</span>
+<span class="w">    </span><span class="sd">"""Build a :class:`RhsOde` from a process whose ``reaction_ode`` is</span>
 <span class="sd">    set (auto-generated in :meth:`BioProcess.__post_init__` when not</span>
 <span class="sd">    user-supplied). Raises ``ValueError`` if the block is missing or</span>
 <span class="sd">    fails validation.</span>
 <span class="sd">    """</span>
     <span class="kn">import</span><span class="w"> </span><span class="nn">sympy</span>
 
-    <span class="n">bo</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span>
+    <span class="n">bo</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span>
     <span class="k">if</span> <span class="n">bo</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"build_rhs_ode requires process.biological_ode to be set."</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"build_rhs_ode requires process.reaction_ode to be set."</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">ordering</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">ordering</span> <span class="o">=</span> <span class="n">get_process_ordering</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
@@ -1106,7 +1106,7 @@
     <span class="p">)</span>
 
     <span class="n">allowed_names</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">args_order</span><span class="p">)</span>
-    <span class="n">algebraic_exprs</span><span class="p">,</span> <span class="n">derivative_exprs</span> <span class="o">=</span> <span class="n">_parse_biological_ode_expressions</span><span class="p">(</span>
+    <span class="n">algebraic_exprs</span><span class="p">,</span> <span class="n">derivative_exprs</span> <span class="o">=</span> <span class="n">_parse_reaction_ode_expressions</span><span class="p">(</span>
         <span class="n">bo</span><span class="p">,</span> <span class="n">allowed_names</span>
     <span class="p">)</span>
 
@@ -1166,7 +1166,7 @@
     <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
     <span class="n">ordering</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ProcessOrdering</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]:</span>
-<span class="w">    </span><span class="sd">"""Build a callable that evaluates the ``biological_ode.algebraic``</span>
+<span class="w">    </span><span class="sd">"""Build a callable that evaluates the ``reaction_ode.algebraic``</span>
 <span class="sd">    quantities from concrete ``(state_values, ctrl_pv_values, rates)``</span>
 <span class="sd">    arrays.</span>
 
@@ -1178,10 +1178,10 @@
 <span class="sd">    Returns ``{name: scalar}`` keyed by ``name_modeled_algebraic`` (topo</span>
 <span class="sd">    order). Useful for plotting / loss computation.</span>
 <span class="sd">    """</span>
-    <span class="n">bo</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span>
+    <span class="n">bo</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span>
     <span class="k">if</span> <span class="n">bo</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="s2">"build_algebraic_func requires process.biological_ode to be set."</span>
+            <span class="s2">"build_algebraic_func requires process.reaction_ode to be set."</span>
         <span class="p">)</span>
     <span class="n">rhs_ode</span> <span class="o">=</span> <span class="n">build_rhs_ode</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">ordering</span><span class="o">=</span><span class="n">ordering</span><span class="p">)</span>
     <span class="n">name_modeled_algebraic</span> <span class="o">=</span> <span class="n">rhs_ode</span><span class="o">.</span><span class="n">name_modeled_algebraic</span>

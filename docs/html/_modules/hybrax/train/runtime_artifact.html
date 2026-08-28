@@ -260,7 +260,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom Losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
@@ -388,7 +388,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">AugmentedBioProcess</span><span class="p">,</span> <span class="n">BioProcessCollection</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.mechanistic</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhsOde</span><span class="p">,</span> <span class="n">build_rhs_ode</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.validate</span><span class="w"> </span><span class="kn">import</span> <span class="n">validate_biological_ode_equivalence</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.validate</span><span class="w"> </span><span class="kn">import</span> <span class="n">validate_reaction_ode_equivalence</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_process_collection</span><span class="p">,</span> <span class="n">save_process_collection</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">.controls_store</span><span class="w"> </span><span class="kn">import</span> <span class="n">ControlsStore</span><span class="p">,</span> <span class="n">derive_control_partition</span>
@@ -1023,7 +1023,7 @@
     <span class="n">augmentation_parents</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
     <span class="n">rhs_names</span><span class="p">:</span> <span class="n">RhsNames</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-    <span class="n">equivalent</span><span class="p">,</span> <span class="n">message</span> <span class="o">=</span> <span class="n">validate_biological_ode_equivalence</span><span class="p">(</span><span class="n">parent_collection</span><span class="p">)</span>
+    <span class="n">equivalent</span><span class="p">,</span> <span class="n">message</span> <span class="o">=</span> <span class="n">validate_reaction_ode_equivalence</span><span class="p">(</span><span class="n">parent_collection</span><span class="p">)</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">equivalent</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
 
@@ -1743,7 +1743,7 @@
             <span class="nb">len</span><span class="p">(</span><span class="n">descriptor</span><span class="o">.</span><span class="n">name_modeled_Inflows</span><span class="p">),</span>
             <span class="n">n_rmc</span><span class="p">,</span>
         <span class="p">),</span>
-        <span class="s2">"SCALE_modeled_BiologicalOde_rates"</span><span class="p">:</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">descriptor</span><span class="o">.</span><span class="n">name_modeled_rates</span><span class="p">),),</span>
+        <span class="s2">"SCALE_modeled_ReactionOde_rates"</span><span class="p">:</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">descriptor</span><span class="o">.</span><span class="n">name_modeled_rates</span><span class="p">),),</span>
         <span class="s2">"SCALE_modeled_Inflows_rates"</span><span class="p">:</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">descriptor</span><span class="o">.</span><span class="n">name_modeled_Inflows</span><span class="p">),),</span>
         <span class="s2">"SCALE_modeled_Outflows_rates"</span><span class="p">:</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">descriptor</span><span class="o">.</span><span class="n">name_modeled_Outflows</span><span class="p">),),</span>
         <span class="s2">"SCALE_modeled_PVs"</span><span class="p">:</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">descriptor</span><span class="o">.</span><span class="n">name_modeled_PVs</span><span class="p">),),</span>

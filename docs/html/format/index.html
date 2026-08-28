@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -382,8 +382,8 @@
 <!-- UNLOCK -->
 <section id="under-the-hood">
 <h2>Under the hood<a class="headerlink" href="#under-the-hood" title="Link to this heading">¶</a></h2>
-<img class="theme-diagram diagram-light" src="../_static/diagram_format_pipeline_light.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, BiologicalOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
-<img class="theme-diagram diagram-dark" src="../_static/diagram_format_pipeline_dark.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, BiologicalOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
+<img class="theme-diagram diagram-light" src="../_static/diagram_format_pipeline_light.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, ReactionOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
+<img class="theme-diagram diagram-dark" src="../_static/diagram_format_pipeline_dark.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, ReactionOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
 <p>You write the left column once. The right column is generated, and is the single source
 of truth for layout everywhere downstream: <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> never re-derives it.</p>
 </section>
@@ -456,7 +456,7 @@ of truth for layout everywhere downstream: <code class="docutils literal notrans
 
 <span class="n">ok</span><span class="p">,</span> <span class="n">messages</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">validate_process</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="s2">"valid:"</span><span class="p">,</span> <span class="n">ok</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="s2">"auto-generated dynamics:"</span><span class="p">,</span> <span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span><span class="o">.</span><span class="n">derivatives</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"auto-generated dynamics:"</span><span class="p">,</span> <span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span><span class="o">.</span><span class="n">derivatives</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>

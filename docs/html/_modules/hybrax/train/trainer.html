@@ -260,7 +260,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom Losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
@@ -663,17 +663,17 @@
 <span class="sd">        field name (without the SCL_target_pred slice -- that's handled by the</span>
 <span class="sd">        caller using ``target_state_indices``)."""</span>
         <span class="n">SCL_states</span> <span class="o">=</span> <span class="n">save_outputs</span><span class="o">.</span><span class="n">SCL_states</span>
-        <span class="n">RAW_rates</span> <span class="o">=</span> <span class="n">save_outputs</span><span class="o">.</span><span class="n">RAW_modeled_BiologicalOde_rates</span>
+        <span class="n">RAW_rates</span> <span class="o">=</span> <span class="n">save_outputs</span><span class="o">.</span><span class="n">RAW_modeled_ReactionOde_rates</span>
         <span class="n">RAW_Inflow_rates</span> <span class="o">=</span> <span class="n">save_outputs</span><span class="o">.</span><span class="n">RAW_modeled_Inflows_rates</span>
         <span class="n">RAW_Outflow_rates</span> <span class="o">=</span> <span class="n">save_outputs</span><span class="o">.</span><span class="n">RAW_modeled_Outflows_rates</span>
         <span class="n">RAW_V</span> <span class="o">=</span> <span class="n">save_outputs</span><span class="o">.</span><span class="n">RAW_V</span>
         <span class="k">return</span> <span class="p">{</span>
             <span class="s2">"SCL_states"</span><span class="p">:</span> <span class="n">SCL_states</span><span class="p">,</span>
             <span class="s2">"RAW_states"</span><span class="p">:</span> <span class="n">module</span><span class="o">.</span><span class="n">unscale_state</span><span class="p">(</span><span class="n">SCL_states</span><span class="p">),</span>
-            <span class="s2">"SCL_modeled_BiologicalOde_rates"</span><span class="p">:</span> <span class="n">module</span><span class="o">.</span><span class="n">scale_modeled_BiologicalOde_rates</span><span class="p">(</span>
+            <span class="s2">"SCL_modeled_ReactionOde_rates"</span><span class="p">:</span> <span class="n">module</span><span class="o">.</span><span class="n">scale_modeled_ReactionOde_rates</span><span class="p">(</span>
                 <span class="n">RAW_rates</span>
             <span class="p">),</span>
-            <span class="s2">"RAW_modeled_BiologicalOde_rates"</span><span class="p">:</span> <span class="n">RAW_rates</span><span class="p">,</span>
+            <span class="s2">"RAW_modeled_ReactionOde_rates"</span><span class="p">:</span> <span class="n">RAW_rates</span><span class="p">,</span>
             <span class="s2">"SCL_modeled_Inflows_rates"</span><span class="p">:</span> <span class="n">module</span><span class="o">.</span><span class="n">scale_modeled_Inflows_rates</span><span class="p">(</span>
                 <span class="n">RAW_Inflow_rates</span>
             <span class="p">),</span>
@@ -799,8 +799,8 @@
     <span class="n">inputs</span> <span class="o">=</span> <span class="n">LossInputs</span><span class="p">(</span>
         <span class="n">SCL_states</span><span class="o">=</span><span class="n">SCL_states</span><span class="p">,</span>
         <span class="n">RAW_states</span><span class="o">=</span><span class="n">meas_views</span><span class="p">[</span><span class="s2">"RAW_states"</span><span class="p">],</span>
-        <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">meas_views</span><span class="p">[</span><span class="s2">"SCL_modeled_BiologicalOde_rates"</span><span class="p">],</span>
-        <span class="n">RAW_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">meas_views</span><span class="p">[</span><span class="s2">"RAW_modeled_BiologicalOde_rates"</span><span class="p">],</span>
+        <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="n">meas_views</span><span class="p">[</span><span class="s2">"SCL_modeled_ReactionOde_rates"</span><span class="p">],</span>
+        <span class="n">RAW_modeled_ReactionOde_rates</span><span class="o">=</span><span class="n">meas_views</span><span class="p">[</span><span class="s2">"RAW_modeled_ReactionOde_rates"</span><span class="p">],</span>
         <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">meas_views</span><span class="p">[</span><span class="s2">"SCL_modeled_Inflows_rates"</span><span class="p">],</span>
         <span class="n">RAW_modeled_Inflows_rates</span><span class="o">=</span><span class="n">meas_views</span><span class="p">[</span><span class="s2">"RAW_modeled_Inflows_rates"</span><span class="p">],</span>
         <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">meas_views</span><span class="p">[</span><span class="s2">"SCL_modeled_Outflows_rates"</span><span class="p">],</span>
@@ -821,11 +821,11 @@
         <span class="n">dense_t</span><span class="o">=</span><span class="n">dense_t</span><span class="p">,</span>
         <span class="n">dense_SCL_states</span><span class="o">=</span><span class="n">dense_views</span><span class="p">[</span><span class="s2">"SCL_states"</span><span class="p">],</span>
         <span class="n">dense_RAW_states</span><span class="o">=</span><span class="n">dense_views</span><span class="p">[</span><span class="s2">"RAW_states"</span><span class="p">],</span>
-        <span class="n">dense_SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">dense_views</span><span class="p">[</span>
-            <span class="s2">"SCL_modeled_BiologicalOde_rates"</span>
+        <span class="n">dense_SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="n">dense_views</span><span class="p">[</span>
+            <span class="s2">"SCL_modeled_ReactionOde_rates"</span>
         <span class="p">],</span>
-        <span class="n">dense_RAW_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">dense_views</span><span class="p">[</span>
-            <span class="s2">"RAW_modeled_BiologicalOde_rates"</span>
+        <span class="n">dense_RAW_modeled_ReactionOde_rates</span><span class="o">=</span><span class="n">dense_views</span><span class="p">[</span>
+            <span class="s2">"RAW_modeled_ReactionOde_rates"</span>
         <span class="p">],</span>
         <span class="n">dense_SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">dense_views</span><span class="p">[</span><span class="s2">"SCL_modeled_Inflows_rates"</span><span class="p">],</span>
         <span class="n">dense_RAW_modeled_Inflows_rates</span><span class="o">=</span><span class="n">dense_views</span><span class="p">[</span><span class="s2">"RAW_modeled_Inflows_rates"</span><span class="p">],</span>

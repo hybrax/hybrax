@@ -35,7 +35,7 @@ Module Contents
    Bases: :py:obj:`equinox.Module`
 
 
-   RAW physical-state wrapper around a user reaction module.
+   RAW physical-state wrapper around a rate module.
 
    ``physical_solve`` owns the scaled ODE reparameterization. This wrapper sees
    RAW integrated state ``[RMCs | PVs | V | modeled_cum | latent]``, builds
@@ -74,7 +74,7 @@ Module Contents
 
       Build a wrapper from an existing RhsOde runtime template.
 
-      Scales are read from ``reaction_module`` (a ``UserReactionModule``
+      Scales are read from ``reaction_module`` (a ``RateModule``
       subclass with ``SCALE_*`` fields). The constructor validates each
       ``SCALE_*`` shape against the RhsOde / controls layout.
 
@@ -161,7 +161,7 @@ Module Contents
 
 
    .. py:attribute:: reaction_module
-      :type:  hybrax.train.model_api.UserReactionModule
+      :type:  hybrax.train.model_api.RateModule
 
 
    .. py:attribute:: rhs_ode
@@ -192,15 +192,15 @@ Module Contents
       :type:  jax.Array
 
 
-   .. py:attribute:: RAW_modeled_BiologicalOde_rates
-      :type:  jax.Array
-
-
    .. py:attribute:: RAW_modeled_Inflows_rates
       :type:  jax.Array
 
 
    .. py:attribute:: RAW_modeled_Outflows_rates
+      :type:  jax.Array
+
+
+   .. py:attribute:: RAW_modeled_ReactionOde_rates
       :type:  jax.Array
 
 

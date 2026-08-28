@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -473,7 +473,7 @@ prepared result.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="hybrax.train.validate.validate_for_training">
-<span class="sig-prename descclassname"><span class="pre">hybrax.train.validate.</span></span><span class="sig-name descname"><span class="pre">validate_for_training</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">strict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">require_biological_ode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/validate.html#validate_for_training"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.validate.validate_for_training" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.validate.</span></span><span class="sig-name descname"><span class="pre">validate_for_training</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">strict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">require_reaction_ode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/validate.html#validate_for_training"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.validate.validate_for_training" title="Link to this definition">¶</a></dt>
 <dd><p>hybrax.train’s training-readiness validator.</p>
 <p>Distinct from hybrax.format’s own <code class="docutils literal notranslate"><span class="pre">validate_for_publication</span></code> (a
 storage/publication concern), but composes the same
@@ -485,8 +485,8 @@ case study by default.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>collection</strong> (<a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>) – Process collection to validate.</p></li>
 <li><p><strong>strict</strong> (<em>bool</em>) – Raise instead of returning a report containing failures.</p></li>
-<li><p><strong>require_biological_ode</strong> (<em>bool</em>) – Also fail any process missing
-<code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> (checked after <code class="docutils literal notranslate"><span class="pre">transform_process_collection</span></code>
+<li><p><strong>require_reaction_ode</strong> (<em>bool</em>) – Also fail any process missing
+<code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> (checked after <code class="docutils literal notranslate"><span class="pre">transform_process_collection</span></code>
 would have added one).</p></li>
 </ul>
 </dd>

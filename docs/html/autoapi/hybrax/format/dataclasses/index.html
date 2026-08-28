@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -406,32 +406,32 @@ JAX-compatible dataclasses for standardized bioprocess data</p>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata" title="hybrax.format.dataclasses.BioProcessMetadata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BioProcessMetadata</span></code></a></p></td>
 <td><p>Static reactor characteristics.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.BiologicalOde" title="hybrax.format.dataclasses.BiologicalOde"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BiologicalOde</span></code></a></p></td>
-<td><p>User-defined per-state biological RHS expressions.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.DiscreteEvents" title="hybrax.format.dataclasses.DiscreteEvents"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DiscreteEvents</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.DiscreteEvents" title="hybrax.format.dataclasses.DiscreteEvents"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DiscreteEvents</span></code></a></p></td>
 <td><p>Discrete event times: bolus feeds, sampling, volume jumps, and similar.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.FeedMedium" title="hybrax.format.dataclasses.FeedMedium"><code class="xref py py-obj docutils literal notranslate"><span class="pre">FeedMedium</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.FeedMedium" title="hybrax.format.dataclasses.FeedMedium"><code class="xref py py-obj docutils literal notranslate"><span class="pre">FeedMedium</span></code></a></p></td>
 <td><p>Feed medium definition for ODE RHS calculations.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.FeedMediumComponent" title="hybrax.format.dataclasses.FeedMediumComponent"><code class="xref py py-obj docutils literal notranslate"><span class="pre">FeedMediumComponent</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.FeedMediumComponent" title="hybrax.format.dataclasses.FeedMediumComponent"><code class="xref py py-obj docutils literal notranslate"><span class="pre">FeedMediumComponent</span></code></a></p></td>
 <td><p>One named component of a feed medium's composition.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.Inflow" title="hybrax.format.dataclasses.Inflow"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Inflow</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.Inflow" title="hybrax.format.dataclasses.Inflow"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Inflow</span></code></a></p></td>
 <td><p>Volume change from a feed (inflow). Includes the feed medium composition.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.Outflow" title="hybrax.format.dataclasses.Outflow"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Outflow</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.Outflow" title="hybrax.format.dataclasses.Outflow"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Outflow</span></code></a></p></td>
 <td><p>Volume change from sampling/removal (outflow). No feed medium.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.ProcessOrdering" title="hybrax.format.dataclasses.ProcessOrdering"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ProcessOrdering</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.ProcessOrdering" title="hybrax.format.dataclasses.ProcessOrdering"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ProcessOrdering</span></code></a></p></td>
 <td><p>Canonical name ordering across all derived mechanistic modules.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.ProcessVariable" title="hybrax.format.dataclasses.ProcessVariable"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ProcessVariable</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.ProcessVariable" title="hybrax.format.dataclasses.ProcessVariable"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ProcessVariable</span></code></a></p></td>
 <td><p>One process variable: a controlled input, or a modeled state.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.PseudobatchTransform" title="hybrax.format.dataclasses.PseudobatchTransform"><code class="xref py py-obj docutils literal notranslate"><span class="pre">PseudobatchTransform</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.PseudobatchTransform" title="hybrax.format.dataclasses.PseudobatchTransform"><code class="xref py py-obj docutils literal notranslate"><span class="pre">PseudobatchTransform</span></code></a></p></td>
 <td><p>Process-level pseudobatch transform bundle.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.ReactionOde" title="hybrax.format.dataclasses.ReactionOde"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ReactionOde</span></code></a></p></td>
+<td><p>User-defined per-state reaction RHS expressions.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMedium" title="hybrax.format.dataclasses.ReactorMedium"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ReactorMedium</span></code></a></p></td>
 <td><p>Reactor medium definition for ODE RHS calculations.</p></td>
@@ -495,14 +495,9 @@ objects yet, but the data shape is fixed so downstream packages
 <dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcess">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">BioProcess</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#BioProcess"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.BioProcess" title="Link to this definition">¶</a></dt>
 <dd><p>Single experimental bioprocess run: time axis, volume, media, and variables.</p>
-<p><code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> auto-generates from <code class="docutils literal notranslate"><span class="pre">reactor_medium</span></code>/
+<p><code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> auto-generates from <code class="docutils literal notranslate"><span class="pre">reactor_medium</span></code>/
 <code class="docutils literal notranslate"><span class="pre">process_variables</span></code> if not supplied; see
-<code class="docutils literal notranslate"><span class="pre">_auto_generate_biological_ode</span></code>.</p>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcess.biological_ode">
-<span class="sig-name descname"><span class="pre">biological_ode</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.BiologicalOde" title="hybrax.format.dataclasses.BiologicalOde"><span class="pre">BiologicalOde</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcess.biological_ode" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
+<code class="docutils literal notranslate"><span class="pre">_auto_generate_reaction_ode</span></code>.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcess.discrete_events">
 <span class="sig-name descname"><span class="pre">discrete_events</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.DiscreteEvents" title="hybrax.format.dataclasses.DiscreteEvents"><span class="pre">DiscreteEvents</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcess.discrete_events" title="Link to this definition">¶</a></dt>
@@ -521,6 +516,11 @@ objects yet, but the data shape is fixed so downstream packages
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcess.pseudobatch_transform">
 <span class="sig-name descname"><span class="pre">pseudobatch_transform</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.PseudobatchTransform" title="hybrax.format.dataclasses.PseudobatchTransform"><span class="pre">PseudobatchTransform</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcess.pseudobatch_transform" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcess.reaction_ode">
+<span class="sig-name descname"><span class="pre">reaction_ode</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.ReactionOde" title="hybrax.format.dataclasses.ReactionOde"><span class="pre">ReactionOde</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcess.reaction_ode" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -593,48 +593,6 @@ namespaced metadata block).</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcessMetadata.process_type">
 <span class="sig-name descname"><span class="pre">process_type</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcessMetadata.process_type" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="hybrax.format.dataclasses.BiologicalOde">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">BiologicalOde</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#BiologicalOde"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.BiologicalOde" title="Link to this definition">¶</a></dt>
-<dd><p>User-defined per-state biological RHS expressions.</p>
-<p>Describes only the <em>biological</em> part of <code class="docutils literal notranslate"><span class="pre">dc/dt</span></code>. Physical contributions
-(feed inflow, dilution, sample outflow, volume dynamics) continue to be
-added by hybrax.format from the existing <a class="reference internal" href="#hybrax.format.dataclasses.VolumeChange" title="hybrax.format.dataclasses.VolumeChange"><code class="xref py py-class docutils literal notranslate"><span class="pre">VolumeChange</span></code></a> machinery and
-are not part of this block.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Variables<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>algebraic</strong> – Mapping <code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">-&gt;</span> <span class="pre">expression</span> <span class="pre">string</span></code>. Algebraic (no time
-derivative), recomputed every RHS call. Must be acyclic.</p></li>
-<li><p><strong>rates</strong> – Mapping <code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">-&gt;</span> <span class="pre">Bounds</span></code>. Names of abstract specific rates
-that the runtime supplies; <code class="docutils literal notranslate"><span class="pre">len(rates)</span></code> is the rate-vector
-dimension. Each value is a <code class="docutils literal notranslate"><span class="pre">(lower,</span> <span class="pre">upper)</span></code> tuple with <code class="docutils literal notranslate"><span class="pre">None</span></code>
-on either side meaning unbounded; use <code class="docutils literal notranslate"><span class="pre">(None,</span> <span class="pre">None)</span></code> (i.e.
-<code class="docutils literal notranslate"><span class="pre">_NO_BOUNDS</span></code>) for rates without bounds.</p></li>
-<li><p><strong>derivatives</strong> – Mapping <code class="docutils literal notranslate"><span class="pre">state_name</span> <span class="pre">-&gt;</span> <span class="pre">expression</span> <span class="pre">string</span></code> giving the
-biological contribution to <code class="docutils literal notranslate"><span class="pre">d(state)/dt</span></code>. Every dynamic state
-must have an entry; use <code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code> to declare no biological
-dynamics.</p></li>
-</ul>
-</dd>
-</dl>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.format.dataclasses.BiologicalOde.algebraic">
-<span class="sig-name descname"><span class="pre">algebraic</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.BiologicalOde.algebraic" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.format.dataclasses.BiologicalOde.derivatives">
-<span class="sig-name descname"><span class="pre">derivatives</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.BiologicalOde.derivatives" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.format.dataclasses.BiologicalOde.rates">
-<span class="sig-name descname"><span class="pre">rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.Bounds" title="hybrax.format.dataclasses.Bounds"><span class="pre">Bounds</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.BiologicalOde.rates" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -754,7 +712,7 @@ one place.</p>
 <p>Ordering rules:</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">name_modeled_rates</span></code> preserves the user-supplied insertion order of
-<code class="docutils literal notranslate"><span class="pre">BiologicalOde.rates</span></code> (downstream consumers such as <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>
+<code class="docutils literal notranslate"><span class="pre">ReactionOde.rates</span></code> (downstream consumers such as <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>
 pass rate vectors in this order).</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">name_modeled_algebraic</span></code> is topo-sorted by inter-algebraic
 dependencies; ties broken alphabetically.</p></li>
@@ -873,6 +831,48 @@ optional helper traces for transparency/debugging.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.format.dataclasses.PseudobatchTransform.sample_compensation">
 <span class="sig-name descname"><span class="pre">sample_compensation</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">hybrax.format.time_series.TimeSeries</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.format.dataclasses.PseudobatchTransform.sample_compensation" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ReactionOde">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">ReactionOde</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#ReactionOde"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.ReactionOde" title="Link to this definition">¶</a></dt>
+<dd><p>User-defined per-state reaction RHS expressions.</p>
+<p>Describes the reaction part of <code class="docutils literal notranslate"><span class="pre">dc/dt</span></code>: intrinsic biological, abiotic, or
+other user-defined dynamics. Transport contributions (feed inflow,
+dilution, sample outflow, and volume dynamics) continue to be added by
+hybrax.format from the existing <a class="reference internal" href="#hybrax.format.dataclasses.VolumeChange" title="hybrax.format.dataclasses.VolumeChange"><code class="xref py py-class docutils literal notranslate"><span class="pre">VolumeChange</span></code></a> machinery and are not
+part of this block.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Variables<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>algebraic</strong> – Mapping <code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">-&gt;</span> <span class="pre">expression</span> <span class="pre">string</span></code>. Algebraic (no time
+derivative), recomputed every RHS call. Must be acyclic.</p></li>
+<li><p><strong>rates</strong> – Mapping <code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">-&gt;</span> <span class="pre">Bounds</span></code>. Names of abstract specific rates
+that the runtime supplies; <code class="docutils literal notranslate"><span class="pre">len(rates)</span></code> is the rate-vector
+dimension. Each value is a <code class="docutils literal notranslate"><span class="pre">(lower,</span> <span class="pre">upper)</span></code> tuple with <code class="docutils literal notranslate"><span class="pre">None</span></code>
+on either side meaning unbounded; use <code class="docutils literal notranslate"><span class="pre">(None,</span> <span class="pre">None)</span></code> (i.e.
+<code class="docutils literal notranslate"><span class="pre">_NO_BOUNDS</span></code>) for rates without bounds.</p></li>
+<li><p><strong>derivatives</strong> – Mapping <code class="docutils literal notranslate"><span class="pre">state_name</span> <span class="pre">-&gt;</span> <span class="pre">expression</span> <span class="pre">string</span></code> giving the
+reaction contribution to <code class="docutils literal notranslate"><span class="pre">d(state)/dt</span></code>. Every dynamic state must
+have an entry; use <code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code> to declare no reaction dynamics.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ReactionOde.algebraic">
+<span class="sig-name descname"><span class="pre">algebraic</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.ReactionOde.algebraic" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ReactionOde.derivatives">
+<span class="sig-name descname"><span class="pre">derivatives</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.ReactionOde.derivatives" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.ReactionOde.rates">
+<span class="sig-name descname"><span class="pre">rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.format.dataclasses.Bounds" title="hybrax.format.dataclasses.Bounds"><span class="pre">Bounds</span></a><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.ReactionOde.rates" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -1123,11 +1123,11 @@ notice would otherwise repeat once per dataset.</p>
 </ul>
 </li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess"><code class="docutils literal notranslate"><span class="pre">BioProcess</span></code></a><ul>
-<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.biological_ode"><code class="docutils literal notranslate"><span class="pre">BioProcess.biological_ode</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.discrete_events"><code class="docutils literal notranslate"><span class="pre">BioProcess.discrete_events</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.metadata"><code class="docutils literal notranslate"><span class="pre">BioProcess.metadata</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.process_variables"><code class="docutils literal notranslate"><span class="pre">BioProcess.process_variables</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.pseudobatch_transform"><code class="docutils literal notranslate"><span class="pre">BioProcess.pseudobatch_transform</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.reaction_ode"><code class="docutils literal notranslate"><span class="pre">BioProcess.reaction_ode</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.reactor_medium"><code class="docutils literal notranslate"><span class="pre">BioProcess.reactor_medium</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.time_axis"><code class="docutils literal notranslate"><span class="pre">BioProcess.time_axis</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcess.volume"><code class="docutils literal notranslate"><span class="pre">BioProcess.volume</span></code></a></li>
@@ -1145,12 +1145,6 @@ notice would otherwise repeat once per dataset.</p>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata.name"><code class="docutils literal notranslate"><span class="pre">BioProcessMetadata.name</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata.notes"><code class="docutils literal notranslate"><span class="pre">BioProcessMetadata.notes</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata.process_type"><code class="docutils literal notranslate"><span class="pre">BioProcessMetadata.process_type</span></code></a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#hybrax.format.dataclasses.BiologicalOde"><code class="docutils literal notranslate"><span class="pre">BiologicalOde</span></code></a><ul>
-<li><a class="reference internal" href="#hybrax.format.dataclasses.BiologicalOde.algebraic"><code class="docutils literal notranslate"><span class="pre">BiologicalOde.algebraic</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.format.dataclasses.BiologicalOde.derivatives"><code class="docutils literal notranslate"><span class="pre">BiologicalOde.derivatives</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.format.dataclasses.BiologicalOde.rates"><code class="docutils literal notranslate"><span class="pre">BiologicalOde.rates</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.DiscreteEvents"><code class="docutils literal notranslate"><span class="pre">DiscreteEvents</span></code></a><ul>
@@ -1206,6 +1200,12 @@ notice would otherwise repeat once per dataset.</p>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.PseudobatchTransform.adf"><code class="docutils literal notranslate"><span class="pre">PseudobatchTransform.adf</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.PseudobatchTransform.feed_corrections"><code class="docutils literal notranslate"><span class="pre">PseudobatchTransform.feed_corrections</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.PseudobatchTransform.sample_compensation"><code class="docutils literal notranslate"><span class="pre">PseudobatchTransform.sample_compensation</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ReactionOde"><code class="docutils literal notranslate"><span class="pre">ReactionOde</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ReactionOde.algebraic"><code class="docutils literal notranslate"><span class="pre">ReactionOde.algebraic</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ReactionOde.derivatives"><code class="docutils literal notranslate"><span class="pre">ReactionOde.derivatives</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.ReactionOde.rates"><code class="docutils literal notranslate"><span class="pre">ReactionOde.rates</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.ReactorMedium"><code class="docutils literal notranslate"><span class="pre">ReactorMedium</span></code></a><ul>

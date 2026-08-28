@@ -41,7 +41,7 @@ def hxt_cli(*args):
                           cwd=WORK, env=ENV, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)
-    return proc.stdout + proc.stderr
+    return (proc.stdout + proc.stderr).replace(str(WORK), ".")
 
 def tail(text, n=6, match=None):
     lines = [l for l in text.splitlines() if l.strip()]

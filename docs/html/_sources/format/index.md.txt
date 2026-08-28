@@ -18,8 +18,8 @@ kernelspec:
 
 ## Under the hood
 
-<img class="theme-diagram diagram-light" src="../_static/diagram_format_pipeline_light.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, BiologicalOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
-<img class="theme-diagram diagram-dark" src="../_static/diagram_format_pipeline_dark.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, BiologicalOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
+<img class="theme-diagram diagram-light" src="../_static/diagram_format_pipeline_light.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, ReactionOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
+<img class="theme-diagram diagram-dark" src="../_static/diagram_format_pipeline_dark.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, ReactionOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
 
 You write the left column once. The right column is generated, and is the single source
 of truth for layout everywhere downstream: `hybrax.train` never re-derives it.
@@ -65,7 +65,7 @@ process = hxf.BioProcess(
 
 ok, messages = hxf.validate_process(process)
 print("valid:", ok)
-print("auto-generated dynamics:", process.biological_ode.derivatives)
+print("auto-generated dynamics:", process.reaction_ode.derivatives)
 ```
 
 Four required arguments, one component, and you already have a valid process with a

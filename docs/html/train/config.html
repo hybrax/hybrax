@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -485,6 +485,27 @@ pipeline if you want to.</p>
 <a class="reference internal" href="../autoapi/hybrax/train/run_config/index.html"><span class="doc std std-doc">API reference</span></a>: not repeated here, because they
 change and this page would be wrong first.</p>
 </section>
+<section id="persistent-jax-compilation-cache">
+<h2>Persistent JAX compilation cache<a class="headerlink" href="#persistent-jax-compilation-cache" title="Link to this heading">¶</a></h2>
+<p>JAX compile times can be sped up by enabling persistent caching. When enabled,
+JAX can reuse compiled programs across train, forward, and LOO processes. You
+can enable it by setting two environment variables in your shell before running
+Hybrax:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">export</span><span class="w"> </span><span class="nv">JAX_COMPILATION_CACHE_DIR</span><span class="o">=</span>/absolute/path/to/cache
+<span class="nb">export</span><span class="w"> </span><span class="nv">JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS</span><span class="o">=</span><span class="m">0</span>
+
+hybrax<span class="w"> </span>loo<span class="w"> </span>--config<span class="w"> </span>loo-config.json
+</pre></div>
+</div>
+<p>The exported variables also apply to subsequent <code class="docutils literal notranslate"><span class="pre">train</span></code> and <code class="docutils literal notranslate"><span class="pre">forward</span></code> commands in the
+same shell. LOO fold subprocesses inherit them from the parent process. Use an absolute,
+writable location outside the run directory.</p>
+<p>JAX’s minimum compile-time threshold defaults to one second. Setting it to zero
+also caches shorter compilations, which can create more files and filesystem
+traffic but leads to larger compile time improvements. Cache reuse requires
+compatible JAX/XLA versions, devices, and program signatures. A shared cache can
+help or hurt depending on the filesystem and workload.</p>
+</section>
 <section id="a-realistic-config">
 <h2>A realistic config<a class="headerlink" href="#a-realistic-config" title="Link to this heading">¶</a></h2>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
@@ -658,6 +679,7 @@ use it.</p></li>
 <li><a class="reference internal" href="#the-minimum">The minimum</a></li>
 <li><a class="reference internal" href="#three-rules">Three rules</a></li>
 <li><a class="reference internal" href="#the-sections">The sections</a></li>
+<li><a class="reference internal" href="#persistent-jax-compilation-cache">Persistent JAX compilation cache</a></li>
 <li><a class="reference internal" href="#a-realistic-config">A realistic config</a></li>
 <li><a class="reference internal" href="#target-source"><code class="docutils literal notranslate"><span class="pre">target_source</span></code></a></li>
 <li><a class="reference internal" href="#the-custom-block">The <code class="docutils literal notranslate"><span class="pre">custom</span></code> block</a></li>

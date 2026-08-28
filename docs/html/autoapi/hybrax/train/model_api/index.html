@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -383,14 +383,14 @@ tags that mark which array leaves of a user module receive optimizer updates.</p
 <li><p><code class="docutils literal notranslate"><span class="pre">Scaler</span></code> / <code class="docutils literal notranslate"><span class="pre">LinearScaler</span></code> / <code class="docutils literal notranslate"><span class="pre">AffineScaler</span></code> — RAW (physical) &lt;-&gt; SCL
 (solver) unit transforms, one per semantic axis of the state/control vectors.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">ReactionInputs</span></code> / <code class="docutils literal notranslate"><span class="pre">ReactionOutputs</span></code> / <code class="docutils literal notranslate"><span class="pre">EstimatedScales</span></code> /
-<code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code> — the reaction-model contract: subclass
-<code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code>, implement <code class="docutils literal notranslate"><span class="pre">__call__</span></code>, and the <code class="docutils literal notranslate"><span class="pre">scale_*</span></code>/<code class="docutils literal notranslate"><span class="pre">unscale_*</span></code>
+<code class="docutils literal notranslate"><span class="pre">RateModule</span></code> — the reaction-model contract: subclass
+<code class="docutils literal notranslate"><span class="pre">RateModule</span></code>, implement <code class="docutils literal notranslate"><span class="pre">__call__</span></code>, and the <code class="docutils literal notranslate"><span class="pre">scale_*</span></code>/<code class="docutils literal notranslate"><span class="pre">unscale_*</span></code>
 delegates handle every RAW/SCL conversion the ODE RHS needs.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">LossInputs</span></code> / <code class="docutils literal notranslate"><span class="pre">LossOutputs</span></code> / <code class="docutils literal notranslate"><span class="pre">UserLossModule</span></code> — the loss contract:
 subclass <code class="docutils literal notranslate"><span class="pre">UserLossModule</span></code> and implement <code class="docutils literal notranslate"><span class="pre">__call__</span></code> to turn one sample’s
 predictions and measurements into named loss terms.</p></li>
 </ul>
-<p>Both <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code> and <code class="docutils literal notranslate"><span class="pre">UserLossModule</span></code> are abstract base classes:
+<p>Both <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> and <code class="docutils literal notranslate"><span class="pre">UserLossModule</span></code> are abstract base classes:
 their <code class="docutils literal notranslate"><span class="pre">__call__</span></code> (and, for the reaction module, every <code class="docutils literal notranslate"><span class="pre">scale_*</span></code>/<code class="docutils literal notranslate"><span class="pre">unscale_*</span></code>
 helper) raise <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code> until a subclass provides them. The
 training harness (<code class="docutils literal notranslate"><span class="pre">harness.py</span></code>, <code class="docutils literal notranslate"><span class="pre">trainer.py</span></code>) drives instances of these
@@ -427,20 +427,20 @@ through the shared ODE solve; this module defines the contract, not the solve.</
 <tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.model_api.LossOutputs" title="hybrax.train.model_api.LossOutputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">LossOutputs</span></code></a></p></td>
 <td><p>Named loss scalars. Plot/log panel names = dict keys.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.model_api.ReactionInputs" title="hybrax.train.model_api.ReactionInputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ReactionInputs</span></code></a></p></td>
-<td><p>All inputs to a UserReactionModule call, one per semantic axis.</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.model_api.RateModule" title="hybrax.train.model_api.RateModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">RateModule</span></code></a></p></td>
+<td><p>Base for user-defined reaction modules.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.model_api.ReactionOutputs" title="hybrax.train.model_api.ReactionOutputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ReactionOutputs</span></code></a></p></td>
-<td><p>Structured return value from a UserReactionModule.__call__.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.model_api.ReactionInputs" title="hybrax.train.model_api.ReactionInputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ReactionInputs</span></code></a></p></td>
+<td><p>All inputs to a RateModule call, one per semantic axis.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Scaler</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.model_api.ReactionOutputs" title="hybrax.train.model_api.ReactionOutputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ReactionOutputs</span></code></a></p></td>
+<td><p>Structured return value from a RateModule.__call__.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Scaler</span></code></a></p></td>
 <td><p>RAW &lt;-&gt; SCL transform for one semantic axis. Frozen, never trained.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.model_api.UserLossModule" title="hybrax.train.model_api.UserLossModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">UserLossModule</span></code></a></p></td>
-<td><p>Base for user-defined loss modules. Mirrors <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code>.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule" title="hybrax.train.model_api.UserReactionModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">UserReactionModule</span></code></a></p></td>
-<td><p>Base for user-defined reaction modules.</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.model_api.UserLossModule" title="hybrax.train.model_api.UserLossModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">UserLossModule</span></code></a></p></td>
+<td><p>Base for user-defined loss modules. Mirrors <code class="docutils literal notranslate"><span class="pre">RateModule</span></code>.</p></td>
 </tr>
 </tbody>
 </table>
@@ -624,11 +624,6 @@ returning arrays for zero-edit compatibility; a hook opts in by returning a
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.EstimatedScales.SCALE_modeled_BiologicalOde_rates">
-<span class="sig-name descname"><span class="pre">SCALE_modeled_BiologicalOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.EstimatedScales.SCALE_modeled_BiologicalOde_rates" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.model_api.EstimatedScales.SCALE_modeled_Inflows_Cin">
 <span class="sig-name descname"><span class="pre">SCALE_modeled_Inflows_Cin</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.EstimatedScales.SCALE_modeled_Inflows_Cin" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -661,6 +656,11 @@ returning arrays for zero-edit compatibility; a hook opts in by returning a
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.model_api.EstimatedScales.SCALE_modeled_RMCs">
 <span class="sig-name descname"><span class="pre">SCALE_modeled_RMCs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.EstimatedScales.SCALE_modeled_RMCs" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.EstimatedScales.SCALE_modeled_ReactionOde_rates">
+<span class="sig-name descname"><span class="pre">SCALE_modeled_ReactionOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.EstimatedScales.SCALE_modeled_ReactionOde_rates" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -796,11 +796,6 @@ idiom is safe (no <code class="docutils literal notranslate"><span class="pre">0
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.RAW_modeled_BiologicalOde_rates">
-<span class="sig-name descname"><span class="pre">RAW_modeled_BiologicalOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.RAW_modeled_BiologicalOde_rates" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.RAW_modeled_Inflows_rates">
 <span class="sig-name descname"><span class="pre">RAW_modeled_Inflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.RAW_modeled_Inflows_rates" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -808,6 +803,11 @@ idiom is safe (no <code class="docutils literal notranslate"><span class="pre">0
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.RAW_modeled_Outflows_rates">
 <span class="sig-name descname"><span class="pre">RAW_modeled_Outflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.RAW_modeled_Outflows_rates" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.RAW_modeled_ReactionOde_rates">
+<span class="sig-name descname"><span class="pre">RAW_modeled_ReactionOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.RAW_modeled_ReactionOde_rates" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -821,11 +821,6 @@ idiom is safe (no <code class="docutils literal notranslate"><span class="pre">0
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.SCL_modeled_BiologicalOde_rates">
-<span class="sig-name descname"><span class="pre">SCL_modeled_BiologicalOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.SCL_modeled_BiologicalOde_rates" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.SCL_modeled_Inflows_rates">
 <span class="sig-name descname"><span class="pre">SCL_modeled_Inflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.SCL_modeled_Inflows_rates" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -833,6 +828,11 @@ idiom is safe (no <code class="docutils literal notranslate"><span class="pre">0
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.SCL_modeled_Outflows_rates">
 <span class="sig-name descname"><span class="pre">SCL_modeled_Outflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.SCL_modeled_Outflows_rates" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.SCL_modeled_ReactionOde_rates">
+<span class="sig-name descname"><span class="pre">SCL_modeled_ReactionOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.SCL_modeled_ReactionOde_rates" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -866,11 +866,6 @@ idiom is safe (no <code class="docutils literal notranslate"><span class="pre">0
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.dense_RAW_modeled_BiologicalOde_rates">
-<span class="sig-name descname"><span class="pre">dense_RAW_modeled_BiologicalOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.dense_RAW_modeled_BiologicalOde_rates" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.dense_RAW_modeled_Inflows_rates">
 <span class="sig-name descname"><span class="pre">dense_RAW_modeled_Inflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.dense_RAW_modeled_Inflows_rates" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -878,6 +873,11 @@ idiom is safe (no <code class="docutils literal notranslate"><span class="pre">0
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.dense_RAW_modeled_Outflows_rates">
 <span class="sig-name descname"><span class="pre">dense_RAW_modeled_Outflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.dense_RAW_modeled_Outflows_rates" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.dense_RAW_modeled_ReactionOde_rates">
+<span class="sig-name descname"><span class="pre">dense_RAW_modeled_ReactionOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.dense_RAW_modeled_ReactionOde_rates" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -891,11 +891,6 @@ idiom is safe (no <code class="docutils literal notranslate"><span class="pre">0
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.dense_SCL_modeled_BiologicalOde_rates">
-<span class="sig-name descname"><span class="pre">dense_SCL_modeled_BiologicalOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.dense_SCL_modeled_BiologicalOde_rates" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.dense_SCL_modeled_Inflows_rates">
 <span class="sig-name descname"><span class="pre">dense_SCL_modeled_Inflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.dense_SCL_modeled_Inflows_rates" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -903,6 +898,11 @@ idiom is safe (no <code class="docutils literal notranslate"><span class="pre">0
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.dense_SCL_modeled_Outflows_rates">
 <span class="sig-name descname"><span class="pre">dense_SCL_modeled_Outflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.dense_SCL_modeled_Outflows_rates" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.dense_SCL_modeled_ReactionOde_rates">
+<span class="sig-name descname"><span class="pre">dense_SCL_modeled_ReactionOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.dense_SCL_modeled_ReactionOde_rates" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -947,7 +947,7 @@ idiom is safe (no <code class="docutils literal notranslate"><span class="pre">0
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.model_api.LossInputs.reaction_module">
-<span class="sig-name descname"><span class="pre">reaction_module</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule" title="hybrax.train.model_api.UserReactionModule"><span class="pre">UserReactionModule</span></a></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.reaction_module" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">reaction_module</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.RateModule" title="hybrax.train.model_api.RateModule"><span class="pre">RateModule</span></a></span><a class="headerlink" href="#hybrax.train.model_api.LossInputs.reaction_module" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -982,10 +982,510 @@ in that order.</p>
 </dd></dl>
 
 <dl class="py class">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.model_api.</span></span><span class="sig-name descname"><span class="pre">RateModule</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">equinox.Module</span></code></p>
+<p>Base for user-defined reaction modules.</p>
+<p>The module is the single source of truth for every <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code> vector in
+hybrax.train. The wrapper queries scales via <code class="docutils literal notranslate"><span class="pre">self.reaction_module.SCALE_*</span></code>;
+the trainer reads <code class="docutils literal notranslate"><span class="pre">SCALE_state</span></code> to convert measurements to SCL space.</p>
+<p>Subclasses inherit the scale fields below — they do NOT redeclare them;
+instead they pass values to <code class="docutils literal notranslate"><span class="pre">super().__init__(**scale_kwargs)</span></code>. Each
+<code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code> field holds a <a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><code class="xref py py-class docutils literal notranslate"><span class="pre">Scaler</span></code></a> (frozen, never trained); the
+harness promotes bare arrays from the <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code> hook to
+<a class="reference internal" href="#hybrax.train.model_api.LinearScaler" title="hybrax.train.model_api.LinearScaler"><code class="xref py py-class docutils literal notranslate"><span class="pre">LinearScaler</span></code></a> so the default path is pure division.</p>
+<p>Most <code class="docutils literal notranslate"><span class="pre">scale_*</span></code> / <code class="docutils literal notranslate"><span class="pre">unscale_*</span></code> helpers below operate on VALUES. The three
+<code class="docutils literal notranslate"><span class="pre">*_rates</span></code> helper pairs use derivative semantics. Under pure division
+(<code class="docutils literal notranslate"><span class="pre">LinearScaler</span></code>) a value and its time-derivative scale identically, but
+that interchangeability is NOT general: under an affine transform the
+derivative must NOT subtract the offset (<code class="docutils literal notranslate"><span class="pre">d((RAW-b)/s)/dt</span> <span class="pre">=</span> <span class="pre">(dRAW/dt)/s</span></code>).
+<code class="docutils literal notranslate"><span class="pre">wrapper.py</span></code> unscales the reaction module’s latent derivative;
+<code class="docutils literal notranslate"><span class="pre">physical_solve.py</span></code> then scales the full RAW ODE derivative.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>kwargs</strong> (<em>Any</em>)</p>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.initial_latent">
+<span class="sig-name descname"><span class="pre">initial_latent</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_phys_y0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.initial_latent"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.initial_latent" title="Link to this definition">¶</a></dt>
+<dd><p>Initial RAW latent state appended to the physical initial state.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>RAW_phys_y0</strong> (<em>jax.Array</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>jax.Array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.observe">
+<span class="sig-name descname"><span class="pre">observe</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">states</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.observe"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.observe" title="Link to this definition">¶</a></dt>
+<dd><p>Optional post-hoc observation map; default identity on physical state.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>states</strong> (<em>jax.Array</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>jax.Array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_V_in_cumulative">
+<span class="sig-name descname"><span class="pre">scale_V_in_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_V_in_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_V_in_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_V_in_cumulative" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for cumulative volume added by every Inflow.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_controlled_Inflows_Cin">
+<span class="sig-name descname"><span class="pre">scale_controlled_Inflows_Cin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_controlled_Inflows_Cin</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_controlled_Inflows_Cin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_controlled_Inflows_Cin" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for controlled Inflow feed concentrations.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_controlled_Inflows_cumulative">
+<span class="sig-name descname"><span class="pre">scale_controlled_Inflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_controlled_Inflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_controlled_Inflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_controlled_Inflows_cumulative" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for cumulative controlled Inflow volume.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_controlled_Inflows_rates">
+<span class="sig-name descname"><span class="pre">scale_controlled_Inflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_controlled_Inflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_controlled_Inflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_controlled_Inflows_rates" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for controlled Inflow rates (offset-free derivative op).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_controlled_Outflows_cumulative">
+<span class="sig-name descname"><span class="pre">scale_controlled_Outflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_controlled_Outflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_controlled_Outflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_controlled_Outflows_cumulative" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for cumulative controlled Outflow volume.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_controlled_Outflows_rates">
+<span class="sig-name descname"><span class="pre">scale_controlled_Outflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_controlled_Outflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_controlled_Outflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_controlled_Outflows_rates" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for controlled Outflow rates (offset-free derivative op).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_controlled_PVs">
+<span class="sig-name descname"><span class="pre">scale_controlled_PVs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_controlled_PVs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_controlled_PVs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_controlled_PVs" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for controlled process variables.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_latent">
+<span class="sig-name descname"><span class="pre">scale_latent</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_latent</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_latent"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_latent" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for the latent state, via <code class="docutils literal notranslate"><span class="pre">SCALE_latent</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_modeled_Inflows_Cin">
+<span class="sig-name descname"><span class="pre">scale_modeled_Inflows_Cin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_Inflows_Cin</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_modeled_Inflows_Cin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_modeled_Inflows_Cin" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for modeled Inflow feed concentrations.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_modeled_Inflows_cumulative">
+<span class="sig-name descname"><span class="pre">scale_modeled_Inflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_Inflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_modeled_Inflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_modeled_Inflows_cumulative" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for cumulative modeled Inflow volume.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_modeled_Inflows_rates">
+<span class="sig-name descname"><span class="pre">scale_modeled_Inflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_Inflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_modeled_Inflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_modeled_Inflows_rates" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for modeled Inflow rates (offset-free derivative op).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_modeled_Outflows_cumulative">
+<span class="sig-name descname"><span class="pre">scale_modeled_Outflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_Outflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_modeled_Outflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_modeled_Outflows_cumulative" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for cumulative modeled Outflow volume.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_modeled_Outflows_rates">
+<span class="sig-name descname"><span class="pre">scale_modeled_Outflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_Outflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_modeled_Outflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_modeled_Outflows_rates" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for modeled Outflow rates (offset-free derivative op).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_modeled_PVs">
+<span class="sig-name descname"><span class="pre">scale_modeled_PVs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_PVs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_modeled_PVs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_modeled_PVs" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for modeled process variables.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_modeled_RMCs">
+<span class="sig-name descname"><span class="pre">scale_modeled_RMCs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_RMCs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_modeled_RMCs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_modeled_RMCs" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for modeled reactor-medium components.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_modeled_ReactionOde_rates">
+<span class="sig-name descname"><span class="pre">scale_modeled_ReactionOde_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_ReactionOde_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_modeled_ReactionOde_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_modeled_ReactionOde_rates" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for modeled <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> rates (offset-free
+derivative op).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_modeled_V">
+<span class="sig-name descname"><span class="pre">scale_modeled_V</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_V</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_modeled_V"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_modeled_V" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for the modeled reactor volume.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_state">
+<span class="sig-name descname"><span class="pre">scale_state</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_state</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_state"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_state" title="Link to this definition">¶</a></dt>
+<dd><p>RAW -&gt; SCL for the full integrated state, via <code class="docutils literal notranslate"><span class="pre">SCALE_state</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_V_in_cumulative">
+<span class="sig-name descname"><span class="pre">unscale_V_in_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_V_in_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_V_in_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_V_in_cumulative" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for cumulative volume added by every Inflow.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_controlled_Inflows_Cin">
+<span class="sig-name descname"><span class="pre">unscale_controlled_Inflows_Cin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_controlled_Inflows_Cin</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_controlled_Inflows_Cin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_controlled_Inflows_Cin" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for controlled Inflow feed concentrations.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_controlled_Inflows_cumulative">
+<span class="sig-name descname"><span class="pre">unscale_controlled_Inflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_controlled_Inflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_controlled_Inflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_controlled_Inflows_cumulative" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for cumulative controlled Inflow volume.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_controlled_Inflows_rates">
+<span class="sig-name descname"><span class="pre">unscale_controlled_Inflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_controlled_Inflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_controlled_Inflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_controlled_Inflows_rates" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for controlled Inflow rates (offset-free derivative op).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_controlled_Outflows_cumulative">
+<span class="sig-name descname"><span class="pre">unscale_controlled_Outflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_controlled_Outflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_controlled_Outflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_controlled_Outflows_cumulative" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for cumulative controlled Outflow volume.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_controlled_Outflows_rates">
+<span class="sig-name descname"><span class="pre">unscale_controlled_Outflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_controlled_Outflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_controlled_Outflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_controlled_Outflows_rates" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for controlled Outflow rates (offset-free derivative op).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_controlled_PVs">
+<span class="sig-name descname"><span class="pre">unscale_controlled_PVs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_controlled_PVs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_controlled_PVs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_controlled_PVs" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for controlled process variables.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_latent">
+<span class="sig-name descname"><span class="pre">unscale_latent</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_latent</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_latent"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_latent" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for the latent state, via <code class="docutils literal notranslate"><span class="pre">SCALE_latent</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_modeled_Inflows_Cin">
+<span class="sig-name descname"><span class="pre">unscale_modeled_Inflows_Cin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_Inflows_Cin</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_modeled_Inflows_Cin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_modeled_Inflows_Cin" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for modeled Inflow feed concentrations.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_modeled_Inflows_cumulative">
+<span class="sig-name descname"><span class="pre">unscale_modeled_Inflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_Inflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_modeled_Inflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_modeled_Inflows_cumulative" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for cumulative modeled Inflow volume.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_modeled_Inflows_rates">
+<span class="sig-name descname"><span class="pre">unscale_modeled_Inflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_Inflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_modeled_Inflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_modeled_Inflows_rates" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for modeled Inflow rates (offset-free derivative op).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_modeled_Outflows_cumulative">
+<span class="sig-name descname"><span class="pre">unscale_modeled_Outflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_Outflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_modeled_Outflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_modeled_Outflows_cumulative" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for cumulative modeled Outflow volume.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_modeled_Outflows_rates">
+<span class="sig-name descname"><span class="pre">unscale_modeled_Outflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_Outflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_modeled_Outflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_modeled_Outflows_rates" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for modeled Outflow rates (offset-free derivative op).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_modeled_PVs">
+<span class="sig-name descname"><span class="pre">unscale_modeled_PVs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_PVs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_modeled_PVs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_modeled_PVs" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for modeled process variables.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_modeled_RMCs">
+<span class="sig-name descname"><span class="pre">unscale_modeled_RMCs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_RMCs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_modeled_RMCs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_modeled_RMCs" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for modeled reactor-medium components.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_modeled_ReactionOde_rates">
+<span class="sig-name descname"><span class="pre">unscale_modeled_ReactionOde_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_ReactionOde_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_modeled_ReactionOde_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_modeled_ReactionOde_rates" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for modeled <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> rates (offset-free
+derivative op).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_modeled_V">
+<span class="sig-name descname"><span class="pre">unscale_modeled_V</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_V</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_modeled_V"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_modeled_V" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for the modeled reactor volume.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_state">
+<span class="sig-name descname"><span class="pre">unscale_state</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_state</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_state"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_state" title="Link to this definition">¶</a></dt>
+<dd><p>SCL -&gt; RAW for the full integrated state, via <code class="docutils literal notranslate"><span class="pre">SCALE_state</span></code>.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_V_in_cumulative">
+<span class="sig-name descname"><span class="pre">SCALE_V_in_cumulative</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_V_in_cumulative" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_controlled_Inflows_Cin">
+<span class="sig-name descname"><span class="pre">SCALE_controlled_Inflows_Cin</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_controlled_Inflows_Cin" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_controlled_Inflows_cumulative">
+<span class="sig-name descname"><span class="pre">SCALE_controlled_Inflows_cumulative</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_controlled_Inflows_cumulative" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_controlled_Inflows_rates">
+<span class="sig-name descname"><span class="pre">SCALE_controlled_Inflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_controlled_Inflows_rates" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_controlled_Outflows_cumulative">
+<span class="sig-name descname"><span class="pre">SCALE_controlled_Outflows_cumulative</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_controlled_Outflows_cumulative" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_controlled_Outflows_rates">
+<span class="sig-name descname"><span class="pre">SCALE_controlled_Outflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_controlled_Outflows_rates" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_controlled_PVs">
+<span class="sig-name descname"><span class="pre">SCALE_controlled_PVs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_controlled_PVs" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_integrated_state">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">SCALE_integrated_state</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_integrated_state" title="Link to this definition">¶</a></dt>
+<dd><p>State scaler used by the ODE solver, incl. trailing latent state.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler">Scaler</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_latent">
+<span class="sig-name descname"><span class="pre">SCALE_latent</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_latent" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_modeled_Inflows_Cin">
+<span class="sig-name descname"><span class="pre">SCALE_modeled_Inflows_Cin</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_modeled_Inflows_Cin" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_modeled_Inflows_cumulative">
+<span class="sig-name descname"><span class="pre">SCALE_modeled_Inflows_cumulative</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_modeled_Inflows_cumulative" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_modeled_Inflows_rates">
+<span class="sig-name descname"><span class="pre">SCALE_modeled_Inflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_modeled_Inflows_rates" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_modeled_Outflows_cumulative">
+<span class="sig-name descname"><span class="pre">SCALE_modeled_Outflows_cumulative</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_modeled_Outflows_cumulative" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_modeled_Outflows_rates">
+<span class="sig-name descname"><span class="pre">SCALE_modeled_Outflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_modeled_Outflows_rates" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_modeled_PVs">
+<span class="sig-name descname"><span class="pre">SCALE_modeled_PVs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_modeled_PVs" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_modeled_RMCs">
+<span class="sig-name descname"><span class="pre">SCALE_modeled_RMCs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_modeled_RMCs" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_modeled_ReactionOde_rates">
+<span class="sig-name descname"><span class="pre">SCALE_modeled_ReactionOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_modeled_ReactionOde_rates" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_modeled_V">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">SCALE_modeled_V</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_modeled_V" title="Link to this definition">¶</a></dt>
+<dd><p>Real-volume scale shares the V_in_cumulative scale (same units, L).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler">Scaler</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.SCALE_state">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">SCALE_state</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.SCALE_state" title="Link to this definition">¶</a></dt>
+<dd><p>Composed state scaler.</p>
+<p>Layout: <code class="docutils literal notranslate"><span class="pre">[modeled_RMCs</span> <span class="pre">|</span> <span class="pre">modeled_PVs</span> <span class="pre">|</span> <span class="pre">V</span> <span class="pre">|</span> <span class="pre">modeled_Inflows_cumulative</span> <span class="pre">|</span>
+<span class="pre">modeled_Outflows_cumulative]</span></code>.
+Zero-width parts (e.g. an empty PV axis) are preserved in the concat to
+reproduce <code class="docutils literal notranslate"><span class="pre">jnp.concatenate</span></code> dtype promotion exactly — do NOT filter.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler">Scaler</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.latent_observables">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">latent_observables</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.latent_observables" title="Link to this definition">¶</a></dt>
+<dd><p>Names of observables that require live latent state during the solve.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>tuple[str, …]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.n_controlled_Inflows">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_controlled_Inflows</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.n_controlled_Inflows" title="Link to this definition">¶</a></dt>
+<dd><p>Number of continuous controlled Inflows.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.n_controlled_Outflows">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_controlled_Outflows</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.n_controlled_Outflows" title="Link to this definition">¶</a></dt>
+<dd><p>Number of continuous controlled Outflows.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.n_controlled_PVs">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_controlled_PVs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.n_controlled_PVs" title="Link to this definition">¶</a></dt>
+<dd><p>Number of controlled process-variable signals.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.n_latent">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_latent</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.n_latent" title="Link to this definition">¶</a></dt>
+<dd><p>Number of integrated latent-state dimensions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.n_modeled_Inflows">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_modeled_Inflows</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.n_modeled_Inflows" title="Link to this definition">¶</a></dt>
+<dd><p>Number of modeled Inflows.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.n_modeled_Outflows">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_modeled_Outflows</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.n_modeled_Outflows" title="Link to this definition">¶</a></dt>
+<dd><p>Number of modeled Outflows.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.n_modeled_PVs">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_modeled_PVs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.n_modeled_PVs" title="Link to this definition">¶</a></dt>
+<dd><p>Number of modeled (uncontrolled, dynamic) process variables.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.n_modeled_RMCs">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_modeled_RMCs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.n_modeled_RMCs" title="Link to this definition">¶</a></dt>
+<dd><p>Number of modeled RMCs (species).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.n_modeled_ReactionOde_rates">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_modeled_ReactionOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.RateModule.n_modeled_ReactionOde_rates" title="Link to this definition">¶</a></dt>
+<dd><p>Number of rates emitted by the ReactionOde block.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="hybrax.train.model_api.ReactionInputs">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.model_api.</span></span><span class="sig-name descname"><span class="pre">ReactionInputs</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#ReactionInputs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.ReactionInputs" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">equinox.Module</span></code></p>
-<p>All inputs to a UserReactionModule call, one per semantic axis.</p>
+<p>All inputs to a RateModule call, one per semantic axis.</p>
 <p>Built by HybridOdeWrapper at each RHS evaluation. Modeled RMC inputs remain
 unclipped so gradient flow survives transient negative excursions near
 depletion. Modeled and controlled cumulative-volume and flow-rate axes are
@@ -1072,7 +1572,7 @@ Outflow-retention matrices remain raw dimensionless fractions.</p>
 <dt class="sig sig-object py" id="hybrax.train.model_api.ReactionOutputs">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.model_api.</span></span><span class="sig-name descname"><span class="pre">ReactionOutputs</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#ReactionOutputs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.ReactionOutputs" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">equinox.Module</span></code></p>
-<p>Structured return value from a UserReactionModule.__call__.</p>
+<p>Structured return value from a RateModule.__call__.</p>
 <p>Rate fields are in SCALED space — the module divides its physical
 output by the matching SCALE_* axis (typically via <code class="docutils literal notranslate"><span class="pre">self.scale_*</span></code> helpers)
 before returning. The wrapper then unscales these on the way into the
@@ -1080,7 +1580,7 @@ physical RhsOde mass balance.</p>
 <section id="id1">
 <h3>Attributes<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h3>
 <dl class="simple">
-<dt>SCL_modeled_BiologicalOde_rates:</dt><dd><p>Rates emitted by the BiologicalOde block, aligned with
+<dt>SCL_modeled_ReactionOde_rates:</dt><dd><p>Rates emitted by the ReactionOde block, aligned with
 <code class="docutils literal notranslate"><span class="pre">rhs_ode.name_modeled_rates</span></code>. Not 1:1 with RMCs — algebraic rates
 (e.g. <code class="docutils literal notranslate"><span class="pre">q_X_active</span></code> in TUB) live here without a corresponding RMC.</p>
 </dd>
@@ -1103,11 +1603,6 @@ and stable keys across calls.</p>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.ReactionOutputs.SCL_modeled_BiologicalOde_rates">
-<span class="sig-name descname"><span class="pre">SCL_modeled_BiologicalOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.model_api.ReactionOutputs.SCL_modeled_BiologicalOde_rates" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.model_api.ReactionOutputs.SCL_modeled_Inflows_rates">
 <span class="sig-name descname"><span class="pre">SCL_modeled_Inflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.model_api.ReactionOutputs.SCL_modeled_Inflows_rates" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -1115,6 +1610,11 @@ and stable keys across calls.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.model_api.ReactionOutputs.SCL_modeled_Outflows_rates">
 <span class="sig-name descname"><span class="pre">SCL_modeled_Outflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.model_api.ReactionOutputs.SCL_modeled_Outflows_rates" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.model_api.ReactionOutputs.SCL_modeled_ReactionOde_rates">
+<span class="sig-name descname"><span class="pre">SCL_modeled_ReactionOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">jax.Array</span></span><a class="headerlink" href="#hybrax.train.model_api.ReactionOutputs.SCL_modeled_ReactionOde_rates" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -1250,7 +1750,7 @@ legitimately zero-width.</p>
 <dt class="sig sig-object py" id="hybrax.train.model_api.UserLossModule">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.model_api.</span></span><span class="sig-name descname"><span class="pre">UserLossModule</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserLossModule"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserLossModule" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">equinox.Module</span></code></p>
-<p>Base for user-defined loss modules. Mirrors <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code>.</p>
+<p>Base for user-defined loss modules. Mirrors <code class="docutils literal notranslate"><span class="pre">RateModule</span></code>.</p>
 <p>Subclasses declare any trainable / frozen state via <code class="docutils literal notranslate"><span class="pre">trainable_field()</span></code> /
 <code class="docutils literal notranslate"><span class="pre">frozen_field()</span></code> (e.g. Kendall uncertainty weights), exactly like a
 reaction module. They are optimized alongside the reaction module because
@@ -1291,506 +1791,6 @@ populates are real arrays in the loss.</p>
 </dd>
 </dl>
 <p>Stable ordered term/panel names. MUST equal <code class="docutils literal notranslate"><span class="pre">named_losses</span></code> keys.</p>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.model_api.</span></span><span class="sig-name descname"><span class="pre">UserReactionModule</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule" title="Link to this definition">¶</a></dt>
-<dd><p>Bases: <code class="xref py py-obj docutils literal notranslate"><span class="pre">equinox.Module</span></code></p>
-<p>Base for user-defined reaction modules.</p>
-<p>The module is the single source of truth for every <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code> vector in
-hybrax.train. The wrapper queries scales via <code class="docutils literal notranslate"><span class="pre">self.reaction_module.SCALE_*</span></code>;
-the trainer reads <code class="docutils literal notranslate"><span class="pre">SCALE_state</span></code> to convert measurements to SCL space.</p>
-<p>Subclasses inherit the scale fields below — they do NOT redeclare them;
-instead they pass values to <code class="docutils literal notranslate"><span class="pre">super().__init__(**scale_kwargs)</span></code>. Each
-<code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code> field holds a <a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><code class="xref py py-class docutils literal notranslate"><span class="pre">Scaler</span></code></a> (frozen, never trained); the
-harness promotes bare arrays from the <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code> hook to
-<a class="reference internal" href="#hybrax.train.model_api.LinearScaler" title="hybrax.train.model_api.LinearScaler"><code class="xref py py-class docutils literal notranslate"><span class="pre">LinearScaler</span></code></a> so the default path is pure division.</p>
-<p>Most <code class="docutils literal notranslate"><span class="pre">scale_*</span></code> / <code class="docutils literal notranslate"><span class="pre">unscale_*</span></code> helpers below operate on VALUES. The three
-<code class="docutils literal notranslate"><span class="pre">*_rates</span></code> helper pairs use derivative semantics. Under pure division
-(<code class="docutils literal notranslate"><span class="pre">LinearScaler</span></code>) a value and its time-derivative scale identically, but
-that interchangeability is NOT general: under an affine transform the
-derivative must NOT subtract the offset (<code class="docutils literal notranslate"><span class="pre">d((RAW-b)/s)/dt</span> <span class="pre">=</span> <span class="pre">(dRAW/dt)/s</span></code>).
-<code class="docutils literal notranslate"><span class="pre">wrapper.py</span></code> unscales the reaction module’s latent derivative;
-<code class="docutils literal notranslate"><span class="pre">physical_solve.py</span></code> then scales the full RAW ODE derivative.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>kwargs</strong> (<em>Any</em>)</p>
-</dd>
-</dl>
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.initial_latent">
-<span class="sig-name descname"><span class="pre">initial_latent</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_phys_y0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.initial_latent"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.initial_latent" title="Link to this definition">¶</a></dt>
-<dd><p>Initial RAW latent state appended to the physical initial state.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>RAW_phys_y0</strong> (<em>jax.Array</em>)</p>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>jax.Array</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.observe">
-<span class="sig-name descname"><span class="pre">observe</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">states</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.observe"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.observe" title="Link to this definition">¶</a></dt>
-<dd><p>Optional post-hoc observation map; default identity on physical state.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>states</strong> (<em>jax.Array</em>)</p>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>jax.Array</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_V_in_cumulative">
-<span class="sig-name descname"><span class="pre">scale_V_in_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_V_in_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_V_in_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_V_in_cumulative" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for cumulative volume added by every Inflow.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_controlled_Inflows_Cin">
-<span class="sig-name descname"><span class="pre">scale_controlled_Inflows_Cin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_controlled_Inflows_Cin</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_controlled_Inflows_Cin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_controlled_Inflows_Cin" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for controlled Inflow feed concentrations.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_controlled_Inflows_cumulative">
-<span class="sig-name descname"><span class="pre">scale_controlled_Inflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_controlled_Inflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_controlled_Inflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_controlled_Inflows_cumulative" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for cumulative controlled Inflow volume.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_controlled_Inflows_rates">
-<span class="sig-name descname"><span class="pre">scale_controlled_Inflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_controlled_Inflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_controlled_Inflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_controlled_Inflows_rates" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for controlled Inflow rates (offset-free derivative op).</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_controlled_Outflows_cumulative">
-<span class="sig-name descname"><span class="pre">scale_controlled_Outflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_controlled_Outflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_controlled_Outflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_controlled_Outflows_cumulative" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for cumulative controlled Outflow volume.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_controlled_Outflows_rates">
-<span class="sig-name descname"><span class="pre">scale_controlled_Outflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_controlled_Outflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_controlled_Outflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_controlled_Outflows_rates" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for controlled Outflow rates (offset-free derivative op).</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_controlled_PVs">
-<span class="sig-name descname"><span class="pre">scale_controlled_PVs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_controlled_PVs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_controlled_PVs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_controlled_PVs" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for controlled process variables.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_latent">
-<span class="sig-name descname"><span class="pre">scale_latent</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_latent</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_latent"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_latent" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for the latent state, via <code class="docutils literal notranslate"><span class="pre">SCALE_latent</span></code>.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_modeled_BiologicalOde_rates">
-<span class="sig-name descname"><span class="pre">scale_modeled_BiologicalOde_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_BiologicalOde_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_modeled_BiologicalOde_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_BiologicalOde_rates" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for modeled <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> rates (offset-free
-derivative op).</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_modeled_Inflows_Cin">
-<span class="sig-name descname"><span class="pre">scale_modeled_Inflows_Cin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_Inflows_Cin</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_modeled_Inflows_Cin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_Inflows_Cin" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for modeled Inflow feed concentrations.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_modeled_Inflows_cumulative">
-<span class="sig-name descname"><span class="pre">scale_modeled_Inflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_Inflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_modeled_Inflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_Inflows_cumulative" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for cumulative modeled Inflow volume.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_modeled_Inflows_rates">
-<span class="sig-name descname"><span class="pre">scale_modeled_Inflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_Inflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_modeled_Inflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_Inflows_rates" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for modeled Inflow rates (offset-free derivative op).</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_modeled_Outflows_cumulative">
-<span class="sig-name descname"><span class="pre">scale_modeled_Outflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_Outflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_modeled_Outflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_Outflows_cumulative" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for cumulative modeled Outflow volume.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_modeled_Outflows_rates">
-<span class="sig-name descname"><span class="pre">scale_modeled_Outflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_Outflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_modeled_Outflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_Outflows_rates" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for modeled Outflow rates (offset-free derivative op).</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_modeled_PVs">
-<span class="sig-name descname"><span class="pre">scale_modeled_PVs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_PVs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_modeled_PVs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_PVs" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for modeled process variables.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_modeled_RMCs">
-<span class="sig-name descname"><span class="pre">scale_modeled_RMCs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_RMCs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_modeled_RMCs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_RMCs" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for modeled reactor-medium components.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_modeled_V">
-<span class="sig-name descname"><span class="pre">scale_modeled_V</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_modeled_V</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_modeled_V"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_V" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for the modeled reactor volume.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.scale_state">
-<span class="sig-name descname"><span class="pre">scale_state</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_state</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.scale_state"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.scale_state" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for the full integrated state, via <code class="docutils literal notranslate"><span class="pre">SCALE_state</span></code>.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_V_in_cumulative">
-<span class="sig-name descname"><span class="pre">unscale_V_in_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_V_in_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_V_in_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_V_in_cumulative" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for cumulative volume added by every Inflow.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_controlled_Inflows_Cin">
-<span class="sig-name descname"><span class="pre">unscale_controlled_Inflows_Cin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_controlled_Inflows_Cin</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_controlled_Inflows_Cin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_controlled_Inflows_Cin" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for controlled Inflow feed concentrations.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_controlled_Inflows_cumulative">
-<span class="sig-name descname"><span class="pre">unscale_controlled_Inflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_controlled_Inflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_controlled_Inflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_controlled_Inflows_cumulative" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for cumulative controlled Inflow volume.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_controlled_Inflows_rates">
-<span class="sig-name descname"><span class="pre">unscale_controlled_Inflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_controlled_Inflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_controlled_Inflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_controlled_Inflows_rates" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for controlled Inflow rates (offset-free derivative op).</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_controlled_Outflows_cumulative">
-<span class="sig-name descname"><span class="pre">unscale_controlled_Outflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_controlled_Outflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_controlled_Outflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_controlled_Outflows_cumulative" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for cumulative controlled Outflow volume.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_controlled_Outflows_rates">
-<span class="sig-name descname"><span class="pre">unscale_controlled_Outflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_controlled_Outflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_controlled_Outflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_controlled_Outflows_rates" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for controlled Outflow rates (offset-free derivative op).</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_controlled_PVs">
-<span class="sig-name descname"><span class="pre">unscale_controlled_PVs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_controlled_PVs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_controlled_PVs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_controlled_PVs" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for controlled process variables.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_latent">
-<span class="sig-name descname"><span class="pre">unscale_latent</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_latent</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_latent"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_latent" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for the latent state, via <code class="docutils literal notranslate"><span class="pre">SCALE_latent</span></code>.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_modeled_BiologicalOde_rates">
-<span class="sig-name descname"><span class="pre">unscale_modeled_BiologicalOde_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_BiologicalOde_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_modeled_BiologicalOde_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_BiologicalOde_rates" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for modeled <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> rates (offset-free
-derivative op).</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_modeled_Inflows_Cin">
-<span class="sig-name descname"><span class="pre">unscale_modeled_Inflows_Cin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_Inflows_Cin</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_modeled_Inflows_Cin"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_Inflows_Cin" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for modeled Inflow feed concentrations.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_modeled_Inflows_cumulative">
-<span class="sig-name descname"><span class="pre">unscale_modeled_Inflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_Inflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_modeled_Inflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_Inflows_cumulative" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for cumulative modeled Inflow volume.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_modeled_Inflows_rates">
-<span class="sig-name descname"><span class="pre">unscale_modeled_Inflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_Inflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_modeled_Inflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_Inflows_rates" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for modeled Inflow rates (offset-free derivative op).</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_modeled_Outflows_cumulative">
-<span class="sig-name descname"><span class="pre">unscale_modeled_Outflows_cumulative</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_Outflows_cumulative</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_modeled_Outflows_cumulative"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_Outflows_cumulative" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for cumulative modeled Outflow volume.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_modeled_Outflows_rates">
-<span class="sig-name descname"><span class="pre">unscale_modeled_Outflows_rates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_Outflows_rates</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_modeled_Outflows_rates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_Outflows_rates" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for modeled Outflow rates (offset-free derivative op).</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_modeled_PVs">
-<span class="sig-name descname"><span class="pre">unscale_modeled_PVs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_PVs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_modeled_PVs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_PVs" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for modeled process variables.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_modeled_RMCs">
-<span class="sig-name descname"><span class="pre">unscale_modeled_RMCs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_RMCs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_modeled_RMCs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_RMCs" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for modeled reactor-medium components.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_modeled_V">
-<span class="sig-name descname"><span class="pre">unscale_modeled_V</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_modeled_V</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_modeled_V"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_V" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for the modeled reactor volume.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.unscale_state">
-<span class="sig-name descname"><span class="pre">unscale_state</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_state</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#UserReactionModule.unscale_state"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.unscale_state" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for the full integrated state, via <code class="docutils literal notranslate"><span class="pre">SCALE_state</span></code>.</p>
-</dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_V_in_cumulative">
-<span class="sig-name descname"><span class="pre">SCALE_V_in_cumulative</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_V_in_cumulative" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_controlled_Inflows_Cin">
-<span class="sig-name descname"><span class="pre">SCALE_controlled_Inflows_Cin</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_controlled_Inflows_Cin" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_controlled_Inflows_cumulative">
-<span class="sig-name descname"><span class="pre">SCALE_controlled_Inflows_cumulative</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_controlled_Inflows_cumulative" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_controlled_Inflows_rates">
-<span class="sig-name descname"><span class="pre">SCALE_controlled_Inflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_controlled_Inflows_rates" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_controlled_Outflows_cumulative">
-<span class="sig-name descname"><span class="pre">SCALE_controlled_Outflows_cumulative</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_controlled_Outflows_cumulative" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_controlled_Outflows_rates">
-<span class="sig-name descname"><span class="pre">SCALE_controlled_Outflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_controlled_Outflows_rates" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_controlled_PVs">
-<span class="sig-name descname"><span class="pre">SCALE_controlled_PVs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_controlled_PVs" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_integrated_state">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">SCALE_integrated_state</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_integrated_state" title="Link to this definition">¶</a></dt>
-<dd><p>State scaler used by the ODE solver, incl. trailing latent state.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler">Scaler</a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_latent">
-<span class="sig-name descname"><span class="pre">SCALE_latent</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_latent" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_modeled_BiologicalOde_rates">
-<span class="sig-name descname"><span class="pre">SCALE_modeled_BiologicalOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_BiologicalOde_rates" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_modeled_Inflows_Cin">
-<span class="sig-name descname"><span class="pre">SCALE_modeled_Inflows_Cin</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_Inflows_Cin" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_modeled_Inflows_cumulative">
-<span class="sig-name descname"><span class="pre">SCALE_modeled_Inflows_cumulative</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_Inflows_cumulative" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_modeled_Inflows_rates">
-<span class="sig-name descname"><span class="pre">SCALE_modeled_Inflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_Inflows_rates" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_modeled_Outflows_cumulative">
-<span class="sig-name descname"><span class="pre">SCALE_modeled_Outflows_cumulative</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_Outflows_cumulative" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_modeled_Outflows_rates">
-<span class="sig-name descname"><span class="pre">SCALE_modeled_Outflows_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_Outflows_rates" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_modeled_PVs">
-<span class="sig-name descname"><span class="pre">SCALE_modeled_PVs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_PVs" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_modeled_RMCs">
-<span class="sig-name descname"><span class="pre">SCALE_modeled_RMCs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_RMCs" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_modeled_V">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">SCALE_modeled_V</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_V" title="Link to this definition">¶</a></dt>
-<dd><p>Real-volume scale shares the V_in_cumulative scale (same units, L).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler">Scaler</a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.SCALE_state">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">SCALE_state</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler"><span class="pre">Scaler</span></a></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.SCALE_state" title="Link to this definition">¶</a></dt>
-<dd><p>Composed state scaler.</p>
-<p>Layout: <code class="docutils literal notranslate"><span class="pre">[modeled_RMCs</span> <span class="pre">|</span> <span class="pre">modeled_PVs</span> <span class="pre">|</span> <span class="pre">V</span> <span class="pre">|</span> <span class="pre">modeled_Inflows_cumulative</span> <span class="pre">|</span>
-<span class="pre">modeled_Outflows_cumulative]</span></code>.
-Zero-width parts (e.g. an empty PV axis) are preserved in the concat to
-reproduce <code class="docutils literal notranslate"><span class="pre">jnp.concatenate</span></code> dtype promotion exactly — do NOT filter.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="#hybrax.train.model_api.Scaler" title="hybrax.train.model_api.Scaler">Scaler</a></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.latent_observables">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">latent_observables</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.latent_observables" title="Link to this definition">¶</a></dt>
-<dd><p>Names of observables that require live latent state during the solve.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>tuple[str, …]</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.n_controlled_Inflows">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_controlled_Inflows</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.n_controlled_Inflows" title="Link to this definition">¶</a></dt>
-<dd><p>Number of continuous controlled Inflows.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>int</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.n_controlled_Outflows">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_controlled_Outflows</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.n_controlled_Outflows" title="Link to this definition">¶</a></dt>
-<dd><p>Number of continuous controlled Outflows.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>int</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.n_controlled_PVs">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_controlled_PVs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.n_controlled_PVs" title="Link to this definition">¶</a></dt>
-<dd><p>Number of controlled process-variable signals.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>int</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.n_latent">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_latent</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.n_latent" title="Link to this definition">¶</a></dt>
-<dd><p>Number of integrated latent-state dimensions.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>int</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.n_modeled_BiologicalOde_rates">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_modeled_BiologicalOde_rates</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.n_modeled_BiologicalOde_rates" title="Link to this definition">¶</a></dt>
-<dd><p>Number of rates emitted by the BiologicalOde block.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>int</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.n_modeled_Inflows">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_modeled_Inflows</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.n_modeled_Inflows" title="Link to this definition">¶</a></dt>
-<dd><p>Number of modeled Inflows.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>int</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.n_modeled_Outflows">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_modeled_Outflows</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.n_modeled_Outflows" title="Link to this definition">¶</a></dt>
-<dd><p>Number of modeled Outflows.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>int</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.n_modeled_PVs">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_modeled_PVs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.n_modeled_PVs" title="Link to this definition">¶</a></dt>
-<dd><p>Number of modeled (uncontrolled, dynamic) process variables.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>int</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="hybrax.train.model_api.UserReactionModule.n_modeled_RMCs">
-<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">n_modeled_RMCs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.model_api.UserReactionModule.n_modeled_RMCs" title="Link to this definition">¶</a></dt>
-<dd><p>Number of modeled RMCs (species).</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>int</p>
-</dd>
-</dl>
 </dd></dl>
 
 </dd></dl>
@@ -1934,7 +1934,6 @@ Untagged array leaves default to frozen.</p>
 <li><a class="reference internal" href="#hybrax.train.model_api.EstimatedScales.SCALE_controlled_Outflows_cumulative"><code class="docutils literal notranslate"><span class="pre">EstimatedScales.SCALE_controlled_Outflows_cumulative</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.EstimatedScales.SCALE_controlled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">EstimatedScales.SCALE_controlled_Outflows_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.EstimatedScales.SCALE_controlled_PVs"><code class="docutils literal notranslate"><span class="pre">EstimatedScales.SCALE_controlled_PVs</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.EstimatedScales.SCALE_modeled_BiologicalOde_rates"><code class="docutils literal notranslate"><span class="pre">EstimatedScales.SCALE_modeled_BiologicalOde_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.EstimatedScales.SCALE_modeled_Inflows_Cin"><code class="docutils literal notranslate"><span class="pre">EstimatedScales.SCALE_modeled_Inflows_Cin</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.EstimatedScales.SCALE_modeled_Inflows_cumulative"><code class="docutils literal notranslate"><span class="pre">EstimatedScales.SCALE_modeled_Inflows_cumulative</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.EstimatedScales.SCALE_modeled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">EstimatedScales.SCALE_modeled_Inflows_rates</span></code></a></li>
@@ -1942,6 +1941,7 @@ Untagged array leaves default to frozen.</p>
 <li><a class="reference internal" href="#hybrax.train.model_api.EstimatedScales.SCALE_modeled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">EstimatedScales.SCALE_modeled_Outflows_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.EstimatedScales.SCALE_modeled_PVs"><code class="docutils literal notranslate"><span class="pre">EstimatedScales.SCALE_modeled_PVs</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.EstimatedScales.SCALE_modeled_RMCs"><code class="docutils literal notranslate"><span class="pre">EstimatedScales.SCALE_modeled_RMCs</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.EstimatedScales.SCALE_modeled_ReactionOde_rates"><code class="docutils literal notranslate"><span class="pre">EstimatedScales.SCALE_modeled_ReactionOde_rates</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LinearScaler"><code class="docutils literal notranslate"><span class="pre">LinearScaler</span></code></a><ul>
@@ -1956,28 +1956,28 @@ Untagged array leaves default to frozen.</p>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs"><code class="docutils literal notranslate"><span class="pre">LossInputs</span></code></a><ul>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.RAW_V"><code class="docutils literal notranslate"><span class="pre">LossInputs.RAW_V</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.RAW_V_unclamped"><code class="docutils literal notranslate"><span class="pre">LossInputs.RAW_V_unclamped</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.RAW_modeled_BiologicalOde_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.RAW_modeled_BiologicalOde_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.RAW_modeled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.RAW_modeled_Inflows_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.RAW_modeled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.RAW_modeled_Outflows_rates</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.RAW_modeled_ReactionOde_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.RAW_modeled_ReactionOde_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.RAW_states"><code class="docutils literal notranslate"><span class="pre">LossInputs.RAW_states</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.SCL_V"><code class="docutils literal notranslate"><span class="pre">LossInputs.SCL_V</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.SCL_modeled_BiologicalOde_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.SCL_modeled_BiologicalOde_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.SCL_modeled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.SCL_modeled_Inflows_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.SCL_modeled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.SCL_modeled_Outflows_rates</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.SCL_modeled_ReactionOde_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.SCL_modeled_ReactionOde_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.SCL_states"><code class="docutils literal notranslate"><span class="pre">LossInputs.SCL_states</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.SCL_target_measured"><code class="docutils literal notranslate"><span class="pre">LossInputs.SCL_target_measured</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.SCL_target_pred"><code class="docutils literal notranslate"><span class="pre">LossInputs.SCL_target_pred</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.auxiliary"><code class="docutils literal notranslate"><span class="pre">LossInputs.auxiliary</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.dense_RAW_V"><code class="docutils literal notranslate"><span class="pre">LossInputs.dense_RAW_V</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.dense_RAW_V_unclamped"><code class="docutils literal notranslate"><span class="pre">LossInputs.dense_RAW_V_unclamped</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.dense_RAW_modeled_BiologicalOde_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.dense_RAW_modeled_BiologicalOde_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.dense_RAW_modeled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.dense_RAW_modeled_Inflows_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.dense_RAW_modeled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.dense_RAW_modeled_Outflows_rates</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.dense_RAW_modeled_ReactionOde_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.dense_RAW_modeled_ReactionOde_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.dense_RAW_states"><code class="docutils literal notranslate"><span class="pre">LossInputs.dense_RAW_states</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.dense_SCL_V"><code class="docutils literal notranslate"><span class="pre">LossInputs.dense_SCL_V</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.dense_SCL_modeled_BiologicalOde_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.dense_SCL_modeled_BiologicalOde_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.dense_SCL_modeled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.dense_SCL_modeled_Inflows_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.dense_SCL_modeled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.dense_SCL_modeled_Outflows_rates</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.dense_SCL_modeled_ReactionOde_rates"><code class="docutils literal notranslate"><span class="pre">LossInputs.dense_SCL_modeled_ReactionOde_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.dense_SCL_states"><code class="docutils literal notranslate"><span class="pre">LossInputs.dense_SCL_states</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.dense_auxiliary"><code class="docutils literal notranslate"><span class="pre">LossInputs.dense_auxiliary</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossInputs.dense_t"><code class="docutils literal notranslate"><span class="pre">LossInputs.dense_t</span></code></a></li>
@@ -1993,6 +1993,76 @@ Untagged array leaves default to frozen.</p>
 </li>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossOutputs"><code class="docutils literal notranslate"><span class="pre">LossOutputs</span></code></a><ul>
 <li><a class="reference internal" href="#hybrax.train.model_api.LossOutputs.named_losses"><code class="docutils literal notranslate"><span class="pre">LossOutputs.named_losses</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule"><code class="docutils literal notranslate"><span class="pre">RateModule</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.initial_latent"><code class="docutils literal notranslate"><span class="pre">RateModule.initial_latent()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.observe"><code class="docutils literal notranslate"><span class="pre">RateModule.observe()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_V_in_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_V_in_cumulative()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_controlled_Inflows_Cin"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_controlled_Inflows_Cin()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_controlled_Inflows_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_controlled_Inflows_cumulative()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_controlled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_controlled_Inflows_rates()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_controlled_Outflows_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_controlled_Outflows_cumulative()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_controlled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_controlled_Outflows_rates()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_controlled_PVs"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_controlled_PVs()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_latent"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_latent()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_modeled_Inflows_Cin"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_modeled_Inflows_Cin()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_modeled_Inflows_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_modeled_Inflows_cumulative()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_modeled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_modeled_Inflows_rates()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_modeled_Outflows_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_modeled_Outflows_cumulative()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_modeled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_modeled_Outflows_rates()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_modeled_PVs"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_modeled_PVs()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_modeled_RMCs"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_modeled_RMCs()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_modeled_ReactionOde_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_modeled_ReactionOde_rates()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_modeled_V"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_modeled_V()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_state"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_state()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_V_in_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_V_in_cumulative()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_controlled_Inflows_Cin"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_controlled_Inflows_Cin()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_controlled_Inflows_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_controlled_Inflows_cumulative()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_controlled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_controlled_Inflows_rates()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_controlled_Outflows_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_controlled_Outflows_cumulative()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_controlled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_controlled_Outflows_rates()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_controlled_PVs"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_controlled_PVs()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_latent"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_latent()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_modeled_Inflows_Cin"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_modeled_Inflows_Cin()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_modeled_Inflows_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_modeled_Inflows_cumulative()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_modeled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_modeled_Inflows_rates()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_modeled_Outflows_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_modeled_Outflows_cumulative()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_modeled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_modeled_Outflows_rates()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_modeled_PVs"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_modeled_PVs()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_modeled_RMCs"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_modeled_RMCs()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_modeled_ReactionOde_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_modeled_ReactionOde_rates()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_modeled_V"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_modeled_V()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.unscale_state"><code class="docutils literal notranslate"><span class="pre">RateModule.unscale_state()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_V_in_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_V_in_cumulative</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_controlled_Inflows_Cin"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_controlled_Inflows_Cin</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_controlled_Inflows_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_controlled_Inflows_cumulative</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_controlled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_controlled_Inflows_rates</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_controlled_Outflows_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_controlled_Outflows_cumulative</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_controlled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_controlled_Outflows_rates</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_controlled_PVs"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_controlled_PVs</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_integrated_state"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_integrated_state</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_latent"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_latent</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_modeled_Inflows_Cin"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_modeled_Inflows_Cin</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_modeled_Inflows_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_modeled_Inflows_cumulative</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_modeled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_modeled_Inflows_rates</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_modeled_Outflows_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_modeled_Outflows_cumulative</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_modeled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_modeled_Outflows_rates</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_modeled_PVs"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_modeled_PVs</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_modeled_RMCs"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_modeled_RMCs</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_modeled_ReactionOde_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_modeled_ReactionOde_rates</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_modeled_V"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_modeled_V</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.SCALE_state"><code class="docutils literal notranslate"><span class="pre">RateModule.SCALE_state</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.latent_observables"><code class="docutils literal notranslate"><span class="pre">RateModule.latent_observables</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.n_controlled_Inflows"><code class="docutils literal notranslate"><span class="pre">RateModule.n_controlled_Inflows</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.n_controlled_Outflows"><code class="docutils literal notranslate"><span class="pre">RateModule.n_controlled_Outflows</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.n_controlled_PVs"><code class="docutils literal notranslate"><span class="pre">RateModule.n_controlled_PVs</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.n_latent"><code class="docutils literal notranslate"><span class="pre">RateModule.n_latent</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.n_modeled_Inflows"><code class="docutils literal notranslate"><span class="pre">RateModule.n_modeled_Inflows</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.n_modeled_Outflows"><code class="docutils literal notranslate"><span class="pre">RateModule.n_modeled_Outflows</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.n_modeled_PVs"><code class="docutils literal notranslate"><span class="pre">RateModule.n_modeled_PVs</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.n_modeled_RMCs"><code class="docutils literal notranslate"><span class="pre">RateModule.n_modeled_RMCs</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.n_modeled_ReactionOde_rates"><code class="docutils literal notranslate"><span class="pre">RateModule.n_modeled_ReactionOde_rates</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#hybrax.train.model_api.ReactionInputs"><code class="docutils literal notranslate"><span class="pre">ReactionInputs</span></code></a><ul>
@@ -2015,9 +2085,9 @@ Untagged array leaves default to frozen.</p>
 </li>
 <li><a class="reference internal" href="#hybrax.train.model_api.ReactionOutputs"><code class="docutils literal notranslate"><span class="pre">ReactionOutputs</span></code></a><ul>
 <li><a class="reference internal" href="#hybrax.train.model_api.ReactionOutputs.SCL_latent_derivative"><code class="docutils literal notranslate"><span class="pre">ReactionOutputs.SCL_latent_derivative</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.ReactionOutputs.SCL_modeled_BiologicalOde_rates"><code class="docutils literal notranslate"><span class="pre">ReactionOutputs.SCL_modeled_BiologicalOde_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.ReactionOutputs.SCL_modeled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">ReactionOutputs.SCL_modeled_Inflows_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.ReactionOutputs.SCL_modeled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">ReactionOutputs.SCL_modeled_Outflows_rates</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.ReactionOutputs.SCL_modeled_ReactionOde_rates"><code class="docutils literal notranslate"><span class="pre">ReactionOutputs.SCL_modeled_ReactionOde_rates</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.ReactionOutputs.auxiliary"><code class="docutils literal notranslate"><span class="pre">ReactionOutputs.auxiliary</span></code></a></li>
 </ul>
 </li>
@@ -2034,76 +2104,6 @@ Untagged array leaves default to frozen.</p>
 <li><a class="reference internal" href="#hybrax.train.model_api.UserLossModule"><code class="docutils literal notranslate"><span class="pre">UserLossModule</span></code></a><ul>
 <li><a class="reference internal" href="#hybrax.train.model_api.UserLossModule.dense_grid_n"><code class="docutils literal notranslate"><span class="pre">UserLossModule.dense_grid_n</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.UserLossModule.loss_names"><code class="docutils literal notranslate"><span class="pre">UserLossModule.loss_names</span></code></a></li>
-</ul>
-</li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule"><code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code></a><ul>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.initial_latent"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.initial_latent()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.observe"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.observe()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_V_in_cumulative"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_V_in_cumulative()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_controlled_Inflows_Cin"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_controlled_Inflows_Cin()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_controlled_Inflows_cumulative"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_controlled_Inflows_cumulative()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_controlled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_controlled_Inflows_rates()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_controlled_Outflows_cumulative"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_controlled_Outflows_cumulative()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_controlled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_controlled_Outflows_rates()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_controlled_PVs"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_controlled_PVs()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_latent"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_latent()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_BiologicalOde_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_modeled_BiologicalOde_rates()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_Inflows_Cin"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_modeled_Inflows_Cin()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_Inflows_cumulative"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_modeled_Inflows_cumulative()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_modeled_Inflows_rates()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_Outflows_cumulative"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_modeled_Outflows_cumulative()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_modeled_Outflows_rates()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_PVs"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_modeled_PVs()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_RMCs"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_modeled_RMCs()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_modeled_V"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_modeled_V()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.scale_state"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.scale_state()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_V_in_cumulative"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_V_in_cumulative()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_controlled_Inflows_Cin"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_controlled_Inflows_Cin()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_controlled_Inflows_cumulative"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_controlled_Inflows_cumulative()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_controlled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_controlled_Inflows_rates()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_controlled_Outflows_cumulative"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_controlled_Outflows_cumulative()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_controlled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_controlled_Outflows_rates()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_controlled_PVs"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_controlled_PVs()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_latent"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_latent()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_BiologicalOde_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_modeled_BiologicalOde_rates()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_Inflows_Cin"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_modeled_Inflows_Cin()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_Inflows_cumulative"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_modeled_Inflows_cumulative()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_modeled_Inflows_rates()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_Outflows_cumulative"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_modeled_Outflows_cumulative()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_modeled_Outflows_rates()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_PVs"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_modeled_PVs()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_RMCs"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_modeled_RMCs()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_modeled_V"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_modeled_V()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.unscale_state"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.unscale_state()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_V_in_cumulative"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_V_in_cumulative</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_controlled_Inflows_Cin"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_controlled_Inflows_Cin</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_controlled_Inflows_cumulative"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_controlled_Inflows_cumulative</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_controlled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_controlled_Inflows_rates</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_controlled_Outflows_cumulative"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_controlled_Outflows_cumulative</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_controlled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_controlled_Outflows_rates</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_controlled_PVs"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_controlled_PVs</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_integrated_state"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_integrated_state</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_latent"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_latent</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_BiologicalOde_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_modeled_BiologicalOde_rates</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_Inflows_Cin"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_modeled_Inflows_Cin</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_Inflows_cumulative"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_modeled_Inflows_cumulative</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_Inflows_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_modeled_Inflows_rates</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_Outflows_cumulative"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_modeled_Outflows_cumulative</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_Outflows_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_modeled_Outflows_rates</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_PVs"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_modeled_PVs</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_RMCs"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_modeled_RMCs</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_modeled_V"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_modeled_V</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.SCALE_state"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.SCALE_state</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.latent_observables"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.latent_observables</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.n_controlled_Inflows"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.n_controlled_Inflows</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.n_controlled_Outflows"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.n_controlled_Outflows</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.n_controlled_PVs"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.n_controlled_PVs</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.n_latent"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.n_latent</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.n_modeled_BiologicalOde_rates"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.n_modeled_BiologicalOde_rates</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.n_modeled_Inflows"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.n_modeled_Inflows</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.n_modeled_Outflows"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.n_modeled_Outflows</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.n_modeled_PVs"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.n_modeled_PVs</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.model_api.UserReactionModule.n_modeled_RMCs"><code class="docutils literal notranslate"><span class="pre">UserReactionModule.n_modeled_RMCs</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#hybrax.train.model_api.frozen_field"><code class="docutils literal notranslate"><span class="pre">frozen_field()</span></code></a></li>

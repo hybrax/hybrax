@@ -97,7 +97,7 @@ Module Contents
 
    ``q_rates`` is aligned with ``rhs_ode.name_modeled_rates`` (the modeled
    biological rate vector), not with ``modeled_RMC_names``. Under a
-   user-defined ``BiologicalOde`` these orderings differ. Modeled Inflow and
+   user-defined ``ReactionOde`` these orderings differ. Modeled Inflow and
    Outflow rates remain separate physical arrays with their storage signs.
 
 

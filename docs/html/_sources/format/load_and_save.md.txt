@@ -90,7 +90,7 @@ trailing commas, are still JSON errors.
 The loader is deliberately lenient about **absent** keys and strict about **malformed
 present** ones.
 
-Absent and defaulted: `process_variables`, `volume_changes`, `biological_ode`,
+Absent and defaulted: `process_variables`, `volume_changes`, `reaction_ode`,
 `discrete_events`, `bounds`. A minimal file can omit all of them.
 
 Rejected outright:

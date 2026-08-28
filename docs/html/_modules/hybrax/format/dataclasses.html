@@ -10,7 +10,7 @@
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -461,7 +461,7 @@
 <span class="sd">    Ordering rules:</span>
 
 <span class="sd">    - ``name_modeled_rates`` preserves the user-supplied insertion order of</span>
-<span class="sd">      ``BiologicalOde.rates`` (downstream consumers such as ``hybrax.train``</span>
+<span class="sd">      ``ReactionOde.rates`` (downstream consumers such as ``hybrax.train``</span>
 <span class="sd">      pass rate vectors in this order).</span>
 <span class="sd">    - ``name_modeled_algebraic`` is topo-sorted by inter-algebraic</span>
 <span class="sd">      dependencies; ties broken alphabetically.</span>
@@ -760,20 +760,21 @@
 
 
 <span class="c1"># ============================================================</span>
-<span class="c1"># User-defined biological ODE</span>
+<span class="c1"># User-defined reaction ODE</span>
 <span class="c1"># ============================================================</span>
 
 
-<div class="viewcode-block" id="BiologicalOde">
-<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BiologicalOde">[docs]</a>
+<div class="viewcode-block" id="ReactionOde">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.ReactionOde">[docs]</a>
 <span class="nd">@dataclass</span>
-<span class="k">class</span><span class="w"> </span><span class="nc">BiologicalOde</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""User-defined per-state biological RHS expressions.</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">ReactionOde</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""User-defined per-state reaction RHS expressions.</span>
 
-<span class="sd">    Describes only the *biological* part of ``dc/dt``. Physical contributions</span>
-<span class="sd">    (feed inflow, dilution, sample outflow, volume dynamics) continue to be</span>
-<span class="sd">    added by hybrax.format from the existing :class:`VolumeChange` machinery and</span>
-<span class="sd">    are not part of this block.</span>
+<span class="sd">    Describes the reaction part of ``dc/dt``: intrinsic biological, abiotic, or</span>
+<span class="sd">    other user-defined dynamics. Transport contributions (feed inflow,</span>
+<span class="sd">    dilution, sample outflow, and volume dynamics) continue to be added by</span>
+<span class="sd">    hybrax.format from the existing :class:`VolumeChange` machinery and are not</span>
+<span class="sd">    part of this block.</span>
 
 <span class="sd">    Attributes:</span>
 <span class="sd">        algebraic: Mapping ``name -&gt; expression string``. Algebraic (no time</span>
@@ -784,9 +785,8 @@
 <span class="sd">            on either side meaning unbounded; use ``(None, None)`` (i.e.</span>
 <span class="sd">            ``_NO_BOUNDS``) for rates without bounds.</span>
 <span class="sd">        derivatives: Mapping ``state_name -&gt; expression string`` giving the</span>
-<span class="sd">            biological contribution to ``d(state)/dt``. Every dynamic state</span>
-<span class="sd">            must have an entry; use ``"0"`` to declare no biological</span>
-<span class="sd">            dynamics.</span>
+<span class="sd">            reaction contribution to ``d(state)/dt``. Every dynamic state must</span>
+<span class="sd">            have an entry; use ``"0"`` to declare no reaction dynamics.</span>
 <span class="sd">    """</span>
 
     <span class="n">algebraic</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
@@ -795,11 +795,11 @@
 
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_format_biological_ode_lines</span><span class="p">(</span><span class="n">bo</span><span class="p">:</span> <span class="n">BiologicalOde</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">"""Render a BiologicalOde's algebraic/rates/derivatives as display lines.</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_format_reaction_ode_lines</span><span class="p">(</span><span class="n">bo</span><span class="p">:</span> <span class="n">ReactionOde</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">""</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Render a ReactionOde's algebraic/rates/derivatives as display lines.</span>
 
-<span class="sd">    Shared by `_auto_generate_biological_ode`'s assumption notice and</span>
-<span class="sd">    `inspect.print_process_structure`. Kept here, next to `BiologicalOde`</span>
+<span class="sd">    Shared by `_auto_generate_reaction_ode`'s assumption notice and</span>
+<span class="sd">    `inspect.print_process_structure`. Kept here, next to `ReactionOde`</span>
 <span class="sd">    itself, for the same import-direction reason as `_format_bounds`.</span>
 <span class="sd">    """</span>
     <span class="n">lines</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
@@ -814,12 +814,12 @@
     <span class="k">if</span> <span class="n">bo</span><span class="o">.</span><span class="n">derivatives</span><span class="p">:</span>
         <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">Derivatives (</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">bo</span><span class="o">.</span><span class="n">derivatives</span><span class="p">)</span><span class="si">}</span><span class="s2">):"</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">expr</span> <span class="ow">in</span> <span class="n">bo</span><span class="o">.</span><span class="n">derivatives</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">  d(</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">)/dt|biological = </span><span class="si">{</span><span class="n">expr</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">  d(</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">)/dt|reaction = </span><span class="si">{</span><span class="n">expr</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">lines</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_auto_generate_biological_ode</span><span class="p">(</span><span class="n">process</span><span class="p">:</span> <span class="s2">"BioProcess"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BiologicalOde</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Generate the minimal default :class:`BiologicalOde` for a process.</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_auto_generate_reaction_ode</span><span class="p">(</span><span class="n">process</span><span class="p">:</span> <span class="s2">"BioProcess"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOde</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Generate the minimal default :class:`ReactionOde` for a process.</span>
 
 <span class="sd">    For every reactor-medium component ``c`` the derivative is</span>
 <span class="sd">    ``q_&lt;c&gt; * &lt;biomass&gt;``; for every dynamic (non-controlled, non-static)</span>
@@ -830,16 +830,16 @@
 
 <span class="sd">    Rate insertion order is biomass-first reactor components followed by</span>
 <span class="sd">    dynamic process variables, so the flat rates array layout matches the</span>
-<span class="sd">    insertion order of :attr:`BiologicalOde.rates`.</span>
+<span class="sd">    insertion order of :attr:`ReactionOde.rates`.</span>
 
 <span class="sd">    Auto-generation requires a ``"biomass"`` reactor-medium component</span>
 <span class="sd">    (case-insensitive). Users who do not have a biomass component must</span>
-<span class="sd">    define ``BioProcess.biological_ode`` themselves; the</span>
+<span class="sd">    define ``BioProcess.reaction_ode`` themselves; the</span>
 <span class="sd">    :meth:`BioProcess.__post_init__` skips auto-generation when the user</span>
 <span class="sd">    already supplied a block.</span>
 <span class="sd">    """</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">BiologicalOde</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">ReactionOde</span><span class="p">()</span>
     <span class="n">biomass_name</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span>
         <span class="p">(</span>
             <span class="n">n</span>
@@ -850,9 +850,9 @@
     <span class="p">)</span>
     <span class="k">if</span> <span class="n">biomass_name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="s2">"auto-generated BiologicalOde requires a 'biomass' component "</span>
+            <span class="s2">"auto-generated ReactionOde requires a 'biomass' component "</span>
             <span class="s2">"in process.reactor_medium.components. Pass an explicit "</span>
-            <span class="s2">"BioProcess.biological_ode to skip auto-generation. "</span>
+            <span class="s2">"BioProcess.reaction_ode to skip auto-generation. "</span>
             <span class="sa">f</span><span class="s2">"Available reactor components: "</span>
             <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
         <span class="p">)</span>
@@ -877,13 +877,13 @@
     <span class="p">}</span>
     <span class="n">derivatives</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="n">pv</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"r_</span><span class="si">{</span><span class="n">pv</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">pv</span> <span class="ow">in</span> <span class="n">pv_dynamic</span><span class="p">})</span>
 
-    <span class="n">bo</span> <span class="o">=</span> <span class="n">BiologicalOde</span><span class="p">(</span><span class="n">algebraic</span><span class="o">=</span><span class="p">{},</span> <span class="n">rates</span><span class="o">=</span><span class="n">rates</span><span class="p">,</span> <span class="n">derivatives</span><span class="o">=</span><span class="n">derivatives</span><span class="p">)</span>
+    <span class="n">bo</span> <span class="o">=</span> <span class="n">ReactionOde</span><span class="p">(</span><span class="n">algebraic</span><span class="o">=</span><span class="p">{},</span> <span class="n">rates</span><span class="o">=</span><span class="n">rates</span><span class="p">,</span> <span class="n">derivatives</span><span class="o">=</span><span class="n">derivatives</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">_ANNOUNCE_ASSUMPTIONS</span><span class="p">:</span>
-        <span class="n">detail</span> <span class="o">=</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_format_biological_ode_lines</span><span class="p">(</span><span class="n">bo</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">"  "</span><span class="p">))</span>
+        <span class="n">detail</span> <span class="o">=</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">_format_reaction_ode_lines</span><span class="p">(</span><span class="n">bo</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">"  "</span><span class="p">))</span>
         <span class="n">_logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-            <span class="s2">"Assumption: process.biological_ode not provided; auto-generating "</span>
+            <span class="s2">"Assumption: process.reaction_ode not provided; auto-generating "</span>
             <span class="sa">f</span><span class="s2">"a default using reactor component </span><span class="si">{</span><span class="n">biomass_name</span><span class="si">!r}</span><span class="s2"> as the "</span>
-            <span class="sa">f</span><span class="s2">"biomass/growth driver. Pass an explicit BioProcess.biological_ode "</span>
+            <span class="sa">f</span><span class="s2">"biomass/growth driver. Pass an explicit BioProcess.reaction_ode "</span>
             <span class="sa">f</span><span class="s2">"to override:</span><span class="se">\n</span><span class="si">{</span><span class="n">detail</span><span class="si">}</span><span class="s2">"</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="n">bo</span>
@@ -940,9 +940,9 @@
 <span class="k">class</span><span class="w"> </span><span class="nc">BioProcess</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Single experimental bioprocess run: time axis, volume, media, and variables.</span>
 
-<span class="sd">    ``biological_ode`` auto-generates from ``reactor_medium``/</span>
+<span class="sd">    ``reaction_ode`` auto-generates from ``reactor_medium``/</span>
 <span class="sd">    ``process_variables`` if not supplied; see</span>
-<span class="sd">    ``_auto_generate_biological_ode``.</span>
+<span class="sd">    ``_auto_generate_reaction_ode``.</span>
 <span class="sd">    """</span>
 
     <span class="n">metadata</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BioProcessMetadata</span><span class="p">]</span>
@@ -951,7 +951,7 @@
     <span class="n">reactor_medium</span><span class="p">:</span> <span class="n">ReactorMedium</span>
     <span class="n">process_variables</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">ProcessVariable</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
     <span class="n">discrete_events</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">DiscreteEvents</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">biological_ode</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BiologicalOde</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">reaction_ode</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ReactionOde</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">pseudobatch_transform</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">PseudobatchTransform</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -961,8 +961,8 @@
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"BioProcess.reactor_medium is required"</span><span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">time_axis</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"BioProcess.time_axis is required"</span><span class="p">)</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">biological_ode</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">biological_ode</span> <span class="o">=</span> <span class="n">_auto_generate_biological_ode</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">reaction_ode</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">reaction_ode</span> <span class="o">=</span> <span class="n">_auto_generate_reaction_ode</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
         <span class="n">_announce_missing_inflow_concentrations</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
         <span class="n">rmc_names</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">)</span>
         <span class="n">retention_errors</span> <span class="o">=</span> <span class="p">[</span>

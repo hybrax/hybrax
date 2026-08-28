@@ -9,7 +9,7 @@
 <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -418,7 +418,7 @@
           <li><a href="autoapi/hybrax/train/loo_metrics/index.html#hybrax.train.loo_metrics.LOOMetricsResult.aggregate_json_path">(hybrax.train.loo_metrics.LOOMetricsResult attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BiologicalOde.algebraic">algebraic (hybrax.format.dataclasses.BiologicalOde attribute)</a>
+        <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.ReactionOde.algebraic">algebraic (hybrax.format.dataclasses.ReactionOde attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.RhsOde.algebraic_funcs">algebraic_funcs (hybrax.format.mechanistic.RhsOde attribute)</a>
 </li>
@@ -516,10 +516,6 @@
 </li>
         <li><a href="autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.BatchTrainingData">BatchTrainingData (class in hybrax.train.training_data)</a>
 </li>
-        <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BioProcess.biological_ode">biological_ode (hybrax.format.dataclasses.BioProcess attribute)</a>
-</li>
-        <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BiologicalOde">BiologicalOde (class in hybrax.format.dataclasses)</a>
-</li>
         <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BioProcess">BioProcess (class in hybrax.format.dataclasses)</a>
 </li>
         <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection">BioProcessCollection (class in hybrax.format.dataclasses)</a>
@@ -560,10 +556,10 @@
         </ul></li>
         <li><a href="autoapi/hybrax/train/bounds_loss/index.html#hybrax.train.bounds_loss.BoundsViolationLossModule.bound_records">bound_records (hybrax.train.bounds_loss.BoundsViolationLossModule attribute)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/bounds_loss/index.html#hybrax.train.bounds_loss.bound_records_from_collection">bound_records_from_collection() (in module hybrax.train.bounds_loss)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/bounds_loss/index.html#hybrax.train.bounds_loss.BoundDeclaration">BoundDeclaration (in module hybrax.train.bounds_loss)</a>
 </li>
         <li><a href="autoapi/hybrax/train/bounds_loss/index.html#hybrax.train.bounds_loss.BoundRecord">BoundRecord (in module hybrax.train.bounds_loss)</a>
@@ -856,11 +852,15 @@
 </li>
         <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.DefaultCustomConfig">DefaultCustomConfig (class in hybrax.train.run_config)</a>
 </li>
+        <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultGruReactionModule">DefaultGruReactionModule (class in hybrax.train.defaults)</a>
+</li>
         <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultLossModule">DefaultLossModule (class in hybrax.train.defaults)</a>
+</li>
+        <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultLstmReactionModule">DefaultLstmReactionModule (class in hybrax.train.defaults)</a>
 </li>
         <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultReactionModule">DefaultReactionModule (class in hybrax.train.defaults)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultStatefulReactionModule">DefaultStatefulReactionModule (class in hybrax.train.defaults)</a>
+        <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultStatefulReactionModule">DefaultStatefulReactionModule (in module hybrax.train.defaults)</a>
 </li>
         <li><a href="autoapi/hybrax/format/simulation/index.html#hybrax.format.simulation.SimulationEvent.delta_volume">delta_volume (hybrax.format.simulation.SimulationEvent attribute)</a>
 </li>
@@ -878,11 +878,11 @@
         </ul></li>
         <li><a href="autoapi/hybrax/train/dense/index.html#hybrax.train.dense.dense_point_mask_away_from_jumps">dense_point_mask_away_from_jumps() (in module hybrax.train.dense)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_RAW_modeled_BiologicalOde_rates">dense_RAW_modeled_BiologicalOde_rates (hybrax.train.model_api.LossInputs attribute)</a>
-</li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_RAW_modeled_Inflows_rates">dense_RAW_modeled_Inflows_rates (hybrax.train.model_api.LossInputs attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_RAW_modeled_Outflows_rates">dense_RAW_modeled_Outflows_rates (hybrax.train.model_api.LossInputs attribute)</a>
+</li>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_RAW_modeled_ReactionOde_rates">dense_RAW_modeled_ReactionOde_rates (hybrax.train.model_api.LossInputs attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_RAW_states">dense_RAW_states (hybrax.train.model_api.LossInputs attribute)</a>
 </li>
@@ -892,14 +892,14 @@
 </li>
         <li><a href="autoapi/hybrax/format/simulation/index.html#hybrax.format.simulation.SimulationResult.dense_rows">dense_rows (hybrax.format.simulation.SimulationResult attribute)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_SCL_modeled_BiologicalOde_rates">dense_SCL_modeled_BiologicalOde_rates (hybrax.train.model_api.LossInputs attribute)</a>
-</li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_SCL_modeled_Inflows_rates">dense_SCL_modeled_Inflows_rates (hybrax.train.model_api.LossInputs attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_SCL_modeled_Outflows_rates">dense_SCL_modeled_Outflows_rates (hybrax.train.model_api.LossInputs attribute)</a>
 </li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_SCL_modeled_ReactionOde_rates">dense_SCL_modeled_ReactionOde_rates (hybrax.train.model_api.LossInputs attribute)</a>
+</li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_SCL_states">dense_SCL_states (hybrax.train.model_api.LossInputs attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_SCL_V">dense_SCL_V (hybrax.train.model_api.LossInputs attribute)</a>
@@ -938,7 +938,7 @@
 </li>
         <li><a href="autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.RhsOde.derivative_funcs">derivative_funcs (hybrax.format.mechanistic.RhsOde attribute)</a>
 </li>
-        <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BiologicalOde.derivatives">derivatives (hybrax.format.dataclasses.BiologicalOde attribute)</a>
+        <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.ReactionOde.derivatives">derivatives (hybrax.format.dataclasses.ReactionOde attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.derive_control_partition">derive_control_partition() (in module hybrax.train.controls_store)</a>
 </li>
@@ -1266,7 +1266,7 @@
 </li>
         <li><a href="autoapi/hybrax/format/simulation/index.html#hybrax.format.simulation.Simulation.group_events">group_events() (hybrax.format.simulation.Simulation method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultStatefulReactionModule.gru_cell">gru_cell (hybrax.train.defaults.DefaultStatefulReactionModule attribute)</a>
+        <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultGruReactionModule.gru_cell">gru_cell (hybrax.train.defaults.DefaultGruReactionModule attribute)</a>
 </li>
     </ul></td>
   </tr></table>
@@ -1279,6 +1279,8 @@
         <li><a href="autoapi/hybrax/format/time_series/spline_ops/index.html#hybrax.format.time_series.spline_ops.has_near_zero_piece_value">has_near_zero_piece_value() (in module hybrax.format.time_series.spline_ops)</a>
 </li>
         <li><a href="autoapi/hybrax/format/json_io/index.html#hybrax.format.json_io.has_top_level_key">has_top_level_key() (in module hybrax.format.json_io)</a>
+</li>
+        <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultLstmReactionModule.hidden_width">hidden_width (hybrax.train.defaults.DefaultLstmReactionModule property)</a>
 </li>
         <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessConfig.holdout_label">holdout_label (hybrax.train.harness.TrainHarnessConfig attribute)</a>
 
@@ -1659,11 +1661,15 @@
         </ul></li>
         <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.Inflow">Inflow (class in hybrax.format.dataclasses)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultStatefulReactionModule.inflow_head">inflow_head (hybrax.train.defaults.DefaultStatefulReactionModule attribute)</a>
+        <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultGruReactionModule.inflow_head">inflow_head (hybrax.train.defaults.DefaultGruReactionModule attribute)</a>
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultLstmReactionModule.inflow_head">(hybrax.train.defaults.DefaultLstmReactionModule attribute)</a>
 </li>
+        </ul></li>
         <li><a href="autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.ControlScaleEvidence.Inflow_rates">Inflow_rates (hybrax.train.runtime_context.ControlScaleEvidence attribute)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.initial_latent">initial_latent() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.initial_latent">initial_latent() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper.initial_physical_state_from_raw">initial_physical_state_from_raw() (hybrax.train.wrapper.HybridOdeWrapper method)</a>
 </li>
@@ -1745,7 +1751,7 @@
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.DiscreteEvents.labels">labels (hybrax.format.dataclasses.DiscreteEvents attribute)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.latent_observables">latent_observables (hybrax.train.model_api.UserReactionModule property)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.latent_observables">latent_observables (hybrax.train.model_api.RateModule property)</a>
 </li>
         <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessConfig.learning_rate">learning_rate (hybrax.train.harness.TrainHarnessConfig attribute)</a>
 
@@ -1860,6 +1866,8 @@
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs">LossInputs (class in hybrax.train.model_api)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossOutputs">LossOutputs (class in hybrax.train.model_api)</a>
+</li>
+        <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultLstmReactionModule.lstm_cell">lstm_cell (hybrax.train.defaults.DefaultLstmReactionModule attribute)</a>
 </li>
     </ul></td>
   </tr></table>
@@ -2108,25 +2116,25 @@
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.AugmentationConfig.n_children_per_process">n_children_per_process (hybrax.train.run_config.AugmentationConfig attribute)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.n_controlled_Inflows">n_controlled_Inflows (hybrax.train.model_api.UserReactionModule property)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_controlled_Inflows">n_controlled_Inflows (hybrax.train.model_api.RateModule property)</a>
 
         <ul>
           <li><a href="autoapi/hybrax/train/wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper.n_controlled_Inflows">(hybrax.train.wrapper.HybridOdeWrapper attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.n_controlled_Outflows">n_controlled_Outflows (hybrax.train.model_api.UserReactionModule property)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_controlled_Outflows">n_controlled_Outflows (hybrax.train.model_api.RateModule property)</a>
 
         <ul>
           <li><a href="autoapi/hybrax/train/wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper.n_controlled_Outflows">(hybrax.train.wrapper.HybridOdeWrapper attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.n_controlled_PVs">n_controlled_PVs (hybrax.train.model_api.UserReactionModule property)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_controlled_PVs">n_controlled_PVs (hybrax.train.model_api.RateModule property)</a>
 
         <ul>
           <li><a href="autoapi/hybrax/train/wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper.n_controlled_PVs">(hybrax.train.wrapper.HybridOdeWrapper attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.n_latent">n_latent (hybrax.train.model_api.UserReactionModule property)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_latent">n_latent (hybrax.train.model_api.RateModule property)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.n_measured">n_measured (hybrax.train.model_api.LossInputs attribute)</a>
 
@@ -2138,15 +2146,15 @@
           <li><a href="autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.TrainingDataStore.n_measured">(hybrax.train.training_data.TrainingDataStore attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.n_modeled_BiologicalOde_rates">n_modeled_BiologicalOde_rates (hybrax.train.model_api.UserReactionModule property)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_modeled_Inflows">n_modeled_Inflows (hybrax.train.model_api.RateModule property)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.n_modeled_Inflows">n_modeled_Inflows (hybrax.train.model_api.UserReactionModule property)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_modeled_Outflows">n_modeled_Outflows (hybrax.train.model_api.RateModule property)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.n_modeled_Outflows">n_modeled_Outflows (hybrax.train.model_api.UserReactionModule property)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_modeled_PVs">n_modeled_PVs (hybrax.train.model_api.RateModule property)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.n_modeled_PVs">n_modeled_PVs (hybrax.train.model_api.UserReactionModule property)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_modeled_ReactionOde_rates">n_modeled_ReactionOde_rates (hybrax.train.model_api.RateModule property)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.n_modeled_RMCs">n_modeled_RMCs (hybrax.train.model_api.UserReactionModule property)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_modeled_RMCs">n_modeled_RMCs (hybrax.train.model_api.RateModule property)</a>
 </li>
         <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.AugmentationConfig.n_time_points">n_time_points (hybrax.train.run_config.AugmentationConfig attribute)</a>
 </li>
@@ -2332,7 +2340,7 @@
   <h2>O</h2>
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.observe">observe() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.observe">observe() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.AffineScaler.offset">offset (hybrax.train.model_api.AffineScaler attribute)</a>
 
@@ -2350,14 +2358,18 @@
 </li>
         <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection.organism">organism (hybrax.format.dataclasses.BioProcessCollection attribute)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.original_parent_processes">original_parent_processes() (in module hybrax.train.runtime_context)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.Outflow">Outflow (class in hybrax.format.dataclasses)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultStatefulReactionModule.outflow_head">outflow_head (hybrax.train.defaults.DefaultStatefulReactionModule attribute)</a>
+        <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultGruReactionModule.outflow_head">outflow_head (hybrax.train.defaults.DefaultGruReactionModule attribute)</a>
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultLstmReactionModule.outflow_head">(hybrax.train.defaults.DefaultLstmReactionModule attribute)</a>
 </li>
+        </ul></li>
         <li><a href="autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.ControlScaleEvidence.Outflow_rates">Outflow_rates (hybrax.train.runtime_context.ControlScaleEvidence attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.ForwardRunConfig.output">output (hybrax.train.run_config.ForwardRunConfig attribute)</a>
@@ -2608,20 +2620,20 @@
   <h2>R</h2>
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
-        <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultStatefulReactionModule.rate_head">rate_head (hybrax.train.defaults.DefaultStatefulReactionModule attribute)</a>
+        <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultGruReactionModule.rate_head">rate_head (hybrax.train.defaults.DefaultGruReactionModule attribute)</a>
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultLstmReactionModule.rate_head">(hybrax.train.defaults.DefaultLstmReactionModule attribute)</a>
 </li>
-        <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BiologicalOde.rates">rates (hybrax.format.dataclasses.BiologicalOde attribute)</a>
+        </ul></li>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule">RateModule (class in hybrax.train.model_api)</a>
+</li>
+        <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.ReactionOde.rates">rates (hybrax.format.dataclasses.ReactionOde attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionInputs.RAW_controlled_Outflows_retention">RAW_controlled_Outflows_retention (hybrax.train.model_api.ReactionInputs attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.PrepareConfig.raw_input">raw_input (hybrax.train.run_config.PrepareConfig attribute)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.RAW_modeled_BiologicalOde_rates">RAW_modeled_BiologicalOde_rates (hybrax.train.model_api.LossInputs attribute)</a>
-
-        <ul>
-          <li><a href="autoapi/hybrax/train/wrapper/index.html#hybrax.train.wrapper.SaveOutputs.RAW_modeled_BiologicalOde_rates">(hybrax.train.wrapper.SaveOutputs attribute)</a>
-</li>
-        </ul></li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.RAW_modeled_Inflows_rates">RAW_modeled_Inflows_rates (hybrax.train.model_api.LossInputs attribute)</a>
 
         <ul>
@@ -2636,6 +2648,12 @@
         </ul></li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionInputs.RAW_modeled_Outflows_retention">RAW_modeled_Outflows_retention (hybrax.train.model_api.ReactionInputs attribute)</a>
 </li>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.RAW_modeled_ReactionOde_rates">RAW_modeled_ReactionOde_rates (hybrax.train.model_api.LossInputs attribute)</a>
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/wrapper/index.html#hybrax.train.wrapper.SaveOutputs.RAW_modeled_ReactionOde_rates">(hybrax.train.wrapper.SaveOutputs attribute)</a>
+</li>
+        </ul></li>
         <li><a href="autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.RuntimeDataContext.raw_state_trace">raw_state_trace() (hybrax.train.runtime_context.RuntimeDataContext method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.ProducerCollectionData.raw_state_traces">raw_state_traces (hybrax.train.runtime_context.ProducerCollectionData attribute)</a>
@@ -2672,7 +2690,11 @@
           <li><a href="autoapi/hybrax/train/wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper.reaction_module">(hybrax.train.wrapper.HybridOdeWrapper attribute)</a>
 </li>
         </ul></li>
+        <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BioProcess.reaction_ode">reaction_ode (hybrax.format.dataclasses.BioProcess attribute)</a>
+</li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionInputs">ReactionInputs (class in hybrax.train.model_api)</a>
+</li>
+        <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.ReactionOde">ReactionOde (class in hybrax.format.dataclasses)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionOutputs">ReactionOutputs (class in hybrax.train.model_api)</a>
 </li>
@@ -2702,12 +2724,12 @@
 </li>
         <li><a href="autoapi/hybrax/train/logging/index.html#hybrax.train.logging.RunLogger.record_rebuild">record_rebuild() (hybrax.train.logging.RunLogger method)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/logging/index.html#hybrax.train.logging.RunLogger.record_step">record_step() (hybrax.train.logging.RunLogger method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/augmentation_plot/index.html#hybrax.train.augmentation_plot.render_augmentation_plot">render_augmentation_plot() (in module hybrax.train.augmentation_plot)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/postprocessing/index.html#hybrax.train.postprocessing.render_control_diagnostics">render_control_diagnostics() (in module hybrax.train.postprocessing)</a>
 </li>
         <li><a href="autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.replace_rhs_ode_process_matrices">replace_rhs_ode_process_matrices() (in module hybrax.train.training_data)</a>
@@ -2869,50 +2891,50 @@
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_controlled_Inflows_Cin">SCALE_controlled_Inflows_Cin (hybrax.train.model_api.EstimatedScales attribute)</a>
 
         <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_controlled_Inflows_Cin">(hybrax.train.model_api.UserReactionModule attribute)</a>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_controlled_Inflows_Cin">(hybrax.train.model_api.RateModule attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_controlled_Inflows_Cin">scale_controlled_Inflows_Cin() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_controlled_Inflows_Cin">scale_controlled_Inflows_Cin() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_controlled_Inflows_cumulative">SCALE_controlled_Inflows_cumulative (hybrax.train.model_api.EstimatedScales attribute)</a>
 
         <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_controlled_Inflows_cumulative">(hybrax.train.model_api.UserReactionModule attribute)</a>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_controlled_Inflows_cumulative">(hybrax.train.model_api.RateModule attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_controlled_Inflows_cumulative">scale_controlled_Inflows_cumulative() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_controlled_Inflows_cumulative">scale_controlled_Inflows_cumulative() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_controlled_Inflows_rates">SCALE_controlled_Inflows_rates (hybrax.train.model_api.EstimatedScales attribute)</a>
 
         <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_controlled_Inflows_rates">(hybrax.train.model_api.UserReactionModule attribute)</a>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_controlled_Inflows_rates">(hybrax.train.model_api.RateModule attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_controlled_Inflows_rates">scale_controlled_Inflows_rates() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_controlled_Inflows_rates">scale_controlled_Inflows_rates() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_controlled_Outflows_cumulative">SCALE_controlled_Outflows_cumulative (hybrax.train.model_api.EstimatedScales attribute)</a>
 
         <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_controlled_Outflows_cumulative">(hybrax.train.model_api.UserReactionModule attribute)</a>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_controlled_Outflows_cumulative">(hybrax.train.model_api.RateModule attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_controlled_Outflows_cumulative">scale_controlled_Outflows_cumulative() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_controlled_Outflows_cumulative">scale_controlled_Outflows_cumulative() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_controlled_Outflows_rates">SCALE_controlled_Outflows_rates (hybrax.train.model_api.EstimatedScales attribute)</a>
 
         <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_controlled_Outflows_rates">(hybrax.train.model_api.UserReactionModule attribute)</a>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_controlled_Outflows_rates">(hybrax.train.model_api.RateModule attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_controlled_Outflows_rates">scale_controlled_Outflows_rates() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_controlled_Outflows_rates">scale_controlled_Outflows_rates() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_controlled_PVs">SCALE_controlled_PVs (hybrax.train.model_api.EstimatedScales attribute)</a>
 
         <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_controlled_PVs">(hybrax.train.model_api.UserReactionModule attribute)</a>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_controlled_PVs">(hybrax.train.model_api.RateModule attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_controlled_PVs">scale_controlled_PVs() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_controlled_PVs">scale_controlled_PVs() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.AffineScaler.scale_derivative">scale_derivative() (hybrax.train.model_api.AffineScaler method)</a>
 
@@ -2922,91 +2944,91 @@
           <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.Scaler.scale_derivative">(hybrax.train.model_api.Scaler method)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_integrated_state">SCALE_integrated_state (hybrax.train.model_api.UserReactionModule property)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_integrated_state">SCALE_integrated_state (hybrax.train.model_api.RateModule property)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_latent">SCALE_latent (hybrax.train.model_api.UserReactionModule attribute)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_latent">SCALE_latent (hybrax.train.model_api.RateModule attribute)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_latent">scale_latent() (hybrax.train.model_api.UserReactionModule method)</a>
-</li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_modeled_BiologicalOde_rates">SCALE_modeled_BiologicalOde_rates (hybrax.train.model_api.EstimatedScales attribute)</a>
-
-        <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_modeled_BiologicalOde_rates">(hybrax.train.model_api.UserReactionModule attribute)</a>
-</li>
-        </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_BiologicalOde_rates">scale_modeled_BiologicalOde_rates() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_latent">scale_latent() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_modeled_Inflows_Cin">SCALE_modeled_Inflows_Cin (hybrax.train.model_api.EstimatedScales attribute)</a>
 
         <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_modeled_Inflows_Cin">(hybrax.train.model_api.UserReactionModule attribute)</a>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_modeled_Inflows_Cin">(hybrax.train.model_api.RateModule attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_Inflows_Cin">scale_modeled_Inflows_Cin() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_Inflows_Cin">scale_modeled_Inflows_Cin() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_modeled_Inflows_cumulative">SCALE_modeled_Inflows_cumulative (hybrax.train.model_api.EstimatedScales attribute)</a>
 
         <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_modeled_Inflows_cumulative">(hybrax.train.model_api.UserReactionModule attribute)</a>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_modeled_Inflows_cumulative">(hybrax.train.model_api.RateModule attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_Inflows_cumulative">scale_modeled_Inflows_cumulative() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_Inflows_cumulative">scale_modeled_Inflows_cumulative() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_modeled_Inflows_rates">SCALE_modeled_Inflows_rates (hybrax.train.model_api.EstimatedScales attribute)</a>
 
         <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_modeled_Inflows_rates">(hybrax.train.model_api.UserReactionModule attribute)</a>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_modeled_Inflows_rates">(hybrax.train.model_api.RateModule attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_Inflows_rates">scale_modeled_Inflows_rates() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_Inflows_rates">scale_modeled_Inflows_rates() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_modeled_Outflows_cumulative">SCALE_modeled_Outflows_cumulative (hybrax.train.model_api.EstimatedScales attribute)</a>
 
         <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_modeled_Outflows_cumulative">(hybrax.train.model_api.UserReactionModule attribute)</a>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_modeled_Outflows_cumulative">(hybrax.train.model_api.RateModule attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_Outflows_cumulative">scale_modeled_Outflows_cumulative() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_Outflows_cumulative">scale_modeled_Outflows_cumulative() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_modeled_Outflows_rates">SCALE_modeled_Outflows_rates (hybrax.train.model_api.EstimatedScales attribute)</a>
 
         <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_modeled_Outflows_rates">(hybrax.train.model_api.UserReactionModule attribute)</a>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_modeled_Outflows_rates">(hybrax.train.model_api.RateModule attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_Outflows_rates">scale_modeled_Outflows_rates() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_Outflows_rates">scale_modeled_Outflows_rates() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_modeled_PVs">SCALE_modeled_PVs (hybrax.train.model_api.EstimatedScales attribute)</a>
 
         <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_modeled_PVs">(hybrax.train.model_api.UserReactionModule attribute)</a>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_modeled_PVs">(hybrax.train.model_api.RateModule attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_PVs">scale_modeled_PVs() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_PVs">scale_modeled_PVs() (hybrax.train.model_api.RateModule method)</a>
+</li>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_modeled_ReactionOde_rates">SCALE_modeled_ReactionOde_rates (hybrax.train.model_api.EstimatedScales attribute)</a>
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_modeled_ReactionOde_rates">(hybrax.train.model_api.RateModule attribute)</a>
+</li>
+        </ul></li>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_ReactionOde_rates">scale_modeled_ReactionOde_rates() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_modeled_RMCs">SCALE_modeled_RMCs (hybrax.train.model_api.EstimatedScales attribute)</a>
 
         <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_modeled_RMCs">(hybrax.train.model_api.UserReactionModule attribute)</a>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_modeled_RMCs">(hybrax.train.model_api.RateModule attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_RMCs">scale_modeled_RMCs() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_RMCs">scale_modeled_RMCs() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_modeled_V">SCALE_modeled_V (hybrax.train.model_api.UserReactionModule property)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_modeled_V">SCALE_modeled_V (hybrax.train.model_api.RateModule property)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_modeled_V">scale_modeled_V() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_modeled_V">scale_modeled_V() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_state">SCALE_state (hybrax.train.model_api.UserReactionModule property)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_state">SCALE_state (hybrax.train.model_api.RateModule property)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_state">scale_state() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_state">scale_state() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.EstimatedScales.SCALE_V_in_cumulative">SCALE_V_in_cumulative (hybrax.train.model_api.EstimatedScales attribute)</a>
 
         <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.SCALE_V_in_cumulative">(hybrax.train.model_api.UserReactionModule attribute)</a>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_V_in_cumulative">(hybrax.train.model_api.RateModule attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.scale_V_in_cumulative">scale_V_in_cumulative() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_V_in_cumulative">scale_V_in_cumulative() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.Scaler.scale_value">scale_value() (hybrax.train.model_api.Scaler method)</a>
 </li>
@@ -3030,18 +3052,12 @@
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionOutputs.SCL_latent_derivative">SCL_latent_derivative (hybrax.train.model_api.ReactionOutputs attribute)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.SCL_modeled_BiologicalOde_rates">SCL_modeled_BiologicalOde_rates (hybrax.train.model_api.LossInputs attribute)</a>
-
-        <ul>
-          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionOutputs.SCL_modeled_BiologicalOde_rates">(hybrax.train.model_api.ReactionOutputs attribute)</a>
-</li>
-        </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionInputs.SCL_modeled_Inflows_Cin">SCL_modeled_Inflows_Cin (hybrax.train.model_api.ReactionInputs attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionInputs.SCL_modeled_Inflows_cumulative">SCL_modeled_Inflows_cumulative (hybrax.train.model_api.ReactionInputs attribute)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.SCL_modeled_Inflows_rates">SCL_modeled_Inflows_rates (hybrax.train.model_api.LossInputs attribute)</a>
 
         <ul>
@@ -3058,6 +3074,12 @@
         </ul></li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionInputs.SCL_modeled_PVs">SCL_modeled_PVs (hybrax.train.model_api.ReactionInputs attribute)</a>
 </li>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.SCL_modeled_ReactionOde_rates">SCL_modeled_ReactionOde_rates (hybrax.train.model_api.LossInputs attribute)</a>
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionOutputs.SCL_modeled_ReactionOde_rates">(hybrax.train.model_api.ReactionOutputs attribute)</a>
+</li>
+        </ul></li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionInputs.SCL_modeled_RMCs">SCL_modeled_RMCs (hybrax.train.model_api.ReactionInputs attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionInputs.SCL_modeled_V">SCL_modeled_V (hybrax.train.model_api.ReactionInputs attribute)</a>
@@ -3470,17 +3492,17 @@
           <li><a href="autoapi/hybrax/train/postprocessing/index.html#hybrax.train.postprocessing.ControlDiagnostic.unit">(hybrax.train.postprocessing.ControlDiagnostic attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_controlled_Inflows_Cin">unscale_controlled_Inflows_Cin() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_controlled_Inflows_Cin">unscale_controlled_Inflows_Cin() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_controlled_Inflows_cumulative">unscale_controlled_Inflows_cumulative() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_controlled_Inflows_cumulative">unscale_controlled_Inflows_cumulative() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_controlled_Inflows_rates">unscale_controlled_Inflows_rates() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_controlled_Inflows_rates">unscale_controlled_Inflows_rates() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_controlled_Outflows_cumulative">unscale_controlled_Outflows_cumulative() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_controlled_Outflows_cumulative">unscale_controlled_Outflows_cumulative() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_controlled_Outflows_rates">unscale_controlled_Outflows_rates() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_controlled_Outflows_rates">unscale_controlled_Outflows_rates() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_controlled_PVs">unscale_controlled_PVs() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_controlled_PVs">unscale_controlled_PVs() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.AffineScaler.unscale_derivative">unscale_derivative() (hybrax.train.model_api.AffineScaler method)</a>
 
@@ -3492,29 +3514,29 @@
         </ul></li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_latent">unscale_latent() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_latent">unscale_latent() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_BiologicalOde_rates">unscale_modeled_BiologicalOde_rates() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_Inflows_Cin">unscale_modeled_Inflows_Cin() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_Inflows_Cin">unscale_modeled_Inflows_Cin() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_Inflows_cumulative">unscale_modeled_Inflows_cumulative() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_Inflows_cumulative">unscale_modeled_Inflows_cumulative() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_Inflows_rates">unscale_modeled_Inflows_rates() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_Inflows_rates">unscale_modeled_Inflows_rates() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_Outflows_cumulative">unscale_modeled_Outflows_cumulative() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_Outflows_cumulative">unscale_modeled_Outflows_cumulative() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_Outflows_rates">unscale_modeled_Outflows_rates() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_Outflows_rates">unscale_modeled_Outflows_rates() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_PVs">unscale_modeled_PVs() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_PVs">unscale_modeled_PVs() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_ReactionOde_rates">unscale_modeled_ReactionOde_rates() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_RMCs">unscale_modeled_RMCs() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_RMCs">unscale_modeled_RMCs() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_modeled_V">unscale_modeled_V() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_modeled_V">unscale_modeled_V() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_state">unscale_state() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_state">unscale_state() (hybrax.train.model_api.RateModule method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule.unscale_V_in_cumulative">unscale_V_in_cumulative() (hybrax.train.model_api.UserReactionModule method)</a>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_V_in_cumulative">unscale_V_in_cumulative() (hybrax.train.model_api.RateModule method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.Scaler.unscale_value">unscale_value() (hybrax.train.model_api.Scaler method)</a>
 </li>
@@ -3523,8 +3545,6 @@
         <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessResult.updates_completed">updates_completed (hybrax.train.harness.TrainHarnessResult attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserLossModule">UserLossModule (class in hybrax.train.model_api)</a>
-</li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserReactionModule">UserReactionModule (class in hybrax.train.model_api)</a>
 </li>
     </ul></td>
   </tr></table>
@@ -3539,10 +3559,6 @@
         <li><a href="autoapi/hybrax/format/time_series/spline_ops/index.html#hybrax.format.time_series.spline_ops.VALID_SIDES">VALID_SIDES (in module hybrax.format.time_series.spline_ops)</a>
 </li>
         <li><a href="autoapi/hybrax/format/validate/index.html#hybrax.format.validate.validate_augmented_parent_refs">validate_augmented_parent_refs() (in module hybrax.format.validate)</a>
-</li>
-        <li><a href="autoapi/hybrax/format/validate/index.html#hybrax.format.validate.validate_biological_ode">validate_biological_ode() (in module hybrax.format.validate)</a>
-</li>
-        <li><a href="autoapi/hybrax/format/validate/index.html#hybrax.format.validate.validate_biological_ode_equivalence">validate_biological_ode_equivalence() (in module hybrax.format.validate)</a>
 </li>
         <li><a href="autoapi/hybrax/format/validate/index.html#hybrax.format.validate.validate_biomass_in_reactor_medium">validate_biomass_in_reactor_medium() (in module hybrax.format.validate)</a>
 </li>
@@ -3567,6 +3583,10 @@
         <li><a href="autoapi/hybrax/format/validate/index.html#hybrax.format.validate.validate_outflow_retention">validate_outflow_retention() (in module hybrax.format.validate)</a>
 </li>
         <li><a href="autoapi/hybrax/format/validate/index.html#hybrax.format.validate.validate_process">validate_process() (in module hybrax.format.validate)</a>
+</li>
+        <li><a href="autoapi/hybrax/format/validate/index.html#hybrax.format.validate.validate_reaction_ode">validate_reaction_ode() (in module hybrax.format.validate)</a>
+</li>
+        <li><a href="autoapi/hybrax/format/validate/index.html#hybrax.format.validate.validate_reaction_ode_equivalence">validate_reaction_ode_equivalence() (in module hybrax.format.validate)</a>
 </li>
         <li><a href="autoapi/hybrax/train/wrapper/index.html#hybrax.train.wrapper.validate_rhs_ode_compatibility">validate_rhs_ode_compatibility() (in module hybrax.train.wrapper)</a>
 </li>

@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -389,11 +389,11 @@ auto-generated ODE is already right for your process.</p>
 \]</div>
 </div>
 <ul class="simple">
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">biology</span></code></strong>: yours to declare, as <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>, in terms of named rates (<code class="docutils literal notranslate"><span class="pre">q_*</span></code>,
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">biology</span></code></strong>: yours to declare, as <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>, in terms of named rates (<code class="docutils literal notranslate"><span class="pre">q_*</span></code>,
 <code class="docutils literal notranslate"><span class="pre">r_*</span></code>). Auto-generated if you do not write it.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">transport</span></code></strong>: generated. Feed inflow, dilution, sample outflow, <code class="docutils literal notranslate"><span class="pre">dV/dt</span></code>. You never
 write this half, and you cannot get it wrong by forgetting a term.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">RATES</span></code></strong>: the one input <code class="docutils literal notranslate"><span class="pre">biology</span></code> does not fix. Declaring <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code> fixes the
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">RATES</span></code></strong>: the one input <code class="docutils literal notranslate"><span class="pre">biology</span></code> does not fix. Declaring <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> fixes the
 <em>shape</em> of the rate vector (its names, and how each one enters a derivative), not its
 values. Where the numbers come from is a modeling choice made elsewhere: see <a class="reference internal" href="../train/index.html#what-is-actually-being-fitted"><span class="std std-ref">What is
 actually being fitted</span></a> for the learned
@@ -427,7 +427,7 @@ why <a class="reference internal" href="volume_feeds_events.html"><span class="s
 +-----------------------------------------------------------------------------------------+
 | Derivatives                                                                             |
 +-----------------------------------------------------------------------------------------+
-| State   | Unit  | Biological          | Feed                 | Dilution / retention     |
+| State   | Unit  | Reaction            | Feed                 | Dilution / retention     |
 | biomass | [g/L] | q_biomass * biomass |                      | − dilution(glucose_feed) |
 | glucose | [g/L] | q_glucose * biomass | + feed(glucose_feed) | − dilution(glucose_feed) |
 | lactate | [g/L] | q_lactate * biomass |                      | − dilution(glucose_feed) |
@@ -447,12 +447,12 @@ already written.</p>
 </section>
 <section id="the-default-biology">
 <h2>The default biology<a class="headerlink" href="#the-default-biology" title="Link to this heading">¶</a></h2>
-<p>If you do not provide <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>, hybrax.format generates one when the <code class="docutils literal notranslate"><span class="pre">BioProcess</span></code> is
+<p>If you do not provide <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>, hybrax.format generates one when the <code class="docutils literal notranslate"><span class="pre">BioProcess</span></code> is
 constructed:</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">"rates      :"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span><span class="o">.</span><span class="n">rates</span><span class="p">))</span>
-<span class="nb">print</span><span class="p">(</span><span class="s2">"derivatives:"</span><span class="p">,</span> <span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span><span class="o">.</span><span class="n">derivatives</span><span class="p">)</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">"rates      :"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span><span class="o">.</span><span class="n">rates</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"derivatives:"</span><span class="p">,</span> <span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span><span class="o">.</span><span class="n">derivatives</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
@@ -475,16 +475,16 @@ rate <code class="docutils literal notranslate"><span class="pre">r_p</span></co
 <p class="admonition-title">Auto-generation requires a component named <code class="docutils literal notranslate"><span class="pre">biomass</span></code></p>
 <p>Every generated rate is <em>specific</em> (per unit biomass) so there has to be a biomass to
 be specific to. Without one (case-insensitive match), constructing the <code class="docutils literal notranslate"><span class="pre">BioProcess</span></code>
-raises immediately, and the message tells you to supply your own <code class="docutils literal notranslate"><span class="pre">biological_ode</span></code>.</p>
+raises immediately, and the message tells you to supply your own <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>.</p>
 </div>
 </section>
 <section id="writing-your-own">
 <h2>Writing your own<a class="headerlink" href="#writing-your-own" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">BiologicalOde</span></code> wraps three dicts: <code class="docutils literal notranslate"><span class="pre">algebraic</span></code>, <code class="docutils literal notranslate"><span class="pre">rates</span></code>, and <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>.
+<p><code class="docutils literal notranslate"><span class="pre">ReactionOde</span></code> wraps three dicts: <code class="docutils literal notranslate"><span class="pre">algebraic</span></code>, <code class="docutils literal notranslate"><span class="pre">rates</span></code>, and <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>.
 Let’s look at an example:</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">process</span><span class="o">.</span><span class="n">biological_ode</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">BiologicalOde</span><span class="p">(</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">ReactionOde</span><span class="p">(</span>
     <span class="n">algebraic</span><span class="o">=</span><span class="p">{</span><span class="s2">"X_active"</span><span class="p">:</span> <span class="s2">"biomass - product"</span><span class="p">},</span>
     <span class="n">rates</span><span class="o">=</span><span class="p">{</span><span class="s2">"q_biomass"</span><span class="p">:</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="s2">"q_glucose"</span><span class="p">:</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
            <span class="s2">"q_product"</span><span class="p">:</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)},</span>
@@ -494,14 +494,14 @@ Let’s look at an example:</p>
         <span class="s2">"product"</span><span class="p">:</span> <span class="s2">"q_product * X_active"</span><span class="p">,</span>
     <span class="p">},</span>
 <span class="p">)</span>
-<span class="n">ok</span><span class="p">,</span> <span class="n">message</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">validate_biological_ode</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>     <span class="c1"># validates the whole process</span>
+<span class="n">ok</span><span class="p">,</span> <span class="n">message</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">validate_reaction_ode</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>     <span class="c1"># validates the whole process</span>
 <span class="nb">print</span><span class="p">(</span><span class="n">ok</span><span class="p">,</span> <span class="s2">"|"</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>False | FAIL biological_ode: 
-  - derivatives missing entries for dynamic state(s): ['lactate']. Use "0" to declare no biological dynamics.
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>False | FAIL reaction_ode: 
+  - derivatives missing entries for dynamic state(s): ['lactate']. Use "0" to declare no reaction dynamics.
 </pre></div>
 </div>
 </div>
@@ -521,7 +521,7 @@ Let’s look at an example:</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">-&gt;</span> <span class="pre">(lower,</span> <span class="pre">upper)</span></code>. This dict pulls double duty: the keys declare the names and insertion order of rates to be supplied by a reaction module (e.g. using a neural network) later on and the values are the (optional) lower and upper bounds of these rates. The bounds are not enforced by <code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> itself, but can be used downstream (e.g. in <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> to include a bounds violation loss term in training).</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">derivatives</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">state</span> <span class="pre">-&gt;</span> <span class="pre">expression</span></code>. Defines each state’s continuous local contribution to <code class="docutils literal notranslate"><span class="pre">d(state)/dt</span></code>, excluding transport (inflow, outflow) and discrete event jumps. Expressions can describe biological conversion, abiotic chemistry, or purely physical dynamics (see <a class="reference internal" href="../gallery/glutamine_decay.html"><span class="std std-doc">glutamine degradation</span></a> for an example of a non-biological derivative).</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">state</span> <span class="pre">-&gt;</span> <span class="pre">expression</span></code>. Defines each state’s continuous reaction contribution to <code class="docutils literal notranslate"><span class="pre">d(state)/dt</span></code>, excluding transport (inflow, outflow) and discrete event jumps. Expressions can describe biological conversion, abiotic chemistry, or purely physical dynamics (see <a class="reference internal" href="../gallery/glutamine_decay.html"><span class="std std-doc">glutamine degradation</span></a> for an example of a non-biological derivative).</p></td>
 </tr>
 </tbody>
 </table>
@@ -532,7 +532,7 @@ the measured biomass derivative picks up both growth and product accumulation. T
 no <code class="docutils literal notranslate"><span class="pre">is_intracellular</span></code> flag: you write what you mean.</p>
 <div class="warning admonition">
 <p class="admonition-title">Every dynamic state needs a derivative entry</p>
-<p>Omitting one is rejected. If a state genuinely has no biological dynamics, write <code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code>
+<p>Omitting one is rejected. If a state genuinely has no reaction dynamics, write <code class="docutils literal notranslate"><span class="pre">&quot;0&quot;</span></code>
 explicitly. Silence and “zero” must not look the same.</p>
 </div>
 <p>Expressions are parsed with sympy, so ordinary arithmetic works, and names must refer to

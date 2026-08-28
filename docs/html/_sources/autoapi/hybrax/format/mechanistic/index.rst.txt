@@ -83,13 +83,13 @@ Module Contents
    Bases: :py:obj:`equinox.Module`
 
 
-   JAX/Equinox module that evaluates the biological RHS for a process.
+   JAX/Equinox module that evaluates the RHS for a process.
 
-   Built by :func:`build_rhs_ode` from ``process.biological_ode``
+   Built by :func:`build_rhs_ode` from ``process.reaction_ode``
    (auto-generated in :meth:`BioProcess.__post_init__` when not
-   user-supplied). The biological ``dc/dt`` per state comes from
-   user-written expression strings; hybrax.format adds the physical
-   contributions (feed, dilution, dV) on top.
+   user-supplied). The reaction ``dc/dt`` per state comes from user-written
+   expression strings; hybrax.format adds the transport contributions (feed,
+   dilution, dV) on top.
 
    Call signature::
 
@@ -171,7 +171,7 @@ Module Contents
 
 .. py:function:: build_algebraic_func(process, ordering = None)
 
-   Build a callable that evaluates the ``biological_ode.algebraic``
+   Build a callable that evaluates the ``reaction_ode.algebraic``
    quantities from concrete ``(state_values, ctrl_pv_values, rates)``
    arrays.
 
@@ -186,7 +186,7 @@ Module Contents
 
 .. py:function:: build_rhs_ode(process, ordering = None)
 
-   Build a :class:`RhsOde` from a process whose ``biological_ode`` is
+   Build a :class:`RhsOde` from a process whose ``reaction_ode`` is
    set (auto-generated in :meth:`BioProcess.__post_init__` when not
    user-supplied). Raises ``ValueError`` if the block is missing or
    fails validation.
@@ -249,7 +249,7 @@ Module Contents
      value must be in ``[0, 1]``, and discrete Outflows cannot set retention.
    - Every non-controlled ``ProcessVariable`` must have a ``TimeSeries``
      value carrier (static PVs must be ``is_controlled=True``).
-   - The ``BiologicalOde.algebraic`` graph must be acyclic.
+   - The ``ReactionOde.algebraic`` graph must be acyclic.
    - All names across every group must be unique (no shared names between
      states, rates, algebraic, controlled PVs, Inflows, Outflows).
 

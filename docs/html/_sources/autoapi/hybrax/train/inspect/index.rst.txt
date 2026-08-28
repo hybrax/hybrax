@@ -10,7 +10,7 @@ hybrax.train.inspect
    Two responsibilities:
 
    - ``format_trainable_structure`` / ``print_trainable_structure``: render a
-     table of every array leaf on a :class:`UserReactionModule` subclass,
+     table of every array leaf on a :class:`RateModule` subclass,
      tagged ``trainable`` or ``frozen``. Used by the training harness at
      startup so the trainable surface is visible at a glance.
 
@@ -46,7 +46,7 @@ Module Contents
    ``rows:``/``cols:`` lines naming the matrix axes.
 
 
-.. py:function:: format_trainable_structure(module, *, name_width = None, shape_width = None, status_width = None, title = 'UserReactionModule')
+.. py:function:: format_trainable_structure(module, *, name_width = None, shape_width = None, status_width = None, title = 'RateModule')
 
    Return a tabular string of (name, shape, status) for the full module.
 
@@ -60,7 +60,7 @@ Module Contents
    Sources names from ``wrapper.rhs_ode`` and ``wrapper.controls``.
 
 
-.. py:function:: print_trainable_structure(module, *, title = 'UserReactionModule')
+.. py:function:: print_trainable_structure(module, *, title = 'RateModule')
 
    Print the trainable-structure table.
 

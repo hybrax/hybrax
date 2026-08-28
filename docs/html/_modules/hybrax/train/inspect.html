@@ -260,7 +260,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom Losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
@@ -372,7 +372,7 @@
 <span class="sd">Two responsibilities:</span>
 
 <span class="sd">- ``format_trainable_structure`` / ``print_trainable_structure``: render a</span>
-<span class="sd">  table of every array leaf on a :class:`UserReactionModule` subclass,</span>
+<span class="sd">  table of every array leaf on a :class:`RateModule` subclass,</span>
 <span class="sd">  tagged ``trainable`` or ``frozen``. Used by the training harness at</span>
 <span class="sd">  startup so the trainable surface is visible at a glance.</span>
 
@@ -455,7 +455,7 @@
     <span class="n">name_width</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">shape_width</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">status_width</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"UserReactionModule"</span><span class="p">,</span>
+    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"RateModule"</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Return a tabular string of (name, shape, status) for the full module.</span>
 
@@ -507,7 +507,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">print_trainable_structure</span><span class="p">(</span>
     <span class="n">module</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">,</span>
     <span class="o">*</span><span class="p">,</span>
-    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"UserReactionModule"</span><span class="p">,</span>
+    <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"RateModule"</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Print the trainable-structure table."""</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">format_trainable_structure</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">title</span><span class="o">=</span><span class="n">title</span><span class="p">),</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
@@ -680,7 +680,7 @@
 
     <span class="n">outputs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]]</span> <span class="o">=</span> <span class="p">[</span>
         <span class="p">(</span>
-            <span class="s2">"SCL_modeled_BiologicalOde_rates"</span><span class="p">,</span>
+            <span class="s2">"SCL_modeled_ReactionOde_rates"</span><span class="p">,</span>
             <span class="n">_shape_tuple_str</span><span class="p">(</span><span class="n">n_modeled_rates</span><span class="p">),</span>
             <span class="n">name_modeled_rates</span><span class="p">,</span>
         <span class="p">),</span>

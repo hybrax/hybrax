@@ -102,19 +102,21 @@ def r2_by_target(run_dir):
 :lines: 24-45
 ```
 
-`_eyring_rate_ceiling` computes the temperature term above, vectorized: given a scalar
-temperature and arrays of its four constants, it returns one rate ceiling per instance
-at once. `_inhibition_product`/`_activation_product` are the paper's own
-independent-multiplicative-terms idea: each named influence variable contributes its
-own factor, `1/(1+v/K)` to suppress a rate, `1+v/K` to boost it, and the factors
-multiply.
+`_eyring_rate_ceiling` is an algebraically reparameterized Eq. 4e, vectorized
+over its three instances. It combines the Eyring transition-state factor with
+a reversible-inactivation equilibrium factor and returns temperature-dependent
+maximum prefactors for uptake and production and a minimum prefactor for
+maintenance. `_inhibition_product`/`_activation_product` are the paper's own
+independent-multiplicative-terms idea (Eq. 4a-4c): each named influence
+variable contributes its own factor, `1/(1+v/K)` to suppress a rate,
+`1+v/K` to boost it, and the factors multiply.
 
 ## The Reaction Module
 
 ```{literalinclude} ../../../examples/gallery_optfed/custom.py
 :language: python
 :linenos:
-:lines: 48-73
+:lines: 48-80
 ```
 
 Twenty trainable scalars: 4 per temperature term (`log_A`, `log_Ea_R`,
@@ -126,7 +128,7 @@ model, so they stay fixed rather than fitted.
 ```{literalinclude} ../../../examples/gallery_optfed/custom.py
 :language: python
 :linenos:
-:lines: 75-109
+:lines: 82-130
 ```
 
 `temperature` comes in through `unscale_controlled_PVs(inputs.SCL_controlled_PVs)`,
@@ -136,7 +138,7 @@ layer. `gamma_deg` (uptake) is computed first, `gamma_alpha` (maintenance)
 next since it uses `gamma_deg` as one of its own activation variables (the
 paper's real coupling: more total uptake activates more maintenance), then
 `gamma_pi` (production) saturates in `gamma_deg - gamma_alpha`. `X_active`
-(declared in the dataset's `biological_ode` block as `biomass - product`)
+(declared in the dataset's `reaction_ode` block as `biomass - product`)
 does the rest for every rate except `q_glucose`. `q_biomass` and `q_product` are
 *specific* (per unit active biomass), so no manual `Xr/X` correction is needed inside
 `__call__` for them. `X_active` in the declared derivative strings does that
@@ -177,10 +179,11 @@ Image(filename=str(WORK / "run/forward/plots/T_high.png"))
 ```
 
 `T_high` (40°C, the hottest of this page's six runs) is worth looking at
-specifically: glucose visibly accumulates instead of being consumed, the
-temperature term genuinely suppressing uptake capacity at high temperature.
+specifically: reversible inactivation has reduced the temperature-dependent
+uptake prefactor enough that feed exceeds cellular uptake and glucose
+concentration rises.
 
-## Did It Recover the True Parameters?
+## What Did It Learn About the Eyring Parameters?
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -200,22 +203,20 @@ for name, fit, true in zip(("uptake", "production", "maintenance"), fitted_Teq_C
     print(f"{name:12s} {fit:9.1f} °C {true:9.1f} °C")
 ```
 
-Uptake's and production's fitted thermal optima land within a couple of
-degrees of the true values: both denaturation cliffs sit inside this page's
-28-40°C training range, so there is real data on both sides of the curve.
-Maintenance's true optimum (46.85°C) sits *above* every temperature this page
-trains on, and the fit shows it: nothing in the data distinguishes a
-denaturation cliff at 47°C from one further away still, so gradient descent
-settles for a curve that merely fits the mild, still-rising behavior actually
-observed. That is a structural identifiability limit: parameters whose defining
-feature sits outside the sampled operating envelope come back looking however
-gradient descent found cheapest.
+`Teq` locates the midpoint of the reversible-inactivation equilibrium, where
+the active-enzyme fraction in `_eyring_rate_ceiling` is one half. For example,
+the rendered uptake fit is 31.7°C versus a true `Teq` of 35.9°C, a 4.2°C
+difference. Trajectories can fit despite this mismatch because `A`, `Ea_R`,
+`Teq`, and `dHeq_R` jointly shape the temperature response. Estimating their
+individual values requires experiments that distinguish the activation and
+reversible-inactivation regimes.
 
 ## Gotchas
 
-- **A rate's own optimum has to fall inside the training temperature range to
-  be identifiable.** See "maintenance" above: fitting a denaturation cliff
-  from data that never reaches it asks the model to extrapolate.
+- **Eyring parameters are jointly identified by the temperature response.**
+  `A`, `Ea_R`, `Teq`, and `dHeq_R` can compensate for one another over a narrow
+  temperature range. Use experiments that distinguish the activation and
+  reversible-inactivation regimes before interpreting individual values.
 - **`gamma_mu = gamma_deg - gamma_pi - gamma_alpha` can go transiently
   negative early in training.** It is left unclipped, matching the paper's own
   rate law literally; a bad early step just means slower growth.
@@ -238,11 +239,11 @@ executed run is at `./source/_data/out/runs/gallery_optfed/`.
   -input mechanism, there feeding a learned component instead of closed-form
   kinetics.
 - [The Reaction Module](../train/reaction_module.md): `frozen_field`,
-  `trainable_field`, and everything else a `UserReactionModule` can return.
-- [The Bioprocess ODE](../format/bioprocess_ode.md): `biological_ode`,
+  `trainable_field`, and everything else a `RateModule` can return.
+- [The Bioprocess ODE](../format/bioprocess_ode.md): `reaction_ode`,
   `algebraic`, and the `X_active` pattern this page reuses.
-- [Glutamine Degradation](glutamine_decay.md): a smaller worked example of the same
-  "true value must fall inside the sampled range to be identifiable" lesson.
+- [Glutamine Degradation](glutamine_decay.md): a smaller worked example of
+  identifiability requiring observations that distinguish a rate's effect.
 
 ## References
 

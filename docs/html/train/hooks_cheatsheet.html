@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -424,7 +424,7 @@ custom module isn’t doing anything”.</p>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="reaction_module.html#the-hook"><span class="std std-ref"><code class="docutils literal notranslate"><span class="pre">build_reaction_module</span></code></span></a></p></td>
 <td><p>train setup</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">RateModule</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">DefaultReactionModule</span></code> (2-layer MLP)</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="loss_module.html#the-hook"><span class="std std-ref"><code class="docutils literal notranslate"><span class="pre">build_loss_module</span></code></span></a></p></td>
@@ -469,7 +469,7 @@ raise <code class="docutils literal notranslate"><span class="pre">TypeError</sp
 
 <span class="k">def</span><span class="w"> </span><span class="nf">build_reaction_module</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">process_names</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">seed</span><span class="p">,</span>
                           <span class="n">training_parent_collection</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span> <span class="o">...</span>
-    <span class="c1"># -&gt; UserReactionModule.  training_parent_collection is the BioProcessCollection</span>
+    <span class="c1"># -&gt; RateModule.  training_parent_collection is the BioProcessCollection</span>
     <span class="c1">#    used for training; build_rhs_ode(process) on one of its processes gives you</span>
     <span class="c1">#    layout. The resolved EstimatedScales fields arrive separately, unpacked</span>
     <span class="c1">#    into **scale_kwargs.</span>
@@ -512,21 +512,21 @@ an extension point: declaring it makes the trainer populate every <code class="d
 <p>The two hooks that matter most, for a batch process with no feeds:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span><span class="o">,</span><span class="w"> </span><span class="nn">jax</span><span class="o">,</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span><span class="o">,</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.train</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span><span class="n">EstimatedScales</span><span class="p">,</span> <span class="n">ReactionOutputs</span><span class="p">,</span>
-                      <span class="n">UserReactionModule</span><span class="p">,</span> <span class="n">trainable_field</span><span class="p">)</span>
+                      <span class="n">RateModule</span><span class="p">,</span> <span class="n">trainable_field</span><span class="p">)</span>
 
-<span class="k">class</span><span class="w"> </span><span class="nc">MyModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">MyModule</span><span class="p">(</span><span class="n">RateModule</span><span class="p">):</span>
     <span class="n">mlp</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">key</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">mlp</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span><span class="p">(</span><span class="n">in_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span><span class="p">,</span>
-                              <span class="n">out_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_BiologicalOde_rates</span><span class="p">,</span>
+                              <span class="n">out_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_ReactionOde_rates</span><span class="p">,</span>
                               <span class="n">width_size</span><span class="o">=</span><span class="mi">16</span><span class="p">,</span> <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">key</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">):</span>
         <span class="k">del</span> <span class="n">t</span>
         <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mlp</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">),</span>
+            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mlp</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">),</span>
             <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Inflows</span><span class="p">),</span>
             <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_Outflows</span><span class="p">),</span>
         <span class="p">)</span>

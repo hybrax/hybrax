@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -376,19 +376,34 @@
           <section id="module-hybrax.train.defaults">
 <span id="hybrax-train-defaults"></span><h1>hybrax.train.defaults<a class="headerlink" href="#module-hybrax.train.defaults" title="Link to this heading">¶</a></h1>
 <p>Default hooks and modules used when a run’s <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> doesn’t override them.</p>
+<section id="attributes">
+<h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.defaults.DefaultStatefulReactionModule" title="hybrax.train.defaults.DefaultStatefulReactionModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DefaultStatefulReactionModule</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
 <section id="classes">
 <h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.defaults.DefaultLossModule" title="hybrax.train.defaults.DefaultLossModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DefaultLossModule</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.defaults.DefaultGruReactionModule" title="hybrax.train.defaults.DefaultGruReactionModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DefaultGruReactionModule</span></code></a></p></td>
+<td><p>Standard-GRU latent-ODE reaction model with calibrated output heads.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.defaults.DefaultLossModule" title="hybrax.train.defaults.DefaultLossModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DefaultLossModule</span></code></a></p></td>
 <td><p>Per-target SCL-space measurement loss — the default when no loss hook.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.defaults.DefaultLstmReactionModule" title="hybrax.train.defaults.DefaultLstmReactionModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DefaultLstmReactionModule</span></code></a></p></td>
+<td><p>Standard-LSTM latent-ODE reaction model with calibrated output heads.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.defaults.DefaultReactionModule" title="hybrax.train.defaults.DefaultReactionModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DefaultReactionModule</span></code></a></p></td>
 <td><p>Minimal default reaction model for harness runs.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.defaults.DefaultStatefulReactionModule" title="hybrax.train.defaults.DefaultStatefulReactionModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DefaultStatefulReactionModule</span></code></a></p></td>
-<td><p>Standard-GRU latent-ODE reaction model with calibrated output heads.</p></td>
 </tr>
 </tbody>
 </table>
@@ -414,6 +429,44 @@
 </section>
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultGruReactionModule">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.defaults.</span></span><span class="sig-name descname"><span class="pre">DefaultGruReactionModule</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_latent</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">scale_kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/defaults.html#DefaultGruReactionModule"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.defaults.DefaultGruReactionModule" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.RateModule" title="hybrax.train.model_api.RateModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">hybrax.train.model_api.RateModule</span></code></a></p>
+<p>Standard-GRU latent-ODE reaction model with calibrated output heads.</p>
+<p>The GRU consumes physical and control inputs, with <code class="docutils literal notranslate"><span class="pre">h</span></code> passed only as its
+hidden state. Input kernels use per-gate Glorot initialization, recurrent
+kernels are per-gate orthogonal, and internal biases start at zero.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>key</strong> (<em>jax.Array</em>)</p></li>
+<li><p><strong>n_latent</strong> (<em>SupportsIndex</em>)</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultGruReactionModule.gru_cell">
+<span class="sig-name descname"><span class="pre">gru_cell</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">equinox.nn.GRUCell</span></span><a class="headerlink" href="#hybrax.train.defaults.DefaultGruReactionModule.gru_cell" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultGruReactionModule.inflow_head">
+<span class="sig-name descname"><span class="pre">inflow_head</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">equinox.nn.Linear</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.defaults.DefaultGruReactionModule.inflow_head" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultGruReactionModule.outflow_head">
+<span class="sig-name descname"><span class="pre">outflow_head</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">equinox.nn.Linear</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.defaults.DefaultGruReactionModule.outflow_head" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultGruReactionModule.rate_head">
+<span class="sig-name descname"><span class="pre">rate_head</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">equinox.nn.Linear</span></span><a class="headerlink" href="#hybrax.train.defaults.DefaultGruReactionModule.rate_head" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="hybrax.train.defaults.DefaultLossModule">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.defaults.</span></span><span class="sig-name descname"><span class="pre">DefaultLossModule</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_names</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/defaults.html#DefaultLossModule"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.defaults.DefaultLossModule" title="Link to this definition">¶</a></dt>
@@ -449,11 +502,60 @@ so sparsely-measured targets are not diluted by padding rows.</p>
 </dd></dl>
 
 <dl class="py class">
+<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultLstmReactionModule">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.defaults.</span></span><span class="sig-name descname"><span class="pre">DefaultLstmReactionModule</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hidden_width</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">scale_kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/defaults.html#DefaultLstmReactionModule"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.defaults.DefaultLstmReactionModule" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.RateModule" title="hybrax.train.model_api.RateModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">hybrax.train.model_api.RateModule</span></code></a></p>
+<p>Standard-LSTM latent-ODE reaction model with calibrated output heads.</p>
+<p><code class="docutils literal notranslate"><span class="pre">hidden_width</span></code> is the LSTM hidden width. <code class="docutils literal notranslate"><span class="pre">SCL_latent</span></code> stores <code class="docutils literal notranslate"><span class="pre">[hidden</span> <span class="pre">|</span>
+<span class="pre">cell]</span></code> and therefore has width <code class="docutils literal notranslate"><span class="pre">2</span> <span class="pre">*</span> <span class="pre">hidden_width</span></code>. Both halves use the
+continuous-time recurrent-state derivative <code class="docutils literal notranslate"><span class="pre">cell(input,</span> <span class="pre">state)</span> <span class="pre">-</span> <span class="pre">state</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>key</strong> (<em>jax.Array</em>)</p></li>
+<li><p><strong>hidden_width</strong> (<em>SupportsIndex</em>)</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py property">
+<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultLstmReactionModule.hidden_width">
+<span class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">hidden_width</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.defaults.DefaultLstmReactionModule.hidden_width" title="Link to this definition">¶</a></dt>
+<dd><p>Width of each hidden/cell half of the integrated latent state.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultLstmReactionModule.inflow_head">
+<span class="sig-name descname"><span class="pre">inflow_head</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">equinox.nn.Linear</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.defaults.DefaultLstmReactionModule.inflow_head" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultLstmReactionModule.lstm_cell">
+<span class="sig-name descname"><span class="pre">lstm_cell</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">equinox.nn.LSTMCell</span></span><a class="headerlink" href="#hybrax.train.defaults.DefaultLstmReactionModule.lstm_cell" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultLstmReactionModule.outflow_head">
+<span class="sig-name descname"><span class="pre">outflow_head</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">equinox.nn.Linear</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.defaults.DefaultLstmReactionModule.outflow_head" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultLstmReactionModule.rate_head">
+<span class="sig-name descname"><span class="pre">rate_head</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">equinox.nn.Linear</span></span><a class="headerlink" href="#hybrax.train.defaults.DefaultLstmReactionModule.rate_head" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="hybrax.train.defaults.DefaultReactionModule">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.defaults.</span></span><span class="sig-name descname"><span class="pre">DefaultReactionModule</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">depth</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">width_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">scale_kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/defaults.html#DefaultReactionModule"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.defaults.DefaultReactionModule" title="Link to this definition">¶</a></dt>
-<dd><p>Bases: <a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.UserReactionModule" title="hybrax.train.model_api.UserReactionModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">hybrax.train.model_api.UserReactionModule</span></code></a></p>
+<dd><p>Bases: <a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.RateModule" title="hybrax.train.model_api.RateModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">hybrax.train.model_api.RateModule</span></code></a></p>
 <p>Minimal default reaction model for harness runs.</p>
-<p>Predicts <code class="docutils literal notranslate"><span class="pre">SCL_modeled_BiologicalOde_rates</span></code> (which includes any <code class="docutils literal notranslate"><span class="pre">r_&lt;pv&gt;</span></code>
+<p>Predicts <code class="docutils literal notranslate"><span class="pre">SCL_modeled_ReactionOde_rates</span></code> (which includes any <code class="docutils literal notranslate"><span class="pre">r_&lt;pv&gt;</span></code>
 PV rates) from the SCL species + modeled-PV slices. Ignores controls; emits
 zero-valued modeled Inflow and Outflow rates. Uses tanh/Glorot for shallow
 networks and SiLU/He for deeper networks. The rate head starts near zero.</p>
@@ -469,44 +571,6 @@ networks and SiLU/He for deeper networks. The rate head starts near zero.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.defaults.DefaultReactionModule.model">
 <span class="sig-name descname"><span class="pre">model</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">equinox.nn.MLP</span></span><a class="headerlink" href="#hybrax.train.defaults.DefaultReactionModule.model" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultStatefulReactionModule">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.defaults.</span></span><span class="sig-name descname"><span class="pre">DefaultStatefulReactionModule</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_latent</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">scale_kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/defaults.html#DefaultStatefulReactionModule"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.defaults.DefaultStatefulReactionModule" title="Link to this definition">¶</a></dt>
-<dd><p>Bases: <a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.UserReactionModule" title="hybrax.train.model_api.UserReactionModule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">hybrax.train.model_api.UserReactionModule</span></code></a></p>
-<p>Standard-GRU latent-ODE reaction model with calibrated output heads.</p>
-<p>The GRU consumes physical and control inputs, with <code class="docutils literal notranslate"><span class="pre">h</span></code> passed only as its
-hidden state. Input kernels use per-gate Glorot initialization, recurrent
-kernels are per-gate orthogonal, and internal biases start at zero.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>key</strong> (<em>jax.Array</em>)</p></li>
-<li><p><strong>n_latent</strong> (<em>int</em>)</p></li>
-</ul>
-</dd>
-</dl>
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultStatefulReactionModule.gru_cell">
-<span class="sig-name descname"><span class="pre">gru_cell</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">equinox.nn.GRUCell</span></span><a class="headerlink" href="#hybrax.train.defaults.DefaultStatefulReactionModule.gru_cell" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultStatefulReactionModule.inflow_head">
-<span class="sig-name descname"><span class="pre">inflow_head</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">equinox.nn.Linear</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.defaults.DefaultStatefulReactionModule.inflow_head" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultStatefulReactionModule.outflow_head">
-<span class="sig-name descname"><span class="pre">outflow_head</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">equinox.nn.Linear</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.defaults.DefaultStatefulReactionModule.outflow_head" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultStatefulReactionModule.rate_head">
-<span class="sig-name descname"><span class="pre">rate_head</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">equinox.nn.Linear</span></span><a class="headerlink" href="#hybrax.train.defaults.DefaultStatefulReactionModule.rate_head" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -553,7 +617,7 @@ scale axes default to unit scales (no scaling).</p>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.UserReactionModule" title="hybrax.train.model_api.UserReactionModule">hybrax.train.model_api.UserReactionModule</a></p>
+<dd class="field-even"><p><a class="reference internal" href="../model_api/index.html#hybrax.train.model_api.RateModule" title="hybrax.train.model_api.RateModule">hybrax.train.model_api.RateModule</a></p>
 </dd>
 </dl>
 </dd></dl>
@@ -568,6 +632,11 @@ scale axes default to unit scales (no scaling).</p>
 </dd>
 </dl>
 </dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="hybrax.train.defaults.DefaultStatefulReactionModule">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.defaults.</span></span><span class="sig-name descname"><span class="pre">DefaultStatefulReactionModule</span></span><a class="headerlink" href="#hybrax.train.defaults.DefaultStatefulReactionModule" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
 
 </section>
 </section>
@@ -628,29 +697,39 @@ scale axes default to unit scales (no scaling).</p>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">hybrax.train.defaults</a><ul>
+<li><a class="reference internal" href="#attributes">Attributes</a></li>
 <li><a class="reference internal" href="#classes">Classes</a></li>
 <li><a class="reference internal" href="#functions">Functions</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#hybrax.train.defaults.DefaultGruReactionModule"><code class="docutils literal notranslate"><span class="pre">DefaultGruReactionModule</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.defaults.DefaultGruReactionModule.gru_cell"><code class="docutils literal notranslate"><span class="pre">DefaultGruReactionModule.gru_cell</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.defaults.DefaultGruReactionModule.inflow_head"><code class="docutils literal notranslate"><span class="pre">DefaultGruReactionModule.inflow_head</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.defaults.DefaultGruReactionModule.outflow_head"><code class="docutils literal notranslate"><span class="pre">DefaultGruReactionModule.outflow_head</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.defaults.DefaultGruReactionModule.rate_head"><code class="docutils literal notranslate"><span class="pre">DefaultGruReactionModule.rate_head</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#hybrax.train.defaults.DefaultLossModule"><code class="docutils literal notranslate"><span class="pre">DefaultLossModule</span></code></a><ul>
 <li><a class="reference internal" href="#hybrax.train.defaults.DefaultLossModule.residual_reduction"><code class="docutils literal notranslate"><span class="pre">DefaultLossModule.residual_reduction()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.defaults.DefaultLossModule.loss_names"><code class="docutils literal notranslate"><span class="pre">DefaultLossModule.loss_names</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.defaults.DefaultLossModule.target_names"><code class="docutils literal notranslate"><span class="pre">DefaultLossModule.target_names</span></code></a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#hybrax.train.defaults.DefaultReactionModule"><code class="docutils literal notranslate"><span class="pre">DefaultReactionModule</span></code></a><ul>
-<li><a class="reference internal" href="#hybrax.train.defaults.DefaultReactionModule.model"><code class="docutils literal notranslate"><span class="pre">DefaultReactionModule.model</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.defaults.DefaultLstmReactionModule"><code class="docutils literal notranslate"><span class="pre">DefaultLstmReactionModule</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.defaults.DefaultLstmReactionModule.hidden_width"><code class="docutils literal notranslate"><span class="pre">DefaultLstmReactionModule.hidden_width</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.defaults.DefaultLstmReactionModule.inflow_head"><code class="docutils literal notranslate"><span class="pre">DefaultLstmReactionModule.inflow_head</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.defaults.DefaultLstmReactionModule.lstm_cell"><code class="docutils literal notranslate"><span class="pre">DefaultLstmReactionModule.lstm_cell</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.defaults.DefaultLstmReactionModule.outflow_head"><code class="docutils literal notranslate"><span class="pre">DefaultLstmReactionModule.outflow_head</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.defaults.DefaultLstmReactionModule.rate_head"><code class="docutils literal notranslate"><span class="pre">DefaultLstmReactionModule.rate_head</span></code></a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#hybrax.train.defaults.DefaultStatefulReactionModule"><code class="docutils literal notranslate"><span class="pre">DefaultStatefulReactionModule</span></code></a><ul>
-<li><a class="reference internal" href="#hybrax.train.defaults.DefaultStatefulReactionModule.gru_cell"><code class="docutils literal notranslate"><span class="pre">DefaultStatefulReactionModule.gru_cell</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.defaults.DefaultStatefulReactionModule.inflow_head"><code class="docutils literal notranslate"><span class="pre">DefaultStatefulReactionModule.inflow_head</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.defaults.DefaultStatefulReactionModule.outflow_head"><code class="docutils literal notranslate"><span class="pre">DefaultStatefulReactionModule.outflow_head</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.defaults.DefaultStatefulReactionModule.rate_head"><code class="docutils literal notranslate"><span class="pre">DefaultStatefulReactionModule.rate_head</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.defaults.DefaultReactionModule"><code class="docutils literal notranslate"><span class="pre">DefaultReactionModule</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.defaults.DefaultReactionModule.model"><code class="docutils literal notranslate"><span class="pre">DefaultReactionModule.model</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#hybrax.train.defaults.default_build_loss_module"><code class="docutils literal notranslate"><span class="pre">default_build_loss_module()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.defaults.default_build_reaction_module"><code class="docutils literal notranslate"><span class="pre">default_build_reaction_module()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.defaults.default_transform_process_collection"><code class="docutils literal notranslate"><span class="pre">default_transform_process_collection()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.defaults.DefaultStatefulReactionModule"><code class="docutils literal notranslate"><span class="pre">DefaultStatefulReactionModule</span></code></a></li>
 </ul>
 </li>
 </ul>

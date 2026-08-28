@@ -11,7 +11,7 @@
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
-    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css?v=8cd3d715" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
     <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo-extensions.css?v=8dab3a3b" />
@@ -388,7 +388,7 @@ network, and <code class="docutils literal notranslate"><span class="pre">hybrax
 Guillén-Gosálbez’s FBA-Hyb <a href="#ref-fbahyb">[1]</a>: fit a closed-form,
 pole-free surrogate of the FBA solution <strong>once, offline</strong> (10,000 real linear
 programs solved outside the training loop), then embed that surrogate directly
-inside an ordinary <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code>. No LP solve ever happens during training.</p>
+inside an ordinary <code class="docutils literal notranslate"><span class="pre">RateModule</span></code>. No LP solve ever happens during training.</p>
 <p>The surrogate here is fit fresh against <code class="docutils literal notranslate"><span class="pre">e_coli_core.xml</span></code>
 <a href="#ref-ecolicore">[2]</a>, a small, real, published teaching model (95
 reactions, 72 metabolites): see <a class="reference internal" href="#how-the-surrogate-was-fit">How the Surrogate Was Fit</a>
@@ -425,7 +425,7 @@ what a real LP solve <em>would</em> do if you tried to differentiate through it.
 </section>
 <section id="the-reaction-module">
 <h2>The Reaction Module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">FBAHybReactionModule</span><span class="p">(</span><span class="n">UserReactionModule</span><span class="p">):</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">FBAHybReactionModule</span><span class="p">(</span><span class="n">RateModule</span><span class="p">):</span>
 <span class="linenos"> 2</span>    <span class="n">ann_qG</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
 <span class="linenos"> 3</span>    <span class="n">ann_obj</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">MLP</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
 <span class="linenos"> 4</span>
@@ -474,7 +474,7 @@ what a real LP solve <em>would</em> do if you tried to differentiate through it.
 <span class="linenos">47</span>        <span class="n">RAW_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">qX</span><span class="p">,</span> <span class="n">RAW_glc</span><span class="p">,</span> <span class="n">RAW_ace</span><span class="p">])</span>
 <span class="linenos">48</span>
 <span class="linenos">49</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos">50</span>            <span class="n">SCL_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_BiologicalOde_rates</span><span class="p">(</span>
+<span class="linenos">50</span>            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_ReactionOde_rates</span><span class="p">(</span>
 <span class="linenos">51</span>                <span class="n">RAW_rates</span>
 <span class="linenos">52</span>            <span class="p">),</span>
 <span class="linenos">53</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
@@ -496,7 +496,7 @@ weights go out through <code class="docutils literal notranslate"><span class="p
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-27 21:06:36 INFO __main__: training complete: first_mean_loss=0.155169 last_mean_loss=0.00139623 delta=-0.153773
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-28 19:02:01 INFO __main__: training complete: first_mean_loss=0.155169 last_mean_loss=0.00139623 delta=-0.153773
 run directory: ./source/_data/out/runs/gallery_fba_hyb/run
 </pre></div>
 </div>
@@ -570,7 +570,7 @@ product and a media-blend-aware PLS component.</p></li>
 <li><p><a class="reference internal" href="gaussian_process.html"><span class="std std-doc">Gaussian process reaction module</span></a>: another closed-form,
 non-neural-network reaction module, same <code class="docutils literal notranslate"><span class="pre">auxiliary</span></code> mechanism.</p></li>
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: <code class="docutils literal notranslate"><span class="pre">auxiliary</span></code>, and everything
-else a <code class="docutils literal notranslate"><span class="pre">UserReactionModule</span></code> can return.</p></li>
+else a <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> can return.</p></li>
 </ul>
 </section>
 <section id="references">

@@ -8,7 +8,7 @@ here is the design working. Search this page for a fragment of your message.
 
 ## Getting data in
 
-### `auto-generated BiologicalOde requires a 'biomass' component`
+### `auto-generated ReactionOde requires a 'biomass' component`
 
 Raised when you construct a `BioProcess`.
 
@@ -16,7 +16,7 @@ Raised when you construct a `BioProcess`.
 be a biomass to be specific to. The lookup is case-insensitive on the component name.
 
 **Fix.** Either name your biomass component `biomass`, or write
-[`biological_ode`](../format/bioprocess_ode.md#writing-your-own) yourself. A dataset with
+[`reaction_ode`](../format/bioprocess_ode.md#writing-your-own) yourself. A dataset with
 no biomass at all (a chemical process, an abiotic control) needs the explicit form.
 
 ### `Provide discrete samples and/or spline representation`
@@ -76,7 +76,7 @@ layout; a cycle in `algebraic` cannot be evaluated.
 | volume change sign | A feed has negative values, or a sample positive | Flip the sign, or the type |
 | feed medium missing species | A reactor species has no declared feed concentration | Declare it, including `StaticVariable(0.0)` |
 | measurement / sampling alignment | A measurement is timestamped just *after* its own sample draw | Usually rounding in the export; move it to the sample time |
-| missing derivative | A dynamic state has no `derivatives` entry | Add one; write `"0"` if it has no biological dynamics |
+| missing derivative | A dynamic state has no `derivatives` entry | Add one; write `"0"` if it has no reaction dynamics |
 | additive unit mismatch | `biomass - product` with different units | Make units consistent: they are strings, never converted |
 
 `validate_process` **does** raise `TypeError` if handed something that is not a
@@ -126,7 +126,7 @@ state changes what the model *is*, not just its size.
 **Why.** `estimate_all_scales`, `build_reaction_module` and `build_loss_module` are
 type-checked.
 
-**Fix.** Return `EstimatedScales`, a `UserReactionModule` and a `UserLossModule`
+**Fix.** Return `EstimatedScales`, a `RateModule` and a `UserLossModule`
 respectively. The other four hooks are not checked.
 
 ### `ReactionOutputs.__init__() missing 1 required positional argument: 'SCL_modeled_Inflows_rates'`

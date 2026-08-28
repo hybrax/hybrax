@@ -71,7 +71,7 @@ Module Contents
              ``all_feed_changes``, and ``positive_feed_changes``.
 
 
-.. py:function:: validate_for_training(collection, *, strict = False, require_biological_ode = False)
+.. py:function:: validate_for_training(collection, *, strict = False, require_reaction_ode = False)
 
    hybrax.train's training-readiness validator.
 
@@ -83,9 +83,9 @@ Module Contents
 
    :param collection: Process collection to validate.
    :param strict: Raise instead of returning a report containing failures.
-   :param require_biological_ode: Also fail any process missing
-                                  ``biological_ode`` (checked after ``transform_process_collection``
-                                  would have added one).
+   :param require_reaction_ode: Also fail any process missing
+                                ``reaction_ode`` (checked after ``transform_process_collection``
+                                would have added one).
 
    :returns: One report entry per process name (plus ``"__consistency__"`` for the
              cross-process check): ``ok`` and the list of ``(passed, message)``

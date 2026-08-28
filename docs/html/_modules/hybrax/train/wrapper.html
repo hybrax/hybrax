@@ -260,7 +260,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom Losses</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Decay</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
@@ -386,7 +386,7 @@
     <span class="n">ReactionInputs</span><span class="p">,</span>
     <span class="n">ReactionOutputs</span><span class="p">,</span>
     <span class="n">UserLossModule</span><span class="p">,</span>
-    <span class="n">UserReactionModule</span><span class="p">,</span>
+    <span class="n">RateModule</span><span class="p">,</span>
 <span class="p">)</span>
 
 
@@ -403,7 +403,7 @@
     <span class="n">SCL_states</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
     <span class="n">RAW_V_export</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
     <span class="n">RAW_V</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
-    <span class="n">RAW_modeled_BiologicalOde_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
+    <span class="n">RAW_modeled_ReactionOde_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
     <span class="n">RAW_modeled_Inflows_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
     <span class="n">RAW_modeled_Outflows_rates</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
     <span class="n">auxiliary</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span></div>
@@ -440,10 +440,10 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_validate_reaction_output_shapes</span><span class="p">(</span>
-    <span class="n">module</span><span class="p">:</span> <span class="n">UserReactionModule</span><span class="p">,</span> <span class="n">outputs</span><span class="p">:</span> <span class="n">ReactionOutputs</span>
+    <span class="n">module</span><span class="p">:</span> <span class="n">RateModule</span><span class="p">,</span> <span class="n">outputs</span><span class="p">:</span> <span class="n">ReactionOutputs</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
     <span class="n">expected_shapes</span> <span class="o">=</span> <span class="p">{</span>
-        <span class="s2">"SCL_modeled_BiologicalOde_rates"</span><span class="p">:</span> <span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">n_modeled_BiologicalOde_rates</span><span class="p">,),</span>
+        <span class="s2">"SCL_modeled_ReactionOde_rates"</span><span class="p">:</span> <span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">n_modeled_ReactionOde_rates</span><span class="p">,),</span>
         <span class="s2">"SCL_modeled_Inflows_rates"</span><span class="p">:</span> <span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">n_modeled_Inflows</span><span class="p">,),</span>
         <span class="s2">"SCL_modeled_Outflows_rates"</span><span class="p">:</span> <span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">n_modeled_Outflows</span><span class="p">,),</span>
         <span class="s2">"SCL_latent_derivative"</span><span class="p">:</span> <span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">n_latent</span><span class="p">,),</span>
@@ -461,7 +461,7 @@
 <div class="viewcode-block" id="HybridOdeWrapper">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">HybridOdeWrapper</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""RAW physical-state wrapper around a user reaction module.</span>
+<span class="w">    </span><span class="sd">"""RAW physical-state wrapper around a rate module.</span>
 
 <span class="sd">    ``physical_solve`` owns the scaled ODE reparameterization. This wrapper sees</span>
 <span class="sd">    RAW integrated state ``[RMCs | PVs | V | modeled_cum | latent]``, builds</span>
@@ -478,7 +478,7 @@
 <span class="sd">    """</span>
 
     <span class="n">rhs_ode</span><span class="p">:</span> <span class="n">RhsOde</span>
-    <span class="n">reaction_module</span><span class="p">:</span> <span class="n">UserReactionModule</span>
+    <span class="n">reaction_module</span><span class="p">:</span> <span class="n">RateModule</span>
     <span class="n">controls</span><span class="p">:</span> <span class="n">PerProcessControls</span>
 
     <span class="n">modeled_RMC_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
@@ -508,7 +508,7 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">from_process</span><span class="p">(</span>
         <span class="bp">cls</span><span class="p">,</span>
         <span class="o">*</span><span class="p">,</span>
-        <span class="n">reaction_module</span><span class="p">:</span> <span class="n">UserReactionModule</span><span class="p">,</span>
+        <span class="n">reaction_module</span><span class="p">:</span> <span class="n">RateModule</span><span class="p">,</span>
         <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
         <span class="n">controls</span><span class="p">:</span> <span class="n">PerProcessControls</span><span class="p">,</span>
         <span class="n">target_state_indices</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -542,7 +542,7 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">from_rhs_ode</span><span class="p">(</span>
         <span class="bp">cls</span><span class="p">,</span>
         <span class="o">*</span><span class="p">,</span>
-        <span class="n">reaction_module</span><span class="p">:</span> <span class="n">UserReactionModule</span><span class="p">,</span>
+        <span class="n">reaction_module</span><span class="p">:</span> <span class="n">RateModule</span><span class="p">,</span>
         <span class="n">rhs_ode</span><span class="p">:</span> <span class="n">RhsOde</span><span class="p">,</span>
         <span class="n">controls</span><span class="p">:</span> <span class="n">PerProcessControls</span><span class="p">,</span>
         <span class="n">target_state_indices</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -550,7 +550,7 @@
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">HybridOdeWrapper</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Build a wrapper from an existing RhsOde runtime template.</span>
 
-<span class="sd">        Scales are read from ``reaction_module`` (a ``UserReactionModule``</span>
+<span class="sd">        Scales are read from ``reaction_module`` (a ``RateModule``</span>
 <span class="sd">        subclass with ``SCALE_*`` fields). The constructor validates each</span>
 <span class="sd">        ``SCALE_*`` shape against the RhsOde / controls layout.</span>
 
@@ -613,7 +613,7 @@
             <span class="s2">"SCALE_controlled_Outflows_rates"</span><span class="p">:</span> <span class="p">(</span><span class="n">n_controlled_Outflows_count</span><span class="p">,),</span>
             <span class="s2">"SCALE_controlled_PVs"</span><span class="p">:</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">controls</span><span class="o">.</span><span class="n">name_controlled_PVs</span><span class="p">),),</span>
             <span class="s2">"SCALE_modeled_Inflows_Cin"</span><span class="p">:</span> <span class="p">(</span><span class="n">n_Inflows</span><span class="p">,</span> <span class="n">n_RMCs</span><span class="p">),</span>
-            <span class="s2">"SCALE_modeled_BiologicalOde_rates"</span><span class="p">:</span> <span class="p">(</span><span class="n">n_rates</span><span class="p">,),</span>
+            <span class="s2">"SCALE_modeled_ReactionOde_rates"</span><span class="p">:</span> <span class="p">(</span><span class="n">n_rates</span><span class="p">,),</span>
             <span class="s2">"SCALE_modeled_Inflows_rates"</span><span class="p">:</span> <span class="p">(</span><span class="n">n_Inflows</span><span class="p">,),</span>
             <span class="s2">"SCALE_modeled_Outflows_cumulative"</span><span class="p">:</span> <span class="p">(</span><span class="n">n_Outflows</span><span class="p">,),</span>
             <span class="s2">"SCALE_modeled_Outflows_rates"</span><span class="p">:</span> <span class="p">(</span><span class="n">n_Outflows</span><span class="p">,),</span>
@@ -622,7 +622,7 @@
             <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">reaction_module</span><span class="p">,</span> <span class="n">field_name</span><span class="p">):</span>
                 <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
                     <span class="sa">f</span><span class="s2">"reaction_module is missing SCALE field </span><span class="si">{</span><span class="n">field_name</span><span class="si">!r}</span><span class="s2">; "</span>
-                    <span class="s2">"subclass UserReactionModule and pass all SCALE_* fields "</span>
+                    <span class="s2">"subclass RateModule and pass all SCALE_* fields "</span>
                     <span class="s2">"to super().__init__(...)."</span>
                 <span class="p">)</span>
             <span class="n">arr</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">reaction_module</span><span class="p">,</span> <span class="n">field_name</span><span class="p">)</span>
@@ -636,7 +636,7 @@
         <span class="k">for</span> <span class="n">field_name</span> <span class="ow">in</span> <span class="p">(</span>
             <span class="s2">"SCALE_controlled_Inflows_rates"</span><span class="p">,</span>
             <span class="s2">"SCALE_controlled_Outflows_rates"</span><span class="p">,</span>
-            <span class="s2">"SCALE_modeled_BiologicalOde_rates"</span><span class="p">,</span>
+            <span class="s2">"SCALE_modeled_ReactionOde_rates"</span><span class="p">,</span>
             <span class="s2">"SCALE_modeled_Inflows_rates"</span><span class="p">,</span>
             <span class="s2">"SCALE_modeled_Outflows_rates"</span><span class="p">,</span>
         <span class="p">):</span>
@@ -650,7 +650,7 @@
         <span class="k">if</span> <span class="p">(</span>
             <span class="n">reaction_module</span><span class="o">.</span><span class="n">n_latent</span> <span class="o">&gt;</span> <span class="mi">0</span>
             <span class="ow">and</span> <span class="n">reaction_module</span><span class="o">.</span><span class="n">latent_observables</span>
-            <span class="ow">and</span> <span class="nb">type</span><span class="p">(</span><span class="n">reaction_module</span><span class="p">)</span><span class="o">.</span><span class="n">observe</span> <span class="ow">is</span> <span class="n">UserReactionModule</span><span class="o">.</span><span class="n">observe</span>
+            <span class="ow">and</span> <span class="nb">type</span><span class="p">(</span><span class="n">reaction_module</span><span class="p">)</span><span class="o">.</span><span class="n">observe</span> <span class="ow">is</span> <span class="n">RateModule</span><span class="o">.</span><span class="n">observe</span>
         <span class="p">):</span>
             <span class="n">names</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">reaction_module</span><span class="o">.</span><span class="n">latent_observables</span><span class="p">)</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
@@ -662,7 +662,7 @@
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">reaction_module</span><span class="p">,</span> <span class="s2">"SCALE_V_in_cumulative"</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span>
                 <span class="s2">"reaction_module is missing SCALE_V_in_cumulative; subclass "</span>
-                <span class="s2">"UserReactionModule and pass all SCALE_* fields to "</span>
+                <span class="s2">"RateModule and pass all SCALE_* fields to "</span>
                 <span class="s2">"super().__init__(...)."</span>
             <span class="p">)</span>
 
@@ -793,8 +793,8 @@
             <span class="n">SCL_latent</span><span class="o">=</span><span class="n">module</span><span class="o">.</span><span class="n">scale_latent</span><span class="p">(</span><span class="n">RAW_latent</span><span class="p">),</span>
         <span class="p">)</span>
         <span class="n">outputs</span> <span class="o">=</span> <span class="n">_validate_reaction_output_shapes</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">module</span><span class="p">(</span><span class="n">t_arr</span><span class="p">,</span> <span class="n">inputs</span><span class="p">))</span>
-        <span class="n">RAW_bio_rates</span> <span class="o">=</span> <span class="n">module</span><span class="o">.</span><span class="n">unscale_modeled_BiologicalOde_rates</span><span class="p">(</span>
-            <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">outputs</span><span class="o">.</span><span class="n">SCL_modeled_BiologicalOde_rates</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="n">RAW_bio_rates</span> <span class="o">=</span> <span class="n">module</span><span class="o">.</span><span class="n">unscale_modeled_ReactionOde_rates</span><span class="p">(</span>
+            <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">outputs</span><span class="o">.</span><span class="n">SCL_modeled_ReactionOde_rates</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
         <span class="p">)</span>
         <span class="n">RAW_modeled_Inflows_rates</span> <span class="o">=</span> <span class="n">module</span><span class="o">.</span><span class="n">unscale_modeled_Inflows_rates</span><span class="p">(</span>
             <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">outputs</span><span class="o">.</span><span class="n">SCL_modeled_Inflows_rates</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
@@ -922,8 +922,8 @@
             <span class="n">SCL_latent</span><span class="o">=</span><span class="n">module</span><span class="o">.</span><span class="n">scale_latent</span><span class="p">(</span><span class="n">RAW_latent</span><span class="p">),</span>
         <span class="p">)</span>
         <span class="n">outputs</span> <span class="o">=</span> <span class="n">_validate_reaction_output_shapes</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">module</span><span class="p">(</span><span class="n">t_arr</span><span class="p">,</span> <span class="n">inputs</span><span class="p">))</span>
-        <span class="n">RAW_bio_rates</span> <span class="o">=</span> <span class="n">module</span><span class="o">.</span><span class="n">unscale_modeled_BiologicalOde_rates</span><span class="p">(</span>
-            <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">outputs</span><span class="o">.</span><span class="n">SCL_modeled_BiologicalOde_rates</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="n">RAW_bio_rates</span> <span class="o">=</span> <span class="n">module</span><span class="o">.</span><span class="n">unscale_modeled_ReactionOde_rates</span><span class="p">(</span>
+            <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">outputs</span><span class="o">.</span><span class="n">SCL_modeled_ReactionOde_rates</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
         <span class="p">)</span>
         <span class="n">RAW_modeled_Inflows_rates</span> <span class="o">=</span> <span class="n">module</span><span class="o">.</span><span class="n">unscale_modeled_Inflows_rates</span><span class="p">(</span>
             <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">outputs</span><span class="o">.</span><span class="n">SCL_modeled_Inflows_rates</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
@@ -957,7 +957,7 @@
             <span class="n">SCL_states</span><span class="o">=</span><span class="n">module</span><span class="o">.</span><span class="n">scale_state</span><span class="p">(</span><span class="n">RAW_state</span><span class="p">),</span>
             <span class="n">RAW_V_export</span><span class="o">=</span><span class="n">RAW_V</span><span class="p">,</span>
             <span class="n">RAW_V</span><span class="o">=</span><span class="n">RAW_V</span><span class="p">,</span>
-            <span class="n">RAW_modeled_BiologicalOde_rates</span><span class="o">=</span><span class="n">RAW_bio_rates</span><span class="p">,</span>
+            <span class="n">RAW_modeled_ReactionOde_rates</span><span class="o">=</span><span class="n">RAW_bio_rates</span><span class="p">,</span>
             <span class="n">RAW_modeled_Inflows_rates</span><span class="o">=</span><span class="n">RAW_modeled_Inflows_rates</span><span class="p">,</span>
             <span class="n">RAW_modeled_Outflows_rates</span><span class="o">=</span><span class="n">RAW_modeled_Outflows_rates</span><span class="p">,</span>
             <span class="n">auxiliary</span><span class="o">=</span><span class="n">auxiliary</span><span class="p">,</span>
