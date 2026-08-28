@@ -354,8 +354,8 @@ def main():
     }
     (HERE / "results.json").write_text(json.dumps(results, indent=2) + "\n")
     print(json.dumps(results, indent=2))
-    print(f"process plot: {HERE / 'process.png'}")
-    print(f"training plot: {HERE / 'training.png'}")
+    print("process plot: process.png")
+    print("training plot: training.png")
 
 
 if __name__ == "__main__":
