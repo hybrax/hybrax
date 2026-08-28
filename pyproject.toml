@@ -79,6 +79,9 @@ Repository = "https://github.com/hybrax/hybrax"
 [tool.ruff.lint]
 extend-select = ["E501"]
 
+[tool.ruff.format]
+exclude = ["*.md"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
