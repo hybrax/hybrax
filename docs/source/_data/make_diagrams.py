@@ -196,12 +196,16 @@ def make_format_diagram(theme):
 def make_shape_diagram(theme, annotate_files):
     c = THEMES[theme]
     if annotate_files:
-        fig, ax = plt.subplots(figsize=(8.05, 6.1))
+        fig, ax = plt.subplots(figsize=(8.05, 5.4))
         ax.set_xlim(-0.45, 8.4)
     else:
-        fig, ax = plt.subplots(figsize=(7.6, 6.1))
+        fig, ax = plt.subplots(figsize=(7.6, 5.4))
         ax.set_xlim(0, 8.4)
-    ax.set_ylim(3.3, 8.95)
+    # Bottom bound sits just under the lowest content (the "predictions,
+    # rates, metrics" caption bottoms out at y≈4.14) — matplotlib's tight
+    # bbox trims to the axes extent, not the drawn content, so unused ylim
+    # range below the last artist shows up as literal blank canvas.
+    ax.set_ylim(3.95, 8.95)
     ax.axis("off")
 
     # One width for every cell in the diagram, solid or dashed: the main
@@ -241,12 +245,12 @@ def make_shape_diagram(theme, annotate_files):
         arrow(ax, (main_cx, y0), (main_cx, y1 + stage_h), c, lw=1.8)
     if annotate_files:
         # What actually flows on each main-pipeline arrow, real names only:
-        # prepared.json is the one artifact prepare writes that training reads
+        # prepared/ is the directory prepare writes that training reads
         # (prepare.md#what-it-writes); run/ is what forward actually consumes
         # ({"models": ["run"]}, forward.md) since params.eqx alone "is not a
         # model" (save_load_predict.md#gotchas) — the rest is rebuilt from the
         # rest of run/.
-        for i, label in zip(range(3), ["data.json", "prepared.json", "run/"]):
+        for i, label in zip(range(3), ["data.json", "prepared/", "run/"]):
             mid_y = ys[i] - (ys[i] - ys[i + 1] - stage_h) / 2
             ax.text(
                 main_cx + 0.15,
@@ -260,6 +264,18 @@ def make_shape_diagram(theme, annotate_files):
     # Same vertical rhythm as every inter-stage arrow above (gap, not
     # ARROW_LEN): the last box's own bottom edge already sets that spacing.
     arrow(ax, (main_cx, ys[3]), (main_cx, ys[3] - gap), c, lw=1.8)
+    if annotate_files:
+        # forward/ is the directory forward writes its own output into
+        # (forward.md#what-it-produces), same as run/ above.
+        ax.text(
+            main_cx + 0.15,
+            ys[3] - gap / 2,
+            "forward/",
+            fontsize=7.8,
+            color=c["muted"],
+            fontproperties=MONO,
+            va="center",
+        )
     ax.text(
         main_cx,
         ys[3] - gap - 0.05,
