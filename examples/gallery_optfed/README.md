@@ -12,6 +12,5 @@ Narrated version: `docs/source/gallery/optfed.md`.
 python run.py
 ```
 
-4000 epochs. Prints pooled R² and fitted vs. true thermal optima (uptake and
-production recover well; maintenance's true optimum sits outside the
-training temperature range and doesn't). Output lands in `run/`.
+4000 epochs. Prints pooled R² and fitted vs. true reversible-inactivation
+equilibrium midpoints (`Teq`). Output lands in `run/`.

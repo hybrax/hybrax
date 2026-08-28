@@ -22,9 +22,7 @@ from hybrax.train import (
 
 
 def _eyring_rate_ceiling(T_K, log_A, log_Ea_R, raw_Teq, log_dHeq_R):
-    """Temperature-dependent rate ceiling (the Eyring equation): rises with
-    heat, then collapses again past the enzyme's denaturation point.
-    Vectorizes over any leading shape of the four parameter args."""
+    """Algebraically reparameterized Eq. 4e, vectorized over parameter arrays."""
     A = jnp.exp(log_A)
     Ea_R = jnp.exp(log_Ea_R)
     Teq = 290.0 + 40.0 * jax.nn.sigmoid(raw_Teq)

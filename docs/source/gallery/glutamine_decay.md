@@ -217,7 +217,7 @@ everything above it is setup.
 - **A slow rate needs a long enough window to be identifiable.** `r_Gln`'s ~8-day
   half-life would leave almost no visible trace over a 10-15 h batch window; this
   page's 120 h duration exists specifically so the effect is separable from noise,
-  the same lesson [OptFed](optfed.md#gotchas)'s temperature-optimum Gotcha teaches
+  the same lesson [OptFed](optfed.md#gotchas)'s Eyring-identifiability Gotcha teaches
   for a different rate.
 - **This page's unusual rate shape (one rate feeding two derivatives) needs no custom
   reaction module at all, technically.** `hybrax.train`'s default reaction module sizes
