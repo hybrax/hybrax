@@ -179,11 +179,11 @@ process = hxf.BioProcess(
 ```
 
 That is the whole process. Notice what you did **not** write: any dynamics. hybrax.format
-generated a default biological ODE for you:
+generated a default reaction ODE for you:
 
 ```{code-cell} ipython3
-print("rates      :", list(process.biological_ode.rates))
-print("derivatives:", process.biological_ode.derivatives)
+print("rates      :", list(process.reaction_ode.rates))
+print("derivatives:", process.reaction_ode.derivatives)
 ```
 
 Each species gets a specific rate `q_<species>`, and its derivative is
@@ -194,7 +194,7 @@ Each species gets a specific rate `q_<species>`, and its derivative is
 Auto-generation makes every rate *specific* (per unit biomass) so it needs to know
 which component the biomass is. Without one, constructing the `BioProcess` raises
 immediately. If your data has no biomass, or you want different dynamics, write
-`biological_ode` yourself: [The Bioprocess ODE](../format/bioprocess_ode.md).
+`reaction_ode` yourself: [The Bioprocess ODE](../format/bioprocess_ode.md).
 :::
 
 ## 1.6 Collect and save

@@ -3,11 +3,11 @@ from __future__ import annotations
 import jax.numpy as jnp
 import pytest
 
-from hybrax.train.model_api import ReactionInputs, ReactionOutputs, UserReactionModule
+from hybrax.train.model_api import ReactionInputs, ReactionOutputs, RateModule
 from stateful_helpers import build_stateful_wrapper, make_process
 
 
-class _LatentAuxModule(UserReactionModule):
+class _LatentAuxModule(RateModule):
     h0: jnp.ndarray
 
     def __init__(self, h0):
@@ -22,7 +22,7 @@ class _LatentAuxModule(UserReactionModule):
         del t
         mu = inputs.SCL_latent[0] + inputs.SCL_modeled_RMCs[0]
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.zeros(1, dtype=mu.dtype),
+            SCL_modeled_ReactionOde_rates=jnp.zeros(1, dtype=mu.dtype),
             SCL_modeled_Inflows_rates=jnp.zeros(0, dtype=mu.dtype),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_latent_derivative=jnp.zeros_like(inputs.SCL_latent),
@@ -44,7 +44,7 @@ class _MissingAuxiliaryModule(_RaisingLatentObserveModule):
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.zeros(1, dtype=inputs.SCL_latent.dtype),
+            SCL_modeled_ReactionOde_rates=jnp.zeros(1, dtype=inputs.SCL_latent.dtype),
             SCL_modeled_Inflows_rates=jnp.zeros(0, dtype=inputs.SCL_latent.dtype),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_latent_derivative=jnp.zeros_like(inputs.SCL_latent),

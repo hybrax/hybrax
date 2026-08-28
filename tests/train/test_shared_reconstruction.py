@@ -109,7 +109,7 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_Inflows_Cin=jnp.ones(
             (len(rhs_ode.name_modeled_Inflows), len(rhs_ode.name_modeled_RMCs))
         ),
-        SCALE_modeled_BiologicalOde_rates=jnp.ones(len(rhs_ode.name_modeled_rates)),
+        SCALE_modeled_ReactionOde_rates=jnp.ones(len(rhs_ode.name_modeled_rates)),
         SCALE_modeled_Inflows_rates=jnp.ones(len(rhs_ode.name_modeled_Inflows)),
         SCALE_modeled_Outflows_rates=jnp.ones(len(rhs_ode.name_modeled_Outflows)),
     )

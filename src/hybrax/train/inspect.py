@@ -3,7 +3,7 @@
 Two responsibilities:
 
 - ``format_trainable_structure`` / ``print_trainable_structure``: render a
-  table of every array leaf on a :class:`UserReactionModule` subclass,
+  table of every array leaf on a :class:`RateModule` subclass,
   tagged ``trainable`` or ``frozen``. Used by the training harness at
   startup so the trainable surface is visible at a glance.
 
@@ -84,7 +84,7 @@ def format_trainable_structure(
     name_width: int | None = None,
     shape_width: int | None = None,
     status_width: int | None = None,
-    title: str = "UserReactionModule",
+    title: str = "RateModule",
 ) -> str:
     """Return a tabular string of (name, shape, status) for the full module.
 
@@ -133,7 +133,7 @@ def format_trainable_structure(
 def print_trainable_structure(
     module: eqx.Module,
     *,
-    title: str = "UserReactionModule",
+    title: str = "RateModule",
 ) -> None:
     """Print the trainable-structure table."""
     print(format_trainable_structure(module, title=title), flush=True)
@@ -305,7 +305,7 @@ def _reaction_schema_rows(
 
     outputs: list[tuple[str, str, tuple[str, ...]]] = [
         (
-            "SCL_modeled_BiologicalOde_rates",
+            "SCL_modeled_ReactionOde_rates",
             _shape_tuple_str(n_modeled_rates),
             name_modeled_rates,
         ),

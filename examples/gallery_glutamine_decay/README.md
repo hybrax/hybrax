@@ -1,6 +1,6 @@
 # Gallery: Glutamine degradation
 
-One physical rate, `r_Gln`, declared once in `biological_ode.rates`, feeds
+One physical rate, `r_Gln`, declared once in `reaction_ode.rates`, feeds
 two derivatives at once: a sink in Gln, a source in NH4. The value is
 Ulonska et al. 2018's own cited decomposition rate.
 

@@ -27,7 +27,7 @@ def validate_for_training(
     collection: BioProcessCollection,
     *,
     strict: bool = False,
-    require_biological_ode: bool = False,
+    require_reaction_ode: bool = False,
 ) -> dict[str, dict[str, object]]:
     """hybrax.train's training-readiness validator.
 
@@ -40,8 +40,8 @@ def validate_for_training(
     Args:
         collection: Process collection to validate.
         strict: Raise instead of returning a report containing failures.
-        require_biological_ode: Also fail any process missing
-            ``biological_ode`` (checked after ``transform_process_collection``
+        require_reaction_ode: Also fail any process missing
+            ``reaction_ode`` (checked after ``transform_process_collection``
             would have added one).
 
     Returns:
@@ -58,13 +58,13 @@ def validate_for_training(
     for process_name, process in collection.processes.items():
         ok, results = validate_process(process)
         process_results = list(results)
-        if require_biological_ode and process.biological_ode is None:
+        if require_reaction_ode and process.reaction_ode is None:
             ok = False
             process_results.append(
                 _check_result(
                     "FAIL",
-                    "biological_ode_required",
-                    "biological_ode is missing after transform_process_collection",
+                    "reaction_ode_required",
+                    "reaction_ode is missing after transform_process_collection",
                 )
             )
         report[process_name] = {

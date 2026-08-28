@@ -42,7 +42,7 @@ from hybrax.train.harness import ForwardConfig, ForwardResult
 from hybrax.train.defaults import DefaultLossModule
 from hybrax.train.forward_plotting import plot_forward_predictions
 from hybrax.train.harness import compute_dense_exports, evaluate_trained_wrapper
-from hybrax.train.model_api import AffineScaler, ReactionOutputs, UserReactionModule
+from hybrax.train.model_api import AffineScaler, ReactionOutputs, RateModule
 from hybrax.train.training_data import TrainingDataStore
 from hybrax.train.wrapper import HybridOdeWrapper, SaveOutputs
 
@@ -456,13 +456,13 @@ _FORWARD_DEFAULT_SCALES: dict[str, jnp.ndarray] = {
     "SCALE_controlled_Inflows_Cin": jnp.ones((0, 1)),
     "SCALE_controlled_PVs": jnp.ones(0),
     "SCALE_modeled_Inflows_Cin": jnp.ones((0, 1)),
-    "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
+    "SCALE_modeled_ReactionOde_rates": jnp.ones(1),
     "SCALE_modeled_Inflows_rates": jnp.ones(0),
     "SCALE_modeled_Outflows_rates": jnp.ones(0),
 }
 
 
-class _ConstantReactionModule(UserReactionModule):
+class _ConstantReactionModule(RateModule):
     SCL_specific_rates: jnp.ndarray
     SCL_Inflow_rates: jnp.ndarray
     aux: dict[str, jnp.ndarray] | None
@@ -482,7 +482,7 @@ class _ConstantReactionModule(UserReactionModule):
     def __call__(self, t, inputs):
         del t, inputs
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.SCL_specific_rates,
+            SCL_modeled_ReactionOde_rates=self.SCL_specific_rates,
             SCL_modeled_Inflows_rates=self.SCL_Inflow_rates,
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             auxiliary=self.aux,
@@ -558,7 +558,7 @@ def _build_single_process_runtime(
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
-    scale_kwargs = {"SCALE_modeled_BiologicalOde_rates": jnp.asarray([q_scale])}
+    scale_kwargs = {"SCALE_modeled_ReactionOde_rates": jnp.asarray([q_scale])}
     if modeled_rmc_scaler is not None:
         scale_kwargs["SCALE_modeled_RMCs"] = modeled_rmc_scaler
     wrapper = HybridOdeWrapper.from_process(
@@ -1583,9 +1583,7 @@ def test_plot_volume_changes_empty_series_gets_correct_legend_color():
     )
     empty = SimpleNamespace(
         is_continuous=False,
-        values=SimpleNamespace(
-            breaks=None, times=np.array([]), values=np.array([])
-        ),
+        values=SimpleNamespace(breaks=None, times=np.array([]), values=np.array([])),
     )
     process = SimpleNamespace(
         time_axis=SimpleNamespace(start=0.0, end=2.0),
@@ -1754,7 +1752,7 @@ def test_dense_export_keeps_validity_aligned_through_sort_and_dedup():
         SCL_states=jnp.asarray([[[0.0, 1.0], [20.0, 1.0], [10.0, 1.0], [21.0, 1.0]]]),
         RAW_V_export=jnp.ones((1, 4)),
         RAW_V=jnp.ones((1, 4)),
-        RAW_modeled_BiologicalOde_rates=jnp.asarray([[[0.0], [2.0], [1.0], [2.1]]]),
+        RAW_modeled_ReactionOde_rates=jnp.asarray([[[0.0], [2.0], [1.0], [2.1]]]),
         RAW_modeled_Inflows_rates=jnp.empty((1, 4, 0)),
         RAW_modeled_Outflows_rates=jnp.empty((1, 4, 0)),
         auxiliary={"regime": jnp.asarray([[0, 2, 1, 2]])},
@@ -1822,7 +1820,7 @@ def test_export_predictions_csv_preserves_modeled_flow_signs(tmp_path: Path):
             SCL_states=jnp.asarray([[[1.0, 0.0, 0.0], [0.9, *cumulative]]]),
             RAW_V_export=jnp.asarray([[1.0, 0.9]]),
             RAW_V=jnp.asarray([[1.0, 0.9]]),
-            RAW_modeled_BiologicalOde_rates=jnp.empty((1, 2, 0)),
+            RAW_modeled_ReactionOde_rates=jnp.empty((1, 2, 0)),
             RAW_modeled_Inflows_rates=jnp.asarray(inflow_rates)[None, :, None],
             RAW_modeled_Outflows_rates=jnp.asarray(outflow_rates)[None, :, None],
             auxiliary=None,

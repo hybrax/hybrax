@@ -115,10 +115,10 @@ def test_default_stateful_module_uses_gru_cell_as_latent_derivative():
     )
     readout = jnp.concatenate([h, inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs])
     assert jnp.allclose(
-        outputs.SCL_modeled_BiologicalOde_rates,
+        outputs.SCL_modeled_ReactionOde_rates,
         module.rate_head(readout),
     )
-    assert outputs.SCL_modeled_BiologicalOde_rates.shape == (1,)
+    assert outputs.SCL_modeled_ReactionOde_rates.shape == (1,)
     assert outputs.SCL_modeled_Inflows_rates.shape == (0,)
     assert outputs.SCL_modeled_Outflows_rates.shape == (0,)
 
@@ -217,7 +217,7 @@ def test_default_lstm_latent_layout_output_semantics_and_initialization():
     )
     readout = jnp.concatenate([h, inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs])
     assert jnp.allclose(
-        outputs.SCL_modeled_BiologicalOde_rates,
+        outputs.SCL_modeled_ReactionOde_rates,
         module.rate_head(readout),
     )
     assert jnp.allclose(
@@ -297,7 +297,7 @@ def test_default_stateful_mixed_axes_size_recurrent_input(
         module.rate_head(current_readout), module.rate_head(updated_readout)
     )
     assert jnp.allclose(
-        outputs.SCL_modeled_BiologicalOde_rates,
+        outputs.SCL_modeled_ReactionOde_rates,
         module.rate_head(current_readout),
     )
     assert jnp.allclose(
@@ -365,7 +365,7 @@ def test_default_stateful_empty_rate_head_skips_glorot(monkeypatch):
         n_latent=3,
         **{
             **_SCALE_KWARGS,
-            "SCALE_modeled_BiologicalOde_rates": jnp.zeros(0),
+            "SCALE_modeled_ReactionOde_rates": jnp.zeros(0),
         },
     )
 
@@ -478,8 +478,8 @@ def test_default_stateful_module_call_is_pure_for_identical_inputs():
 
     assert jnp.array_equal(first.SCL_latent_derivative, second.SCL_latent_derivative)
     assert jnp.array_equal(
-        first.SCL_modeled_BiologicalOde_rates,
-        second.SCL_modeled_BiologicalOde_rates,
+        first.SCL_modeled_ReactionOde_rates,
+        second.SCL_modeled_ReactionOde_rates,
     )
     assert jnp.array_equal(
         first.SCL_modeled_Inflows_rates, second.SCL_modeled_Inflows_rates

@@ -81,7 +81,7 @@ targets are comparable; physical penalties belong in RAW, where the units mean s
 | `SCL_target_pred` | Predictions sliced to the targets. The convenience path. |
 | `SCL_target_measured` | Ground truth. |
 | `SCL_states` / `RAW_states` | Full trajectories. |
-| `SCL_modeled_BiologicalOde_rates` / `RAW_…` | The rates over time. |
+| `SCL_modeled_ReactionOde_rates` / `RAW_…` | The rates over time. |
 | `SCL_V` / `RAW_V` | Volume. |
 | `mask_measured` | `(n_meas, n_target)`: is this cell a real measurement? |
 | `mask_measured_any` | `(n_meas,)` float: is this *row* real? Multiply trajectory-wide penalties by it. |

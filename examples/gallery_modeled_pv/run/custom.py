@@ -11,12 +11,12 @@ import numpy as np
 from hybrax.train import (
     EstimatedScales,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     trainable_field,
 )
 
 
-class ModeledPVModule(UserReactionModule):
+class ModeledPVModule(RateModule):
     log_q_biomass: jax.Array = trainable_field()
     log_r_glyco_frac: jax.Array = trainable_field()
 
@@ -35,7 +35,7 @@ class ModeledPVModule(UserReactionModule):
             ]
         )
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.scale_modeled_BiologicalOde_rates(
+            SCL_modeled_ReactionOde_rates=self.scale_modeled_ReactionOde_rates(
                 RAW_rates
             ),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
@@ -80,7 +80,7 @@ def estimate_all_scales(runtime_data, target_names, config):
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
         SCALE_modeled_PVs=jnp.asarray([pv_scale[n] for n in rhs.name_modeled_PVs]),
-        SCALE_modeled_BiologicalOde_rates=jnp.asarray(
+        SCALE_modeled_ReactionOde_rates=jnp.asarray(
             [rate_scale(n) for n in rhs.name_modeled_rates]
         ),
         SCALE_V_in_cumulative=jnp.asarray(

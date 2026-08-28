@@ -193,7 +193,7 @@ _EXPORTS = {
     "ReactionOutputs": "model_api",
     "LossInputs": "model_api",
     "LossOutputs": "model_api",
-    "UserReactionModule": "model_api",
+    "RateModule": "model_api",
     "UserLossModule": "model_api",
     "partition_trainable": "model_api",
     "trainable_field": "model_api",

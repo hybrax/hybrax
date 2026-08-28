@@ -61,7 +61,7 @@ BioProcess                       one experimental run
  │    └─ volume_changes: Dict[str, Inflow | Outflow]
  ├─ process_variables: Dict[str, ProcessVariable]    pH, temperature, DO, off-gas
  │    └─ is_controlled: bool              True = known input, False = modeled state
- ├─ biological_ode: BiologicalOde         dc/dt expressions (auto-filled if omitted)
+ ├─ reaction_ode: ReactionOde         dc/dt expressions (auto-filled if omitted)
  ├─ pseudobatch_transform: Optional[PseudobatchTransform]
  └─ discrete_events: Optional[DiscreteEvents]
 

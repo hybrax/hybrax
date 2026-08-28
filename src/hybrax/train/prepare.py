@@ -372,7 +372,7 @@ def prepare_artifact(
     prepared_validation_report = validate_for_training(
         collection,
         strict=True,
-        require_biological_ode=True,
+        require_reaction_ode=True,
     )
     semantics_provenance = _build_semantics_provenance(
         raw_snapshots=raw_semantics,

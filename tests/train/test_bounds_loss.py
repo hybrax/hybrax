@@ -8,7 +8,7 @@ from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
-    BiologicalOde,
+    ReactionOde,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
@@ -72,7 +72,7 @@ def _process(
             ),
         },
         volume=Volume(initial_volume=1.0, unit="L", bounds=volume_bounds),
-        biological_ode=BiologicalOde(
+        reaction_ode=ReactionOde(
             rates={f"q_{rmc_name}": rate_bounds[0], "r_oxygen": rate_bounds[1]},
             derivatives={
                 rmc_name: f"q_{rmc_name} * {rmc_name}",
@@ -131,8 +131,8 @@ def _inputs(
     return LossInputs(
         SCL_states=zeros_states,
         RAW_states=raw_states,
-        SCL_modeled_BiologicalOde_rates=zeros_rates,
-        RAW_modeled_BiologicalOde_rates=raw_rates,
+        SCL_modeled_ReactionOde_rates=zeros_rates,
+        RAW_modeled_ReactionOde_rates=raw_rates,
         SCL_modeled_Inflows_rates=jnp.zeros((n_rows, 0)),
         RAW_modeled_Inflows_rates=jnp.zeros((n_rows, 0)),
         SCL_modeled_Outflows_rates=jnp.zeros((n_rows, 0)),
@@ -149,7 +149,7 @@ def _inputs(
         n_measured=jnp.sum(jnp.asarray(mask_any, dtype=jnp.int32)),
         dense_t=None if dense_t is None else jnp.asarray(dense_t),
         dense_RAW_states=dense_raw_states,
-        dense_RAW_modeled_BiologicalOde_rates=dense_raw_rates,
+        dense_RAW_modeled_ReactionOde_rates=dense_raw_rates,
         dense_RAW_V=dense_raw_v,
         dense_RAW_V_unclamped=dense_raw_v_unclamped,
         dense_valid_time=(
@@ -160,7 +160,7 @@ def _inputs(
                 scale=jnp.asarray([2.0, 4.0, 8.0]),
                 offset=jnp.asarray([100.0, -30.0, 20.0]),
             ),
-            SCALE_modeled_BiologicalOde_rates=LinearScaler(jnp.asarray([0.5, 2.0])),
+            SCALE_modeled_ReactionOde_rates=LinearScaler(jnp.asarray([0.5, 2.0])),
         ),
         step=jnp.asarray(0),
     )
@@ -268,7 +268,7 @@ def test_bound_name_collision_with_reconstruction_target_is_rejected():
         unit="g/L",
         concentration=_series(),
     )
-    process.biological_ode.derivatives["lwr_bnd/x"] = "0"
+    process.reaction_ode.derivatives["lwr_bnd/x"] = "0"
 
     with pytest.raises(ValueError, match="loss names must be unique"):
         BoundsViolationLossModule(
@@ -488,14 +488,14 @@ def test_empty_collection_is_rejected():
 
 def test_missing_rate_in_later_process_is_rejected_clearly():
     p2 = _process("p2")
-    p2.biological_ode.rates = {
+    p2.reaction_ode.rates = {
         "q_other": NO_BOUNDS,
         "r_oxygen": NO_BOUNDS,
     }
-    p2.biological_ode.derivatives["biomass"] = "q_other * biomass"
+    p2.reaction_ode.derivatives["biomass"] = "q_other * biomass"
     collection = BioProcessCollection(processes={"p1": _process("p1"), "p2": p2})
 
-    with pytest.raises(ValueError, match="biological_ode"):
+    with pytest.raises(ValueError, match="reaction_ode"):
         BoundsViolationLossModule(
             target_names=("biomass",),
             bound_records=_bound_records(collection),

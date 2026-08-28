@@ -156,7 +156,7 @@ Print the two structure tables (the harness prints both at training start):
 ```python
 from hybrax.train import print_trainable_structure, print_reaction_schema
 
-print_trainable_structure(wrapper.reaction_module, title="UserReactionModule")
+print_trainable_structure(wrapper.reaction_module, title="RateModule")
 print_trainable_structure(wrapper.loss_module, title="UserLossModule")
 print_reaction_schema(wrapper)
 ```

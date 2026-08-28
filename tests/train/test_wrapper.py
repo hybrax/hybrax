@@ -31,7 +31,7 @@ from hybrax.train.model_api import (
     ReactionInputs,
     Scaler,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
 )
 from hybrax.train.wrapper import (
     HybridOdeWrapper,
@@ -73,7 +73,7 @@ def _unit_scale_kwargs(
         "SCALE_controlled_Inflows_Cin": jnp.ones((n_controlled_Inflows, n_species)),
         "SCALE_controlled_PVs": jnp.ones(n_controlled_PVs),
         "SCALE_modeled_Inflows_Cin": jnp.ones((n_modeled_Inflows, n_species)),
-        "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates),
+        "SCALE_modeled_ReactionOde_rates": jnp.ones(n_rates),
         "SCALE_modeled_Inflows_rates": jnp.ones(n_modeled_Inflows),
         "SCALE_modeled_Outflows_rates": jnp.ones(n_modeled_Outflows),
     }
@@ -91,14 +91,14 @@ _PLACEHOLDER_SCALES: dict[str, jnp.ndarray] = {
     "SCALE_controlled_Inflows_Cin": jnp.zeros((0, 0)),
     "SCALE_controlled_PVs": jnp.zeros(0),
     "SCALE_modeled_Inflows_Cin": jnp.zeros((0, 0)),
-    "SCALE_modeled_BiologicalOde_rates": jnp.zeros(0),
+    "SCALE_modeled_ReactionOde_rates": jnp.zeros(0),
     "SCALE_modeled_Inflows_rates": jnp.zeros(0),
     "SCALE_modeled_Outflows_rates": jnp.zeros(0),
     "SCALE_latent": jnp.zeros(0),
 }
 
 
-class ConstantReactionModule(UserReactionModule):
+class ConstantReactionModule(RateModule):
     """Test reaction module returning fixed rates (in SCL space).
 
     Tests construct without scale kwargs (placeholder zeros fill in); the
@@ -131,14 +131,14 @@ class ConstantReactionModule(UserReactionModule):
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t, inputs
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.SCL_specific_rates,
+            SCL_modeled_ReactionOde_rates=self.SCL_specific_rates,
             SCL_modeled_Inflows_rates=self.SCL_Inflow_rates,
             SCL_modeled_Outflows_rates=self.SCL_outflow_rates,
             auxiliary=self.aux,
         )
 
 
-class InvalidReactionShapeModule(UserReactionModule):
+class InvalidReactionShapeModule(RateModule):
     """Return configurable outputs so each malformed field is tested in isolation."""
 
     biological_rates: jnp.ndarray
@@ -161,14 +161,14 @@ class InvalidReactionShapeModule(UserReactionModule):
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t, inputs
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.biological_rates,
+            SCL_modeled_ReactionOde_rates=self.biological_rates,
             SCL_modeled_Inflows_rates=self.feed_rates,
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_latent_derivative=self.latent_derivative,
         )
 
 
-class LatentEchoReactionModule(UserReactionModule):
+class LatentEchoReactionModule(RateModule):
     initial_h0: jnp.ndarray
 
     def __init__(self, *, initial_h0, **scale_kwargs):
@@ -179,7 +179,7 @@ class LatentEchoReactionModule(UserReactionModule):
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.zeros(1),
+            SCL_modeled_ReactionOde_rates=jnp.zeros(1),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_latent_derivative=inputs.SCL_latent
@@ -192,7 +192,7 @@ class LatentEchoReactionModule(UserReactionModule):
         return self.initial_h0
 
 
-class VolumeFeatureEchoReactionModule(UserReactionModule):
+class VolumeFeatureEchoReactionModule(RateModule):
     """Reaction module that echoes ``SCL_V`` into the rates output."""
 
     n_species: int = eqx.field(static=True)
@@ -208,7 +208,7 @@ class VolumeFeatureEchoReactionModule(UserReactionModule):
         del t
         v_feature = jnp.asarray(inputs.SCL_modeled_V)
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.full((self.n_species,), v_feature),
+            SCL_modeled_ReactionOde_rates=jnp.full((self.n_species,), v_feature),
             SCL_modeled_Inflows_rates=jnp.zeros((self.n_modeled,)),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
         )
@@ -446,8 +446,8 @@ def _derive_unit_scale_kwargs(process, controls) -> dict[str, jnp.ndarray]:
 
 
 def _inject_scales(
-    reaction_module: UserReactionModule, scale_kwargs: dict[str, jnp.ndarray]
-) -> UserReactionModule:
+    reaction_module: RateModule, scale_kwargs: dict[str, jnp.ndarray]
+) -> RateModule:
     """Replace placeholder SCALE_* fields with correctly-sized values.
 
     Wraps bare arrays in ``LinearScaler`` to match the scaler-typed fields
@@ -480,7 +480,7 @@ def _build_wrapper(process, controls, reaction_module, **kwargs):
     ("field", "modeled_feed", "n_latent", "method", "expected_shape"),
     [
         (
-            "SCL_modeled_BiologicalOde_rates",
+            "SCL_modeled_ReactionOde_rates",
             False,
             0,
             "physical_rhs",
@@ -489,7 +489,7 @@ def _build_wrapper(process, controls, reaction_module, **kwargs):
         ("SCL_modeled_Inflows_rates", True, 0, "physical_rhs", (1,)),
         ("SCL_latent_derivative", False, 2, "physical_rhs", (2,)),
         (
-            "SCL_modeled_BiologicalOde_rates",
+            "SCL_modeled_ReactionOde_rates",
             False,
             0,
             "physical_save_outputs",
@@ -517,7 +517,7 @@ def test_wrapper_rejects_broadcastable_scalar_reaction_output(
         "latent_derivative": jnp.zeros(n_latent),
     }
     output_names = {
-        "SCL_modeled_BiologicalOde_rates": "biological_rates",
+        "SCL_modeled_ReactionOde_rates": "biological_rates",
         "SCL_modeled_Inflows_rates": "feed_rates",
         "SCL_latent_derivative": "latent_derivative",
     }
@@ -541,7 +541,7 @@ def test_wrapper_rejects_broadcastable_scalar_reaction_output(
     ("rate_field", "modeled_feed"),
     [
         ("SCALE_controlled_Inflows_rates", False),
-        ("SCALE_modeled_BiologicalOde_rates", False),
+        ("SCALE_modeled_ReactionOde_rates", False),
         ("SCALE_modeled_Inflows_rates", True),
     ],
 )
@@ -611,7 +611,7 @@ def test_physical_rhs_uses_custom_rate_derivative_semantics():
         modeled_Inflows_rates=jnp.zeros(0),
     )
     scales = _derive_unit_scale_kwargs(process, controls)
-    scales["SCALE_modeled_BiologicalOde_rates"] = DivergentRateScaler()
+    scales["SCALE_modeled_ReactionOde_rates"] = DivergentRateScaler()
     wrapper = HybridOdeWrapper.from_process(
         reaction_module=_inject_scales(module, scales),
         process=process,
@@ -660,7 +660,7 @@ def test_wrapper_accepts_custom_offset_free_rate_scaler_without_offset_metadata(
         modeled_Inflows_rates=jnp.zeros(0),
     )
     scales = _derive_unit_scale_kwargs(process, controls)
-    scales["SCALE_modeled_BiologicalOde_rates"] = UnitRateScaler(jnp.ones(1))
+    scales["SCALE_modeled_ReactionOde_rates"] = UnitRateScaler(jnp.ones(1))
     module = _inject_scales(module, scales)
     wrapper = HybridOdeWrapper.from_process(
         reaction_module=module,
@@ -1208,7 +1208,7 @@ def test_continuous_feed_transport_volume_and_dilution():
 def _make_modeled_pv_process() -> BioProcess:
     """biomass RMC + one uncontrolled (modeled) process variable.
 
-    With no user biological_ode, auto-generation yields rates
+    With no user reaction_ode, auto-generation yields rates
     ``(q_biomass, r_<pv>)`` and a PV derivative ``r_<pv>`` — i.e. the PV is an
     MLP-predicted, integrated state alongside the RMCs.
     """

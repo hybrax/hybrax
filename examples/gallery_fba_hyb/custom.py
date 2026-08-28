@@ -20,7 +20,7 @@ from hybrax.train import (
     EstimatedScales,
     ReactionInputs,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     trainable_field,
 )
 
@@ -185,7 +185,7 @@ def _init_xavier_zero_bias(model, key):
     )
 
 
-class FBAHybReactionModule(UserReactionModule):
+class FBAHybReactionModule(RateModule):
     ann_qG: eqx.nn.MLP = trainable_field()
     ann_obj: eqx.nn.MLP = trainable_field()
 
@@ -234,7 +234,7 @@ class FBAHybReactionModule(UserReactionModule):
         RAW_rates = jnp.array([qX, RAW_glc, RAW_ace])
 
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.scale_modeled_BiologicalOde_rates(
+            SCL_modeled_ReactionOde_rates=self.scale_modeled_ReactionOde_rates(
                 RAW_rates
             ),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
@@ -277,7 +277,7 @@ def estimate_all_scales(runtime_data, target_names, config):
     empty = jnp.zeros(0)
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
-        SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
+        SCALE_modeled_ReactionOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
             max(runtime_data.initial_volume(i) for i in range(n_processes))
         ),

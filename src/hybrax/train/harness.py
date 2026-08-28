@@ -59,7 +59,7 @@ from .inspect import print_reaction_schema, print_trainable_structure
 from .model_api import (
     EstimatedScales,
     UserLossModule,
-    UserReactionModule,
+    RateModule,
     _as_scaler,
     partition_trainable,
 )
@@ -643,7 +643,7 @@ def _build_reaction_module(
     store: TrainingDataStore,
     scales: EstimatedScales,
     training_parent_collection: BioProcessCollection,
-) -> UserReactionModule:
+) -> RateModule:
     hook = get_hook(
         custom_module,
         "build_reaction_module",
@@ -660,10 +660,8 @@ def _build_reaction_module(
             for field in dataclasses.fields(EstimatedScales)
         },
     )
-    if not isinstance(module, UserReactionModule):
-        raise TypeError(
-            "build_reaction_module(...) must return a UserReactionModule instance"
-        )
+    if not isinstance(module, RateModule):
+        raise TypeError("build_reaction_module(...) must return a RateModule instance")
     _require_stateful_opt_in(module, config.allow_stateful_models)
     return module
 
@@ -746,7 +744,7 @@ def _build_modules_from_selected_parents(
     custom_module: Any,
     custom_config: Any,
     build_loss: bool,
-) -> tuple[UserReactionModule, UserLossModule | None]:
+) -> tuple[RateModule, UserLossModule | None]:
     """Build reaction and loss modules behind the same parent-key guards."""
     _validate_training_parent_collection(training_parent_collection, expected_parents)
     reaction_module = _build_reaction_module(
@@ -778,7 +776,7 @@ def _build_runtime_modules(
     custom_module,
     custom_config: Any,
     build_loss: bool = True,
-) -> tuple[UserReactionModule, UserLossModule | None]:
+) -> tuple[RateModule, UserLossModule | None]:
     """Build runtime hook modules once from parent-selected scale evidence."""
     scale_data = ProducerCollectionData.from_collection(
         store, collection
@@ -899,7 +897,7 @@ def _validate_batched_loss_outputs(
 def _build_template_wrapper(
     store: TrainingDataStore,
     *,
-    reaction_module: UserReactionModule,
+    reaction_module: RateModule,
     selected_processes: tuple[str, ...],
     loss_module: UserLossModule | None = None,
 ) -> HybridOdeWrapper:
@@ -1207,7 +1205,7 @@ def evaluate_trained_wrapper(
 def train_collection(
     store: TrainingDataStore,
     *,
-    reaction_module: UserReactionModule,
+    reaction_module: RateModule,
     loss_module: UserLossModule | None = None,
     config: TrainHarnessConfig | None = None,
     optimizer: optax.GradientTransformation | None = None,
@@ -2220,7 +2218,7 @@ class PreparedTraining:
     """Collection-free inputs for :func:`train_collection`."""
 
     store: TrainingDataStore
-    reaction_module: UserReactionModule
+    reaction_module: RateModule
     loss_module: UserLossModule
     config: TrainHarnessConfig
     optimizer: optax.GradientTransformation

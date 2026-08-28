@@ -87,7 +87,7 @@ class ProcessOrdering:
     Ordering rules:
 
     - ``name_modeled_rates`` preserves the user-supplied insertion order of
-      ``BiologicalOde.rates`` (downstream consumers such as ``hybrax.train``
+      ``ReactionOde.rates`` (downstream consumers such as ``hybrax.train``
       pass rate vectors in this order).
     - ``name_modeled_algebraic`` is topo-sorted by inter-algebraic
       dependencies; ties broken alphabetically.
@@ -346,18 +346,19 @@ class Volume:
 
 
 # ============================================================
-# User-defined biological ODE
+# User-defined reaction ODE
 # ============================================================
 
 
 @dataclass
-class BiologicalOde:
-    """User-defined per-state biological RHS expressions.
+class ReactionOde:
+    """User-defined per-state reaction RHS expressions.
 
-    Describes only the *biological* part of ``dc/dt``. Physical contributions
-    (feed inflow, dilution, sample outflow, volume dynamics) continue to be
-    added by hybrax.format from the existing :class:`VolumeChange` machinery and
-    are not part of this block.
+    Describes the reaction part of ``dc/dt``: intrinsic biological, abiotic, or
+    other user-defined dynamics. Transport contributions (feed inflow,
+    dilution, sample outflow, and volume dynamics) continue to be added by
+    hybrax.format from the existing :class:`VolumeChange` machinery and are not
+    part of this block.
 
     Attributes:
         algebraic: Mapping ``name -> expression string``. Algebraic (no time
@@ -368,9 +369,8 @@ class BiologicalOde:
             on either side meaning unbounded; use ``(None, None)`` (i.e.
             ``_NO_BOUNDS``) for rates without bounds.
         derivatives: Mapping ``state_name -> expression string`` giving the
-            biological contribution to ``d(state)/dt``. Every dynamic state
-            must have an entry; use ``"0"`` to declare no biological
-            dynamics.
+            reaction contribution to ``d(state)/dt``. Every dynamic state must
+            have an entry; use ``"0"`` to declare no reaction dynamics.
     """
 
     algebraic: Dict[str, str] = field(default_factory=dict)
@@ -378,11 +378,11 @@ class BiologicalOde:
     derivatives: Dict[str, str] = field(default_factory=dict)
 
 
-def _format_biological_ode_lines(bo: BiologicalOde, prefix: str = "") -> List[str]:
-    """Render a BiologicalOde's algebraic/rates/derivatives as display lines.
+def _format_reaction_ode_lines(bo: ReactionOde, prefix: str = "") -> List[str]:
+    """Render a ReactionOde's algebraic/rates/derivatives as display lines.
 
-    Shared by `_auto_generate_biological_ode`'s assumption notice and
-    `inspect.print_process_structure`. Kept here, next to `BiologicalOde`
+    Shared by `_auto_generate_reaction_ode`'s assumption notice and
+    `inspect.print_process_structure`. Kept here, next to `ReactionOde`
     itself, for the same import-direction reason as `_format_bounds`.
     """
     lines: List[str] = []
@@ -397,12 +397,12 @@ def _format_biological_ode_lines(bo: BiologicalOde, prefix: str = "") -> List[st
     if bo.derivatives:
         lines.append(f"{prefix}Derivatives ({len(bo.derivatives)}):")
         for name, expr in bo.derivatives.items():
-            lines.append(f"{prefix}  d({name})/dt|biological = {expr}")
+            lines.append(f"{prefix}  d({name})/dt|reaction = {expr}")
     return lines
 
 
-def _auto_generate_biological_ode(process: "BioProcess") -> BiologicalOde:
-    """Generate the minimal default :class:`BiologicalOde` for a process.
+def _auto_generate_reaction_ode(process: "BioProcess") -> ReactionOde:
+    """Generate the minimal default :class:`ReactionOde` for a process.
 
     For every reactor-medium component ``c`` the derivative is
     ``q_<c> * <biomass>``; for every dynamic (non-controlled, non-static)
@@ -413,16 +413,16 @@ def _auto_generate_biological_ode(process: "BioProcess") -> BiologicalOde:
 
     Rate insertion order is biomass-first reactor components followed by
     dynamic process variables, so the flat rates array layout matches the
-    insertion order of :attr:`BiologicalOde.rates`.
+    insertion order of :attr:`ReactionOde.rates`.
 
     Auto-generation requires a ``"biomass"`` reactor-medium component
     (case-insensitive). Users who do not have a biomass component must
-    define ``BioProcess.biological_ode`` themselves; the
+    define ``BioProcess.reaction_ode`` themselves; the
     :meth:`BioProcess.__post_init__` skips auto-generation when the user
     already supplied a block.
     """
     if not process.reactor_medium.components:
-        return BiologicalOde()
+        return ReactionOde()
     biomass_name = next(
         (
             n
@@ -433,9 +433,9 @@ def _auto_generate_biological_ode(process: "BioProcess") -> BiologicalOde:
     )
     if biomass_name is None:
         raise ValueError(
-            "auto-generated BiologicalOde requires a 'biomass' component "
+            "auto-generated ReactionOde requires a 'biomass' component "
             "in process.reactor_medium.components. Pass an explicit "
-            "BioProcess.biological_ode to skip auto-generation. "
+            "BioProcess.reaction_ode to skip auto-generation. "
             f"Available reactor components: "
             f"{list(process.reactor_medium.components)}"
         )
@@ -460,13 +460,13 @@ def _auto_generate_biological_ode(process: "BioProcess") -> BiologicalOde:
     }
     derivatives.update({pv: f"r_{pv}" for pv in pv_dynamic})
 
-    bo = BiologicalOde(algebraic={}, rates=rates, derivatives=derivatives)
+    bo = ReactionOde(algebraic={}, rates=rates, derivatives=derivatives)
     if _ANNOUNCE_ASSUMPTIONS:
-        detail = "\n".join(_format_biological_ode_lines(bo, prefix="  "))
+        detail = "\n".join(_format_reaction_ode_lines(bo, prefix="  "))
         _logger.info(
-            "Assumption: process.biological_ode not provided; auto-generating "
+            "Assumption: process.reaction_ode not provided; auto-generating "
             f"a default using reactor component {biomass_name!r} as the "
-            f"biomass/growth driver. Pass an explicit BioProcess.biological_ode "
+            f"biomass/growth driver. Pass an explicit BioProcess.reaction_ode "
             f"to override:\n{detail}"
         )
     return bo
@@ -518,9 +518,9 @@ class PseudobatchTransform:
 class BioProcess:
     """Single experimental bioprocess run: time axis, volume, media, and variables.
 
-    ``biological_ode`` auto-generates from ``reactor_medium``/
+    ``reaction_ode`` auto-generates from ``reactor_medium``/
     ``process_variables`` if not supplied; see
-    ``_auto_generate_biological_ode``.
+    ``_auto_generate_reaction_ode``.
     """
 
     metadata: Optional[BioProcessMetadata]
@@ -529,7 +529,7 @@ class BioProcess:
     reactor_medium: ReactorMedium
     process_variables: Dict[str, ProcessVariable] = field(default_factory=dict)
     discrete_events: Optional[DiscreteEvents] = None
-    biological_ode: Optional[BiologicalOde] = None
+    reaction_ode: Optional[ReactionOde] = None
     pseudobatch_transform: Optional[PseudobatchTransform] = None
 
     def __post_init__(self):
@@ -539,8 +539,8 @@ class BioProcess:
             raise ValueError("BioProcess.reactor_medium is required")
         if self.time_axis is None:
             raise ValueError("BioProcess.time_axis is required")
-        if self.biological_ode is None:
-            self.biological_ode = _auto_generate_biological_ode(self)
+        if self.reaction_ode is None:
+            self.reaction_ode = _auto_generate_reaction_ode(self)
         _announce_missing_inflow_concentrations(self)
         rmc_names = set(self.reactor_medium.components)
         retention_errors = [

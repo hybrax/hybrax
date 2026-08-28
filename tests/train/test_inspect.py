@@ -12,7 +12,7 @@ from hybrax.train.inspect import (
 )
 from hybrax.train.model_api import (
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     frozen_field,
     trainable_field,
 )
@@ -56,7 +56,7 @@ def test_format_reaction_schema_contains_all_axis_names():
         "SCL_controlled_Inflows_Cin",
         "SCL_controlled_PVs",
         "SCL_modeled_Inflows_Cin",
-        "SCL_modeled_BiologicalOde_rates",
+        "SCL_modeled_ReactionOde_rates",
         "SCL_modeled_Inflows_rates",
         "SCL_modeled_Outflows_rates",
         "RAW_controlled_Outflows_retention",
@@ -119,7 +119,7 @@ def test_format_reaction_schema_handles_empty_axes():
 # ---------------------------------------------------------------------------
 
 
-class _MixedTagsFixture(UserReactionModule):
+class _MixedTagsFixture(RateModule):
     weights: jax.Array = trainable_field()
     bias_frozen: jax.Array = frozen_field()
 
@@ -131,7 +131,7 @@ class _MixedTagsFixture(UserReactionModule):
     def __call__(self, t, inputs):
         del t, inputs
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.zeros((0,)),
+            SCL_modeled_ReactionOde_rates=jnp.zeros((0,)),
             SCL_modeled_Inflows_rates=jnp.zeros((0,)),
             SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )
@@ -147,7 +147,7 @@ def test_format_trainable_structure_works_from_inspect_module():
     assert "frozen" in text
 
 
-class _DictFieldFixture(UserReactionModule):
+class _DictFieldFixture(RateModule):
     heads: dict[str, jax.Array] = trainable_field()
 
     def __init__(self):
@@ -157,7 +157,7 @@ class _DictFieldFixture(UserReactionModule):
     def __call__(self, t, inputs):
         del t, inputs
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.zeros((0,)),
+            SCL_modeled_ReactionOde_rates=jnp.zeros((0,)),
             SCL_modeled_Inflows_rates=jnp.zeros((0,)),
             SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )

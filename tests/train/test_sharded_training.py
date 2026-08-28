@@ -110,7 +110,7 @@ class P2OnlyBlowUp(_LinearReactionModule):
         is_p2 = inputs.SCL_modeled_V > 0.95
         rate = jnp.where((t > 1.0) & is_p2, 1.0e4 * state, 0.0)
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.asarray([rate], dtype=state.dtype),
+            SCL_modeled_ReactionOde_rates=jnp.asarray([rate], dtype=state.dtype),
             SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=state.dtype),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
         )

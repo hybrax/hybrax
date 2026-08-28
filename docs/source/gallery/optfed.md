@@ -138,7 +138,7 @@ layer. `gamma_deg` (uptake) is computed first, `gamma_alpha` (maintenance)
 next since it uses `gamma_deg` as one of its own activation variables (the
 paper's real coupling: more total uptake activates more maintenance), then
 `gamma_pi` (production) saturates in `gamma_deg - gamma_alpha`. `X_active`
-(declared in the dataset's `biological_ode` block as `biomass - product`)
+(declared in the dataset's `reaction_ode` block as `biomass - product`)
 does the rest for every rate except `q_glucose`. `q_biomass` and `q_product` are
 *specific* (per unit active biomass), so no manual `Xr/X` correction is needed inside
 `__call__` for them. `X_active` in the declared derivative strings does that
@@ -239,8 +239,8 @@ executed run is at `./source/_data/out/runs/gallery_optfed/`.
   -input mechanism, there feeding a learned component instead of closed-form
   kinetics.
 - [The Reaction Module](../train/reaction_module.md): `frozen_field`,
-  `trainable_field`, and everything else a `UserReactionModule` can return.
-- [The Bioprocess ODE](../format/bioprocess_ode.md): `biological_ode`,
+  `trainable_field`, and everything else a `RateModule` can return.
+- [The Bioprocess ODE](../format/bioprocess_ode.md): `reaction_ode`,
   `algebraic`, and the `X_active` pattern this page reuses.
 - [Glutamine Degradation](glutamine_decay.md): a smaller worked example of
   identifiability requiring observations that distinguish a rate's effect.

@@ -184,7 +184,7 @@ def _load_single_process(
     }
 
     volume_changes = _build_volume_changes(online_rows, event_rows)
-    biological_ode = _build_biological_ode()
+    reaction_ode = _build_reaction_ode()
     return bp.BioProcess(
         metadata=bp.BioProcessMetadata(
             name=process_id,
@@ -209,13 +209,13 @@ def _load_single_process(
             components=reactor_components,
         ),
         process_variables=process_variables,
-        biological_ode=biological_ode,
+        reaction_ode=reaction_ode,
     )
 
 
-def _build_biological_ode() -> bp.BiologicalOde:
+def _build_reaction_ode() -> bp.ReactionOde:
     """Return the sim 1 intracellular-product ODE contract."""
-    return bp.BiologicalOde(
+    return bp.ReactionOde(
         algebraic={"X_active": "biomass - product_intracellular"},
         rates={
             "q_biomass": (None, None),
@@ -241,7 +241,7 @@ def _build_biological_ode() -> bp.BiologicalOde:
                 f"({RATIO_TARGET:.12g} - intracellular_product_ratio)"
             ),
             # Inert pseudobatch tracers: reactor-medium components with no biological
-            # dynamics (validate_biological_ode requires every component to have a
+            # dynamics (validate_reaction_ode requires every component to have a
             # derivative; "0" declares none). Their dilution/feed is handled by the
             # volume-change machinery, like every other species.
             "tracer_unfed": "0",

@@ -54,7 +54,7 @@ Note the two synthetic sections: `__consistency__` holds the cross-process resul
 | `validate_measurement_sampling_alignment` | An offline measurement timestamped just *after* its own sample draw. Corrupts the dilution factor and every spline built on it. |
 | `validate_biomass_in_reactor_medium` | Auto-generated dynamics with nothing to be specific *to*. |
 | `validate_timeseries_shape` | Mismatched `times`/`values` lengths. |
-| `validate_biological_ode` | A dynamic state with no derivative entry. Omission is rejected; write `"0"` if you mean no dynamics. |
+| `validate_reaction_ode` | A dynamic state with no derivative entry. Omission is rejected; write `"0"` if you mean no dynamics. |
 | `validate_bounds` | An inverted or impossible `(lo, hi)`. |
 | `validate_bounds_against_data` | A declared bound the data itself already violates, e.g. negative biomass with a `(0.0, None)` bound: metadata that was never checked against what was actually measured. |
 

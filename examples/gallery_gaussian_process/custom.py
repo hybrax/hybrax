@@ -20,7 +20,10 @@ import jax.scipy.linalg as jsl
 import numpy as np
 
 from hybrax.format.mechanistic import build_rhs_ode
-from hybrax.format.splines import build_backtransform_spline, build_pseudobatch_transform
+from hybrax.format.splines import (
+    build_backtransform_spline,
+    build_pseudobatch_transform,
+)
 from hybrax.train import (
     DefaultLossModule,
     EstimatedScales,
@@ -29,13 +32,13 @@ from hybrax.train import (
     ReactionInputs,
     ReactionOutputs,
     UserLossModule,
-    UserReactionModule,
+    RateModule,
     frozen_field,
     trainable_field,
 )
 
 
-class GPReactionModule(UserReactionModule):
+class GPReactionModule(RateModule):
     centers: jax.Array = frozen_field()  # Z, real states, (n_points, n_features)
     targets: jax.Array = frozen_field()  # y, real rate estimates, (n_points, n_rates)
     log_lengthscale: jax.Array = trainable_field()  # (n_features,), ARD
@@ -70,12 +73,12 @@ class GPReactionModule(UserReactionModule):
         v = jsl.cho_solve(chol, k_xz[0])
         var = jnp.exp(self.log_output_scale) - k_xz[0] @ v
         SCL_rate_std = jnp.sqrt(jnp.clip(var, 1e-12)) * jnp.ones_like(mean)
-        # predictions.csv reports q_* in RAW units (RAW_modeled_BiologicalOde_rates),
+        # predictions.csv reports q_* in RAW units (RAW_modeled_ReactionOde_rates),
         # but auxiliary values pass through unscaled: convert here so rate_std is
         # comparable to q_* in the same file, not left in SCL units next to RAW ones.
-        RAW_rate_std = self.unscale_modeled_BiologicalOde_rates(SCL_rate_std)
+        RAW_rate_std = self.unscale_modeled_ReactionOde_rates(SCL_rate_std)
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=mean,
+            SCL_modeled_ReactionOde_rates=mean,
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
             auxiliary={"rate_std": RAW_rate_std},
@@ -104,7 +107,7 @@ def build_reaction_module(*, seed, training_parent_collection, **kwargs):
     rhs = build_rhs_ode(first_process)
     rmc_names = list(rhs.name_modeled_RMCs)
     rmc_scaler = scale_kwargs["SCALE_modeled_RMCs"]
-    rate_scaler = scale_kwargs["SCALE_modeled_BiologicalOde_rates"]
+    rate_scaler = scale_kwargs["SCALE_modeled_ReactionOde_rates"]
 
     centers_list = []
     targets_list = []
@@ -113,10 +116,13 @@ def build_reaction_module(*, seed, training_parent_collection, **kwargs):
         meas_times = np.asarray(
             process.reactor_medium.components["biomass"].concentration.times
         )
-        splines = {name: build_backtransform_spline(process, name) for name in rmc_names}
+        splines = {
+            name: build_backtransform_spline(process, name) for name in rmc_names
+        }
         values = {name: np.asarray(splines[name](meas_times)) for name in rmc_names}
         derivatives = {
-            name: np.asarray(splines[name].derivative()(meas_times)) for name in rmc_names
+            name: np.asarray(splines[name].derivative()(meas_times))
+            for name in rmc_names
         }
         biomass = values["biomass"]
 
@@ -162,7 +168,9 @@ class GPLossModule(DefaultLossModule):
         )
 
 
-def build_loss_module(*, target_names, process_names, config, seed, training_parent_collection):
+def build_loss_module(
+    *, target_names, process_names, config, seed, training_parent_collection
+):
     del process_names, config, seed, training_parent_collection
     return GPLossModule(target_names=tuple(target_names))
 
@@ -196,7 +204,7 @@ def estimate_all_scales(runtime_data, target_names, config):
     empty = jnp.zeros(0)
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
-        SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
+        SCALE_modeled_ReactionOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
             max(runtime_data.initial_volume(i) for i in range(n_processes))
         ),

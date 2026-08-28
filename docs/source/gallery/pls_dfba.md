@@ -199,7 +199,7 @@ executed run is at `./source/_data/out/runs/gallery_pls_dfba/`.
 - [Knowledge Transfer](knowledge_transfer.md): the same controlled-PV-as-recipe
   trick, for product identity instead of a continuous blend fraction.
 - [The Reaction Module](../train/reaction_module.md): `auxiliary`, and everything
-  else a `UserReactionModule` can return.
+  else a `RateModule` can return.
 
 ## References
 

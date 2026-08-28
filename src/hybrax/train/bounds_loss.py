@@ -126,13 +126,13 @@ class BoundsViolationLossModule(DefaultLossModule):
                 dense_values = inputs.dense_RAW_V_unclamped
                 scaler = reaction_module.SCALE_state[idx]
             else:
-                values = inputs.RAW_modeled_BiologicalOde_rates[:, idx]
+                values = inputs.RAW_modeled_ReactionOde_rates[:, idx]
                 dense_values = (
                     None
                     if dense_mask is None
-                    else inputs.dense_RAW_modeled_BiologicalOde_rates[:, idx]
+                    else inputs.dense_RAW_modeled_ReactionOde_rates[:, idx]
                 )
-                scaler = reaction_module.SCALE_modeled_BiologicalOde_rates[idx]
+                scaler = reaction_module.SCALE_modeled_ReactionOde_rates[idx]
             normalized = scaler.scale_derivative(
                 jax.nn.relu(sign * (threshold - values))
             )
@@ -189,8 +189,8 @@ def _bound_snapshot(process, rhs_ode) -> BoundSnapshot:
     for index, name in enumerate(rhs_ode.name_modeled_rates):
         bounds = (
             (None, None)
-            if process.biological_ode is None
-            else process.biological_ode.rates[name]
+            if process.reaction_ode is None
+            else process.reaction_ode.rates[name]
         )
         declarations.append((f"rate/{name}", "rate", index, *_bounds(bounds)))
     return tuple(declarations)

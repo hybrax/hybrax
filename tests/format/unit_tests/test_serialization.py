@@ -13,7 +13,7 @@ import hybrax.format.serialization as serialization
 from hybrax.format.json_io import JSONParseError
 
 from hybrax.format import (
-    BiologicalOde,
+    ReactionOde,
     BioProcessCollection,
     BioProcess,
     BioProcessMetadata,
@@ -906,13 +906,13 @@ def test_default_load_rejects_non_json_file_path():
 
 
 # ---------------------------------------------------------------------------
-# bounds and biological_ode round-trip
+# bounds and reaction_ode round-trip
 # ---------------------------------------------------------------------------
 
 
-def _make_process_with_biological_ode_and_bounds(sample_process):
+def _make_process_with_reaction_ode_and_bounds(sample_process):
     """Augment the sample process with bounds on every relevant slot and a
-    minimal but realistic ``biological_ode`` block for round-trip testing."""
+    minimal but realistic ``reaction_ode`` block for round-trip testing."""
     p = sample_process
     p.volume.bounds = (0.0, 5.0)
     p.reactor_medium.components["biomass"].bounds = (0.0, None)
@@ -923,7 +923,7 @@ def _make_process_with_biological_ode_and_bounds(sample_process):
             pv.bounds = (0.0, 14.0)
         else:
             pv.bounds = (None, 100.0)
-    p.biological_ode = BiologicalOde(
+    p.reaction_ode = ReactionOde(
         algebraic={"X_active": "biomass"},
         rates={
             "q_X": (0.0, None),
@@ -938,7 +938,7 @@ def _make_process_with_biological_ode_and_bounds(sample_process):
 def test_json_roundtrip_bounds_on_every_slot(sample_process):
     """Bounds on reactor components, PVs, volume, and rates round-trip
     losslessly. The unbounded default ``(None, None)`` is omitted from JSON."""
-    _make_process_with_biological_ode_and_bounds(sample_process)
+    _make_process_with_reaction_ode_and_bounds(sample_process)
     cs = BioProcessCollection(
         case_id="b",
         organism="o",
@@ -961,10 +961,10 @@ def test_json_roundtrip_bounds_on_every_slot(sample_process):
             assert pv.bounds == (None, 100.0)
 
 
-def test_json_roundtrip_biological_ode(sample_process):
-    """biological_ode block round-trips losslessly: derived / derivatives /
+def test_json_roundtrip_reaction_ode(sample_process):
+    """reaction_ode block round-trips losslessly: derived / derivatives /
     rates (with per-rate bounds)."""
-    _make_process_with_biological_ode_and_bounds(sample_process)
+    _make_process_with_reaction_ode_and_bounds(sample_process)
     cs = BioProcessCollection(
         case_id="b",
         organism="o",
@@ -977,16 +977,16 @@ def test_json_roundtrip_biological_ode(sample_process):
         loaded = load_process_collection(Path(tmpdir) / "d.json")
 
     p2 = loaded.processes["fed_batch_001"]
-    assert p2.biological_ode is not None
-    assert p2.biological_ode.algebraic == {"X_active": "biomass"}
-    assert p2.biological_ode.derivatives == {
+    assert p2.reaction_ode is not None
+    assert p2.reaction_ode.algebraic == {"X_active": "biomass"}
+    assert p2.reaction_ode.derivatives == {
         "biomass": "q_X * X_active",
         "glucose": "q_S * X_active",
     }
-    assert set(p2.biological_ode.rates.keys()) == {"q_X", "q_S", "q_unused"}
-    assert p2.biological_ode.rates["q_X"] == (0.0, None)
-    assert p2.biological_ode.rates["q_S"] == (None, 0.0)
-    assert p2.biological_ode.rates["q_unused"] == (None, None)
+    assert set(p2.reaction_ode.rates.keys()) == {"q_X", "q_S", "q_unused"}
+    assert p2.reaction_ode.rates["q_X"] == (0.0, None)
+    assert p2.reaction_ode.rates["q_S"] == (None, 0.0)
+    assert p2.reaction_ode.rates["q_unused"] == (None, None)
 
 
 def test_rmc_bounds_default_missing_key_and_explicit_unbounded_roundtrip(
@@ -1026,7 +1026,7 @@ def test_rmc_bounds_default_missing_key_and_explicit_unbounded_roundtrip(
         assert loaded_components["biomass"].bounds == (0.0, None)
 
 
-def test_auto_generated_biological_ode_roundtrips(sample_process):
+def test_auto_generated_reaction_ode_roundtrips(sample_process):
     """Processes without a user-supplied block get one auto-populated in
     ``BioProcess.__post_init__``; the auto block round-trips losslessly."""
     cs = BioProcessCollection(
@@ -1041,12 +1041,12 @@ def test_auto_generated_biological_ode_roundtrips(sample_process):
         loaded = load_process_collection(Path(tmpdir) / "d.json")
 
     p2 = loaded.processes["fed_batch_001"]
-    assert p2.biological_ode is not None
-    assert sample_process.biological_ode is not None
-    assert list(p2.biological_ode.rates.keys()) == list(
-        sample_process.biological_ode.rates.keys()
+    assert p2.reaction_ode is not None
+    assert sample_process.reaction_ode is not None
+    assert list(p2.reaction_ode.rates.keys()) == list(
+        sample_process.reaction_ode.rates.keys()
     )
-    assert p2.biological_ode.derivatives == sample_process.biological_ode.derivatives
+    assert p2.reaction_ode.derivatives == sample_process.reaction_ode.derivatives
 
 
 if __name__ == "__main__":

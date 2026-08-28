@@ -35,15 +35,15 @@ box, with sub-tables for:
 - **Rates** — name, lower bound, upper bound, in declaration order (this *is*
   `name_modeled_rates`, the layout of the rate vector you must supply)
 - **Derivatives** — per state: unit, the biological expression verbatim from
-  `biological_ode.derivatives`, and separately the `+ feed(...)`,
+  `reaction_ode.derivatives`, and separately the `+ feed(...)`,
   `− dilution(...)`, and `+ retention(...)` terms hybrax.format adds on top
 - **Volume** — additions from feeds, removals from samples
 
 Accepts a `BioProcess` or a `BioProcessCollection`. For a container it first
 runs
-[`validate_biological_ode_equivalence`](04_validation.md#validate_biological_ode_equivalencecontainer)
+[`validate_reaction_ode_equivalence`](04_validation.md#validate_reaction_ode_equivalencecontainer)
 and raises `ValueError` if the processes do not share the same
-`biological_ode` — printing one process's ODE as if it described all of them
+`reaction_ode` — printing one process's ODE as if it described all of them
 would be misleading. The title names the container, not the process that was
 rendered.
 
@@ -113,7 +113,7 @@ continuous glucose feed, and discrete sampling:
 +---------------------------------------------------------------------------------------+
 | Derivatives                                                                           |
 +---------------------------------------------------------------------------------------+
-| State   | Unit  | Biological                        | Feed         | Dilution         |
+| State   | Unit  | Reaction                          | Feed         | Dilution         |
 | biomass | [g/L] | (q_growth + q_product) * X_active |              | − dilution(feed) |
 | glucose | [g/L] | q_glucose * X_active              | + feed(feed) | − dilution(feed) |
 | product | [g/L] | q_product * X_active              |              | − dilution(feed) |

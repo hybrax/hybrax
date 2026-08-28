@@ -17,7 +17,7 @@ from .model_api import (
     ReactionInputs,
     ReactionOutputs,
     UserLossModule,
-    UserReactionModule,
+    RateModule,
 )
 
 
@@ -32,7 +32,7 @@ class SaveOutputs(eqx.Module):
     SCL_states: jax.Array
     RAW_V_export: jax.Array
     RAW_V: jax.Array
-    RAW_modeled_BiologicalOde_rates: jax.Array
+    RAW_modeled_ReactionOde_rates: jax.Array
     RAW_modeled_Inflows_rates: jax.Array
     RAW_modeled_Outflows_rates: jax.Array
     auxiliary: dict[str, jax.Array] | None = None
@@ -68,10 +68,10 @@ def _normalize_auxiliary_outputs(
 
 
 def _validate_reaction_output_shapes(
-    module: UserReactionModule, outputs: ReactionOutputs
+    module: RateModule, outputs: ReactionOutputs
 ) -> ReactionOutputs:
     expected_shapes = {
-        "SCL_modeled_BiologicalOde_rates": (module.n_modeled_BiologicalOde_rates,),
+        "SCL_modeled_ReactionOde_rates": (module.n_modeled_ReactionOde_rates,),
         "SCL_modeled_Inflows_rates": (module.n_modeled_Inflows,),
         "SCL_modeled_Outflows_rates": (module.n_modeled_Outflows,),
         "SCL_latent_derivative": (module.n_latent,),
@@ -87,7 +87,7 @@ def _validate_reaction_output_shapes(
 
 
 class HybridOdeWrapper(eqx.Module):
-    """RAW physical-state wrapper around a user reaction module.
+    """RAW physical-state wrapper around a rate module.
 
     ``physical_solve`` owns the scaled ODE reparameterization. This wrapper sees
     RAW integrated state ``[RMCs | PVs | V | modeled_cum | latent]``, builds
@@ -104,7 +104,7 @@ class HybridOdeWrapper(eqx.Module):
     """
 
     rhs_ode: RhsOde
-    reaction_module: UserReactionModule
+    reaction_module: RateModule
     controls: PerProcessControls
 
     modeled_RMC_names: tuple[str, ...] = eqx.field(static=True)
@@ -132,7 +132,7 @@ class HybridOdeWrapper(eqx.Module):
     def from_process(
         cls,
         *,
-        reaction_module: UserReactionModule,
+        reaction_module: RateModule,
         process: BioProcess,
         controls: PerProcessControls,
         target_state_indices: jax.Array | None = None,
@@ -163,7 +163,7 @@ class HybridOdeWrapper(eqx.Module):
     def from_rhs_ode(
         cls,
         *,
-        reaction_module: UserReactionModule,
+        reaction_module: RateModule,
         rhs_ode: RhsOde,
         controls: PerProcessControls,
         target_state_indices: jax.Array | None = None,
@@ -171,7 +171,7 @@ class HybridOdeWrapper(eqx.Module):
     ) -> HybridOdeWrapper:
         """Build a wrapper from an existing RhsOde runtime template.
 
-        Scales are read from ``reaction_module`` (a ``UserReactionModule``
+        Scales are read from ``reaction_module`` (a ``RateModule``
         subclass with ``SCALE_*`` fields). The constructor validates each
         ``SCALE_*`` shape against the RhsOde / controls layout.
 
@@ -234,7 +234,7 @@ class HybridOdeWrapper(eqx.Module):
             "SCALE_controlled_Outflows_rates": (n_controlled_Outflows_count,),
             "SCALE_controlled_PVs": (len(controls.name_controlled_PVs),),
             "SCALE_modeled_Inflows_Cin": (n_Inflows, n_RMCs),
-            "SCALE_modeled_BiologicalOde_rates": (n_rates,),
+            "SCALE_modeled_ReactionOde_rates": (n_rates,),
             "SCALE_modeled_Inflows_rates": (n_Inflows,),
             "SCALE_modeled_Outflows_cumulative": (n_Outflows,),
             "SCALE_modeled_Outflows_rates": (n_Outflows,),
@@ -243,7 +243,7 @@ class HybridOdeWrapper(eqx.Module):
             if not hasattr(reaction_module, field_name):
                 raise TypeError(
                     f"reaction_module is missing SCALE field {field_name!r}; "
-                    "subclass UserReactionModule and pass all SCALE_* fields "
+                    "subclass RateModule and pass all SCALE_* fields "
                     "to super().__init__(...)."
                 )
             arr = getattr(reaction_module, field_name)
@@ -257,7 +257,7 @@ class HybridOdeWrapper(eqx.Module):
         for field_name in (
             "SCALE_controlled_Inflows_rates",
             "SCALE_controlled_Outflows_rates",
-            "SCALE_modeled_BiologicalOde_rates",
+            "SCALE_modeled_ReactionOde_rates",
             "SCALE_modeled_Inflows_rates",
             "SCALE_modeled_Outflows_rates",
         ):
@@ -271,7 +271,7 @@ class HybridOdeWrapper(eqx.Module):
         if (
             reaction_module.n_latent > 0
             and reaction_module.latent_observables
-            and type(reaction_module).observe is UserReactionModule.observe
+            and type(reaction_module).observe is RateModule.observe
         ):
             names = ", ".join(reaction_module.latent_observables)
             raise ValueError(
@@ -283,7 +283,7 @@ class HybridOdeWrapper(eqx.Module):
         if not hasattr(reaction_module, "SCALE_V_in_cumulative"):
             raise TypeError(
                 "reaction_module is missing SCALE_V_in_cumulative; subclass "
-                "UserReactionModule and pass all SCALE_* fields to "
+                "RateModule and pass all SCALE_* fields to "
                 "super().__init__(...)."
             )
 
@@ -411,8 +411,8 @@ class HybridOdeWrapper(eqx.Module):
             SCL_latent=module.scale_latent(RAW_latent),
         )
         outputs = _validate_reaction_output_shapes(module, module(t_arr, inputs))
-        RAW_bio_rates = module.unscale_modeled_BiologicalOde_rates(
-            jnp.asarray(outputs.SCL_modeled_BiologicalOde_rates, dtype=dtype)
+        RAW_bio_rates = module.unscale_modeled_ReactionOde_rates(
+            jnp.asarray(outputs.SCL_modeled_ReactionOde_rates, dtype=dtype)
         )
         RAW_modeled_Inflows_rates = module.unscale_modeled_Inflows_rates(
             jnp.asarray(outputs.SCL_modeled_Inflows_rates, dtype=dtype)
@@ -534,8 +534,8 @@ class HybridOdeWrapper(eqx.Module):
             SCL_latent=module.scale_latent(RAW_latent),
         )
         outputs = _validate_reaction_output_shapes(module, module(t_arr, inputs))
-        RAW_bio_rates = module.unscale_modeled_BiologicalOde_rates(
-            jnp.asarray(outputs.SCL_modeled_BiologicalOde_rates, dtype=dtype)
+        RAW_bio_rates = module.unscale_modeled_ReactionOde_rates(
+            jnp.asarray(outputs.SCL_modeled_ReactionOde_rates, dtype=dtype)
         )
         RAW_modeled_Inflows_rates = module.unscale_modeled_Inflows_rates(
             jnp.asarray(outputs.SCL_modeled_Inflows_rates, dtype=dtype)
@@ -569,7 +569,7 @@ class HybridOdeWrapper(eqx.Module):
             SCL_states=module.scale_state(RAW_state),
             RAW_V_export=RAW_V,
             RAW_V=RAW_V,
-            RAW_modeled_BiologicalOde_rates=RAW_bio_rates,
+            RAW_modeled_ReactionOde_rates=RAW_bio_rates,
             RAW_modeled_Inflows_rates=RAW_modeled_Inflows_rates,
             RAW_modeled_Outflows_rates=RAW_modeled_Outflows_rates,
             auxiliary=auxiliary,

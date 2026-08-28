@@ -10,12 +10,12 @@ from hybrax.train import (
     EstimatedScales,
     ReactionInputs,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     trainable_field,
 )
 
 
-class FittedMonodModule(UserReactionModule):
+class FittedMonodModule(RateModule):
     """Monod growth with positive, trainable ``mu_max`` and ``Ks``."""
 
     log_mu_max: jax.Array = trainable_field()
@@ -34,15 +34,15 @@ class FittedMonodModule(UserReactionModule):
         glucose = jnp.clip(states[self.i_glucose], 0.0, None)
         mu = jnp.exp(self.log_mu_max) * glucose / (jnp.exp(self.log_ks) + glucose)
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=(
-                self.scale_modeled_BiologicalOde_rates(jnp.asarray([mu]))
+            SCL_modeled_ReactionOde_rates=(
+                self.scale_modeled_ReactionOde_rates(jnp.asarray([mu]))
             ),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
         )
 
 
-class AnnGrowthModule(UserReactionModule):
+class AnnGrowthModule(RateModule):
     """A 33-parameter ``1 → 4 → 4 → 1`` glucose-to-growth network."""
 
     mlp: eqx.nn.MLP = trainable_field()
@@ -65,7 +65,7 @@ class AnnGrowthModule(UserReactionModule):
         glucose = inputs.SCL_modeled_RMCs[self.i_glucose]
         mu = self.mlp(jnp.asarray([glucose]))
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=mu,
+            SCL_modeled_ReactionOde_rates=mu,
             SCL_modeled_Inflows_rates=jnp.zeros(0),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
         )
@@ -133,7 +133,7 @@ def estimate_all_scales(runtime_data, target_names, config):
     empty = jnp.zeros(0)
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray(state_scales),
-        SCALE_modeled_BiologicalOde_rates=jnp.ones(1),
+        SCALE_modeled_ReactionOde_rates=jnp.ones(1),
         SCALE_V_in_cumulative=jnp.asarray(
             max(
                 runtime_data.initial_volume(i)

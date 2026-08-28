@@ -23,7 +23,7 @@ import numpy as np
 import hybrax.format as hxf
 import hybrax.train as hxt
 from hybrax.format.mechanistic import build_rhs_ode
-from hybrax.train import ReactionInputs, ReactionOutputs, UserReactionModule
+from hybrax.train import ReactionInputs, ReactionOutputs, RateModule
 from hybrax.train.controls_store import ControlsStore
 from hybrax.train.physical_solve import solve_physical_states
 from hybrax.train.wrapper import HybridOdeWrapper
@@ -53,7 +53,7 @@ def hxt_cli(*args):
     return proc.stdout + proc.stderr
 
 
-class GroundTruthMonod(UserReactionModule):
+class GroundTruthMonod(RateModule):
     """Fixed Monod law used only to reconstruct the dense reference curve."""
 
     mu_max: float = eqx.field(static=True)
@@ -72,8 +72,8 @@ class GroundTruthMonod(UserReactionModule):
         glucose = jnp.maximum(states[self.i_glucose], 0.0)
         mu = self.mu_max * glucose / (self.ks + glucose)
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=(
-                self.scale_modeled_BiologicalOde_rates(jnp.asarray([mu]))
+            SCL_modeled_ReactionOde_rates=(
+                self.scale_modeled_ReactionOde_rates(jnp.asarray([mu]))
             ),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
@@ -94,7 +94,7 @@ def unit_scales():
         "SCALE_controlled_Outflows_rates": jnp.ones(1),
         "SCALE_controlled_PVs": jnp.zeros(0),
         "SCALE_modeled_Inflows_Cin": jnp.zeros((0, 2)),
-        "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
+        "SCALE_modeled_ReactionOde_rates": jnp.ones(1),
         "SCALE_modeled_Inflows_rates": jnp.zeros(0),
         "SCALE_modeled_Outflows_rates": jnp.zeros(0),
     }
@@ -153,7 +153,7 @@ def ann_growth_curve(module, substrate_grid):
     states = jnp.zeros(module.n_modeled_RMCs)
     return np.asarray(
         [
-            module.unscale_modeled_BiologicalOde_rates(
+            module.unscale_modeled_ReactionOde_rates(
                 module.mlp(
                     module.scale_modeled_RMCs(
                         states.at[module.i_glucose].set(substrate)

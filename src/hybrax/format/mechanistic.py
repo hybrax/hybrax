@@ -215,11 +215,11 @@ def _topo_sort_algebraic(algebraic_exprs: Dict[str, Any]) -> List[str]:
     return order
 
 
-def _parse_biological_ode_expressions(
+def _parse_reaction_ode_expressions(
     bo,
     allowed_names: set,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """Sympify ``BiologicalOde.algebraic`` and ``derivatives`` strings.
+    """Sympify ``ReactionOde.algebraic`` and ``derivatives`` strings.
 
     Returns ``(algebraic_exprs, derivative_exprs)`` keyed by name. Raises
     ``ValueError`` on parse failure.
@@ -234,7 +234,7 @@ def _parse_biological_ode_expressions(
             algebraic_exprs[name] = sympy.sympify(expr_str, locals=symbol_table)
         except Exception as exc:
             raise ValueError(
-                f"biological_ode.algebraic[{name!r}] failed to parse: {exc}"
+                f"reaction_ode.algebraic[{name!r}] failed to parse: {exc}"
             ) from exc
 
     derivative_exprs: Dict[str, Any] = {}
@@ -243,7 +243,7 @@ def _parse_biological_ode_expressions(
             derivative_exprs[name] = sympy.sympify(expr_str, locals=symbol_table)
         except Exception as exc:
             raise ValueError(
-                f"biological_ode.derivatives[{name!r}] failed to parse: {exc}"
+                f"reaction_ode.derivatives[{name!r}] failed to parse: {exc}"
             ) from exc
 
     return algebraic_exprs, derivative_exprs
@@ -271,7 +271,7 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
       value must be in ``[0, 1]``, and discrete Outflows cannot set retention.
     - Every non-controlled ``ProcessVariable`` must have a ``TimeSeries``
       value carrier (static PVs must be ``is_controlled=True``).
-    - The ``BiologicalOde.algebraic`` graph must be acyclic.
+    - The ``ReactionOde.algebraic`` graph must be acyclic.
     - All names across every group must be unique (no shared names between
       states, rates, algebraic, controlled PVs, Inflows, Outflows).
     """
@@ -354,8 +354,8 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
     if retention_errors:
         raise ValueError("\n".join(retention_errors))
 
-    # ---- Biological ODE: rates (insertion order) and algebraic (topo-sorted)
-    bo = process.biological_ode
+    # ---- Reaction ODE: rates (insertion order) and algebraic (topo-sorted)
+    bo = process.reaction_ode
     if bo is None:
         name_modeled_rates: Tuple[str, ...] = ()
         name_modeled_algebraic: Tuple[str, ...] = ()
@@ -363,7 +363,7 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
         name_modeled_rates = tuple(bo.rates.keys())
         # Need parsed algebraic expressions for topo-sort. Build a minimal
         # allowed-symbol set that lets sympify recognise every name. The
-        # full validation is done by validate_biological_ode.
+        # full validation is done by validate_reaction_ode.
         allowed = (
             set(name_modeled_RMCs)
             | set(name_modeled_PVs)
@@ -371,7 +371,7 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
             | set(bo.algebraic.keys())
             | set(name_modeled_rates)
         )
-        algebraic_exprs, _ = _parse_biological_ode_expressions(bo, allowed)
+        algebraic_exprs, _ = _parse_reaction_ode_expressions(bo, allowed)
         name_modeled_algebraic = tuple(_topo_sort_algebraic(algebraic_exprs))
 
     # ---- Cross-group name-collision check
@@ -578,13 +578,13 @@ def _build_vc_matrix(
 
 
 class RhsOde(eqx.Module):
-    """JAX/Equinox module that evaluates the biological RHS for a process.
+    """JAX/Equinox module that evaluates the RHS for a process.
 
-    Built by :func:`build_rhs_ode` from ``process.biological_ode``
+    Built by :func:`build_rhs_ode` from ``process.reaction_ode``
     (auto-generated in :meth:`BioProcess.__post_init__` when not
-    user-supplied). The biological ``dc/dt`` per state comes from
-    user-written expression strings; hybrax.format adds the physical
-    contributions (feed, dilution, dV) on top.
+    user-supplied). The reaction ``dc/dt`` per state comes from user-written
+    expression strings; hybrax.format adds the transport contributions (feed,
+    dilution, dV) on top.
 
     Call signature::
 
@@ -661,12 +661,12 @@ class RhsOde(eqx.Module):
             args = jnp.concatenate([state_and_ctrl, algebraic_arr, rates])
             algebraic_arr = algebraic_arr.at[i].set(fn(args))
 
-        # 2. Biological derivatives per dynamic state
+        # 2. Reaction derivatives per dynamic state
         full_args = jnp.concatenate([state_and_ctrl, algebraic_arr, rates])
         biol_dc_list = [fn(full_args) for fn in self.derivative_funcs]
         biol_dc = jnp.stack(biol_dc_list) if biol_dc_list else jnp.zeros(0)
 
-        # 3. Physical contributions on RMC states (PV states are biological-only).
+        # 3. Transport contributions on RMC states (PV states are reaction-only).
         feed_term, dV = _apply_feed_dilution(
             c_RMCs,
             V,
@@ -697,16 +697,16 @@ def build_rhs_ode(
     process: BioProcess,
     ordering: Optional[ProcessOrdering] = None,
 ) -> RhsOde:
-    """Build a :class:`RhsOde` from a process whose ``biological_ode`` is
+    """Build a :class:`RhsOde` from a process whose ``reaction_ode`` is
     set (auto-generated in :meth:`BioProcess.__post_init__` when not
     user-supplied). Raises ``ValueError`` if the block is missing or
     fails validation.
     """
     import sympy
 
-    bo = process.biological_ode
+    bo = process.reaction_ode
     if bo is None:
-        raise ValueError("build_rhs_ode requires process.biological_ode to be set.")
+        raise ValueError("build_rhs_ode requires process.reaction_ode to be set.")
 
     if ordering is None:
         ordering = get_process_ordering(process)
@@ -723,7 +723,7 @@ def build_rhs_ode(
     )
 
     allowed_names = set(args_order)
-    algebraic_exprs, derivative_exprs = _parse_biological_ode_expressions(
+    algebraic_exprs, derivative_exprs = _parse_reaction_ode_expressions(
         bo, allowed_names
     )
 
@@ -780,7 +780,7 @@ def build_algebraic_func(
     process: BioProcess,
     ordering: Optional[ProcessOrdering] = None,
 ) -> Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], Dict[str, jnp.ndarray]]:
-    """Build a callable that evaluates the ``biological_ode.algebraic``
+    """Build a callable that evaluates the ``reaction_ode.algebraic``
     quantities from concrete ``(state_values, ctrl_pv_values, rates)``
     arrays.
 
@@ -792,10 +792,10 @@ def build_algebraic_func(
     Returns ``{name: scalar}`` keyed by ``name_modeled_algebraic`` (topo
     order). Useful for plotting / loss computation.
     """
-    bo = process.biological_ode
+    bo = process.reaction_ode
     if bo is None:
         raise ValueError(
-            "build_algebraic_func requires process.biological_ode to be set."
+            "build_algebraic_func requires process.reaction_ode to be set."
         )
     rhs_ode = build_rhs_ode(process, ordering=ordering)
     name_modeled_algebraic = rhs_ode.name_modeled_algebraic

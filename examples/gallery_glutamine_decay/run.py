@@ -1,6 +1,6 @@
 """Gallery: glutamine degradation.
 
-One physical rate, r_Gln, declared once in biological_ode.rates, feeding two
+One physical rate, r_Gln, declared once in reaction_ode.rates, feeding two
 different derivatives at once (a sink in Gln, a source in NH4). Checks that
 hybrax.train recovers that single shared number from data alone.
 
@@ -45,7 +45,7 @@ def hxt_cli(*args):
 _collection = hxf.serialization.load_process_collection(HERE / "data.json")
 process = _collection.processes["run_1"]
 
-glutamine_ode = hxf.BiologicalOde(
+glutamine_ode = hxf.ReactionOde(
     rates={"q_biomass": (None, None), "q_Gln": (None, None), "r_Gln": (None, None)},
     derivatives={
         "biomass": "q_biomass * biomass",
@@ -53,9 +53,7 @@ glutamine_ode = hxf.BiologicalOde(
         "NH4": "r_Gln * Gln",
     },
 )
-print(
-    "matches the real declared biological_ode:", glutamine_ode == process.biological_ode
-)
+print("matches the real declared reaction_ode:", glutamine_ode == process.reaction_ode)
 hxf.print_rhs_ode(process)
 
 

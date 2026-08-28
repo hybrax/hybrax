@@ -47,7 +47,7 @@ def hxt_cli(*args):
 _collection = hxf.serialization.load_process_collection(HERE / "data.json")
 process = _collection.processes["run_1"]
 
-modeled_pv_ode = hxf.BiologicalOde(
+modeled_pv_ode = hxf.ReactionOde(
     rates={"q_biomass": (0.0, None), "r_glyco_frac": (0.0, None)},
     derivatives={
         "biomass": "q_biomass * biomass",
@@ -55,8 +55,8 @@ modeled_pv_ode = hxf.BiologicalOde(
     },
 )
 print(
-    "matches the real declared biological_ode:",
-    modeled_pv_ode == process.biological_ode,
+    "matches the real declared reaction_ode:",
+    modeled_pv_ode == process.reaction_ode,
 )
 hxf.print_rhs_ode(process)
 

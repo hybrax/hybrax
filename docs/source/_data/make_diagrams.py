@@ -127,7 +127,7 @@ def make_format_diagram(theme):
         ("ReactorMediumComponent", "experimental concentrations of each species"),
         ("Volume, Inflow, Outflow", "feeds, boluses, sample draws"),
         ("ProcessVariable", "pH, DO, temperature, ..."),
-        ("BiologicalOde", "your rate expressions"),
+        ("ReactionOde", "your rate expressions"),
     ]
     right = [
         ("ProcessOrdering", "canonical name / index layout"),

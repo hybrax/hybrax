@@ -30,7 +30,10 @@ import jax.scipy.linalg as jsl
 import numpy as np
 
 from hybrax.format.mechanistic import build_rhs_ode
-from hybrax.format.splines import build_backtransform_spline, build_pseudobatch_transform
+from hybrax.format.splines import (
+    build_backtransform_spline,
+    build_pseudobatch_transform,
+)
 from hybrax.train import (
     DefaultLossModule,
     EstimatedScales,
@@ -38,21 +41,30 @@ from hybrax.train import (
     LossOutputs,
     ReactionInputs,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     frozen_field,
     trainable_field,
 )
 
 
-class EnsembleGPReactionModule(UserReactionModule):
-    centers: jax.Array = frozen_field()  # (K, M, n_features), REAL states + is_new_product
+class EnsembleGPReactionModule(RateModule):
+    centers: jax.Array = (
+        frozen_field()
+    )  # (K, M, n_features), REAL states + is_new_product
     targets: jax.Array = frozen_field()  # (K, M, n_rates), REAL rate estimates
     log_lengthscale: jax.Array = trainable_field()  # (K, n_features)
     log_output_scale: jax.Array = trainable_field()  # (K,)
     log_noise: jax.Array = trainable_field()  # (K,)
 
     def __init__(
-        self, *, key, centers_pool, targets_pool, n_members=5, n_anchors=15, **scale_kwargs
+        self,
+        *,
+        key,
+        centers_pool,
+        targets_pool,
+        n_members=5,
+        n_anchors=15,
+        **scale_kwargs,
     ):
         super().__init__(**scale_kwargs)
         n_features = centers_pool.shape[1]
@@ -72,7 +84,9 @@ class EnsembleGPReactionModule(UserReactionModule):
 
         def pad(arrs):
             return [
-                np.concatenate([a, np.repeat(a[-1:], max_m - a.shape[0], axis=0)], axis=0)
+                np.concatenate(
+                    [a, np.repeat(a[-1:], max_m - a.shape[0], axis=0)], axis=0
+                )
                 for a in arrs
             ]
 
@@ -95,7 +109,9 @@ class EnsembleGPReactionModule(UserReactionModule):
 
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t
-        x_phys = jnp.concatenate([inputs.SCL_modeled_RMCs, inputs.SCL_controlled_PVs])[None, :]
+        x_phys = jnp.concatenate([inputs.SCL_modeled_RMCs, inputs.SCL_controlled_PVs])[
+            None, :
+        ]
 
         def per_member(centers_k, log_ls_k, log_out_k, log_noise_k, targets_k):
             chol = self._chol(centers_k, log_ls_k, log_out_k, log_noise_k)
@@ -112,7 +128,7 @@ class EnsembleGPReactionModule(UserReactionModule):
         mean = jnp.mean(means, axis=0)
         rate_std = jnp.std(means, axis=0)
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=mean,
+            SCL_modeled_ReactionOde_rates=mean,
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
             auxiliary={"rate_std": rate_std},
@@ -136,7 +152,11 @@ class EnsembleGPReactionModule(UserReactionModule):
             return (data_fit + log_det + 0.5 * n_terms * jnp.log(2 * jnp.pi)) / n_terms
 
         nlls = jax.vmap(per_member_nll)(
-            self.centers, self.log_lengthscale, self.log_output_scale, self.log_noise, self.targets
+            self.centers,
+            self.log_lengthscale,
+            self.log_output_scale,
+            self.log_noise,
+            self.targets,
         )
         return jnp.mean(nlls)
 
@@ -147,7 +167,7 @@ def build_reaction_module(*, seed, training_parent_collection, **kwargs):
     rhs = build_rhs_ode(first_process)
     rmc_names = list(rhs.name_modeled_RMCs)
     rmc_scaler = scale_kwargs["SCALE_modeled_RMCs"]
-    rate_scaler = scale_kwargs["SCALE_modeled_BiologicalOde_rates"]
+    rate_scaler = scale_kwargs["SCALE_modeled_ReactionOde_rates"]
 
     centers_list, targets_list = [], []
     for process in training_parent_collection.processes.values():
@@ -155,10 +175,13 @@ def build_reaction_module(*, seed, training_parent_collection, **kwargs):
         meas_times = np.asarray(
             process.reactor_medium.components["biomass"].concentration.times
         )
-        splines = {name: build_backtransform_spline(process, name) for name in rmc_names}
+        splines = {
+            name: build_backtransform_spline(process, name) for name in rmc_names
+        }
         values = {name: np.asarray(splines[name](meas_times)) for name in rmc_names}
         derivatives = {
-            name: np.asarray(splines[name].derivative()(meas_times)) for name in rmc_names
+            name: np.asarray(splines[name].derivative()(meas_times))
+            for name in rmc_names
         }
         biomass = values["biomass"]
 
@@ -174,7 +197,8 @@ def build_reaction_module(*, seed, training_parent_collection, **kwargs):
         n_drop = 3
         raw_state = np.stack([values[name][n_drop:] for name in rmc_names], axis=1)
         raw_rate = np.stack(
-            [derivatives[name][n_drop:] / biomass[n_drop:] for name in rmc_names], axis=1
+            [derivatives[name][n_drop:] / biomass[n_drop:] for name in rmc_names],
+            axis=1,
         )
 
         scl_state = np.asarray(rmc_scaler.scale_value(jnp.asarray(raw_state)))
@@ -185,7 +209,9 @@ def build_reaction_module(*, seed, training_parent_collection, **kwargs):
         # A rate is a derivative, not a value: scale_derivative, not
         # scale_value, so an affine scaler's offset (if any) is never
         # subtracted from it.
-        targets_list.append(np.asarray(rate_scaler.scale_derivative(jnp.asarray(raw_rate))))
+        targets_list.append(
+            np.asarray(rate_scaler.scale_derivative(jnp.asarray(raw_rate)))
+        )
 
     centers_pool = np.concatenate(centers_list, axis=0)
     targets_pool = np.concatenate(targets_list, axis=0)
@@ -222,7 +248,9 @@ class EnsembleGPLossModule(DefaultLossModule):
         )
 
 
-def build_loss_module(*, target_names, process_names, config, seed, training_parent_collection):
+def build_loss_module(
+    *, target_names, process_names, config, seed, training_parent_collection
+):
     del process_names, config, seed, training_parent_collection
     return EnsembleGPLossModule(target_names=tuple(target_names))
 
@@ -258,7 +286,7 @@ def estimate_all_scales(runtime_data, target_names, config):
     empty = jnp.zeros(0)
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
-        SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
+        SCALE_modeled_ReactionOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
             max(runtime_data.initial_volume(i) for i in range(n_processes))
         ),

@@ -63,7 +63,7 @@ BioProcessCollection  one collection of processes, one file on disk
   not yet a published case study.
 - **`BioProcess`** is a single fermentation run and holds everything needed to
   simulate it: time axis, volume operations, reactor concentrations, process
-  variables, and the biological ODE.
+  variables, and the reaction ODE.
 - **Components** are grouped by physical role: `ReactorMedium` for
   concentrations, `Volume` for anything that changes the working volume,
   `ProcessVariable` for everything else (pH, temperature, DO, off-gas).

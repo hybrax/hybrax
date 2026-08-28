@@ -16,12 +16,12 @@ from hybrax.train import (
     EstimatedScales,
     ReactionInputs,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     trainable_field,
 )
 
 
-class FedBatchModule(UserReactionModule):
+class FedBatchModule(RateModule):
     """MLP over [modeled state | controlled feed rate | controlled PVs]."""
 
     mlp: eqx.nn.MLP = trainable_field()
@@ -31,7 +31,7 @@ class FedBatchModule(UserReactionModule):
         n_in = self.n_modeled_RMCs + self.n_controlled_Inflows + self.n_controlled_PVs
         self.mlp = eqx.nn.MLP(
             in_size=n_in,
-            out_size=self.n_modeled_BiologicalOde_rates,
+            out_size=self.n_modeled_ReactionOde_rates,
             width_size=32,
             depth=3,
             activation=jax.nn.tanh,
@@ -50,7 +50,7 @@ class FedBatchModule(UserReactionModule):
             ]
         )
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.mlp(features),
+            SCL_modeled_ReactionOde_rates=self.mlp(features),
             SCL_modeled_Inflows_rates=jnp.zeros(0),  # no MODELED feeds here
             SCL_modeled_Outflows_rates=jnp.zeros(0),  # no MODELED outflows here
         )
@@ -119,7 +119,7 @@ def estimate_all_scales(runtime_data, target_names, config):
     empty = jnp.zeros(0)
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
-        SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
+        SCALE_modeled_ReactionOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
             max(runtime_data.initial_volume(i) for i in range(n_processes))
         ),

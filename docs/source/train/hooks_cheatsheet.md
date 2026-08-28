@@ -28,7 +28,7 @@ custom module isn't doing anything".
 | [`transform_process_collection`](prepare.md#hook-transform_process_collection) | prepare | the collection | applies `prepare.process_rename_map` |
 | `augment_state_values` | prepare | an array of values | no-op |
 | [`estimate_all_scales`](scaling.md#the-hook) | train setup | `EstimatedScales` | **every scale is 1.0** |
-| [`build_reaction_module`](reaction_module.md#the-hook) | train setup | `UserReactionModule` | `DefaultReactionModule` (2-layer MLP) |
+| [`build_reaction_module`](reaction_module.md#the-hook) | train setup | `RateModule` | `DefaultReactionModule` (2-layer MLP) |
 | [`build_loss_module`](loss_module.md#the-hook) | train setup | `UserLossModule` | `DefaultLossModule` (per-target MSE) |
 | [`build_learning_rate`](train.md#hook-build_learning_rate) | train setup | `float` or `optax.Schedule` | constant `train.learning_rate` |
 | [`build_optimizer`](train.md#hook-build_optimizer) | train setup | `optax.GradientTransformation` | clip + adam/sgd |
@@ -60,7 +60,7 @@ def estimate_all_scales(runtime_data, target_names, config): ...
 
 def build_reaction_module(*, target_names, process_names, config, seed,
                           training_parent_collection, **scale_kwargs): ...
-    # -> UserReactionModule.  training_parent_collection is the BioProcessCollection
+    # -> RateModule.  training_parent_collection is the BioProcessCollection
     #    used for training; build_rhs_ode(process) on one of its processes gives you
     #    layout. The resolved EstimatedScales fields arrive separately, unpacked
     #    into **scale_kwargs.
@@ -107,21 +107,21 @@ The two hooks that matter most, for a batch process with no feeds:
 ```python
 import equinox as eqx, jax, jax.numpy as jnp, numpy as np
 from hybrax.train import (EstimatedScales, ReactionOutputs,
-                      UserReactionModule, trainable_field)
+                      RateModule, trainable_field)
 
-class MyModule(UserReactionModule):
+class MyModule(RateModule):
     mlp: eqx.nn.MLP = trainable_field()
 
     def __init__(self, *, key, **scale_kwargs):
         super().__init__(**scale_kwargs)
         self.mlp = eqx.nn.MLP(in_size=self.n_modeled_RMCs,
-                              out_size=self.n_modeled_BiologicalOde_rates,
+                              out_size=self.n_modeled_ReactionOde_rates,
                               width_size=16, depth=2, key=key)
 
     def __call__(self, t, inputs):
         del t
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.mlp(inputs.SCL_modeled_RMCs),
+            SCL_modeled_ReactionOde_rates=self.mlp(inputs.SCL_modeled_RMCs),
             SCL_modeled_Inflows_rates=jnp.zeros(self.n_modeled_Inflows),
             SCL_modeled_Outflows_rates=jnp.zeros(self.n_modeled_Outflows),
         )

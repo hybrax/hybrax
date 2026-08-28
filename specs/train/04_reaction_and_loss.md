@@ -10,7 +10,7 @@ Source: [`src/hybrax/train/model_api.py`](../../src/hybrax/train/model_api.py),
 ## Purpose
 
 The two user-pluggable halves of a hybrid model. The **reaction module**
-(`UserReactionModule`) predicts the biological rates that drive the ODE; the
+(`RateModule`) predicts the biological rates that drive the ODE; the
 **loss module** (`UserLossModule`) maps the resulting trajectory to a dict of
 named scalar losses. You supply each via a `custom.py` hook, or take the default.
 
@@ -59,7 +59,7 @@ is discovered the same way as the
 loss hook ([`get_hook`](02_cli_and_config.md#custompy-hooks-reference), falling
 back to `default_build_reaction_module`).
 
-### `UserReactionModule`
+### `RateModule`
 
 Override `__call__`; everything else is inherited.
 
@@ -80,7 +80,7 @@ def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs
   `Scaler` fields; **do not redeclare** them — pass values to
   `super().__init__()`. Rate-axis scalers cannot have non-zero offsets. Axis
   dimensions are available as properties (`n_modeled_RMCs`, `n_modeled_PVs`,
-  `n_modeled_BiologicalOde_rates`, `n_modeled_Inflows`,
+  `n_modeled_ReactionOde_rates`, `n_modeled_Inflows`,
   `n_modeled_Outflows`, `n_controlled_Inflows`, `n_controlled_Outflows`,
   `n_controlled_PVs`, `n_latent`) so you size MLPs after `super().__init__()`
   without threading `n_*` kwargs.
@@ -132,7 +132,7 @@ The input fields are:
 
 The output fields are:
 
-- `SCL_modeled_BiologicalOde_rates` (`n_rates`): aligned with
+- `SCL_modeled_ReactionOde_rates` (`n_rates`): aligned with
   `rhs_ode.name_modeled_rates`, not one-to-one with RMCs.
 - `SCL_modeled_Inflows_rates` (`n_modeled_Inflow`): non-negative modeled inflow
   rates; apply a positivity transform before scaling.
@@ -145,7 +145,7 @@ The output fields are:
 ### `DefaultReactionModule`
 
 An `eqx.nn.MLP` over `[SCL_modeled_RMCs | SCL_modeled_PVs]` →
-`SCL_modeled_BiologicalOde_rates` (includes any `r_<pv>` PV rates). It ignores
+`SCL_modeled_ReactionOde_rates` (includes any `r_<pv>` PV rates). It ignores
 controls and emits zero-valued modeled Inflow and Outflow rates. Defaults use
 two hidden layers with width `max(8, 2 * max(n_inputs, n_outputs))`; pass
 `depth` and
@@ -212,7 +212,7 @@ reaction module, unscales the rates, and feeds the physical mass balance;
 ## The loss module
 
 hybrax.train computes the training loss through a user-defined `UserLossModule`, the
-loss-side twin of `UserReactionModule`. You write one class that maps a
+loss-side twin of `RateModule`. You write one class that maps a
 `LossInputs` bundle to a dict of **named scalar losses**; the harness averages
 them for backprop, names every log column and loss-curve panel by the dict keys,
 and optimizes any `trainable_field()` you declare — all from the single shared
@@ -252,7 +252,7 @@ The measurement-grid fields are:
 
 - `SCL_states` / `RAW_states` (`n_meas × n_state`): scaled and physical
   integrated states.
-- `SCL_modeled_BiologicalOde_rates` / `RAW_…` (`n_meas × n_rates`): reaction
+- `SCL_modeled_ReactionOde_rates` / `RAW_…` (`n_meas × n_rates`): reaction
   rates over time.
 - `SCL_modeled_Inflows_rates` / `RAW_…` (`n_meas × n_modeled_Inflows`): modeled
   inflow rates.
@@ -269,7 +269,7 @@ The measurement-grid fields are:
   to `any(mask_measured, axis=1)`.
 - `t_measured` (`n_meas`): measurement times.
 - `n_measured` (scalar): unpadded row count.
-- `reaction_module`: the `UserReactionModule`, the source of all `SCALE_*`.
+- `reaction_module`: the `RateModule`, the source of all `SCALE_*`.
 - `step` (scalar): training step, or −1 during forward evaluation.
 - `jump_ts` (`n_jump_ts` or `None`): genuine vector-field discontinuity times
   from `controls.active_jump_ts`, sourced from `BioProcess.discrete_events`;
@@ -285,7 +285,7 @@ The dense-grid fields are:
 - `dense_t` (`n_dense`): evenly spaced times inside `[t_start, t_end]`.
 - `dense_SCL_states` / `dense_RAW_states` (`n_dense × n_state`): mirrors the
   measurement-grid state pair.
-- `dense_SCL_modeled_BiologicalOde_rates` / `dense_RAW_…`
+- `dense_SCL_modeled_ReactionOde_rates` / `dense_RAW_…`
   (`n_dense × n_rates`): reaction-rate pair.
 - `dense_SCL_modeled_Inflows_rates` / `dense_RAW_…`
   (`n_dense × n_modeled_Inflows`): modeled inflow-rate pair.
@@ -379,7 +379,7 @@ class MAELossModule(DefaultLossModule):
 
 `BoundsViolationLossModule` retains the default measurement MSE and adds one
 squared-hinge term for each finite hybrax.format bound on a modeled reactor-medium
-component, modeled process variable, reactor volume, or `BiologicalOde` rate:
+component, modeled process variable, reactor volume, or `ReactionOde` rate:
 
 ```python
 from hybrax.train import BoundsViolationLossModule, bound_records_from_collection
@@ -398,7 +398,7 @@ def build_loss_module(
 ```
 
 `bound_records_from_collection` requires every training parent to declare an
-equivalent `BiologicalOde` and to agree on each bound, and raises otherwise. It sees
+equivalent `ReactionOde` and to agree on each bound, and raises otherwise. It sees
 only the training parents, so a bound declared on an augmented child is never read —
 children are governed by their parent's bounds.
 
@@ -459,7 +459,7 @@ class KendallLossModule(DefaultLossModule):
 ```
 
 At training start the harness prints two structure tables —
-`UserReactionModule` and `UserLossModule` — so you can verify exactly which
+`RateModule` and `UserLossModule` — so you can verify exactly which
 leaves are trainable vs frozen (see
 [06_serialization_inspect.md](06_serialization_inspect.md#introspection)).
 Trainability is declared solely through field tags; there is no custom
@@ -475,7 +475,7 @@ Emit observables from the reaction module:
 
 ```python
 return ReactionOutputs(
-    SCL_modeled_BiologicalOde_rates=...,
+    SCL_modeled_ReactionOde_rates=...,
     SCL_modeled_Inflows_rates=...,
     SCL_modeled_Outflows_rates=...,
     auxiliary={"q_glucose_signed": some_scalar},
@@ -549,7 +549,7 @@ class CurvatureLossModule(DefaultLossModule):
 
     def __call__(self, inputs):
         base = super().__call__(inputs).named_losses
-        rates = inputs.dense_SCL_modeled_BiologicalOde_rates       # (n_dense, n_rates)
+        rates = inputs.dense_SCL_modeled_ReactionOde_rates       # (n_dense, n_rates)
         t = inputs.dense_t                                          # (n_dense,)
         triple = dense_triple_mask_away_from_jumps(
             t, inputs.jump_ts, self.jump_eps_h

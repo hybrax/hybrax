@@ -63,7 +63,7 @@ from hybrax.train.model_api import (
     EstimatedScales,
     LinearScaler,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     frozen_field,
     trainable_field,
 )
@@ -109,13 +109,13 @@ _DEFAULT_LINEAR_SCALES: dict[str, jnp.ndarray] = {
     "SCALE_controlled_Inflows_Cin": jnp.ones((0, 1)),
     "SCALE_controlled_PVs": jnp.ones(0),
     "SCALE_modeled_Inflows_Cin": jnp.ones((0, 1)),
-    "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
+    "SCALE_modeled_ReactionOde_rates": jnp.ones(1),
     "SCALE_modeled_Inflows_rates": jnp.ones(0),
     "SCALE_modeled_Outflows_rates": jnp.ones(0),
 }
 
 
-class _StatefulHarnessModule(UserReactionModule):
+class _StatefulHarnessModule(RateModule):
     def __init__(self, **scale_kwargs):
         merged = {
             **_DEFAULT_LINEAR_SCALES,
@@ -127,14 +127,14 @@ class _StatefulHarnessModule(UserReactionModule):
     def __call__(self, t, inputs):
         del t
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.zeros(1),
+            SCL_modeled_ReactionOde_rates=jnp.zeros(1),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_latent_derivative=jnp.zeros_like(inputs.SCL_latent),
         )
 
 
-class _LinearReactionModule(UserReactionModule):
+class _LinearReactionModule(RateModule):
     model: eqx.nn.Linear = trainable_field()
     non_model_bias: jax.Array = frozen_field()
 
@@ -149,7 +149,7 @@ class _LinearReactionModule(UserReactionModule):
         SCL_modeled_RMCs = inputs.SCL_modeled_RMCs
         rate = self.model(SCL_modeled_RMCs)[0] + self.non_model_bias[0]
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.asarray(
+            SCL_modeled_ReactionOde_rates=jnp.asarray(
                 [rate], dtype=SCL_modeled_RMCs.dtype
             ),
             SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
@@ -180,7 +180,7 @@ def _harness_unit_scale_kwargs(collection, process_name: str) -> dict[str, jnp.n
         "SCALE_controlled_Inflows_Cin": jnp.ones((n_Inflow, n_RMCs)),
         "SCALE_controlled_PVs": jnp.ones(n_PV),
         "SCALE_modeled_Inflows_Cin": jnp.ones((n_Inflows, n_RMCs)),
-        "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates),
+        "SCALE_modeled_ReactionOde_rates": jnp.ones(n_rates),
         "SCALE_modeled_Inflows_rates": jnp.ones(n_Inflows),
         "SCALE_modeled_Outflows_rates": jnp.ones(n_Outflows),
     }
@@ -681,12 +681,12 @@ def test_train_collection_multi_process_tracks_per_process_histories():
 
 def test_store_rejects_different_biological_equations():
     collection = _make_collection()
-    collection.processes["p2"].biological_ode.derivatives["biomass"] = (
+    collection.processes["p2"].reaction_ode.derivatives["biomass"] = (
         "2 * q_biomass * biomass"
     )
     collection.processes["p2"].__post_init__()
 
-    with pytest.raises(ValueError, match="biological_ode.derivatives differs"):
+    with pytest.raises(ValueError, match="reaction_ode.derivatives differs"):
         TrainingDataStore.from_collection(
             collection,
             target_variable_order=["biomass"],

@@ -15,7 +15,7 @@ from hybrax.format.mechanistic import build_rhs_ode
 from hybrax.train import (
     EstimatedScales,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     frozen_field,
     trainable_field,
 )
@@ -45,7 +45,7 @@ def _activation_product(values, log_K):
     return jnp.prod(1.0 + jnp.clip(values, 0.0, None) / K)
 
 
-class OptFedModule(UserReactionModule):
+class OptFedModule(RateModule):
     """Eyring axis order: [0]=gamma_deg (uptake), [1]=gamma_pi (production),
     [2]=gamma_alpha (maintenance)."""
 
@@ -122,7 +122,7 @@ class OptFedModule(UserReactionModule):
 
         RAW_rates = jnp.array([q_biomass, q_glucose, q_product])
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.scale_modeled_BiologicalOde_rates(
+            SCL_modeled_ReactionOde_rates=self.scale_modeled_ReactionOde_rates(
                 RAW_rates
             ),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
@@ -179,7 +179,7 @@ def estimate_all_scales(runtime_data, target_names, config):
     empty = jnp.zeros(0)
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
-        SCALE_modeled_BiologicalOde_rates=jnp.asarray(
+        SCALE_modeled_ReactionOde_rates=jnp.asarray(
             [rmc_scale[n[2:]] / (biomass * span) for n in rhs.name_modeled_rates]
         ),
         SCALE_V_in_cumulative=jnp.asarray(

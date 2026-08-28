@@ -80,7 +80,7 @@ The file mirrors the dataclass hierarchy directly.
         "volume_changes": { "feed": { "type": "Inflow", "...": "..." } }
       },
       "process_variables": {},
-      "biological_ode": { "...": "see below" }
+      "reaction_ode": { "...": "see below" }
     }
   }
 }
@@ -212,10 +212,10 @@ default. An explicitly unbounded RMC is written as `"bounds": null` and reloads
 as `(None, None)`. The `(None, None)` default for process variables and volume is
 also omitted; their missing `bounds` keys load as unbounded.
 
-### `biological_ode` payload
+### `reaction_ode` payload
 
 ```json
-"biological_ode": {
+"reaction_ode": {
   "algebraic": {
     "X_active": "biomass - product"
   },
@@ -237,8 +237,8 @@ Each `rates` value is a bounds object, or `null` for unbounded. Key order in
 `rates` is the rate-vector layout and is preserved by JSON object ordering.
 
 `derivatives` keys are dynamic-state names. `"0"` is the canonical way to say
-"no biological dynamics"; omitting a state is rejected by
-`validate_biological_ode`.
+"no reaction dynamics"; omitting a state is rejected by
+`validate_reaction_ode`.
 
 The block is always written, because `BioProcess.__post_init__` auto-fills it.
 

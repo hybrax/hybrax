@@ -30,7 +30,7 @@ class DenseProcessExport:
 
     ``q_rates`` is aligned with ``rhs_ode.name_modeled_rates`` (the modeled
     biological rate vector), not with ``modeled_RMC_names``. Under a
-    user-defined ``BiologicalOde`` these orderings differ. Modeled Inflow and
+    user-defined ``ReactionOde`` these orderings differ. Modeled Inflow and
     Outflow rates remain separate physical arrays with their storage signs.
     """
 
@@ -144,7 +144,7 @@ def dense_exports_from_save_outputs(
     t_np = np.asarray(prediction_t)
     prediction_valid_np = np.asarray(prediction_valid, dtype=bool)
     v_real_np = np.asarray(prediction_save_outputs.RAW_V_export)
-    q_np = np.asarray(prediction_save_outputs.RAW_modeled_BiologicalOde_rates)
+    q_np = np.asarray(prediction_save_outputs.RAW_modeled_ReactionOde_rates)
     inflow_rates_np = np.asarray(prediction_save_outputs.RAW_modeled_Inflows_rates)
     outflow_rates_np = np.asarray(prediction_save_outputs.RAW_modeled_Outflows_rates)
     auxiliary = prediction_save_outputs.auxiliary

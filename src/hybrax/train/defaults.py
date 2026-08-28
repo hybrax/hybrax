@@ -19,7 +19,7 @@ from .model_api import (
     ReactionOutputs,
     Scaler,
     UserLossModule,
-    UserReactionModule,
+    RateModule,
     trainable_field,
 )
 from .run_config import RunConfig
@@ -51,7 +51,7 @@ def default_transform_process_collection(collection, config: RunConfig):
     return collection
 
 
-class DefaultGruReactionModule(UserReactionModule):
+class DefaultGruReactionModule(RateModule):
     """Standard-GRU latent-ODE reaction model with calibrated output heads.
 
     The GRU consumes physical and control inputs, with ``h`` passed only as its
@@ -71,7 +71,7 @@ class DefaultGruReactionModule(UserReactionModule):
             key: PRNG key for weight initialization.
             n_latent: Latent state width; sizes ``SCALE_latent`` and the GRU's
                 hidden state. Must be positive.
-            **scale_kwargs: Forwarded to :class:`UserReactionModule.__init__`;
+            **scale_kwargs: Forwarded to :class:`RateModule.__init__`;
                 must not include ``SCALE_latent`` (sized here from
                 ``n_latent``).
 
@@ -132,7 +132,7 @@ class DefaultGruReactionModule(UserReactionModule):
         n_readout = self.n_latent + self.n_modeled_RMCs + self.n_modeled_PVs
         self.rate_head = _calibrated_rate_head(
             n_readout,
-            self.n_modeled_BiologicalOde_rates,
+            self.n_modeled_ReactionOde_rates,
             rate_key,
             rate_init_key,
         )
@@ -162,7 +162,7 @@ class DefaultGruReactionModule(UserReactionModule):
 DefaultStatefulReactionModule = DefaultGruReactionModule
 
 
-class DefaultLstmReactionModule(UserReactionModule):
+class DefaultLstmReactionModule(RateModule):
     """Standard-LSTM latent-ODE reaction model with calibrated output heads.
 
     ``hidden_width`` is the LSTM hidden width. ``SCL_latent`` stores ``[hidden |
@@ -182,7 +182,7 @@ class DefaultLstmReactionModule(UserReactionModule):
             key: PRNG key for weight initialization.
             hidden_width: LSTM hidden width. The integrated latent has twice
                 this width because it includes both hidden and cell states.
-            **scale_kwargs: Forwarded to :class:`UserReactionModule.__init__`;
+            **scale_kwargs: Forwarded to :class:`RateModule.__init__`;
                 must not include ``SCALE_latent``.
         """
         hidden_width = _positive_width(
@@ -233,7 +233,7 @@ class DefaultLstmReactionModule(UserReactionModule):
         n_readout = hidden_width + self.n_modeled_RMCs + self.n_modeled_PVs
         self.rate_head = _calibrated_rate_head(
             n_readout,
-            self.n_modeled_BiologicalOde_rates,
+            self.n_modeled_ReactionOde_rates,
             rate_key,
             rate_init_key,
         )
@@ -280,7 +280,7 @@ def _positive_width(value: SupportsIndex, *, name: str, module_name: str) -> int
     return width
 
 
-def _stateful_input_size(module: UserReactionModule) -> int:
+def _stateful_input_size(module: RateModule) -> int:
     """Number of physical and control features consumed by a recurrent cell."""
     return (
         module.n_modeled_RMCs
@@ -338,7 +338,7 @@ def _stateful_outputs(
     else:
         outflow_rates = -jax.nn.softplus(module.outflow_head(readout)).astype(h.dtype)
     return ReactionOutputs(
-        SCL_modeled_BiologicalOde_rates=bio_rates,
+        SCL_modeled_ReactionOde_rates=bio_rates,
         SCL_modeled_Inflows_rates=inflow_rates,
         SCL_modeled_Outflows_rates=outflow_rates,
         SCL_latent_derivative=latent_derivative,
@@ -388,10 +388,10 @@ def _calibrated_flow_head(
     )
 
 
-class DefaultReactionModule(UserReactionModule):
+class DefaultReactionModule(RateModule):
     """Minimal default reaction model for harness runs.
 
-    Predicts ``SCL_modeled_BiologicalOde_rates`` (which includes any ``r_<pv>``
+    Predicts ``SCL_modeled_ReactionOde_rates`` (which includes any ``r_<pv>``
     PV rates) from the SCL species + modeled-PV slices. Ignores controls; emits
     zero-valued modeled Inflow and Outflow rates. Uses tanh/Glorot for shallow
     networks and SiLU/He for deeper networks. The rate head starts near zero.
@@ -415,14 +415,14 @@ class DefaultReactionModule(UserReactionModule):
                 ``<= 3`` uses tanh/Glorot, deeper uses SiLU/He.
             width_size: Hidden layer width, or ``None`` to derive it from the
                 input/output sizes.
-            **scale_kwargs: Forwarded to :class:`UserReactionModule.__init__`.
+            **scale_kwargs: Forwarded to :class:`RateModule.__init__`.
 
         Raises:
             ValueError: If ``depth < 0`` or the resolved ``width_size <= 0``.
         """
         super().__init__(**scale_kwargs)
         n_in = self.n_modeled_RMCs + self.n_modeled_PVs
-        n_out = self.n_modeled_BiologicalOde_rates
+        n_out = self.n_modeled_ReactionOde_rates
         if depth < 0:
             raise ValueError("depth must be non-negative")
         if width_size is None:
@@ -469,11 +469,11 @@ class DefaultReactionModule(UserReactionModule):
         SCL_features = jnp.concatenate(
             [inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs]
         )
-        SCL_modeled_BiologicalOde_rates = jnp.asarray(
+        SCL_modeled_ReactionOde_rates = jnp.asarray(
             self.model(SCL_features), dtype=dtype
         )
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=SCL_modeled_BiologicalOde_rates,
+            SCL_modeled_ReactionOde_rates=SCL_modeled_ReactionOde_rates,
             SCL_modeled_Inflows_rates=jnp.zeros((self.n_modeled_Inflows,), dtype=dtype),
             SCL_modeled_Outflows_rates=jnp.zeros(
                 (self.n_modeled_Outflows,), dtype=dtype
@@ -489,7 +489,7 @@ def default_build_reaction_module(
     seed: int,
     training_parent_collection: BioProcessCollection,
     **scale_kwargs: Scaler,
-) -> UserReactionModule:
+) -> RateModule:
     """Default train hook for reaction-module construction.
 
     Derives the rates head size from the prepared canonical
@@ -640,7 +640,7 @@ def _default_scale_kwargs(
         "SCALE_modeled_Inflows_Cin": LinearScaler(
             jnp.ones((n_modeled_Inflows, n_RMCs), dtype=jnp.float64)
         ),
-        "SCALE_modeled_BiologicalOde_rates": LinearScaler(
+        "SCALE_modeled_ReactionOde_rates": LinearScaler(
             jnp.ones(n_rates, dtype=jnp.float64)
         ),
         "SCALE_modeled_Inflows_rates": LinearScaler(

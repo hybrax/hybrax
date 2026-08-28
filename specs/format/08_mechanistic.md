@@ -30,7 +30,7 @@ and they would drift.
 
 Ordering rules:
 
-- `name_modeled_rates` — **the insertion order of `BiologicalOde.rates`**, kept
+- `name_modeled_rates` — **the insertion order of `ReactionOde.rates`**, kept
   as written. Sorting it would silently permute every rate vector downstream.
 - `name_modeled_algebraic` — topologically sorted so each expression's
   dependencies are computed first; alphabetical within a level.
@@ -100,8 +100,8 @@ with `rhs_ode.name_modeled_rates`.
 1. **Algebraic quantities**, in topological order. Each is a sympy expression
    compiled to a JAX callable over `[RMCs | PVs | controlled PVs | algebraic |
    rates]`.
-2. **Biological derivatives**, one compiled expression per dynamic state,
-   verbatim from `biological_ode.derivatives`. A state with no entry gets `0`.
+2. **Reaction derivatives**, one compiled expression per dynamic state,
+   verbatim from `reaction_ode.derivatives`. A state with no entry gets `0`.
 3. **Physical contributions on reactor states only**:
 
    ```
@@ -139,7 +139,7 @@ This split is the core contract of the module.
 
 | You write | hybrax.format adds |
 |-----------|----------------|
-| `biological_ode.derivatives`, `algebraic`, `rates` | feed inflow, dilution, sample outflow, `dV/dt` |
+| `reaction_ode.derivatives`, `algebraic`, `rates` | feed inflow, dilution, sample outflow, `dV/dt` |
 
 Feed and sample flow rates are deliberately **not** in the expression symbol
 table. That keeps mass balance out of user code and makes it impossible to
@@ -258,7 +258,7 @@ dc_dt = step(c, rates, controls(t), jnp.zeros(0), jnp.zeros(0))
 
 ## See also
 
-- [Data Model](02_data_model.md) — `BiologicalOde`, `ProcessOrdering`
+- [Data Model](02_data_model.md) — `ReactionOde`, `ProcessOrdering`
 - [Inspection](05_inspection.md) — `print_rhs_ode`
 - [Splines](07_splines.md) — the state trajectories consumed here
 - [`hybrax.train`](../train/README.md) — integrates all of this

@@ -729,7 +729,7 @@ def produce_runtime_artifact(
     validate_for_training(
         training_parent_collection,
         strict=True,
-        require_biological_ode=True,
+        require_reaction_ode=True,
     )
     records = []
     for fold in folds:

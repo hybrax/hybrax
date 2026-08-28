@@ -106,19 +106,19 @@ def r2_by_target(run_dir):
 ## The Rate Law, Declared
 
 Everything this page's kinetics need lives declaratively in the dataset's own
-`biological_ode` block. This is exactly what was declared when the dataset was built:
+`reaction_ode` block. This is exactly what was declared when the dataset was built:
 
 ```{code-cell} ipython3
 process = _collection.processes["run_1"]
 
-modeled_pv_ode = hxf.BiologicalOde(
+modeled_pv_ode = hxf.ReactionOde(
     rates={"q_biomass": (0.0, None), "r_glyco_frac": (0.0, None)},
     derivatives={
         "biomass": "q_biomass * biomass",
         "glyco_frac": "-r_glyco_frac * glyco_frac",
     },
 )
-print("matches the real declared biological_ode:", modeled_pv_ode == process.biological_ode)
+print("matches the real declared reaction_ode:", modeled_pv_ode == process.reaction_ode)
 ```
 
 `glyco_frac` sits in `process.process_variables`, separately from
@@ -223,7 +223,7 @@ itself unaffected.
   `glyco_frac` and dropping `biomass` from the loss entirely, with nothing louder than a
   warning. Set `target_source` explicitly the moment a dataset has both kinds of
   targets; see [Configuration](../train/config.md#target_source).
-- **A `UserReactionModule` with modeled process variables must return
+- **A `RateModule` with modeled process variables must return
   `SCALE_modeled_PVs` from `estimate_all_scales`.** It is required only for a dataset
   that has modeled process variables (a PV-free dataset defaults to an empty scaler),
   so a reaction module copied from a
@@ -247,12 +247,12 @@ The full, runnable example (`custom.py`, configs, data) lives in
 `examples/gallery_modeled_pv/` at the repo root, no docs build required. This page's
 own executed run is at `./source/_data/out/runs/gallery_modeled_pv/`.
 
-- [The Bioprocess ODE](../format/bioprocess_ode.md): `biological_ode`, `rates`,
+- [The Bioprocess ODE](../format/bioprocess_ode.md): `reaction_ode`, `rates`,
   `derivatives`, and writing your own expressions.
 - [Mechanistic Models](mechanistic_rates.md): its own Gotchas section raises this
   exact idea (a well-constrained process variable resolving an identifiability
   problem) without building it; this page is that example.
 - [The Reaction Module](../train/reaction_module.md): `trainable_field` and
-  everything else a `UserReactionModule` can return, including `SCALE_modeled_PVs`.
+  everything else a `RateModule` can return, including `SCALE_modeled_PVs`.
 - [Configuration](../train/config.md): `target_source` and the rest of the config
   schema.

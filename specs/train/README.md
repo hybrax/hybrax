@@ -33,7 +33,7 @@ Read in this order:
 | Training data | `src/hybrax/train/training_data.py` | [03](03_data_preparation.md) | Batch assembly, target selection |
 | Controls | `src/hybrax/train/controls_store.py`, `src/hybrax/train/controls.py` | [03](03_data_preparation.md) | Runtime control evaluation + event sources |
 | Validation | `src/hybrax/train/validate.py` | [03](03_data_preparation.md) | hybrax.format + prepared-semantics checks |
-| Model API | `src/hybrax/train/model_api.py` | [04](04_reaction_and_loss.md) | `UserReactionModule` / `UserLossModule`, scales, field tags |
+| Model API | `src/hybrax/train/model_api.py` | [04](04_reaction_and_loss.md) | `RateModule` / `UserLossModule`, scales, field tags |
 | Defaults | `src/hybrax/train/defaults.py` | [04](04_reaction_and_loss.md) | `DefaultReactionModule` (MLP) / `DefaultLossModule` (MSE) |
 | Wrapper | `src/hybrax/train/wrapper.py` | [04](04_reaction_and_loss.md) | `HybridOdeWrapper` — ODE RHS bridge |
 | Dense grids | `src/hybrax/train/dense.py` | [04](04_reaction_and_loss.md) | Union-grid + jump-mask helpers for dense losses |
@@ -58,7 +58,7 @@ adapter is invoked separately before the hooks. Full per-hook write-ups
 | [`transform_process_collection`](02_cli_and_config.md#transform_process_collection) | prepare | `(collection, config) -> collection` | rename map |
 | [`augment_state_values`](02_cli_and_config.md#augment_state_values) | prepare | `(*, parent_name, child_name, state_name, times, base_values, augmented_values, config) -> ndarray` | none |
 | [`estimate_all_scales`](02_cli_and_config.md#estimate_all_scales) | train | `(runtime_data, target_names, config) -> EstimatedScales` | none (ones) |
-| [`build_reaction_module`](02_cli_and_config.md#build_reaction_module) | train | `(*, target_names, process_names, config, seed, training_parent_collection, **scale_kwargs) -> UserReactionModule` | `DefaultReactionModule` |
+| [`build_reaction_module`](02_cli_and_config.md#build_reaction_module) | train | `(*, target_names, process_names, config, seed, training_parent_collection, **scale_kwargs) -> RateModule` | `DefaultReactionModule` |
 | [`build_loss_module`](02_cli_and_config.md#build_loss_module) | train | `(*, target_names, process_names, config, seed, training_parent_collection) -> UserLossModule` | `DefaultLossModule` |
 | [`build_learning_rate`](02_cli_and_config.md#build_learning_rate) | train | `(custom_cfg, train_cfg, total_updates) -> float \| optax.Schedule` | none |
 | [`build_optimizer`](02_cli_and_config.md#build_optimizer) | train | `(custom_cfg, train_cfg) -> optax.GradientTransformation` | none |
@@ -69,7 +69,7 @@ Constructor hooks receive only the ordered original parents represented by the
 selected training processes.
 
 The two base classes the `build_*_module` hooks return are documented in
-[04_reaction_and_loss.md](04_reaction_and_loss.md): `UserReactionModule.__call__(t,
+[04_reaction_and_loss.md](04_reaction_and_loss.md): `RateModule.__call__(t,
 inputs) -> ReactionOutputs`, and `UserLossModule` (`loss_names`, `dense_grid_n`,
 `__call__(inputs) -> LossOutputs`).
 
@@ -100,7 +100,7 @@ SCL_controls (continuous, evaluated at t)
  └─ controlled PVs: pH, DO, T, …
 
 SCL reaction outputs
- ├─ modeled_BiologicalOde_rates
+ ├─ modeled_ReactionOde_rates
  ├─ modeled_Inflows_rates (≥ 0)
  ├─ modeled_Outflows_rates (≤ 0)
  └─ latent_derivative

@@ -51,7 +51,7 @@ from hybrax.format.serialization import (
 )
 
 from .constants import METADATA_NAMESPACE
-from .model_api import UserLossModule, UserReactionModule, partition_trainable
+from .model_api import UserLossModule, RateModule, partition_trainable
 from .run_config import RunConfig
 from .training_data import TARGET_SOURCE_AUTO, TrainingDataStore
 from .wrapper import HybridOdeWrapper
@@ -357,7 +357,7 @@ class ReconstructedTraining:
     custom_module: Any | None
     collection: BioProcessCollection
     store: TrainingDataStore
-    reaction_module: UserReactionModule
+    reaction_module: RateModule
     loss_module: UserLossModule
     training_process_names: tuple[str, ...]
     template_wrapper: HybridOdeWrapper

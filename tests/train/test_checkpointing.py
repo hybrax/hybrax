@@ -25,7 +25,7 @@ from hybrax.train.checkpointing import CheckpointWriter
 from hybrax.train.harness import TrainHarnessConfig, train_collection
 from hybrax.train.model_api import (
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     frozen_field,
     partition_trainable,
     trainable_field,
@@ -202,13 +202,13 @@ _DEFAULT_CHECKPOINTING_SCALES: dict[str, jnp.ndarray] = {
     "SCALE_controlled_Outflows_rates": jnp.ones(0),
     "SCALE_controlled_PVs": jnp.ones(0),
     "SCALE_modeled_Inflows_Cin": jnp.ones((0, 1)),
-    "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
+    "SCALE_modeled_ReactionOde_rates": jnp.ones(1),
     "SCALE_modeled_Inflows_rates": jnp.ones(0),
     "SCALE_modeled_Outflows_rates": jnp.ones(0),
 }
 
 
-class _LinearReactionModule(UserReactionModule):
+class _LinearReactionModule(RateModule):
     model: eqx.nn.Linear = trainable_field()
     non_model_bias: jax.Array = frozen_field()
 
@@ -222,7 +222,7 @@ class _LinearReactionModule(UserReactionModule):
         SCL_modeled_RMCs = inputs.SCL_modeled_RMCs
         rate = self.model(SCL_modeled_RMCs)[0] + self.non_model_bias[0]
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.asarray(
+            SCL_modeled_ReactionOde_rates=jnp.asarray(
                 [rate], dtype=SCL_modeled_RMCs.dtype
             ),
             SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),

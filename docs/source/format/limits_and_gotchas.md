@@ -23,7 +23,7 @@ evaporation. Missing components have zero retention and leave at the well-mixed 
 concentration.
 
 The last one deserves emphasis: units are used for exactly two checks, that quantities
-you *add* in a `biological_ode` expression share a unit, and that processes in a case
+you *add* in a `reaction_ode` expression share a unit, and that processes in a case
 study agree. `"g/L"` and `"g/l"` are different strings. Pick one spelling.
 
 ## Things that raise
@@ -33,7 +33,7 @@ alternative.
 
 **At construction**
 
-- **No `biomass` component** and no explicit `biological_ode` → `BioProcess(...)` raises.
+- **No `biomass` component** and no explicit `reaction_ode` → `BioProcess(...)` raises.
   Auto-generated rates are specific, so they need a biomass.
 - **`TimeSeries` with neither samples nor spline** → raises. So does `times` without
   `values`, non-increasing `times`, or a `coeffs`/`breaks` shape mismatch.

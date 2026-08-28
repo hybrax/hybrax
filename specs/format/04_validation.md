@@ -117,9 +117,9 @@ apply retention factors.
 
 The reactor medium contains a component named `biomass` (case-insensitive).
 
-This matters because the auto-generated `BiologicalOde` builds every derivative
+This matters because the auto-generated `ReactionOde` builds every derivative
 as `q_<species> * biomass` and cannot do so without it. If your process has no
-biomass component, supply your own `biological_ode` — the check will still
+biomass component, supply your own `reaction_ode` — the check will still
 report, but the process is usable.
 
 Biomass has **no reserved position** in the state vector; reactor components are
@@ -164,7 +164,7 @@ Measurements *exactly at* a sampling time are correct and are not flagged.
 
 Every `Bounds` tuple on the process — `ReactorMediumComponent.bounds`,
 `ProcessVariable.bounds`, `Volume.bounds` — has `lower <= upper` when both are
-set. (Bounds on `BiologicalOde.rates` are checked by `validate_biological_ode`.)
+set. (Bounds on `ReactionOde.rates` are checked by `validate_reaction_ode`.)
 This checks the tuple itself, not the data — see `validate_bounds_against_data`
 below for that.
 
@@ -181,15 +181,15 @@ and reports how many datapoints violate the bound, with the observed min/max.
 
 `ReactorMediumComponent.bounds` defaults to `(0.0, None)` even when never set
 explicitly, so this check catches negative concentrations by default, not just
-on RMCs with an explicit bound. Out of scope: `BiologicalOde.rates` bounds — no
+on RMCs with an explicit bound. Out of scope: `ReactionOde.rates` bounds — no
 rate-inversion machinery exists in hybrax.format to compute a measured rate value
 to check those against.
 
 `PASS bounds_against_data: all measured datapoints with declared bounds fall within them`
 
-### `validate_biological_ode(process)`
+### `validate_reaction_ode(process)`
 
-The aggregate check for `process.biological_ode`. No-op when it is `None`.
+The aggregate check for `process.reaction_ode`. No-op when it is `None`.
 
 - Every dynamic state (reactor component or uncontrolled process variable) has
   an entry in `derivatives`; `"0"` counts. Every `derivatives` key *is* a
@@ -205,13 +205,13 @@ The aggregate check for `process.biological_ode`. No-op when it is `None`.
   matching units and rejected when one is `g/L` and the other `mg/L` — the
   subtraction would be meaningless.
 
-`SKIP biological_ode: process.biological_ode is None — structural checks skipped`
-`PASS biological_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units`
+`SKIP reaction_ode: process.reaction_ode is None — structural checks skipped`
+`PASS reaction_ode: derivatives/algebraic/rates parse, resolve, and are acyclic with consistent units`
 
-### `validate_biological_ode_equivalence(container)`
+### `validate_reaction_ode_equivalence(container)`
 
 Given a `BioProcessCollection`, checks that every process exposes an identical
-`BiologicalOde` (same `algebraic`, `rates`, and `derivatives`). One model has to
+`ReactionOde` (same `algebraic`, `rates`, and `derivatives`). One model has to
 describe every run in a study for the benchmark to mean anything. Containers
 with 0 or 1 process pass trivially.
 
@@ -219,7 +219,7 @@ Not part of `validate_for_publication`; call it directly, or let
 [`print_rhs_ode`](05_inspection.md) run it for you.
 
 Returns `(bool, str)` — a single aggregate check, not a per-process list.
-`PASS biological_ode_equivalence: identical across 3 processes`
+`PASS reaction_ode_equivalence: identical across 3 processes`
 
 ### `validate_cross_process_consistency(collection)`
 
@@ -295,7 +295,7 @@ Runs, in order:
 11. `validate_measurement_sampling_alignment`
 12. `validate_bounds`
 13. `validate_bounds_against_data`
-14. `validate_biological_ode`
+14. `validate_reaction_ode`
 
 Returns one `(check_ok, message)` pair per check — including the passing ones,
 so the output reads as a checklist and callers can filter to just the failures
@@ -361,13 +361,13 @@ print(f"net change: {delta:+.3f} {process.volume.unit}")
 | Message | Cause | Fix |
 |---------|-------|-----|
 | `FAIL volume_change_sign: ... Inflow contains negative values` | Sign convention flipped | Feeds are ≥ 0, samples ≤ 0 |
-| `FAIL biomass_in_reactor_medium: ... does not contain a 'biomass' component` | Missing or renamed biomass | Rename it, or supply your own `biological_ode` |
+| `FAIL biomass_in_reactor_medium: ... does not contain a 'biomass' component` | Missing or renamed biomass | Rename it, or supply your own `reaction_ode` |
 | `FAIL timeseries_shape: ... times length does not match values length` | Arrays misaligned during parsing | Rebuild the `TimeSeries` |
 | `FAIL measurement_sampling_alignment: ... measurement at t=… is … after sampling` | Offline timestamp nudged past the sample | Snap it onto the sampling time |
 | `FAIL initial_state_alignment: no measurement at time_axis.start=... for: ...` | A dynamic state's first measurement is later than `time_axis.start` | Add a `t=time_axis.start` measurement, or mark the variable a `StaticVariable` |
-| `FAIL biological_ode: ... derivatives missing entries for dynamic state(s)` | A state has no `d/dt` | Add an entry; `"0"` if there is no biology |
-| `FAIL biological_ode: ... references undeclared symbol(s)` | Typo, or a symbol that is not a state / control / algebraic / rate | Declare it or fix the name |
-| `FAIL biological_ode: ... combined additively with mismatched units` | Summing `g/L` with `mg/L` | Convert to one unit |
+| `FAIL reaction_ode: ... derivatives missing entries for dynamic state(s)` | A state has no `d/dt` | Add an entry; `"0"` if there is no biology |
+| `FAIL reaction_ode: ... references undeclared symbol(s)` | Typo, or a symbol that is not a state / control / algebraic / rate | Declare it or fix the name |
+| `FAIL reaction_ode: ... combined additively with mismatched units` | Summing `g/L` with `mg/L` | Convert to one unit |
 
 ## See also
 

@@ -10,7 +10,7 @@ import pytest
 
 import hybrax.format.json_io as json_io
 from hybrax.format.dataclasses import (
-    BiologicalOde,
+    ReactionOde,
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -214,7 +214,7 @@ def _make_explicit_ode_collection() -> BioProcessCollection:
             )
         },
     )
-    process.biological_ode = BiologicalOde(
+    process.reaction_ode = ReactionOde(
         algebraic={"growth": "mu * biomass"},
         rates={"mu": (None, None), "r_X": (None, None)},
         derivatives={"biomass": "growth", "X": "r_X"},
@@ -242,7 +242,7 @@ def _write_sample_semantics_custom_py(path: Path) -> None:
                 "            values=jnp.asarray([0.1, 0.2]),",
                 "        ),",
                 "    )",
-                "    process.biological_ode = None",
+                "    process.reaction_ode = None",
                 "    process.__post_init__()",
                 "    return collection",
             ]
@@ -284,7 +284,7 @@ def _write_feed_semantics_custom_py(path: Path) -> None:
                 "        concentration=StaticVariable(0.0),",
                 "        is_controlled=False,",
                 "    )",
-                "    process.biological_ode = None",
+                "    process.reaction_ode = None",
                 "    process.__post_init__()",
                 "    return collection",
             ]
@@ -328,7 +328,7 @@ def _write_feed_semantics_incomplete_custom_py(path: Path) -> None:
                 "        concentration=StaticVariable(0.0),",
                 "        is_controlled=False,",
                 "    )",
-                "    process.biological_ode = None",
+                "    process.reaction_ode = None",
                 "    process.__post_init__()",
                 "    return collection",
             ]
@@ -370,7 +370,7 @@ def _make_invalid_collection() -> BioProcessCollection:
             )
         },
     )
-    process.biological_ode = BiologicalOde(
+    process.reaction_ode = ReactionOde(
         rates={"r_X": (None, None)},
         derivatives={"X": "r_X"},
     )
@@ -445,9 +445,9 @@ def test_load_raw_collection_reads_input():
     assert "hybrax" in (collection.metadata or {})
 
 
-def test_prepare_artifact_preserves_valid_user_biological_ode(tmp_path):
+def test_prepare_artifact_preserves_valid_user_reaction_ode(tmp_path):
     collection = _make_explicit_ode_collection()
-    expected_ode = collection.processes["p1"].biological_ode
+    expected_ode = collection.processes["p1"].reaction_ode
 
     output_dir = tmp_path / "prepared-explicit-ode"
     prepared = _prepare_from_collection(
@@ -456,13 +456,13 @@ def test_prepare_artifact_preserves_valid_user_biological_ode(tmp_path):
         output_dir,
     )
 
-    prepared_ode = prepared.processes["p1"].biological_ode
+    prepared_ode = prepared.processes["p1"].reaction_ode
     assert prepared_ode == expected_ode
     reloaded = load_process_collection(output_dir / "prepared.json")
-    assert reloaded.processes["p1"].biological_ode == expected_ode
+    assert reloaded.processes["p1"].reaction_ode == expected_ode
 
 
-def test_prepare_artifact_rejects_missing_biological_ode_after_transform(
+def test_prepare_artifact_rejects_missing_reaction_ode_after_transform(
     tmp_path,
 ):
     collection = _make_explicit_ode_collection()
@@ -471,14 +471,14 @@ def test_prepare_artifact_rejects_missing_biological_ode_after_transform(
         "\n".join(
             [
                 "def transform_process_collection(collection, config):",
-                "    collection.processes['p1'].biological_ode = None",
+                "    collection.processes['p1'].reaction_ode = None",
                 "    return collection",
             ]
         ),
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="biological_ode is missing"):
+    with pytest.raises(ValueError, match="reaction_ode is missing"):
         _prepare_from_collection(
             collection,
             tmp_path,
@@ -487,13 +487,13 @@ def test_prepare_artifact_rejects_missing_biological_ode_after_transform(
         )
 
 
-def test_prepare_artifact_rejects_invalid_stale_biological_ode_after_transform(
+def test_prepare_artifact_rejects_invalid_stale_reaction_ode_after_transform(
     tmp_path,
 ):
     collection = _make_explicit_ode_collection()
-    collection.processes["p1"].biological_ode = None
+    collection.processes["p1"].reaction_ode = None
     collection.processes["p1"].__post_init__()
-    stale_ode = collection.processes["p1"].biological_ode
+    stale_ode = collection.processes["p1"].reaction_ode
     assert stale_ode.derivatives == {"biomass": "q_biomass * biomass", "X": "r_X"}
 
     custom_py = tmp_path / "control_x.py"
@@ -509,7 +509,7 @@ def test_prepare_artifact_rejects_invalid_stale_biological_ode_after_transform(
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="FAIL biological_ode"):
+    with pytest.raises(ValueError, match="FAIL reaction_ode"):
         _prepare_from_collection(
             collection,
             tmp_path,
@@ -518,11 +518,11 @@ def test_prepare_artifact_rejects_invalid_stale_biological_ode_after_transform(
         )
 
 
-def test_prepare_artifact_allows_hook_to_explicitly_regenerate_biological_ode(
+def test_prepare_artifact_allows_hook_to_explicitly_regenerate_reaction_ode(
     tmp_path,
 ):
     collection = _make_explicit_ode_collection()
-    collection.processes["p1"].biological_ode = None
+    collection.processes["p1"].reaction_ode = None
     collection.processes["p1"].__post_init__()
 
     custom_py = tmp_path / "control_x_regenerate.py"
@@ -532,7 +532,7 @@ def test_prepare_artifact_allows_hook_to_explicitly_regenerate_biological_ode(
                 "def transform_process_collection(collection, config):",
                 "    process = collection.processes['p1']",
                 "    process.process_variables['X'].is_controlled = True",
-                "    process.biological_ode = None",
+                "    process.reaction_ode = None",
                 "    process.__post_init__()",
                 "    return collection",
             ]
@@ -547,7 +547,7 @@ def test_prepare_artifact_allows_hook_to_explicitly_regenerate_biological_ode(
         custom_py=custom_py,
     )
 
-    prepared_ode = prepared.processes["p1"].biological_ode
+    prepared_ode = prepared.processes["p1"].reaction_ode
     assert prepared_ode.derivatives == {"biomass": "q_biomass * biomass"}
     assert prepared_ode.rates == {"q_biomass": (None, None)}
 
@@ -621,7 +621,7 @@ def test_prepare_artifact_respects_custom_control_order(tmp_path):
                 "    for process in collection.processes.values():",
                 "        process.process_variables['CF'].is_controlled = True",
                 "        process.process_variables['T'].is_controlled = True",
-                "        process.biological_ode = None",
+                "        process.reaction_ode = None",
                 "        process.__post_init__()",
                 "    return collection",
             ]
@@ -906,7 +906,7 @@ def test_prepare_artifact_rejects_zero_feed_without_component_metadata(tmp_path)
         values=jnp.asarray([0.0, 0.0]),
     )
     process.volume.volume_changes["feed_A"].feed_medium.components = {}
-    process.biological_ode = None
+    process.reaction_ode = None
     process.__post_init__()
 
     with pytest.raises(
@@ -927,7 +927,7 @@ def test_prepare_artifact_rejects_inconsistent_control_sets(tmp_path):
                 "            process.process_variables['CF'].is_controlled = True",
                 "        else:",
                 "            process.process_variables['T'].is_controlled = True",
-                "        process.biological_ode = None",
+                "        process.reaction_ode = None",
                 "        process.__post_init__()",
                 "    return collection",
             ]
@@ -963,7 +963,7 @@ def _write_control_custom_py(path: Path) -> None:
                 "    for process in collection.processes.values():",
                 "        process.process_variables['CF'].is_controlled = True",
                 "        process.process_variables['T'].is_controlled = True",
-                "        process.biological_ode = None",
+                "        process.reaction_ode = None",
                 "        process.__post_init__()",
                 "    return collection",
             ]

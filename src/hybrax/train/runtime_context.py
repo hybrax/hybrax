@@ -15,7 +15,7 @@ from hybrax.format.dataclasses import (
 )
 from hybrax.format.mechanistic import build_rhs_ode
 from hybrax.format.time_series.timeseries import TimeSeries
-from hybrax.format.validate import validate_biological_ode_equivalence
+from hybrax.format.validate import validate_reaction_ode_equivalence
 
 from .training_data import TrainingDataStore
 
@@ -426,7 +426,7 @@ def rhs_ode_from_training_parents(
 ):
     """Build the shared RhsOde of a parent collection, rejecting disagreement.
 
-    Every parent must declare an equivalent ``BiologicalOde``, so the first
+    Every parent must declare an equivalent ``ReactionOde``, so the first
     one's ``RhsOde`` speaks for all of them.
 
     Args:
@@ -439,11 +439,11 @@ def rhs_ode_from_training_parents(
 
     Raises:
         ValueError: If ``collection`` is empty, or its parents declare
-            non-equivalent ``biological_ode`` blocks.
+            non-equivalent ``reaction_ode`` blocks.
     """
     if not collection.processes:
         raise ValueError(empty_message)
-    equivalent, message = validate_biological_ode_equivalence(collection)
+    equivalent, message = validate_reaction_ode_equivalence(collection)
     if not equivalent:
         raise ValueError(message)
     return build_rhs_ode(next(iter(collection.processes.values())))

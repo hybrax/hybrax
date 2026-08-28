@@ -16,7 +16,7 @@ import jax.numpy as jnp
 import pytest
 
 from hybrax.format import (
-    BiologicalOde,
+    ReactionOde,
     BioProcess,
     BioProcessMetadata,
     FeedMedium,
@@ -252,7 +252,7 @@ class TestProcessOrdering:
 
     def test_rates_preserve_user_order(self):
         process = _make_batch_process()
-        process.biological_ode = BiologicalOde(
+        process.reaction_ode = ReactionOde(
             algebraic={},
             rates={"r_zeta": (None, None), "r_alpha": (None, None)},
             derivatives={
@@ -265,7 +265,7 @@ class TestProcessOrdering:
 
     def test_algebraic_topo_sorted(self):
         process = _make_batch_process()
-        process.biological_ode = BiologicalOde(
+        process.reaction_ode = ReactionOde(
             algebraic={
                 "B": "A + 1",
                 "A": "biomass",
@@ -342,7 +342,7 @@ class TestProcessOrdering:
                 values=_ts([0.0, 10.0], [1.0, 1.0]),
             ),
         }
-        process.biological_ode = BiologicalOde(
+        process.reaction_ode = ReactionOde(
             algebraic={},
             rates={"q_b": (None, None)},
             derivatives={"biomass": "q_b * biomass"},
@@ -589,7 +589,7 @@ class TestRhsOde:
         c = jnp.array([2.0, 5.0, 1.0])
         rates = jnp.array([0.1, -0.5])  # auto rate order: q_biomass, q_glucose
         dc = rhs(c, rates, jnp.zeros(0), jnp.zeros(0), jnp.zeros(0))
-        # auto BiologicalOde: dc/dt = q_<rmc> * biomass
+        # auto ReactionOde: dc/dt = q_<rmc> * biomass
         # biomass: 0.1 * 2.0 = 0.2
         # glucose: -0.5 * 2.0 = -1.0
         assert float(dc[0]) == pytest.approx(0.2, abs=1e-6)
@@ -607,9 +607,9 @@ class TestRhsOde:
         dc = jitted(c, rates, u, jnp.zeros(0), jnp.zeros(0))
         assert dc.shape == (3,)
 
-    def test_user_defined_biological_ode(self):
+    def test_user_defined_reaction_ode(self):
         process = _make_batch_process()
-        process.biological_ode = BiologicalOde(
+        process.reaction_ode = ReactionOde(
             algebraic={"X_active": "biomass - 0.1"},
             rates={"q_b": (None, None), "q_g": (None, None)},
             derivatives={
@@ -627,10 +627,10 @@ class TestRhsOde:
         assert float(dc[0]) == pytest.approx(0.95, abs=1e-6)
         assert float(dc[1]) == pytest.approx(-0.57, abs=1e-6)
 
-    def test_no_biological_ode_raises(self):
+    def test_no_reaction_ode_raises(self):
         process = _make_batch_process()
-        process.biological_ode = None
-        with pytest.raises(ValueError, match="biological_ode"):
+        process.reaction_ode = None
+        with pytest.raises(ValueError, match="reaction_ode"):
             build_rhs_ode(process)
 
     def test_feed_dilution_concentration(self):
@@ -756,7 +756,7 @@ class TestOutflowRetention:
                 },
             ),
             reactor_medium=rm,
-            biological_ode=BiologicalOde(rates={}, derivatives={"glucose": "0"}),
+            reaction_ode=ReactionOde(rates={}, derivatives={"glucose": "0"}),
         )
         rhs = build_rhs_ode(process)
         dc = rhs(
@@ -803,7 +803,7 @@ class TestOutflowRetention:
                 },
             ),
             reactor_medium=rm,
-            biological_ode=BiologicalOde(rates={}, derivatives={"glucose": "0"}),
+            reaction_ode=ReactionOde(rates={}, derivatives={"glucose": "0"}),
         )
         rhs = build_rhs_ode(process)
         dc = rhs(
@@ -888,7 +888,7 @@ class TestOutflowRetention:
                 },
             ),
             reactor_medium=rm,
-            biological_ode=BiologicalOde(rates={}, derivatives={"biomass": "0"}),
+            reaction_ode=ReactionOde(rates={}, derivatives={"biomass": "0"}),
         )
         rhs = build_rhs_ode(process)
         c = jnp.array([c_biomass, V])
@@ -941,7 +941,7 @@ class TestOutflowRetention:
                 },
             ),
             reactor_medium=rm,
-            biological_ode=BiologicalOde(rates={}, derivatives={"biomass": "0"}),
+            reaction_ode=ReactionOde(rates={}, derivatives={"biomass": "0"}),
         )
         rhs = build_rhs_ode(process)
         c = jnp.array([c_biomass, V])
@@ -997,7 +997,7 @@ class TestOutflowRetention:
                 },
             ),
             reactor_medium=rm,
-            biological_ode=BiologicalOde(
+            reaction_ode=ReactionOde(
                 rates={}, derivatives={"biomass": "0", "glucose": "0"}
             ),
         )
@@ -1099,7 +1099,7 @@ class TestOutflowRetention:
                 },
             ),
             reactor_medium=rm,
-            biological_ode=BiologicalOde(rates={}, derivatives={"biomass": "0"}),
+            reaction_ode=ReactionOde(rates={}, derivatives={"biomass": "0"}),
         )
         rhs = build_rhs_ode(process)
         c = jnp.array([c_biomass, V])
@@ -1151,7 +1151,7 @@ class TestOutflowRetention:
                     },
                 ),
                 reactor_medium=rm,
-                biological_ode=BiologicalOde(rates={}, derivatives={"solute": "0"}),
+                reaction_ode=ReactionOde(rates={}, derivatives={"solute": "0"}),
             )
             rhs = build_rhs_ode(process)
             c = jnp.array([c_solute, V])
@@ -1314,7 +1314,7 @@ class TestBuildStateSplines:
 class TestBuildAlgebraicFunc:
     def test_returns_dict(self):
         process = _make_batch_process()
-        process.biological_ode = BiologicalOde(
+        process.reaction_ode = ReactionOde(
             algebraic={"X_active": "biomass - 0.1"},
             rates={"q_b": (None, None), "q_g": (None, None)},
             derivatives={
@@ -1332,8 +1332,8 @@ class TestBuildAlgebraicFunc:
         assert "X_active" in out
         assert float(out["X_active"]) == pytest.approx(1.9, abs=1e-6)
 
-    def test_no_biological_ode_raises(self):
+    def test_no_reaction_ode_raises(self):
         process = _make_batch_process()
-        process.biological_ode = None
-        with pytest.raises(ValueError, match="biological_ode"):
+        process.reaction_ode = None
+        with pytest.raises(ValueError, match="reaction_ode"):
             build_algebraic_func(process)

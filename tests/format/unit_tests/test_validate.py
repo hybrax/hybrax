@@ -8,7 +8,7 @@ import pytest
 import jax.numpy as jnp
 
 from hybrax.format import (
-    BiologicalOde,
+    ReactionOde,
     DiscreteEvents,
     TimeSeries,
     StaticVariable,
@@ -42,7 +42,7 @@ from hybrax.format import (
     validate_cross_process_consistency,
     validate_bounds_against_data,
     validate_augmented_parent_refs,
-    validate_biological_ode,
+    validate_reaction_ode,
     validate_bounds,
 )
 
@@ -1105,7 +1105,7 @@ class TestValidateProcess:
             "measurement_sampling_alignment",
             "bounds",
             "bounds_against_data",
-            "biological_ode",
+            "reaction_ode",
         }
 
         _, results = validate_process(process)
@@ -1757,7 +1757,7 @@ class TestValidateAugmentedParentRefs:
 
 
 # ---------------------------------------------------------------------------
-# validate_biological_ode + validate_bounds
+# validate_reaction_ode + validate_bounds
 # ---------------------------------------------------------------------------
 
 
@@ -1772,18 +1772,18 @@ def _make_intra_process():
     )
 
 
-class TestValidateBiologicalOde:
+class TestValidateReactionOde:
     def test_auto_generated_block_validates_clean(self):
-        # BioProcess.__post_init__ populates biological_ode automatically;
+        # BioProcess.__post_init__ populates reaction_ode automatically;
         # the auto-generated block must always pass validation.
         p = _make_intra_process()
-        assert p.biological_ode is not None
-        ok, msg = validate_biological_ode(p)
+        assert p.reaction_ode is not None
+        ok, msg = validate_reaction_ode(p)
         assert ok is True
 
     def test_well_formed_block_passes(self):
         p = _make_intra_process()
-        p.biological_ode = BiologicalOde(
+        p.reaction_ode = ReactionOde(
             algebraic={"X_active": "biomass - product"},
             rates={"q_X": (None, None), "q_P": (None, None), "q_S": (None, None)},
             derivatives={
@@ -1792,12 +1792,12 @@ class TestValidateBiologicalOde:
                 "glucose": "q_S * X_active",
             },
         )
-        ok, _ = validate_biological_ode(p)
+        ok, _ = validate_reaction_ode(p)
         assert ok is True
 
     def test_unknown_symbol_in_expression_is_rejected(self):
         p = _make_intra_process()
-        p.biological_ode = BiologicalOde(
+        p.reaction_ode = ReactionOde(
             algebraic={},
             rates={"q_X": (None, None)},
             derivatives={
@@ -1806,18 +1806,18 @@ class TestValidateBiologicalOde:
                 "glucose": "0",
             },
         )
-        ok, msg = validate_biological_ode(p)
+        ok, msg = validate_reaction_ode(p)
         assert ok is False
         assert "zzz" in msg
 
     def test_missing_derivative_for_state_is_rejected(self):
         p = _make_intra_process()
-        p.biological_ode = BiologicalOde(
+        p.reaction_ode = ReactionOde(
             algebraic={},
             rates={"q_X": (None, None)},
             derivatives={"biomass": "q_X * biomass"},
         )
-        ok, msg = validate_biological_ode(p)
+        ok, msg = validate_reaction_ode(p)
         assert ok is False
         assert "missing entries" in msg
         assert "product" in msg
@@ -1825,7 +1825,7 @@ class TestValidateBiologicalOde:
 
     def test_extra_derivative_for_non_state_is_rejected(self):
         p = _make_intra_process()
-        p.biological_ode = BiologicalOde(
+        p.reaction_ode = ReactionOde(
             algebraic={},
             rates={"q_X": (None, None)},
             derivatives={
@@ -1835,29 +1835,29 @@ class TestValidateBiologicalOde:
                 "ghost": "q_X",
             },
         )
-        ok, msg = validate_biological_ode(p)
+        ok, msg = validate_reaction_ode(p)
         assert ok is False
         assert "ghost" in msg
 
     def test_algebraic_dependency_cycle_is_rejected(self):
         p = _make_intra_process()
-        p.biological_ode = BiologicalOde(
+        p.reaction_ode = ReactionOde(
             algebraic={"a": "b + 1", "b": "a * 2"},
             rates={"q_X": (None, None)},
             derivatives={"biomass": "0", "product": "0", "glucose": "0"},
         )
-        ok, msg = validate_biological_ode(p)
+        ok, msg = validate_reaction_ode(p)
         assert ok is False
         assert "cycle" in msg.lower()
 
     def test_rate_name_collides_with_state_is_rejected(self):
         p = _make_intra_process()
-        p.biological_ode = BiologicalOde(
+        p.reaction_ode = ReactionOde(
             algebraic={},
             rates={"biomass": (None, None)},
             derivatives={"biomass": "biomass", "product": "0", "glucose": "0"},
         )
-        ok, msg = validate_biological_ode(p)
+        ok, msg = validate_reaction_ode(p)
         assert ok is False
         assert "collide" in msg.lower()
         assert "biomass" in msg
@@ -1869,23 +1869,23 @@ class TestValidateBiologicalOde:
                 "feed_rate", "L/h", is_controlled=True, values=StaticVariable(0.1)
             )
         }
-        p.biological_ode = BiologicalOde(
+        p.reaction_ode = ReactionOde(
             algebraic={},
             rates={"feed_rate": (None, None)},
             derivatives={"biomass": "0", "product": "0", "glucose": "0"},
         )
-        ok, msg = validate_biological_ode(p)
+        ok, msg = validate_reaction_ode(p)
         assert ok is False
         assert "feed_rate" in msg
 
     def test_invalid_rate_bounds_lo_greater_than_hi_is_rejected(self):
         p = _make_intra_process()
-        p.biological_ode = BiologicalOde(
+        p.reaction_ode = ReactionOde(
             algebraic={},
             rates={"q_X": (2.0, 1.0)},
             derivatives={"biomass": "q_X * biomass", "product": "0", "glucose": "0"},
         )
-        ok, msg = validate_biological_ode(p)
+        ok, msg = validate_reaction_ode(p)
         assert ok is False
         assert "lo=2.0" in msg
         assert "hi=1.0" in msg
@@ -1893,7 +1893,7 @@ class TestValidateBiologicalOde:
     def test_unit_consistent_state_subtraction_passes(self):
         """X_active = biomass - product with both g/L: accepted."""
         p = _make_intra_process()  # biomass, product, glucose all g/L
-        p.biological_ode = BiologicalOde(
+        p.reaction_ode = ReactionOde(
             algebraic={"X_active": "biomass - product"},
             rates={"q_X": (None, None), "q_P": (None, None), "q_S": (None, None)},
             derivatives={
@@ -1902,7 +1902,7 @@ class TestValidateBiologicalOde:
                 "glucose": "q_S * X_active",
             },
         )
-        ok, _ = validate_biological_ode(p)
+        ok, _ = validate_reaction_ode(p)
         assert ok is True
 
     def test_unit_mismatched_state_subtraction_is_rejected(self):
@@ -1921,7 +1921,7 @@ class TestValidateBiologicalOde:
                 ),
             }
         )
-        p.biological_ode = BiologicalOde(
+        p.reaction_ode = ReactionOde(
             algebraic={"X_active": "biomass - product"},
             rates={"q_X": (None, None), "q_P": (None, None), "q_S": (None, None)},
             derivatives={
@@ -1930,7 +1930,7 @@ class TestValidateBiologicalOde:
                 "glucose": "q_S * X_active",
             },
         )
-        ok, msg = validate_biological_ode(p)
+        ok, msg = validate_reaction_ode(p)
         assert ok is False
         assert "X_active" in msg
         assert "biomass" in msg
@@ -1951,7 +1951,7 @@ class TestValidateBiologicalOde:
                 ),
             }
         )
-        p.biological_ode = BiologicalOde(
+        p.reaction_ode = ReactionOde(
             algebraic={},
             rates={"q_X": (None, None)},
             derivatives={
@@ -1959,7 +1959,7 @@ class TestValidateBiologicalOde:
                 "glucose": "0",
             },
         )
-        ok, msg = validate_biological_ode(p)
+        ok, msg = validate_reaction_ode(p)
         assert ok is False
         assert "biomass" in msg
         assert "glucose" in msg
@@ -1974,7 +1974,7 @@ class TestValidateBiologicalOde:
         # Add-level free_symbols include {q_X, X_active, q_P} but NO state
         # symbols (X_active is algebraic, q_* are rates) — does not trigger.
         p = _make_intra_process()
-        p.biological_ode = BiologicalOde(
+        p.reaction_ode = ReactionOde(
             algebraic={"X_active": "biomass - product"},
             rates={"q_X": (None, None), "q_P": (None, None), "q_S": (None, None)},
             derivatives={
@@ -1983,7 +1983,7 @@ class TestValidateBiologicalOde:
                 "glucose": "q_S * X_active",
             },
         )
-        ok, _ = validate_biological_ode(p)
+        ok, _ = validate_reaction_ode(p)
         assert ok is True
 
     def test_unit_mismatch_with_uncontrolled_pv_is_rejected(self):
@@ -2000,7 +2000,7 @@ class TestValidateBiologicalOde:
                 values=StaticVariable(95.0),
             ),
         }
-        p.biological_ode = BiologicalOde(
+        p.reaction_ode = ReactionOde(
             algebraic={"weird": "biomass + viability"},
             rates={"q_X": (None, None), "q_P": (None, None), "q_S": (None, None)},
             derivatives={
@@ -2010,7 +2010,7 @@ class TestValidateBiologicalOde:
                 "viability": "0",
             },
         )
-        ok, msg = validate_biological_ode(p)
+        ok, msg = validate_reaction_ode(p)
         assert ok is False
         assert "viability" in msg
         assert "biomass" in msg

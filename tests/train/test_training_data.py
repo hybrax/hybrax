@@ -183,7 +183,7 @@ def _write_custom(path: Path) -> None:
                 "    for process in collection.processes.values():",
                 "        process.process_variables['CF'].is_controlled = True",
                 "        process.process_variables['T'].is_controlled = True",
-                "        process.biological_ode = None",
+                "        process.reaction_ode = None",
                 "        process.__post_init__()",
                 "    return collection",
             ]
@@ -403,7 +403,7 @@ def test_training_data_store_rejects_inconsistent_target_order(tmp_path):
                 "def transform_process_collection(collection, config):",
                 "    for process in collection.processes.values():",
                 "        process.process_variables['CF'].is_controlled = True",
-                "        process.biological_ode = None",
+                "        process.reaction_ode = None",
                 "        process.__post_init__()",
                 "    return collection",
             ]

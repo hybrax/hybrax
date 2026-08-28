@@ -20,7 +20,7 @@ from hybrax.train import (
     EstimatedScales,
     ReactionInputs,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     frozen_field,
     trainable_field,
 )
@@ -56,7 +56,7 @@ class KANLayer(eqx.Module):
         return spline + base
 
 
-class KANReactionModule(UserReactionModule):
+class KANReactionModule(RateModule):
     l1: KANLayer = trainable_field()
     l2: KANLayer = trainable_field()
     prod_a: KANLayer = trainable_field()
@@ -65,7 +65,7 @@ class KANReactionModule(UserReactionModule):
     def __init__(self, *, key, hidden=8, grid=6, **scale_kwargs):
         super().__init__(**scale_kwargs)
         n_in = self.n_modeled_RMCs
-        n_out = self.n_modeled_BiologicalOde_rates
+        n_out = self.n_modeled_ReactionOde_rates
         k1, k2, ka, kb = jax.random.split(key, 4)
         # Hidden layer full-scale; output layer near-zero so the ODE starts flat
         # yet both layers receive gradient at step 0 (avoids an all-zero cold start).
@@ -84,7 +84,7 @@ class KANReactionModule(UserReactionModule):
         h = self.l1(inputs.SCL_modeled_RMCs)
         out = self.l2(h) + self.prod_a(h[0:1]) * self.prod_b(h[1:2])
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=out,
+            SCL_modeled_ReactionOde_rates=out,
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
         )
@@ -124,7 +124,7 @@ def estimate_all_scales(runtime_data, target_names, config):
     empty = jnp.zeros(0)
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
-        SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
+        SCALE_modeled_ReactionOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
             max(runtime_data.initial_volume(i) for i in range(n_processes))
         ),

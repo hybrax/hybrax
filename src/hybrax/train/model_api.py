@@ -7,14 +7,14 @@ This module provides:
 - ``Scaler`` / ``LinearScaler`` / ``AffineScaler`` — RAW (physical) <-> SCL
   (solver) unit transforms, one per semantic axis of the state/control vectors.
 - ``ReactionInputs`` / ``ReactionOutputs`` / ``EstimatedScales`` /
-  ``UserReactionModule`` — the reaction-model contract: subclass
-  ``UserReactionModule``, implement ``__call__``, and the ``scale_*``/``unscale_*``
+  ``RateModule`` — the reaction-model contract: subclass
+  ``RateModule``, implement ``__call__``, and the ``scale_*``/``unscale_*``
   delegates handle every RAW/SCL conversion the ODE RHS needs.
 - ``LossInputs`` / ``LossOutputs`` / ``UserLossModule`` — the loss contract:
   subclass ``UserLossModule`` and implement ``__call__`` to turn one sample's
   predictions and measurements into named loss terms.
 
-Both ``UserReactionModule`` and ``UserLossModule`` are abstract base classes:
+Both ``RateModule`` and ``UserLossModule`` are abstract base classes:
 their ``__call__`` (and, for the reaction module, every ``scale_*``/``unscale_*``
 helper) raise ``NotImplementedError`` until a subclass provides them. The
 training harness (``harness.py``, ``trainer.py``) drives instances of these
@@ -468,7 +468,7 @@ def _as_scaler(value: jax.Array | Scaler) -> Scaler:
 
 
 class ReactionInputs(eqx.Module):
-    """All inputs to a UserReactionModule call, one per semantic axis.
+    """All inputs to a RateModule call, one per semantic axis.
 
     Built by HybridOdeWrapper at each RHS evaluation. Modeled RMC inputs remain
     unclipped so gradient flow survives transient negative excursions near
@@ -501,7 +501,7 @@ class ReactionInputs(eqx.Module):
 
 
 class ReactionOutputs(eqx.Module):
-    """Structured return value from a UserReactionModule.__call__.
+    """Structured return value from a RateModule.__call__.
 
     Rate fields are in SCALED space — the module divides its physical
     output by the matching SCALE_* axis (typically via ``self.scale_*`` helpers)
@@ -510,8 +510,8 @@ class ReactionOutputs(eqx.Module):
 
     Attributes
     ----------
-    SCL_modeled_BiologicalOde_rates:
-        Rates emitted by the BiologicalOde block, aligned with
+    SCL_modeled_ReactionOde_rates:
+        Rates emitted by the ReactionOde block, aligned with
         ``rhs_ode.name_modeled_rates``. Not 1:1 with RMCs — algebraic rates
         (e.g. ``q_X_active`` in TUB) live here without a corresponding RMC.
     SCL_modeled_Inflows_rates:
@@ -528,7 +528,7 @@ class ReactionOutputs(eqx.Module):
         and stable keys across calls.
     """
 
-    SCL_modeled_BiologicalOde_rates: jax.Array
+    SCL_modeled_ReactionOde_rates: jax.Array
     SCL_modeled_Inflows_rates: jax.Array
     SCL_modeled_Outflows_rates: jax.Array
     SCL_latent_derivative: jax.Array = eqx.field(
@@ -563,7 +563,7 @@ class EstimatedScales:
     SCALE_controlled_Outflows_rates: jax.Array | Scaler
     SCALE_controlled_PVs: jax.Array | Scaler
     SCALE_modeled_Inflows_Cin: jax.Array | Scaler
-    SCALE_modeled_BiologicalOde_rates: jax.Array | Scaler
+    SCALE_modeled_ReactionOde_rates: jax.Array | Scaler
     SCALE_modeled_Inflows_rates: jax.Array | Scaler
     SCALE_modeled_Outflows_rates: jax.Array | Scaler
     # Defaults to empty (no modeled PVs); processes with uncontrolled,
@@ -573,7 +573,7 @@ class EstimatedScales:
     )
 
 
-class UserReactionModule(eqx.Module):
+class RateModule(eqx.Module):
     """Base for user-defined reaction modules.
 
     The module is the single source of truth for every ``SCALE_*`` vector in
@@ -636,7 +636,7 @@ class UserReactionModule(eqx.Module):
     SCALE_modeled_Inflows_Cin: Scaler = frozen_field(
         default_factory=lambda: LinearScaler(jnp.zeros((0, 0), dtype=jnp.float64))
     )
-    SCALE_modeled_BiologicalOde_rates: Scaler = frozen_field(
+    SCALE_modeled_ReactionOde_rates: Scaler = frozen_field(
         default_factory=lambda: LinearScaler(jnp.zeros(0, dtype=jnp.float64))
     )
     SCALE_modeled_Inflows_rates: Scaler = frozen_field(
@@ -661,12 +661,10 @@ class UserReactionModule(eqx.Module):
         ``super().__init__()``.
         """
         module_fields = {f.name: f for f in fields(type(self))}
-        scale_fields = {f.name for f in fields(UserReactionModule)}
+        scale_fields = {f.name for f in fields(RateModule)}
         unknown = sorted(set(kwargs) - set(module_fields))
         if unknown:
-            raise TypeError(
-                f"Unknown UserReactionModule field(s): {', '.join(unknown)}"
-            )
+            raise TypeError(f"Unknown RateModule field(s): {', '.join(unknown)}")
         for f in module_fields.values():
             if f.name in kwargs:
                 value = kwargs[f.name]
@@ -707,9 +705,9 @@ class UserReactionModule(eqx.Module):
         return int(self.SCALE_modeled_Outflows_cumulative.shape[0])
 
     @property
-    def n_modeled_BiologicalOde_rates(self) -> int:
-        """Number of rates emitted by the BiologicalOde block."""
-        return int(self.SCALE_modeled_BiologicalOde_rates.shape[0])
+    def n_modeled_ReactionOde_rates(self) -> int:
+        """Number of rates emitted by the ReactionOde block."""
+        return int(self.SCALE_modeled_ReactionOde_rates.shape[0])
 
     @property
     def n_controlled_Inflows(self) -> int:
@@ -938,20 +936,20 @@ class UserReactionModule(eqx.Module):
         """SCL -> RAW for modeled Inflow feed concentrations."""
         return self.SCALE_modeled_Inflows_Cin.unscale_value(SCL_modeled_Inflows_Cin)
 
-    def scale_modeled_BiologicalOde_rates(self, RAW_modeled_BiologicalOde_rates):
-        """RAW -> SCL for modeled ``biological_ode`` rates (offset-free
+    def scale_modeled_ReactionOde_rates(self, RAW_modeled_ReactionOde_rates):
+        """RAW -> SCL for modeled ``reaction_ode`` rates (offset-free
         derivative op).
         """
-        return self.SCALE_modeled_BiologicalOde_rates.scale_derivative(
-            RAW_modeled_BiologicalOde_rates
+        return self.SCALE_modeled_ReactionOde_rates.scale_derivative(
+            RAW_modeled_ReactionOde_rates
         )
 
-    def unscale_modeled_BiologicalOde_rates(self, SCL_modeled_BiologicalOde_rates):
-        """SCL -> RAW for modeled ``biological_ode`` rates (offset-free
+    def unscale_modeled_ReactionOde_rates(self, SCL_modeled_ReactionOde_rates):
+        """SCL -> RAW for modeled ``reaction_ode`` rates (offset-free
         derivative op).
         """
-        return self.SCALE_modeled_BiologicalOde_rates.unscale_derivative(
-            SCL_modeled_BiologicalOde_rates
+        return self.SCALE_modeled_ReactionOde_rates.unscale_derivative(
+            SCL_modeled_ReactionOde_rates
         )
 
     def scale_modeled_Inflows_rates(self, RAW_modeled_Inflows_rates):
@@ -1019,8 +1017,8 @@ class LossInputs(eqx.Module):
     # Predictions over measurement times (n_meas, ...)
     SCL_states: jax.Array
     RAW_states: jax.Array
-    SCL_modeled_BiologicalOde_rates: jax.Array
-    RAW_modeled_BiologicalOde_rates: jax.Array
+    SCL_modeled_ReactionOde_rates: jax.Array
+    RAW_modeled_ReactionOde_rates: jax.Array
     SCL_modeled_Inflows_rates: jax.Array
     RAW_modeled_Inflows_rates: jax.Array
     SCL_modeled_Outflows_rates: jax.Array
@@ -1042,7 +1040,7 @@ class LossInputs(eqx.Module):
     n_measured: jax.Array
 
     # Single source of SCALE_* (frozen reference, not a copy)
-    reaction_module: UserReactionModule
+    reaction_module: RateModule
 
     # Training step; -1 in forward-eval contexts. For schedules / annealing.
     step: jax.Array
@@ -1061,8 +1059,8 @@ class LossInputs(eqx.Module):
     dense_t: jax.Array | None = None
     dense_SCL_states: jax.Array | None = None
     dense_RAW_states: jax.Array | None = None
-    dense_SCL_modeled_BiologicalOde_rates: jax.Array | None = None
-    dense_RAW_modeled_BiologicalOde_rates: jax.Array | None = None
+    dense_SCL_modeled_ReactionOde_rates: jax.Array | None = None
+    dense_RAW_modeled_ReactionOde_rates: jax.Array | None = None
     dense_SCL_modeled_Inflows_rates: jax.Array | None = None
     dense_RAW_modeled_Inflows_rates: jax.Array | None = None
     dense_SCL_modeled_Outflows_rates: jax.Array | None = None
@@ -1096,7 +1094,7 @@ class LossOutputs(eqx.Module):
 
 
 class UserLossModule(eqx.Module):
-    """Base for user-defined loss modules. Mirrors ``UserReactionModule``.
+    """Base for user-defined loss modules. Mirrors ``RateModule``.
 
     Subclasses declare any trainable / frozen state via ``trainable_field()`` /
     ``frozen_field()`` (e.g. Kendall uncertainty weights), exactly like a

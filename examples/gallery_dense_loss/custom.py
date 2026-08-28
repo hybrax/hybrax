@@ -7,7 +7,7 @@ dense grid rather than only at the sparse measurement times:
 1. A hinge penalty on every declared STATE bound (from
    ``ReactorMediumComponent.bounds``, already present in the data).
 2. A hinge penalty on every declared RATE bound (from
-   ``BiologicalOde.rates``, attached here via ``transform_process_collection``
+   ``ReactionOde.rates``, attached here via ``transform_process_collection``
    since the auto-generated ODE leaves rates unbounded).
 3. A smoothness penalty: the sum of squared second time-derivatives
    ("curvature") of each rate trajectory, masked away from genuine
@@ -26,7 +26,7 @@ from hybrax.train import (
     LossOutputs,
     ReactionInputs,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     dense_triple_mask_away_from_jumps,
     trainable_field,
 )
@@ -37,14 +37,14 @@ from hybrax.train.defaults import DefaultLossModule
 # --------------------------------------------------------------------------
 # 1 & 2. Reaction module and scale estimation: identical to Tutorial 4.
 # --------------------------------------------------------------------------
-class BatchReactionModule(UserReactionModule):
+class BatchReactionModule(RateModule):
     mlp: eqx.nn.MLP = trainable_field()
 
     def __init__(self, *, key, **scale_kwargs):
         super().__init__(**scale_kwargs)
         self.mlp = eqx.nn.MLP(
             in_size=self.n_modeled_RMCs,
-            out_size=self.n_modeled_BiologicalOde_rates,
+            out_size=self.n_modeled_ReactionOde_rates,
             width_size=32,
             depth=3,
             activation=jax.nn.tanh,
@@ -54,7 +54,7 @@ class BatchReactionModule(UserReactionModule):
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.mlp(inputs.SCL_modeled_RMCs),
+            SCL_modeled_ReactionOde_rates=self.mlp(inputs.SCL_modeled_RMCs),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
         )
@@ -94,7 +94,7 @@ def estimate_all_scales(runtime_data, target_names, config):
     empty = jnp.zeros(0)
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
-        SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
+        SCALE_modeled_ReactionOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
             max(runtime_data.initial_volume(i) for i in range(n_processes))
         ),
@@ -117,7 +117,7 @@ def estimate_all_scales(runtime_data, target_names, config):
 
 
 # --------------------------------------------------------------------------
-# 3. Attach rate bounds. hybrax.format's auto-generated BiologicalOde leaves every
+# 3. Attach rate bounds. hybrax.format's auto-generated ReactionOde leaves every
 #    rate unbounded (Bounds = (None, None)); here we declare what we actually
 #    know about the biology, so the loss below has something to read.
 # --------------------------------------------------------------------------
@@ -125,9 +125,9 @@ def transform_process_collection(collection, config):
     del config
     for process in collection.processes.values():
         # Uptake cannot be positive; formation cannot be wildly negative.
-        process.biological_ode.rates["q_biomass"] = (-0.05, 1.0)
-        process.biological_ode.rates["q_glucose"] = (-3.0, 0.0)
-        process.biological_ode.rates["q_product"] = (0.0, 0.3)
+        process.reaction_ode.rates["q_biomass"] = (-0.05, 1.0)
+        process.reaction_ode.rates["q_glucose"] = (-3.0, 0.0)
+        process.reaction_ode.rates["q_product"] = (0.0, 0.3)
     return collection
 
 
@@ -180,7 +180,7 @@ class PhysicalConstraintsLoss(DefaultLossModule):
             inputs.dense_RAW_states[:, :n_state_bounds], self.state_lo, self.state_hi
         )
         rate_penalty = hinge(
-            inputs.dense_RAW_modeled_BiologicalOde_rates, self.rate_lo, self.rate_hi
+            inputs.dense_RAW_modeled_ReactionOde_rates, self.rate_lo, self.rate_hi
         )
         bounds = (
             jnp.sum(state_penalty * valid[:, None])
@@ -190,7 +190,7 @@ class PhysicalConstraintsLoss(DefaultLossModule):
         # Smoothness: central second difference of each rate trajectory.
         # dense_t is a uniform linspace, so a fixed dt is valid.
         dt = inputs.dense_t[1] - inputs.dense_t[0]
-        rates = inputs.dense_RAW_modeled_BiologicalOde_rates
+        rates = inputs.dense_RAW_modeled_ReactionOde_rates
         curvature = (rates[2:] - 2.0 * rates[1:-1] + rates[:-2]) / (dt**2)
         # A bolus/sample creates a REAL kink; do not penalise curvature there.
         # hybrax.train ships this exact helper for that purpose.
@@ -225,7 +225,7 @@ def build_loss_module(*, target_names, training_parent_collection, **kwargs):
         for n in rhs.name_modeled_RMCs
     ]
     rate_bounds = [
-        as_pair(process.biological_ode.rates[n]) for n in rhs.name_modeled_rates
+        as_pair(process.reaction_ode.rates[n]) for n in rhs.name_modeled_rates
     ]
 
     return PhysicalConstraintsLoss(

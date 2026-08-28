@@ -17,7 +17,7 @@ import numpy as np
 from hybrax.format.dataclasses import BioProcessCollection
 from hybrax.format.mechanistic import RhsOde, build_rhs_ode
 from hybrax.format.serialization import load_process_collection
-from hybrax.format.validate import validate_biological_ode_equivalence
+from hybrax.format.validate import validate_reaction_ode_equivalence
 
 from .controls_store import BatchControls, ControlsStore, PerProcessControls
 from .wrapper import validate_rhs_ode_compatibility
@@ -562,11 +562,11 @@ class TrainingDataStore(eqx.Module):
                     f"but expected {reference_targets!r}"
                 )
 
-        biological_ode_ok, biological_ode_message = validate_biological_ode_equivalence(
+        reaction_ode_ok, reaction_ode_message = validate_reaction_ode_equivalence(
             collection
         )
-        if not biological_ode_ok:
-            raise ValueError(biological_ode_message)
+        if not reaction_ode_ok:
+            raise ValueError(reaction_ode_message)
 
         for process_name, rhs_ode in zip(process_order[1:], rhs_odes[1:], strict=True):
             validate_rhs_ode_compatibility(

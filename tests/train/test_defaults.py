@@ -25,7 +25,7 @@ def _reaction_module(
         SCALE_modeled_Outflows_cumulative=jnp.ones(n_outflows),
         SCALE_modeled_Inflows_rates=jnp.ones(n_inflows),
         SCALE_modeled_Outflows_rates=jnp.ones(n_outflows),
-        SCALE_modeled_BiologicalOde_rates=jnp.ones(n_out),
+        SCALE_modeled_ReactionOde_rates=jnp.ones(n_out),
     )
 
 
@@ -203,15 +203,15 @@ def test_default_reaction_module_scale_independent_of_target_count():
 def test_default_reaction_module_rejects_disagreeing_training_parents():
     """The default builder speaks for all parents via the first one's RhsOde.
 
-    That is only sound if every parent declares an equivalent BiologicalOde, so
+    That is only sound if every parent declares an equivalent ReactionOde, so
     disagreement must be rejected rather than silently resolved by ordering.
     """
     collection = _make_multi_process_collection(2)
     p2 = collection.processes["p2"]
-    p2.biological_ode.rates = {"q_other": (None, None)}
-    p2.biological_ode.derivatives["biomass"] = "q_other * biomass"
+    p2.reaction_ode.rates = {"q_other": (None, None)}
+    p2.reaction_ode.derivatives["biomass"] = "q_other * biomass"
 
-    with pytest.raises(ValueError, match="biological_ode_equivalence"):
+    with pytest.raises(ValueError, match="reaction_ode_equivalence"):
         default_build_reaction_module(
             target_names=["biomass"],
             process_names=list(collection.processes),

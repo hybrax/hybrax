@@ -109,7 +109,7 @@ CONTROL_INDEX = {name: index for index, name in enumerate(CONTROL_NAMES)}
 # Inert pseudobatch tracers: NON-PHYSICAL witnesses (an unfed and a fed inert species
 # whose pseudobatch c* is constant by construction), not real biology. They are full
 # reactor-medium species (see REACTOR_MEDIUM_NAMES below) but have no rate model, so
-# they stay out of KINETIC_REACTOR_NAMES and get a "0" biological_ode derivative on the
+# they stay out of KINETIC_REACTOR_NAMES and get a "0" reaction_ode derivative on the
 # parser side. Vestigial now that hybrax.format's pseudobatch machinery and the dense c*
 # oracle test that consumed them have been removed; left in place pending a dedicated
 # fixture-regeneration pass (removing them means regenerating the checked-in

@@ -17,24 +17,24 @@ dilution, the events) is hybrax.format's.
 
 ```python
 from hybrax.train import (
-    UserReactionModule, ReactionInputs, ReactionOutputs, trainable_field,
+    RateModule, ReactionInputs, ReactionOutputs, trainable_field,
 )
 
-class MyReactionModule(UserReactionModule):
+class MyReactionModule(RateModule):
     mlp: eqx.nn.MLP = trainable_field()
 
     def __init__(self, *, key, **scale_kwargs):
         super().__init__(**scale_kwargs)       # always; the base owns the scales
         self.mlp = eqx.nn.MLP(
             in_size=self.n_modeled_RMCs,
-            out_size=self.n_modeled_BiologicalOde_rates,
+            out_size=self.n_modeled_ReactionOde_rates,
             width_size=32, depth=2, key=key,
         )
 
     def __call__(self, t, inputs):
         del t
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.mlp(inputs.SCL_modeled_RMCs),
+            SCL_modeled_ReactionOde_rates=self.mlp(inputs.SCL_modeled_RMCs),
             SCL_modeled_Inflows_rates=jnp.zeros(self.n_modeled_Inflows),
             SCL_modeled_Outflows_rates=jnp.zeros(self.n_modeled_Outflows),
         )
@@ -45,9 +45,9 @@ A complete, runnable version is in [Tutorial 4](../tutorials/04_your_first_custo
 ## The hook
 
 **Fires:** at training setup, after `estimate_all_scales`.
-**Signature:** `(*, target_names, process_names, config, seed, training_parent_collection, **scale_kwargs) -> UserReactionModule`
+**Signature:** `(*, target_names, process_names, config, seed, training_parent_collection, **scale_kwargs) -> RateModule`
 **Default:** `DefaultReactionModule`, a 2-layer MLP.
-**Type-checked:** returning something that is not a `UserReactionModule` raises `TypeError`.
+**Type-checked:** returning something that is not a `RateModule` raises `TypeError`.
 
 ```python
 def build_reaction_module(*, seed, **kwargs):
@@ -90,7 +90,7 @@ that knows what hour it is, which is rarely what you mean.
 
 ```python
 ReactionOutputs(
-    SCL_modeled_BiologicalOde_rates=...,   # (n_modeled_BiologicalOde_rates,)
+    SCL_modeled_ReactionOde_rates=...,   # (n_modeled_ReactionOde_rates,)
     SCL_modeled_Inflows_rates=...,            # (n_modeled_Inflows,)
     SCL_modeled_Outflows_rates=...,           # (n_modeled_Outflows,)
 )
@@ -106,7 +106,7 @@ into a run.
 
 The rate vector is **flat and positional**, aligned with `rhs_ode.name_modeled_rates`: 
 not a dict, not a `(q, r)` tuple. Its order is the insertion order of
-`BiologicalOde.rates`.
+`ReactionOde.rates`.
 
 :::{admonition} Modeled feed rates must be non-negative
 :class: warning
@@ -136,7 +136,7 @@ def __call__(self, t, inputs):
     mu = self.mu_max * S / (self.K_s + S)        # honest physical units
     RAW_rates = jnp.array([mu, -mu / self.Y_xs, self.alpha * mu])
     return ReactionOutputs(
-        SCL_modeled_BiologicalOde_rates=self.scale_modeled_BiologicalOde_rates(RAW_rates),
+        SCL_modeled_ReactionOde_rates=self.scale_modeled_ReactionOde_rates(RAW_rates),
         SCL_modeled_Inflows_rates=jnp.zeros(0),
         SCL_modeled_Outflows_rates=jnp.zeros(0),
     )

@@ -16,13 +16,13 @@ from hybrax.train import (
     EstimatedScales,
     ReactionInputs,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     frozen_field,
     trainable_field,
 )
 
 
-class FrozenEncoderReactionModule(UserReactionModule):
+class FrozenEncoderReactionModule(RateModule):
     """A fixed feature encoder feeding a small trainable readout head."""
 
     encoder: eqx.nn.MLP = frozen_field()
@@ -40,7 +40,7 @@ class FrozenEncoderReactionModule(UserReactionModule):
         )
         self.head = eqx.nn.Linear(
             in_features=n_hidden,
-            out_features=self.n_modeled_BiologicalOde_rates,
+            out_features=self.n_modeled_ReactionOde_rates,
             key=key_head,
         )
 
@@ -48,7 +48,7 @@ class FrozenEncoderReactionModule(UserReactionModule):
         del t
         features = self.encoder(inputs.SCL_modeled_RMCs)
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.head(features),
+            SCL_modeled_ReactionOde_rates=self.head(features),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
         )
@@ -88,7 +88,7 @@ def estimate_all_scales(runtime_data, target_names, config):
     empty = jnp.zeros(0)
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
-        SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
+        SCALE_modeled_ReactionOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
             max(runtime_data.initial_volume(i) for i in range(n_processes))
         ),

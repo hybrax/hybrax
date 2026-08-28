@@ -61,10 +61,10 @@ def _check_bounds_tuple(bounds: Bounds, label: str) -> Tuple[bool, str]:
     return True, ""
 
 
-def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
-    """Validate ``process.biological_ode`` if present.
+def validate_reaction_ode(process: BioProcess) -> Tuple[bool, str]:
+    """Validate ``process.reaction_ode`` if present.
 
-    Checks (skipped when ``biological_ode is None``):
+    Checks (skipped when ``reaction_ode is None``):
 
     - Every reactor-medium component and uncontrolled process variable
       (the dynamic states) must have an entry in ``derivatives``.
@@ -77,12 +77,12 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
     - Rate names do not collide with state, algebraic, or controlled-PV names.
     - All bounds tuples are sane (``lo <= hi`` when both set).
     """
-    bo = process.biological_ode
+    bo = process.reaction_ode
     if bo is None:
         return _check_result(
             "SKIP",
-            "biological_ode",
-            "process.biological_ode is None: structural checks skipped",
+            "reaction_ode",
+            "process.reaction_ode is None: structural checks skipped",
         )
 
     import sympy
@@ -136,7 +136,7 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
     if missing:
         errors.append(
             f"derivatives missing entries for dynamic state(s): {sorted(missing)}. "
-            'Use "0" to declare no biological dynamics.'
+            'Use "0" to declare no reaction dynamics.'
         )
     extra = deriv_keys - state_names
     if extra:
@@ -239,11 +239,11 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
 
     if errors:
         return _check_result(
-            "FAIL", "biological_ode", _join_details(errors, bulleted=True)
+            "FAIL", "reaction_ode", _join_details(errors, bulleted=True)
         )
     return _check_result(
         "PASS",
-        "biological_ode",
+        "reaction_ode",
         (
             "derivatives/algebraic/rates parse, resolve, and are acyclic "
             "with consistent units"
@@ -251,10 +251,10 @@ def validate_biological_ode(process: BioProcess) -> Tuple[bool, str]:
     )
 
 
-def validate_biological_ode_equivalence(
+def validate_reaction_ode_equivalence(
     container: "BioProcessCollection",
 ) -> Tuple[bool, str]:
-    """Verify all processes in *container* share the same ``biological_ode``.
+    """Verify all processes in *container* share the same ``reaction_ode``.
 
     Equivalence requires identical ``algebraic``, ``derivatives``, and
     ``rates`` dicts (same keys mapped to the same values). Containers with
@@ -264,7 +264,7 @@ def validate_biological_ode_equivalence(
     """
     if not isinstance(container, BioProcessCollection):
         raise TypeError(
-            "validate_biological_ode_equivalence() expects a "
+            "validate_reaction_ode_equivalence() expects a "
             f"BioProcessCollection, got {type(container).__name__!r}"
         )
 
@@ -272,43 +272,42 @@ def validate_biological_ode_equivalence(
     if len(procs) <= 1:
         return _check_result(
             "PASS",
-            "biological_ode_equivalence",
+            "reaction_ode_equivalence",
             f"{len(procs)} process(es): trivially equivalent",
         )
 
     first_name, first_proc = procs[0]
-    ref_bo = first_proc.biological_ode
+    ref_bo = first_proc.reaction_ode
 
     errors: List[str] = []
     for name, proc in procs[1:]:
-        bo = proc.biological_ode
+        bo = proc.reaction_ode
         if (ref_bo is None) != (bo is None):
             errors.append(
-                f"process '{name}' biological_ode presence differs from '{first_name}'"
+                f"process '{name}' reaction_ode presence differs from '{first_name}'"
             )
             continue
         if ref_bo is None:
             continue
         if dict(bo.algebraic) != dict(ref_bo.algebraic):
             errors.append(
-                f"process '{name}' biological_ode.algebraic differs from '{first_name}'"
+                f"process '{name}' reaction_ode.algebraic differs from '{first_name}'"
             )
         if dict(bo.derivatives) != dict(ref_bo.derivatives):
             errors.append(
-                f"process '{name}' biological_ode.derivatives differs from "
-                f"'{first_name}'"
+                f"process '{name}' reaction_ode.derivatives differs from '{first_name}'"
             )
         if dict(bo.rates) != dict(ref_bo.rates):
             errors.append(
-                f"process '{name}' biological_ode.rates differs from '{first_name}'"
+                f"process '{name}' reaction_ode.rates differs from '{first_name}'"
             )
 
     if errors:
         return _check_result(
-            "FAIL", "biological_ode_equivalence", _join_details(errors, bulleted=True)
+            "FAIL", "reaction_ode_equivalence", _join_details(errors, bulleted=True)
         )
     return _check_result(
-        "PASS", "biological_ode_equivalence", f"identical across {len(procs)} processes"
+        "PASS", "reaction_ode_equivalence", f"identical across {len(procs)} processes"
     )
 
 
@@ -392,9 +391,9 @@ def validate_bounds_against_data(process: BioProcess) -> Tuple[bool, str]:
     the actual scalar (``StaticVariable``) or ``TimeSeries.values`` array
     against ``(lo, hi)`` and reports how many datapoints violate the bound.
 
-    Out of scope: ``BiologicalOde.rates`` bounds. No rate-inversion
+    Out of scope: ``ReactionOde.rates`` bounds. No rate-inversion
     machinery exists to compute a measured rate value to check against them
-    (see ``validate_biological_ode``'s tuple-only sanity check on rates).
+    (see ``validate_reaction_ode``'s tuple-only sanity check on rates).
     """
     errors: List[str] = []
 
@@ -888,7 +887,7 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[Tuple[bool, str]]]
     - Measurement/sampling timestamp alignment.
     - Bounds tuple sanity.
     - Measured data falls within its own declared ``Bounds``.
-    - Biological ODE structure.
+    - Reaction ODE structure.
 
     Args:
         process: BioProcess object to validate.
@@ -978,8 +977,8 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[Tuple[bool, str]]]
     # --- Bounds vs. actual data ---
     _record(validate_bounds_against_data(process))
 
-    # --- User-defined biological ODE ---
-    _record(validate_biological_ode(process))
+    # --- User-defined reaction ODE ---
+    _record(validate_reaction_ode(process))
 
     return all_valid, results
 

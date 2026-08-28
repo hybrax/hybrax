@@ -1342,7 +1342,7 @@ def _piecewise_collection():
     """
     collection = _differing_parent_augmented_collection()
     for process in collection.processes.values():
-        process.biological_ode.algebraic["X_active"] = (
+        process.reaction_ode.algebraic["X_active"] = (
             "Piecewise((biomass, biomass > 1), (0.0, True))"
         )
     return collection
@@ -1402,7 +1402,7 @@ def _differing_parent_augmented_collection():
         reactor_medium=deepcopy(p2.reactor_medium),
         process_variables=deepcopy(p2.process_variables),
         discrete_events=deepcopy(p2.discrete_events),
-        biological_ode=deepcopy(p2.biological_ode),
+        reaction_ode=deepcopy(p2.reaction_ode),
         pseudobatch_transform=deepcopy(p2.pseudobatch_transform),
         parent_process="p2",
     )
@@ -1747,12 +1747,12 @@ def test_loader_rejects_parent_with_different_biological_expression(tmp_path):
 
     tampered = load_process_collection(artifact / "training-parents.json")
     process = tuple(tampered.processes.values())[1]
-    derivative = next(iter(process.biological_ode.derivatives))
-    expression = process.biological_ode.derivatives[derivative]
-    process.biological_ode.derivatives[derivative] = f"({expression}) + 1.0"
+    derivative = next(iter(process.reaction_ode.derivatives))
+    expression = process.reaction_ode.derivatives[derivative]
+    process.reaction_ode.derivatives[derivative] = f"({expression}) + 1.0"
     _rewrite_parent_collection(artifact, tampered)
 
-    with pytest.raises(ValueError, match="biological_ode.derivatives differs"):
+    with pytest.raises(ValueError, match="reaction_ode.derivatives differs"):
         load_runtime_artifact(artifact, fold_id=0)
 
 
@@ -1765,8 +1765,8 @@ def test_loader_rejects_parent_collection_with_different_rhs_axes(tmp_path):
 
     tampered = load_process_collection(artifact / "training-parents.json")
     for process in tampered.processes.values():
-        process.biological_ode.algebraic["extra"] = "biomass"
-        process.biological_ode.derivatives["biomass"] = "q_biomass * extra"
+        process.reaction_ode.algebraic["extra"] = "biomass"
+        process.reaction_ode.derivatives["biomass"] = "q_biomass * extra"
     _rewrite_parent_collection(artifact, tampered)
 
     with pytest.raises(ValueError, match="reconstructed RhsOde axes differ"):

@@ -1,6 +1,6 @@
 """Glutamine degradation rate law: three constant specific rates, no kinetic
 structure at all. The point of this page is entirely in the dataset's own
-biological_ode block (one shared rate feeding two derivatives), not in this
+reaction_ode block (one shared rate feeding two derivatives), not in this
 reaction module.
 """
 
@@ -11,12 +11,12 @@ import numpy as np
 from hybrax.train import (
     EstimatedScales,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     trainable_field,
 )
 
 
-class GlutamineDecayModule(UserReactionModule):
+class GlutamineDecayModule(RateModule):
     log_q_biomass: jax.Array = trainable_field()
     log_q_Gln: jax.Array = trainable_field()
     log_r_Gln: jax.Array = trainable_field()
@@ -38,7 +38,7 @@ class GlutamineDecayModule(UserReactionModule):
             ]
         )
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.scale_modeled_BiologicalOde_rates(
+            SCL_modeled_ReactionOde_rates=self.scale_modeled_ReactionOde_rates(
                 RAW_rates
             ),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
@@ -74,7 +74,7 @@ def estimate_all_scales(runtime_data, target_names, config):
     empty = jnp.zeros(0)
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
-        SCALE_modeled_BiologicalOde_rates=jnp.asarray(
+        SCALE_modeled_ReactionOde_rates=jnp.asarray(
             [rmc_scale[n[2:]] / (biomass * span) for n in rhs.name_modeled_rates]
         ),
         SCALE_V_in_cumulative=jnp.asarray(

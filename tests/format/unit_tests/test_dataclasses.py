@@ -12,7 +12,7 @@ from hybrax.format import (
     TimeAxis,
     TimeSeries,
     StaticVariable,
-    BiologicalOde,
+    ReactionOde,
     BioProcessMetadata,
     ProcessVariable,
     FeedMediumComponent,
@@ -26,7 +26,7 @@ from hybrax.format import (
     BioProcessCollection,
     silence_assumptions,
 )
-from hybrax.format.dataclasses import _format_biological_ode_lines
+from hybrax.format.dataclasses import _format_reaction_ode_lines
 from hybrax.format.mechanistic import get_process_ordering
 from hybrax.format.serialization import (
     save_process_collection,
@@ -297,8 +297,8 @@ def test_bioprocess_minimal():
     assert process.process_variables == {}
 
 
-def test_bioprocess_autogen_biological_ode_requires_biomass():
-    """When ``biological_ode`` is omitted and the reactor medium has
+def test_bioprocess_autogen_reaction_ode_requires_biomass():
+    """When ``reaction_ode`` is omitted and the reactor medium has
     components, ``__post_init__`` auto-generates a default block — and
     that auto-generation requires a 'biomass' reactor component."""
     rm = ReactorMedium(
@@ -327,8 +327,8 @@ def test_bioprocess_autogen_biological_ode_requires_biomass():
         )
 
 
-def test_bioprocess_user_defined_biological_ode_skips_biomass_check():
-    """When the user supplies their own ``biological_ode``,
+def test_bioprocess_user_defined_reaction_ode_skips_biomass_check():
+    """When the user supplies their own ``reaction_ode``,
     ``__post_init__`` skips auto-generation and the biomass-component
     requirement does not apply — the user's block is the source of truth."""
     rm = ReactorMedium(
@@ -346,7 +346,7 @@ def test_bioprocess_user_defined_biological_ode_skips_biomass_check():
             ),
         },
     )
-    user_block = BiologicalOde(
+    user_block = ReactionOde(
         rates={"q_glucose": (None, None)},
         derivatives={"glucose": "q_glucose"},
     )
@@ -357,9 +357,9 @@ def test_bioprocess_user_defined_biological_ode_skips_biomass_check():
         ),
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=rm,
-        biological_ode=user_block,
+        reaction_ode=user_block,
     )
-    assert process.biological_ode is user_block
+    assert process.reaction_ode is user_block
 
 
 # ---------------------------------------------------------------------------
@@ -552,7 +552,7 @@ def test_silence_assumptions_suppresses_inflow_notice(caplog):
     assert [r for r in caplog.records if r.name.startswith("hybrax.format")] == []
 
 
-def test_silence_assumptions_suppresses_biological_ode_notice(caplog):
+def test_silence_assumptions_suppresses_reaction_ode_notice(caplog):
     rm = ReactorMedium(
         name="medium",
         components={
@@ -600,12 +600,12 @@ def test_density_defaults_are_silent(caplog):
     assert [r for r in caplog.records if r.name.startswith("hybrax.format")] == []
 
 
-def test_format_biological_ode_lines_direct():
-    bo = BiologicalOde(
+def test_format_reaction_ode_lines_direct():
+    bo = ReactionOde(
         rates={"q_biomass": (None, None)},
         derivatives={"biomass": "q_biomass * biomass"},
     )
-    lines = _format_biological_ode_lines(bo, prefix="  ")
+    lines = _format_reaction_ode_lines(bo, prefix="  ")
     joined = "\n".join(lines)
     assert "Rates (1):" in joined
     assert "q_biomass" in joined

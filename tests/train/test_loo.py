@@ -784,7 +784,7 @@ def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path)
     assert validation_calls[2] == (
         "training",
         validation_calls[1][1],
-        {"strict": True, "require_biological_ode": True},
+        {"strict": True, "require_reaction_ode": True},
     )
     assert [call[0] for call in validation_calls] == [
         "parents",

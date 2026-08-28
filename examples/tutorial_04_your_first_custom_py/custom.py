@@ -12,7 +12,7 @@ from hybrax.train import (
     EstimatedScales,
     ReactionInputs,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     trainable_field,
 )
 
@@ -20,7 +20,7 @@ from hybrax.train import (
 # --------------------------------------------------------------------------
 # 1. The reaction module: modeled state -> specific rates
 # --------------------------------------------------------------------------
-class BatchReactionModule(UserReactionModule):
+class BatchReactionModule(RateModule):
     """One MLP mapping the modeled state to the three specific rates."""
 
     # `trainable_field()` is what makes these weights visible to the optimizer.
@@ -32,7 +32,7 @@ class BatchReactionModule(UserReactionModule):
         super().__init__(**scale_kwargs)
         self.mlp = eqx.nn.MLP(
             in_size=self.n_modeled_RMCs,  # biomass, glucose, product
-            out_size=self.n_modeled_BiologicalOde_rates,  # q_biomass, q_glucose,
+            out_size=self.n_modeled_ReactionOde_rates,  # q_biomass, q_glucose,
             # q_product
             width_size=32,
             depth=3,
@@ -50,7 +50,7 @@ class BatchReactionModule(UserReactionModule):
         # Emit it directly: do not re-apply scale_*, or it cancels on the
         # wrapper's unscale round trip. See the note in the tutorial text.
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.mlp(inputs.SCL_modeled_RMCs),
+            SCL_modeled_ReactionOde_rates=self.mlp(inputs.SCL_modeled_RMCs),
             # demo_batch has no modeled feeds, but the field is still required.
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
@@ -100,7 +100,7 @@ def estimate_all_scales(runtime_data, target_names, config):
     empty = jnp.zeros(0)  # demo_batch has no feeds and no process variables
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
-        SCALE_modeled_BiologicalOde_rates=jnp.asarray(rate_scale),
+        SCALE_modeled_ReactionOde_rates=jnp.asarray(rate_scale),
         SCALE_V_in_cumulative=jnp.asarray(
             max(runtime_data.initial_volume(i) for i in range(n_processes))
         ),

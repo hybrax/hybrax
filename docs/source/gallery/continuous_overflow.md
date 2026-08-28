@@ -73,7 +73,7 @@ equal prescribed rates make the level balance exact after the vessel reaches 1 L
 `process_type="continuous"` is useful metadata, while the `Inflow`, `Outflow`, and their
 time series are what actually create this behavior.
 
-The biological ODE declares one specific rate, growth (`mu`). Transport terms for feed,
+The reaction ODE declares one specific rate, growth (`mu`). Transport terms for feed,
 outflow, and changing volume are assembled separately from the process description:
 
 ```{code-cell} ipython3

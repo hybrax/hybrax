@@ -148,7 +148,7 @@ The scale axes are:
 - `SCALE_controlled_PVs` (`n_ctrl_PV`): controlled PV signals.
 - `SCALE_modeled_Inflows_Cin` (`n_modeled_Inflow × n_RMC`): modeled feed
   compositions.
-- `SCALE_modeled_BiologicalOde_rates` (`n_rates`): reaction rates.
+- `SCALE_modeled_ReactionOde_rates` (`n_rates`): reaction rates.
 - `SCALE_modeled_Inflows_rates` (`n_modeled_Inflow`): modeled inflow rates.
 - `SCALE_modeled_Outflows_rates` (`n_modeled_Outflow`): modeled outflow rates.
 - `SCALE_latent` (`n_latent`): integrated latent state for stateful modules.

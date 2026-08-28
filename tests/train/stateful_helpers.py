@@ -26,7 +26,7 @@ from hybrax.train.model_api import (
     LinearScaler,
     ReactionInputs,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     trainable_field,
 )
 from hybrax.train.physical_solve import solve_physical_states
@@ -56,13 +56,13 @@ def default_stateful_scale_kwargs(
         "SCALE_controlled_Outflows_rates": jnp.ones(n_controlled_outflows),
         "SCALE_controlled_PVs": jnp.ones(n_controlled_pvs),
         "SCALE_modeled_Inflows_Cin": jnp.ones((n_modeled_inflows, n_rmcs)),
-        "SCALE_modeled_BiologicalOde_rates": jnp.ones(1),
+        "SCALE_modeled_ReactionOde_rates": jnp.ones(1),
         "SCALE_modeled_Inflows_rates": jnp.ones(n_modeled_inflows),
         "SCALE_modeled_Outflows_rates": jnp.ones(n_modeled_outflows),
     }
 
 
-class ZeroLatentDerivativeModule(UserReactionModule):
+class ZeroLatentDerivativeModule(RateModule):
     h0: jax.Array
 
     def __init__(self, h0: jax.Array):
@@ -72,7 +72,7 @@ class ZeroLatentDerivativeModule(UserReactionModule):
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.zeros(1, dtype=inputs.SCL_latent.dtype),
+            SCL_modeled_ReactionOde_rates=jnp.zeros(1, dtype=inputs.SCL_latent.dtype),
             SCL_modeled_Inflows_rates=jnp.zeros(0, dtype=inputs.SCL_latent.dtype),
             SCL_modeled_Outflows_rates=jnp.zeros(0, dtype=inputs.SCL_latent.dtype),
             SCL_latent_derivative=jnp.zeros_like(inputs.SCL_latent),
@@ -83,7 +83,7 @@ class ZeroLatentDerivativeModule(UserReactionModule):
         return self.h0
 
 
-class TrainableH0Module(UserReactionModule):
+class TrainableH0Module(RateModule):
     h0: jax.Array = trainable_field()
 
     def __init__(self, h0: jax.Array):
@@ -93,7 +93,7 @@ class TrainableH0Module(UserReactionModule):
     def __call__(self, t, inputs: ReactionInputs) -> ReactionOutputs:
         del t
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.zeros(1, dtype=inputs.SCL_latent.dtype),
+            SCL_modeled_ReactionOde_rates=jnp.zeros(1, dtype=inputs.SCL_latent.dtype),
             SCL_modeled_Inflows_rates=jnp.zeros(0, dtype=inputs.SCL_latent.dtype),
             SCL_modeled_Outflows_rates=jnp.zeros(0, dtype=inputs.SCL_latent.dtype),
             SCL_latent_derivative=inputs.SCL_latent,
@@ -202,7 +202,7 @@ def make_process(*, feed_rate: float = 0.0, jump: bool = False) -> BioProcess:
     )
 
 
-def build_stateful_wrapper(process: BioProcess, module: UserReactionModule):
+def build_stateful_wrapper(process: BioProcess, module: RateModule):
     collection = BioProcessCollection(processes={"p1": process}, metadata={})
     controls = ControlsStore.from_collection(collection).get_controls("p1")
     rhs = build_rhs_ode(process)
@@ -212,13 +212,13 @@ def build_stateful_wrapper(process: BioProcess, module: UserReactionModule):
     # must have been built with the rhs rate count; otherwise the overridden scale
     # below would silently disagree with the head width.
     n_rates = len(rhs.name_modeled_rates)
-    assert module.n_modeled_BiologicalOde_rates in (0, n_rates), (
+    assert module.n_modeled_ReactionOde_rates in (0, n_rates), (
         "build_stateful_wrapper cannot re-shape a module whose rate head was "
-        f"sized to {module.n_modeled_BiologicalOde_rates}, not the rhs count {n_rates}"
+        f"sized to {module.n_modeled_ReactionOde_rates}, not the rhs count {n_rates}"
     )
     scale_kwargs = {
         **default_stateful_scale_kwargs(n_controlled_inflows=n_controlled_inflows),
-        "SCALE_modeled_BiologicalOde_rates": jnp.ones(len(rhs.name_modeled_rates)),
+        "SCALE_modeled_ReactionOde_rates": jnp.ones(len(rhs.name_modeled_rates)),
         "SCALE_latent": jnp.ones(n_latent),
     }
     module = eqx.tree_at(

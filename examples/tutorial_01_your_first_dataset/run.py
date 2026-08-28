@@ -72,8 +72,8 @@ process = hxf.BioProcess(
     volume=volume,
     reactor_medium=reactor_medium,
 )
-print("rates      :", list(process.biological_ode.rates))
-print("derivatives:", process.biological_ode.derivatives)
+print("rates      :", list(process.reaction_ode.rates))
+print("derivatives:", process.reaction_ode.derivatives)
 
 # --- 1.6 Collect and save ----------------------------------------------------
 collection = hxf.BioProcessCollection(

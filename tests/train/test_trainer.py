@@ -29,7 +29,7 @@ from hybrax.train.model_api import (
     LossInputs,
     LossOutputs,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     frozen_field,
     partition_trainable,
     trainable_field,
@@ -53,7 +53,7 @@ def _measurement_loss(wrapper, **kwargs):
     return result.total_loss, result.per_target_loss
 
 
-class _LinearReactionModule(UserReactionModule):
+class _LinearReactionModule(RateModule):
     model: eqx.nn.Linear = trainable_field()
     non_model_bias: jax.Array = frozen_field()
 
@@ -67,7 +67,7 @@ class _LinearReactionModule(UserReactionModule):
         SCL_modeled_RMCs = inputs.SCL_modeled_RMCs
         rate = self.model(SCL_modeled_RMCs)[0] + self.non_model_bias[0]
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.asarray(
+            SCL_modeled_ReactionOde_rates=jnp.asarray(
                 [rate], dtype=SCL_modeled_RMCs.dtype
             ),
             SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
@@ -75,7 +75,7 @@ class _LinearReactionModule(UserReactionModule):
         )
 
 
-class _RawDependentReactionModule(UserReactionModule):
+class _RawDependentReactionModule(RateModule):
     def __init__(self, **scale_kwargs):
         super().__init__(**scale_kwargs)
 
@@ -84,13 +84,13 @@ class _RawDependentReactionModule(UserReactionModule):
         RAW_modeled_RMCs = self.unscale_modeled_RMCs(inputs.SCL_modeled_RMCs)
         rate = -0.2 * RAW_modeled_RMCs[0]
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.asarray([rate]),
+            SCL_modeled_ReactionOde_rates=jnp.asarray([rate]),
             SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=rate.dtype),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
         )
 
 
-class _AuxReactionModule(UserReactionModule):
+class _AuxReactionModule(RateModule):
     def __init__(self, **scale_kwargs):
         super().__init__(**scale_kwargs)
 
@@ -98,7 +98,7 @@ class _AuxReactionModule(UserReactionModule):
         SCL_modeled_RMCs = inputs.SCL_modeled_RMCs
         rate = jnp.asarray([0.0], dtype=SCL_modeled_RMCs.dtype)
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=rate,
+            SCL_modeled_ReactionOde_rates=rate,
             SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
             auxiliary={
@@ -110,7 +110,7 @@ class _AuxReactionModule(UserReactionModule):
         )
 
 
-class _BlowUpReactionModule(UserReactionModule):
+class _BlowUpReactionModule(RateModule):
     """Biomass rate is 0 until t=1, then explosively stiff. Over measurement nodes
     [0, 1, 2] the segment [0, 1] succeeds and [1, 2] bails -> a genuine MID-trajectory
     failure (fail_time == 1.0), unlike ``max_steps=1`` which bails on the very first
@@ -123,7 +123,7 @@ class _BlowUpReactionModule(UserReactionModule):
         SCL_modeled_RMCs = inputs.SCL_modeled_RMCs
         rate = jnp.where(t > 1.0, 1.0e4 * SCL_modeled_RMCs[0], 0.0)
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.asarray(
+            SCL_modeled_ReactionOde_rates=jnp.asarray(
                 [rate], dtype=SCL_modeled_RMCs.dtype
             ),
             SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=SCL_modeled_RMCs.dtype),
@@ -227,7 +227,7 @@ def _unit_scale_kwargs_for(rhs_ode, controls) -> dict[str, jnp.ndarray]:
         "SCALE_controlled_Inflows_Cin": jnp.ones((n_Inflow, n_RMCs)),
         "SCALE_controlled_PVs": jnp.ones(n_PV),
         "SCALE_modeled_Inflows_Cin": jnp.ones((n_Inflows, n_RMCs)),
-        "SCALE_modeled_BiologicalOde_rates": jnp.ones(n_rates),
+        "SCALE_modeled_ReactionOde_rates": jnp.ones(n_rates),
         "SCALE_modeled_Inflows_rates": jnp.ones(n_Inflows),
         "SCALE_modeled_Outflows_rates": jnp.ones(n_Outflows),
     }
@@ -353,7 +353,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
             SCL_states=states,
             RAW_V_export=states[:, len(wrapper_arg.modeled_RMC_names)],
             RAW_V=states[:, len(wrapper_arg.modeled_RMC_names)],
-            RAW_modeled_BiologicalOde_rates=jnp.zeros(
+            RAW_modeled_ReactionOde_rates=jnp.zeros(
                 (n_rows, len(wrapper_arg.modeled_RMC_names)),
                 dtype=states.dtype,
             ),

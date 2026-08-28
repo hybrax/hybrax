@@ -27,7 +27,7 @@ BioProcess                ONE experimental run
   ├── reactor_medium      what is in the vessel        → components
   ├── volume              everything that moves volume → volume_changes
   ├── process_variables   everything else measured
-  └── biological_ode      the biology, as expressions
+  └── reaction_ode      the biology, as expressions
 ```
 
 Set `case_id`/`organism`/`citation` when the data belongs to one publication or
@@ -45,7 +45,7 @@ Almost every field in the data model is an answer to one of these.
 | | Meaning | Consequence |
 |---|---|---|
 | **controlled** (`is_controlled=True`) | A known input. You recorded it; it is not something the model explains. | Read from the data at every time `t`. No derivative needed. |
-| **modeled** (`is_controlled=False`) | A dynamic state. The model has to produce a `d/dt` for it. | Integrated. Needs an entry in `biological_ode.derivatives`. |
+| **modeled** (`is_controlled=False`) | A dynamic state. The model has to produce a `d/dt` for it. | Integrated. Needs an entry in `reaction_ode.derivatives`. |
 
 A feed pump profile is *controlled*. Biomass is *modeled*. Temperature you held at 37 °C
 is *controlled*. A pH you are trying to predict would be *modeled*.
@@ -88,7 +88,7 @@ The biological part of the ODE is written in terms of named rates.
 | `q_<name>` | reactor medium components | A **specific** rate: per unit biomass. The derivative is `q_<c> * biomass`. |
 | `r_<name>` | modeled process variables | A **volumetric** rate. The derivative is `r_<pv>` directly. |
 
-If you do not write a `biological_ode` yourself, hybrax.format generates this one:
+If you do not write a `reaction_ode` yourself, hybrax.format generates this one:
 
 ```
 rates:        q_biomass, q_glucose, q_product, …   (one per RMC, biomass first)

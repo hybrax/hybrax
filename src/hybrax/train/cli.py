@@ -86,7 +86,7 @@ def _build_parser() -> argparse.ArgumentParser:
     prepare_parser.add_argument(
         "--output-dir",
         default=None,
-        help="Override output.dir from the config (default \"output\"); where "
+        help='Override output.dir from the config (default "output"); where '
         "prepare's artifacts are written (prepared.json, prepare_config.json, "
         "optional augmented-data.png, prepare_diagnostics/).",
     )

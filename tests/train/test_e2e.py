@@ -36,7 +36,7 @@ def test_training_end_to_end_from_raw_json(tmp_path: Path):
     prepared_dir = tmp_path / "prepared"
     prepare_artifact(load_prepare_config(prepare_config), prepared_dir)
     collection = load_process_collection(prepared_dir / "prepared.json")
-    assert collection.processes["p1"].biological_ode is not None
+    assert collection.processes["p1"].reaction_ode is not None
 
     config = TrainHarnessConfig(
         process_names=("p1",),

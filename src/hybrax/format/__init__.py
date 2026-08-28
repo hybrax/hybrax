@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from . import mechanistic, serialization, splines, validate  # noqa: F401
     from .dataclasses import (  # noqa: F401
         AugmentedBioProcess,
-        BiologicalOde,
+        ReactionOde,
         BioProcess,
         BioProcessCollection,
         BioProcessMetadata,
@@ -49,8 +49,8 @@ if TYPE_CHECKING:
     from .simulation import Simulation, SimulationEvent, SimulationResult  # noqa: F401
     from .validate import (  # noqa: F401
         validate_augmented_parent_refs,
-        validate_biological_ode,
-        validate_biological_ode_equivalence,
+        validate_reaction_ode,
+        validate_reaction_ode_equivalence,
         validate_biomass_in_reactor_medium,
         validate_bounds,
         validate_bounds_against_data,
@@ -87,7 +87,7 @@ _EXPORT_MODULES = {
         "FeedMedium",
         "ReactorMedium",
         "Bounds",
-        "BiologicalOde",
+        "ReactionOde",
         "ProcessOrdering",
         "PseudobatchTransform",
         "BioProcess",
@@ -119,8 +119,8 @@ _EXPORT_MODULES = {
         "validate_volume_consistency",
         "validate_for_publication",
         "validate_augmented_parent_refs",
-        "validate_biological_ode",
-        "validate_biological_ode_equivalence",
+        "validate_reaction_ode",
+        "validate_reaction_ode_equivalence",
         "validate_bounds",
         "validate_bounds_against_data",
         "validate_cross_process_consistency",

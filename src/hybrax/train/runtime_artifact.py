@@ -19,7 +19,7 @@ import jax.numpy as jnp
 import numpy as np
 from hybrax.format.dataclasses import AugmentedBioProcess, BioProcessCollection
 from hybrax.format.mechanistic import RhsOde, build_rhs_ode
-from hybrax.format.validate import validate_biological_ode_equivalence
+from hybrax.format.validate import validate_reaction_ode_equivalence
 from hybrax.format.serialization import load_process_collection, save_process_collection
 
 from .controls_store import ControlsStore, derive_control_partition
@@ -636,7 +636,7 @@ def _validate_process_matrices(
     augmentation_parents: tuple[str | None, ...],
     rhs_names: RhsNames,
 ) -> None:
-    equivalent, message = validate_biological_ode_equivalence(parent_collection)
+    equivalent, message = validate_reaction_ode_equivalence(parent_collection)
     if not equivalent:
         raise ValueError(message)
 
@@ -1356,7 +1356,7 @@ def _validate_scale_arrays(
             len(descriptor.name_modeled_Inflows),
             n_rmc,
         ),
-        "SCALE_modeled_BiologicalOde_rates": (len(descriptor.name_modeled_rates),),
+        "SCALE_modeled_ReactionOde_rates": (len(descriptor.name_modeled_rates),),
         "SCALE_modeled_Inflows_rates": (len(descriptor.name_modeled_Inflows),),
         "SCALE_modeled_Outflows_rates": (len(descriptor.name_modeled_Outflows),),
         "SCALE_modeled_PVs": (len(descriptor.name_modeled_PVs),),

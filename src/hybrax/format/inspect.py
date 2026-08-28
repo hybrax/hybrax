@@ -9,7 +9,7 @@ from .dataclasses import (
     Outflow,
     ProcessOrdering,
     StaticVariable,
-    _format_biological_ode_lines,
+    _format_reaction_ode_lines,
     _format_bounds,
 )
 from .splines import _has_spline_state
@@ -195,11 +195,9 @@ def print_process_structure(process: BioProcess, verbosity: int = 3) -> None:
                 for change in process.volume.volume_changes.values():
                     _print_volume_change_info(change, "    ")
 
-        if process.biological_ode is not None:
-            print("\nBiological ODE:")
-            for line in _format_biological_ode_lines(
-                process.biological_ode, prefix="  "
-            ):
+        if process.reaction_ode is not None:
+            print("\nReaction ODE:")
+            for line in _format_reaction_ode_lines(process.reaction_ode, prefix="  "):
                 print(line)
 
     print("=" * 80)
@@ -1275,20 +1273,20 @@ def _format_v_removals(
 def _resolve_target(target):
     """Return ``(process, title_label)`` from BioProcess / BioProcessCollection.
 
-    For multi-process containers, equivalence of ``biological_ode`` is
+    For multi-process containers, equivalence of ``reaction_ode`` is
     enforced before the first process is selected. The returned label is
     the collection's case-study id (or ``metadata["name"]`` / fallback),
     never a process name, so the printed title represents the whole
     container.
     """
-    from .validate import validate_biological_ode_equivalence
+    from .validate import validate_reaction_ode_equivalence
 
     if isinstance(target, BioProcess):
         return target, _get_process_name(target)
     if isinstance(target, BioProcessCollection):
         if not target.processes:
             raise ValueError("print_rhs_ode: container has no processes.")
-        ok, msg = validate_biological_ode_equivalence(target)
+        ok, msg = validate_reaction_ode_equivalence(target)
         if not ok:
             raise ValueError(f"Cannot print unified ODE structure: {msg}")
         process = next(iter(target.processes.values()))
@@ -1314,13 +1312,13 @@ def print_rhs_ode(
 
     Accepts a :class:`BioProcess` or a
     :class:`BioProcessCollection`. For multi-process containers,
-    :func:`hybrax.format.validate.validate_biological_ode_equivalence` is
+    :func:`hybrax.format.validate.validate_reaction_ode_equivalence` is
     invoked first and the title represents the whole container. The
     individual process picked to render is not exposed.
 
-    The Derivatives sub-table separates the *Biological* expression
-    (verbatim from ``biological_ode.derivatives``) from the physical flow
-    contributions that hybrax.format adds on top. Inflows contribute
+    The Derivatives sub-table separates the *Reaction* expression (verbatim from
+    ``reaction_ode.derivatives``) from the transport contributions that
+    hybrax.format adds on top. Inflows contribute
     ``+ feed(...)`` and ``− dilution(...)``. Retained material contributes
     ``+ retention(<Outflow>=<fraction>)`` for each affected RMC; unretained
     Outflows have no concentration contribution. The Volume sub-table lists
@@ -1329,15 +1327,15 @@ def print_rhs_ode(
 
     Raises:
         ValueError: if a multi-process container's processes do not share
-            equivalent ``biological_ode`` blocks.
+            equivalent ``reaction_ode`` blocks.
     """
     from .mechanistic import get_process_ordering
 
     process, title_label = _resolve_target(target)
 
-    bo = process.biological_ode
+    bo = process.reaction_ode
     if bo is None:
-        raise ValueError("print_rhs_ode requires process.biological_ode to be set.")
+        raise ValueError("print_rhs_ode requires process.reaction_ode to be set.")
     if ordering is None:
         ordering = get_process_ordering(process)
 
@@ -1394,7 +1392,7 @@ def print_rhs_ode(
     sections.append(
         (
             "Derivatives",
-            ["State", "Unit", "Biological", "Feed", "Dilution / retention"],
+            ["State", "Unit", "Reaction", "Feed", "Dilution / retention"],
             deriv_rows,
             ["l", "l", "l", "l", "l"],
         )

@@ -22,11 +22,11 @@ $$
 \frac{d\,\mathrm{state}}{dt} \;=\; \mathrm{biology}(\mathrm{state}, \mathrm{RATES}) \;+\; \mathrm{transport}(\mathrm{state}, \mathrm{controls})
 $$
 
-- **`biology`**: yours to declare, as `biological_ode`, in terms of named rates (`q_*`,
+- **`biology`**: yours to declare, as `reaction_ode`, in terms of named rates (`q_*`,
   `r_*`). Auto-generated if you do not write it.
 - **`transport`**: generated. Feed inflow, dilution, sample outflow, `dV/dt`. You never
   write this half, and you cannot get it wrong by forgetting a term.
-- **`RATES`**: the one input `biology` does not fix. Declaring `biological_ode` fixes the
+- **`RATES`**: the one input `biology` does not fix. Declaring `reaction_ode` fixes the
   *shape* of the rate vector (its names, and how each one enters a derivative), not its
   values. Where the numbers come from is a modeling choice made elsewhere: see [What is
   actually being fitted](../train/index.md#what-is-actually-being-fitted) for the learned
@@ -51,12 +51,12 @@ already written.
 
 ## The default biology
 
-If you do not provide `biological_ode`, hybrax.format generates one when the `BioProcess` is
+If you do not provide `reaction_ode`, hybrax.format generates one when the `BioProcess` is
 constructed:
 
 ```{code-cell} ipython3
-print("rates      :", list(process.biological_ode.rates))
-print("derivatives:", process.biological_ode.derivatives)
+print("rates      :", list(process.reaction_ode.rates))
+print("derivatives:", process.reaction_ode.derivatives)
 ```
 
 The rule is:
@@ -71,16 +71,16 @@ The rule is:
 :class: warning
 Every generated rate is *specific* (per unit biomass) so there has to be a biomass to
 be specific to. Without one (case-insensitive match), constructing the `BioProcess`
-raises immediately, and the message tells you to supply your own `biological_ode`.
+raises immediately, and the message tells you to supply your own `reaction_ode`.
 :::
 
 ## Writing your own
 
-`BiologicalOde` wraps three dicts: `algebraic`, `rates`, and `derivatives`.
+`ReactionOde` wraps three dicts: `algebraic`, `rates`, and `derivatives`.
 Let's look at an example:
 
 ```{code-cell} ipython3
-process.biological_ode = hxf.BiologicalOde(
+process.reaction_ode = hxf.ReactionOde(
     algebraic={"X_active": "biomass - product"},
     rates={"q_biomass": (None, None), "q_glucose": (None, None),
            "q_product": (None, None)},
@@ -90,7 +90,7 @@ process.biological_ode = hxf.BiologicalOde(
         "product": "q_product * X_active",
     },
 )
-ok, message = hxf.validate_biological_ode(process)     # validates the whole process
+ok, message = hxf.validate_reaction_ode(process)     # validates the whole process
 print(ok, "|", message)
 ```
 
@@ -98,7 +98,7 @@ print(ok, "|", message)
 |---|---|
 | `algebraic` | `name -> expression`. Use this to define variables that you want to re-use in your `derivatives` (or in other `algebraic` expressions). They are recomputed on every RHS call, never integrated, and must form an acyclic dependency graph. |
 | `rates` | `name -> (lower, upper)`. This dict pulls double duty: the keys declare the names and insertion order of rates to be supplied by a reaction module (e.g. using a neural network) later on and the values are the (optional) lower and upper bounds of these rates. The bounds are not enforced by `hybrax.format` itself, but can be used downstream (e.g. in `hybrax.train` to include a bounds violation loss term in training). |
-| `derivatives` | `state -> expression`. Defines each state's continuous local contribution to `d(state)/dt`, excluding transport (inflow, outflow) and discrete event jumps. Expressions can describe biological conversion, abiotic chemistry, or purely physical dynamics (see [glutamine degradation](../gallery/glutamine_decay.md) for an example of a non-biological derivative). |
+| `derivatives` | `state -> expression`. Defines each state's continuous reaction contribution to `d(state)/dt`, excluding transport (inflow, outflow) and discrete event jumps. Expressions can describe biological conversion, abiotic chemistry, or purely physical dynamics (see [glutamine degradation](../gallery/glutamine_decay.md) for an example of a non-biological derivative). |
 
 That example is the standard intracellular-product pattern: measured biomass includes the
 product accumulating inside the cells, so growth is driven by the *active* fraction, and
@@ -107,7 +107,7 @@ no `is_intracellular` flag: you write what you mean.
 
 :::{admonition} Every dynamic state needs a derivative entry
 :class: warning
-Omitting one is rejected. If a state genuinely has no biological dynamics, write `"0"`
+Omitting one is rejected. If a state genuinely has no reaction dynamics, write `"0"`
 explicitly. Silence and "zero" must not look the same.
 :::
 

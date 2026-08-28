@@ -18,7 +18,7 @@ from hybrax.train.model_api import (
     ReactionInputs,
     ReactionOutputs,
     Scaler,
-    UserReactionModule,
+    RateModule,
     _as_scaler,
     _compose_scalers,
     frozen_field,
@@ -32,7 +32,7 @@ from hybrax.train.model_api import (
 # ---------------------------------------------------------------------------
 
 
-class _TagPartitionModule(UserReactionModule):
+class _TagPartitionModule(RateModule):
     model: eqx.nn.Linear = trainable_field()
     non_model_bias: jax.Array = frozen_field()
 
@@ -44,7 +44,7 @@ class _TagPartitionModule(UserReactionModule):
     def __call__(self, t, inputs) -> ReactionOutputs:
         del t, inputs
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0]),
+            SCL_modeled_ReactionOde_rates=jnp.asarray([0.0]),
             SCL_modeled_Inflows_rates=jnp.zeros((0,)),
             SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )
@@ -82,7 +82,7 @@ def test_frozen_field_sets_metadata():
 # ---------------------------------------------------------------------------
 
 
-class _UntaggedArrayModule(UserReactionModule):
+class _UntaggedArrayModule(RateModule):
     raw: jax.Array
 
     def __init__(self):
@@ -92,13 +92,13 @@ class _UntaggedArrayModule(UserReactionModule):
     def __call__(self, t, inputs) -> ReactionOutputs:
         del t, inputs
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0]),
+            SCL_modeled_ReactionOde_rates=jnp.asarray([0.0]),
             SCL_modeled_Inflows_rates=jnp.zeros((0,)),
             SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )
 
 
-class _MixedTagsModule(UserReactionModule):
+class _MixedTagsModule(RateModule):
     weights: jax.Array = trainable_field()
     bias_frozen: jax.Array = frozen_field()
 
@@ -110,7 +110,7 @@ class _MixedTagsModule(UserReactionModule):
     def __call__(self, t, inputs) -> ReactionOutputs:
         del t, inputs
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0]),
+            SCL_modeled_ReactionOde_rates=jnp.asarray([0.0]),
             SCL_modeled_Inflows_rates=jnp.zeros((0,)),
             SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )
@@ -150,7 +150,7 @@ class _Inner(eqx.Module):
         self.array2 = jnp.asarray([2.0])
 
 
-class _OuterFrozenParent(UserReactionModule):
+class _OuterFrozenParent(RateModule):
     sub: _Inner = frozen_field()
 
     def __init__(self):
@@ -160,13 +160,13 @@ class _OuterFrozenParent(UserReactionModule):
     def __call__(self, t, inputs) -> ReactionOutputs:
         del t, inputs
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0]),
+            SCL_modeled_ReactionOde_rates=jnp.asarray([0.0]),
             SCL_modeled_Inflows_rates=jnp.zeros((0,)),
             SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )
 
 
-class _OuterTrainableParent(UserReactionModule):
+class _OuterTrainableParent(RateModule):
     sub: _Inner = trainable_field()
 
     def __init__(self):
@@ -176,13 +176,13 @@ class _OuterTrainableParent(UserReactionModule):
     def __call__(self, t, inputs) -> ReactionOutputs:
         del t, inputs
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0]),
+            SCL_modeled_ReactionOde_rates=jnp.asarray([0.0]),
             SCL_modeled_Inflows_rates=jnp.zeros((0,)),
             SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )
 
 
-class _OuterUntaggedParent(UserReactionModule):
+class _OuterUntaggedParent(RateModule):
     sub: _Inner
 
     def __init__(self):
@@ -192,7 +192,7 @@ class _OuterUntaggedParent(UserReactionModule):
     def __call__(self, t, inputs) -> ReactionOutputs:
         del t, inputs
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0]),
+            SCL_modeled_ReactionOde_rates=jnp.asarray([0.0]),
             SCL_modeled_Inflows_rates=jnp.zeros((0,)),
             SCL_modeled_Outflows_rates=jnp.zeros((0,)),
         )
@@ -280,7 +280,7 @@ def test_format_trainable_structure_renders_status():
 
 
 def test_format_trainable_structure_auto_widths():
-    class _LongName(UserReactionModule):
+    class _LongName(RateModule):
         a_very_long_field_name_for_testing: jax.Array = trainable_field()
 
         def __init__(self):
@@ -290,7 +290,7 @@ def test_format_trainable_structure_auto_widths():
         def __call__(self, t, c_species, controls_vector) -> ReactionOutputs:
             del t, c_species, controls_vector
             return ReactionOutputs(
-                SCL_modeled_BiologicalOde_rates=jnp.asarray([0.0]),
+                SCL_modeled_ReactionOde_rates=jnp.asarray([0.0]),
                 SCL_modeled_Inflows_rates=jnp.zeros((0,)),
                 SCL_modeled_Outflows_rates=jnp.zeros((0,)),
             )
@@ -304,7 +304,7 @@ def test_format_trainable_structure_auto_widths():
     assert all(len(line) == len(lines[0]) for line in lines if line.startswith("|"))
 
 
-def test_user_reaction_module_default_observe_is_identity():
+def test_rate_module_default_observe_is_identity():
     module = _UntaggedArrayModule()
     y = jnp.asarray([1.0, 2.0])
 
@@ -342,7 +342,7 @@ def test_reaction_inputs_default_to_zero_width_latent():
 
 def test_reaction_outputs_default_to_zero_width_latent_derivative():
     outputs = ReactionOutputs(
-        SCL_modeled_BiologicalOde_rates=jnp.zeros(2),
+        SCL_modeled_ReactionOde_rates=jnp.zeros(2),
         SCL_modeled_Inflows_rates=jnp.zeros(1),
         SCL_modeled_Outflows_rates=jnp.zeros(2),
     )
@@ -351,7 +351,7 @@ def test_reaction_outputs_default_to_zero_width_latent_derivative():
     assert outputs.SCL_latent_derivative.dtype == jnp.float64
 
 
-class _LatentScaleModule(UserReactionModule):
+class _LatentScaleModule(RateModule):
     def __init__(self):
         super().__init__(
             SCALE_modeled_RMCs=jnp.asarray([2.0, 4.0]),
@@ -364,13 +364,13 @@ class _LatentScaleModule(UserReactionModule):
     def __call__(self, t, inputs) -> ReactionOutputs:
         del t, inputs
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=jnp.zeros(0),
+            SCL_modeled_ReactionOde_rates=jnp.zeros(0),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
         )
 
 
-def test_user_reaction_module_latent_scales_are_separate_from_state_scales():
+def test_rate_module_latent_scales_are_separate_from_state_scales():
     module = _LatentScaleModule()
 
     assert module.n_latent == 2
@@ -383,7 +383,7 @@ def test_user_reaction_module_latent_scales_are_separate_from_state_scales():
     )
 
 
-def test_user_reaction_module_latent_helpers_are_linear():
+def test_rate_module_latent_helpers_are_linear():
     module = _LatentScaleModule()
     raw = jnp.asarray([9.0, 24.0])
     scl = jnp.asarray([3.0, 4.0])
@@ -392,7 +392,7 @@ def test_user_reaction_module_latent_helpers_are_linear():
     assert jnp.array_equal(module.unscale_latent(scl), raw)
 
 
-def test_user_reaction_module_default_initial_latent_matches_width_and_dtype():
+def test_rate_module_default_initial_latent_matches_width_and_dtype():
     module = _LatentScaleModule()
     y0 = jnp.asarray([1.0, 2.0], dtype=jnp.float16)
 
@@ -403,7 +403,7 @@ def test_user_reaction_module_default_initial_latent_matches_width_and_dtype():
     assert jnp.array_equal(h0, jnp.zeros(2, dtype=y0.dtype))
 
 
-def test_user_reaction_module_defaults_are_stateless():
+def test_rate_module_defaults_are_stateless():
     module = _UntaggedArrayModule()
     y0 = jnp.asarray([1.0])
 
@@ -476,7 +476,7 @@ def test_scaler_not_silently_array_coercible(scaler):
     ],
 )
 def test_value_helpers_accept_numpy_arrays(scaler):
-    module = UserReactionModule(SCALE_modeled_RMCs=scaler)
+    module = RateModule(SCALE_modeled_RMCs=scaler)
     raw = np.asarray([4.0, 8.0], dtype=np.float32)
 
     scaled = module.scale_modeled_RMCs(raw)
@@ -560,10 +560,10 @@ def test_rate_helpers_use_derivative_semantics():
         def __getitem__(self, idx):
             return self
 
-    module = UserReactionModule(
+    module = RateModule(
         SCALE_controlled_Inflows_rates=DivergentRateScaler(),
         SCALE_controlled_Outflows_rates=DivergentRateScaler(),
-        SCALE_modeled_BiologicalOde_rates=DivergentRateScaler(),
+        SCALE_modeled_ReactionOde_rates=DivergentRateScaler(),
         SCALE_modeled_Inflows_rates=DivergentRateScaler(),
         SCALE_modeled_Outflows_rates=DivergentRateScaler(),
     )
@@ -579,8 +579,8 @@ def test_rate_helpers_use_derivative_semantics():
             module.unscale_controlled_Outflows_rates,
         ),
         (
-            module.scale_modeled_BiologicalOde_rates,
-            module.unscale_modeled_BiologicalOde_rates,
+            module.scale_modeled_ReactionOde_rates,
+            module.unscale_modeled_ReactionOde_rates,
         ),
         (module.scale_modeled_Inflows_rates, module.unscale_modeled_Inflows_rates),
         (
@@ -609,7 +609,7 @@ def test_tree_at_affine_offset_zero_to_nonzero_updates_value_and_state():
         scaler.unscale_value(jnp.asarray([1.0])), jnp.asarray([12.0])
     )
 
-    module = UserReactionModule(SCALE_modeled_RMCs=scaler)
+    module = RateModule(SCALE_modeled_RMCs=scaler)
     state = jnp.asarray([1.0, 1.0])
     expected = jnp.asarray([12.0, 1.0])
     assert jnp.array_equal(module.unscale_state(state), expected)
@@ -629,7 +629,7 @@ def test_tree_at_affine_offset_nonzero_to_zero_preserves_negative_zero():
     bare = scaler.unscale_value(jnp.asarray([-0.0]))
     assert bool(jnp.signbit(bare[0]))
 
-    module = UserReactionModule(SCALE_modeled_RMCs=scaler)
+    module = RateModule(SCALE_modeled_RMCs=scaler)
     state = jnp.asarray([-0.0, -0.0])
     assert bool(jnp.signbit(module.unscale_state(state)[0]))
     jitted = jax.jit(lambda m, x: m.unscale_state(x))(module, state)
@@ -655,7 +655,7 @@ def test_dynamic_negative_zero_affine_offset_preserves_negative_zero_value():
 
 
 def test_closed_over_zero_offset_affine_gradient_preserves_negative_zero():
-    module = UserReactionModule(
+    module = RateModule(
         SCALE_modeled_RMCs=AffineScaler(
             jnp.asarray([2.0]),
             jnp.asarray([0.0]),
@@ -688,7 +688,7 @@ def test_closed_over_zero_offset_affine_gradient_preserves_negative_zero():
 
 
 def test_zero_offset_affine_state_scaler_preserves_negative_zero():
-    module = UserReactionModule(
+    module = RateModule(
         SCALE_modeled_RMCs=AffineScaler(
             jnp.asarray([2.0]),
             jnp.asarray([0.0]),
@@ -765,10 +765,10 @@ def test_as_scaler_promotes_array_passes_scaler():
     assert _as_scaler(scaler) is scaler
 
 
-def test_user_reaction_module_promotes_bare_scale_arrays():
+def test_rate_module_promotes_bare_scale_arrays():
     # Modules constructed with bare arrays (tests, user modules) get
     # LinearScaler via __init__ promotion.
-    module = UserReactionModule(
+    module = RateModule(
         SCALE_modeled_RMCs=jnp.asarray([2.0, 4.0]),
         SCALE_V_in_cumulative=jnp.asarray(10.0),
     )
@@ -789,13 +789,13 @@ def test_scaler_constructors_reject_non_array_inputs_immediately():
         AffineScaler(jnp.asarray(1.0), 0.0)
 
 
-def test_user_reaction_module_rejects_unknown_scale_keyword():
+def test_rate_module_rejects_unknown_scale_keyword():
     with pytest.raises(TypeError, match="SCALE_V_in_cumulativ"):
-        UserReactionModule(SCALE_V_in_cumulativ=jnp.asarray(7.0))
+        RateModule(SCALE_V_in_cumulativ=jnp.asarray(7.0))
 
 
-def test_user_reaction_module_initializes_defaulted_subclass_fields():
-    class Child(UserReactionModule):
+def test_rate_module_initializes_defaulted_subclass_fields():
+    class Child(RateModule):
         w: jax.Array = trainable_field(default_factory=lambda: jnp.ones(1))
 
     supplied = jnp.asarray([2.0], dtype=jnp.float32)
@@ -880,7 +880,7 @@ def test_concat_scaler_preserves_offset_layout_and_getitem():
 
 
 def test_integrated_state_preserves_discarded_zero_offset_dtype():
-    module = UserReactionModule(
+    module = RateModule(
         SCALE_modeled_RMCs=AffineScaler(
             jnp.asarray([2.0], dtype=jnp.float32),
             jnp.asarray([0.0], dtype=jnp.float64),
@@ -904,7 +904,7 @@ def test_integrated_state_preserves_discarded_zero_offset_dtype():
 
 def test_affine_scaler_leaves_are_frozen_by_partition():
     # Test 7: both affine leaves belong to the static partition.
-    module = UserReactionModule(
+    module = RateModule(
         SCALE_modeled_RMCs=AffineScaler(
             jnp.asarray([2.0, 4.0]), jnp.asarray([10.0, 20.0])
         )

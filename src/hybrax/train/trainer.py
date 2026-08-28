@@ -283,17 +283,17 @@ def evaluate_sample_with_loss_module(
         field name (without the SCL_target_pred slice -- that's handled by the
         caller using ``target_state_indices``)."""
         SCL_states = save_outputs.SCL_states
-        RAW_rates = save_outputs.RAW_modeled_BiologicalOde_rates
+        RAW_rates = save_outputs.RAW_modeled_ReactionOde_rates
         RAW_Inflow_rates = save_outputs.RAW_modeled_Inflows_rates
         RAW_Outflow_rates = save_outputs.RAW_modeled_Outflows_rates
         RAW_V = save_outputs.RAW_V
         return {
             "SCL_states": SCL_states,
             "RAW_states": module.unscale_state(SCL_states),
-            "SCL_modeled_BiologicalOde_rates": module.scale_modeled_BiologicalOde_rates(
+            "SCL_modeled_ReactionOde_rates": module.scale_modeled_ReactionOde_rates(
                 RAW_rates
             ),
-            "RAW_modeled_BiologicalOde_rates": RAW_rates,
+            "RAW_modeled_ReactionOde_rates": RAW_rates,
             "SCL_modeled_Inflows_rates": module.scale_modeled_Inflows_rates(
                 RAW_Inflow_rates
             ),
@@ -419,8 +419,8 @@ def evaluate_sample_with_loss_module(
     inputs = LossInputs(
         SCL_states=SCL_states,
         RAW_states=meas_views["RAW_states"],
-        SCL_modeled_BiologicalOde_rates=meas_views["SCL_modeled_BiologicalOde_rates"],
-        RAW_modeled_BiologicalOde_rates=meas_views["RAW_modeled_BiologicalOde_rates"],
+        SCL_modeled_ReactionOde_rates=meas_views["SCL_modeled_ReactionOde_rates"],
+        RAW_modeled_ReactionOde_rates=meas_views["RAW_modeled_ReactionOde_rates"],
         SCL_modeled_Inflows_rates=meas_views["SCL_modeled_Inflows_rates"],
         RAW_modeled_Inflows_rates=meas_views["RAW_modeled_Inflows_rates"],
         SCL_modeled_Outflows_rates=meas_views["SCL_modeled_Outflows_rates"],
@@ -441,11 +441,11 @@ def evaluate_sample_with_loss_module(
         dense_t=dense_t,
         dense_SCL_states=dense_views["SCL_states"],
         dense_RAW_states=dense_views["RAW_states"],
-        dense_SCL_modeled_BiologicalOde_rates=dense_views[
-            "SCL_modeled_BiologicalOde_rates"
+        dense_SCL_modeled_ReactionOde_rates=dense_views[
+            "SCL_modeled_ReactionOde_rates"
         ],
-        dense_RAW_modeled_BiologicalOde_rates=dense_views[
-            "RAW_modeled_BiologicalOde_rates"
+        dense_RAW_modeled_ReactionOde_rates=dense_views[
+            "RAW_modeled_ReactionOde_rates"
         ],
         dense_SCL_modeled_Inflows_rates=dense_views["SCL_modeled_Inflows_rates"],
         dense_RAW_modeled_Inflows_rates=dense_views["RAW_modeled_Inflows_rates"],

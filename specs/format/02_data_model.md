@@ -25,7 +25,7 @@ All classes are re-exported from the package root: `bp.TimeAxis`,
 - **`TimeSeries | StaticVariable` everywhere a value could be constant.** A
   measured concentration is a `TimeSeries`; a known feed concentration is a
   `StaticVariable`.
-- **Biology lives in `BiologicalOde`, not in flags on components.** There is no
+- **Biology lives in `ReactionOde`, not in flags on components.** There is no
   `is_intracellular` switch. If a species accumulates inside cells you write it
   out: `algebraic={"X_active": "biomass - product"}` plus the matching
   derivatives.
@@ -183,7 +183,7 @@ dissolved oxygen, off-gas, stirrer speed.
 
 `is_controlled` decides how the mechanistic module treats it:
 
-| `is_controlled` | Role | In `BiologicalOde` |
+| `is_controlled` | Role | In `ReactionOde` |
 |---|---|---|
 | `True` | Known input, driven by recorded data | may appear *inside* expressions |
 | `False` | Modeled state with its own `d/dt` | must appear as a **key** in `derivatives` |
@@ -248,11 +248,11 @@ class Volume:
 data, or it may be reconstructed from `initial_volume` plus the volume changes —
 `build_pseudobatch_transform` fills it in if it is still `None`.
 
-## The biological ODE
+## The reaction ODE
 
 ```python
 @dataclass
-class BiologicalOde:
+class ReactionOde:
     algebraic: Dict[str, str]      # name -> expression
     rates: Dict[str, Bounds]       # rate symbol -> (lower, upper)
     derivatives: Dict[str, str]    # state name -> biological dc/dt
@@ -269,16 +269,16 @@ dilution, sample outflow, and `dV/dt` are added on top by hybrax.format from the
   passes in, so it is deliberately not sorted. The `Bounds` values are metadata
   for loss generators.
 - **`derivatives`** — one entry per dynamic state (every reactor component and
-  every uncontrolled process variable). Use `"0"` for "no biological dynamics".
+  every uncontrolled process variable). Use `"0"` for "no reaction dynamics".
   The entry must exist even when zero, so the choice is visible.
 
 Every free symbol in any expression must resolve to a state name, a controlled
 process-variable name, an `algebraic` name, or a `rates` name. See
-[`validate_biological_ode`](04_validation.md#validate_biological_odeprocess).
+[`validate_reaction_ode`](04_validation.md#validate_reaction_odeprocess).
 
 ### Auto-generation
 
-If you leave `biological_ode` as `None`, `BioProcess.__post_init__` fills it in
+If you leave `reaction_ode` as `None`, `BioProcess.__post_init__` fills it in
 with the standard template. That requires a reactor component named `biomass`
 (case-insensitive) and produces:
 
@@ -291,7 +291,7 @@ with the standard template. That requires a reactor component named `biomass`
 Static process variables are skipped: they have no biological derivative.
 
 **A process with reactor components but no `biomass` raises at construction
-time.** Either name a component `biomass` or supply your own `biological_ode`.
+time.** Either name a component `biomass` or supply your own `reaction_ode`.
 
 ## Process level
 
@@ -310,7 +310,7 @@ class BioProcess:
     reactor_medium: ReactorMedium
     process_variables: Dict[str, ProcessVariable] = {}
     discrete_events: Optional[DiscreteEvents] = None
-    biological_ode: Optional[BiologicalOde] = None       # auto-filled
+    reaction_ode: Optional[ReactionOde] = None       # auto-filled
     pseudobatch_transform: Optional[PseudobatchTransform] = None
 ```
 
@@ -371,7 +371,7 @@ consumed by every other mechanistic factory.
 ```python
 @dataclass(frozen=True)
 class ProcessOrdering:
-    name_modeled_rates: Tuple[str, ...]      # BiologicalOde.rates insertion order
+    name_modeled_rates: Tuple[str, ...]      # ReactionOde.rates insertion order
     name_modeled_algebraic: Tuple[str, ...]  # topo-sorted
     name_modeled_RMCs: Tuple[str, ...]       # alphabetical
     name_modeled_PVs: Tuple[str, ...]        # alphabetical, is_controlled=False
@@ -451,9 +451,9 @@ process = bp.BioProcess(
     ),
 )
 
-# biological_ode was auto-filled:
-process.biological_ode.rates        # {"q_biomass": (None, None), "q_glucose": (None, None)}
-process.biological_ode.derivatives  # {"biomass": "q_biomass * biomass",
+# reaction_ode was auto-filled:
+process.reaction_ode.rates        # {"q_biomass": (None, None), "q_glucose": (None, None)}
+process.reaction_ode.derivatives  # {"biomass": "q_biomass * biomass",
                                     #  "glucose": "q_glucose * biomass"}
 ```
 
@@ -491,13 +491,13 @@ process.volume = bp.Volume(
 )
 ```
 
-### A custom biological ODE
+### A custom reaction ODE
 
 For an intracellular product, biomass measurements include the product, so the
 active biomass driving the rates is the difference:
 
 ```python
-process.biological_ode = bp.BiologicalOde(
+process.reaction_ode = bp.ReactionOde(
     algebraic={"X_active": "biomass - product"},
     rates={
         "q_growth":  (0.0, None),     # growth cannot be negative

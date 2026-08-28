@@ -10,7 +10,7 @@ from hybrax.format import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
-    BiologicalOde,
+    ReactionOde,
     TimeAxis,
     TimeSeries,
     StaticVariable,
@@ -450,7 +450,7 @@ def test_print_collection_structure_empty_verbosity1(capsys):
 def test_print_rhs_ode_shows_component_specific_outflow_retention(
     complex_process, capsys
 ):
-    complex_process.biological_ode = BiologicalOde(
+    complex_process.reaction_ode = ReactionOde(
         derivatives={"biomass": "growth", "glucose": "uptake"}
     )
     complex_process.process_variables["pH"].is_controlled = True

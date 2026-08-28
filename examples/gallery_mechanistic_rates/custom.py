@@ -13,12 +13,12 @@ from hybrax.format.mechanistic import build_rhs_ode
 from hybrax.train import (
     EstimatedScales,
     ReactionOutputs,
-    UserReactionModule,
+    RateModule,
     trainable_field,
 )
 
 
-class MonodModule(UserReactionModule):
+class MonodModule(RateModule):
     """mu = mu_max·S/(Ks+S);
     q_S = -(mu/Yxs + ms·sigma);
     q_P = alpha·mu + beta·sigma.
@@ -64,7 +64,7 @@ class MonodModule(UserReactionModule):
 
         RAW_rates = jnp.array([mu, q_glucose, q_product])
         return ReactionOutputs(
-            SCL_modeled_BiologicalOde_rates=self.scale_modeled_BiologicalOde_rates(
+            SCL_modeled_ReactionOde_rates=self.scale_modeled_ReactionOde_rates(
                 RAW_rates
             ),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
@@ -106,7 +106,7 @@ def estimate_all_scales(runtime_data, target_names, config):
     empty = jnp.zeros(0)
     return EstimatedScales(
         SCALE_modeled_RMCs=jnp.asarray([rmc_scale[n] for n in rhs.name_modeled_RMCs]),
-        SCALE_modeled_BiologicalOde_rates=jnp.asarray(
+        SCALE_modeled_ReactionOde_rates=jnp.asarray(
             [rmc_scale[n[2:]] / (biomass * span) for n in rhs.name_modeled_rates]
         ),
         SCALE_V_in_cumulative=jnp.asarray(

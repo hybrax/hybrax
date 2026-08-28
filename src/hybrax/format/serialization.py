@@ -13,7 +13,7 @@ from ijson.common import ObjectBuilder
 from ._logging import get_logger
 from .dataclasses import (
     AugmentedBioProcess,
-    BiologicalOde,
+    ReactionOde,
     BioProcessCollection,
     BioProcess,
     Bounds,
@@ -53,8 +53,8 @@ def _dict_to_bounds(data: Optional[Dict]) -> Bounds:
     return (data.get("lower"), data.get("upper"))
 
 
-def _biological_ode_to_dict(ode: BiologicalOde) -> Dict:
-    """Convert BiologicalOde to dictionary."""
+def _reaction_ode_to_dict(ode: ReactionOde) -> Dict:
+    """Convert ReactionOde to dictionary."""
     return {
         "algebraic": dict(ode.algebraic),
         "rates": {name: _bounds_to_dict(bounds) for name, bounds in ode.rates.items()},
@@ -62,9 +62,9 @@ def _biological_ode_to_dict(ode: BiologicalOde) -> Dict:
     }
 
 
-def _dict_to_biological_ode(data: Dict) -> BiologicalOde:
-    """Reconstruct BiologicalOde from dictionary."""
-    return BiologicalOde(
+def _dict_to_reaction_ode(data: Dict) -> ReactionOde:
+    """Reconstruct ReactionOde from dictionary."""
+    return ReactionOde(
         algebraic=dict(data.get("algebraic", {})),
         rates={name: _dict_to_bounds(rd) for name, rd in data.get("rates", {}).items()},
         derivatives=dict(data.get("derivatives", {})),
@@ -350,8 +350,8 @@ def _process_to_dict(process: BioProcess) -> Dict:
     if process.discrete_events is not None:
         result["discrete_events"] = _discrete_events_to_dict(process.discrete_events)
 
-    if process.biological_ode is not None:
-        result["biological_ode"] = _biological_ode_to_dict(process.biological_ode)
+    if process.reaction_ode is not None:
+        result["reaction_ode"] = _reaction_ode_to_dict(process.reaction_ode)
 
     if process.pseudobatch_transform is not None:
         result["pseudobatch_transform"] = _pseudobatch_transform_to_dict(
@@ -609,9 +609,9 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
     if p_data.get("discrete_events"):
         discrete_events = _dict_to_discrete_events(p_data["discrete_events"])
 
-    biological_ode = None
-    if p_data.get("biological_ode") is not None:
-        biological_ode = _dict_to_biological_ode(p_data["biological_ode"])
+    reaction_ode = None
+    if p_data.get("reaction_ode") is not None:
+        reaction_ode = _dict_to_reaction_ode(p_data["reaction_ode"])
 
     # Absent key means no pseudobatch transform. Present malformed entries fail
     # fast so old or partial bundle payloads do not silently load.
@@ -634,7 +634,7 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
             reactor_medium=reactor_medium,
             process_variables=process_variables,
             discrete_events=discrete_events,
-            biological_ode=biological_ode,
+            reaction_ode=reaction_ode,
             pseudobatch_transform=pseudobatch_transform,
             parent_process=parent,
         )
@@ -646,7 +646,7 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
         reactor_medium=reactor_medium,
         process_variables=process_variables,
         discrete_events=discrete_events,
-        biological_ode=biological_ode,
+        reaction_ode=reaction_ode,
         pseudobatch_transform=pseudobatch_transform,
     )
 

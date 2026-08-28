@@ -47,13 +47,13 @@ SCL_integrated_state = [ SCL_state | SCL_latent ]
 ```
 
 with `SCALE_state` and `SCALE_integrated_state` the matching concatenations (see
-[`UserReactionModule.SCALE_state`](../../src/hybrax/train/model_api.py)). Because scaling is
+[`RateModule.SCALE_state`](../../src/hybrax/train/model_api.py)). Because scaling is
 linear, the same factor converts both a value and its time-derivative
 (`d(x/k)/dt = (dx/dt)/k`), so the `scale_*` / `unscale_*` helpers work for states
 and rates identically.
 
 **Single source of truth:** every `SCALE_*` vector lives on the
-`UserReactionModule` (frozen fields). The wrapper reads
+`RateModule` (frozen fields). The wrapper reads
 `reaction_module.SCALE_*`; the trainer reads `SCALE_state` to convert
 measurements to SCL space; the loss module reaches them via
 `inputs.reaction_module.SCALE_*`. Scales are never duplicated onto inputs.
