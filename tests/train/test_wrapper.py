@@ -795,7 +795,14 @@ def test_wrapper_save_outputs_passes_latent_but_saves_physical_state_only():
 
 
 def test_physical_rhs_passes_process_minimum_volume_to_hybrax_format():
-    process = _make_single_species_process(feed_rate=0.0)
+    """``min_V`` reaches ``hybrax.format`` and is used as the transport divisor floor.
+
+    The RHS is total by design: it is evaluated on Runge-Kutta stages of steps the
+    step-size controller may still reject, so a volume at or below ``min_V`` here is
+    usually numerical scratch and must not abort the solve. Evaluating below the floor
+    must therefore give the same transport terms as evaluating exactly at it.
+    """
+    process = _make_single_species_process(feed_biomass_concentration=10.0)
     controls = ControlsStore.from_collection(
         BioProcessCollection(processes={"p1": process}, metadata={})
     ).get_controls("p1")
@@ -804,8 +811,18 @@ def test_physical_rhs_passes_process_minimum_volume_to_hybrax_format():
     )
     wrapper = _build_wrapper(process, controls, module)
 
-    with pytest.raises(Exception, match="minimum reactor volume"):
-        wrapper.physical_rhs(0.0, jnp.asarray([1.0, controls.min_V]))
+    at_min = wrapper.physical_rhs(0.0, jnp.asarray([1.0, controls.min_V]))
+    below_min = wrapper.physical_rhs(0.0, jnp.asarray([1.0, 0.5 * controls.min_V]))
+    negative = wrapper.physical_rhs(0.0, jnp.asarray([1.0, -1.0]))
+
+    assert jnp.all(jnp.isfinite(at_min))
+    assert jnp.all(jnp.isfinite(below_min))
+    assert jnp.all(jnp.isfinite(negative))
+    # Clamped to the same floor, so all three agree.
+    assert jnp.allclose(below_min, at_min)
+    assert jnp.allclose(negative, at_min)
+    # The feed is real, so the clamp is actually observable here.
+    assert not jnp.allclose(at_min, wrapper.physical_rhs(0.0, jnp.asarray([1.0, 1.0])))
 
 
 @pytest.mark.parametrize("initial_volume", [0.001, 0.0005])

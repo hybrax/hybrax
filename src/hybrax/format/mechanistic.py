@@ -43,21 +43,6 @@ from .time_series import PPoly
 # ---------------------------------------------------------------------------
 
 
-def _require_reactor_volume_above_threshold(
-    volume: jnp.ndarray,
-    *,
-    context: str,
-    V_min: float | jnp.ndarray = _MIN_REACTOR_VOLUME,
-) -> jnp.ndarray:
-    """Fail when reactor volume reaches its minimum valid value."""
-    volume_arr = jnp.asarray(volume)
-    return eqx.error_if(
-        volume_arr,
-        jnp.any(volume_arr <= V_min),
-        f"{context} reached minimum reactor volume.",
-    )
-
-
 def _timeseries_to_ppoly(series: TimeSeries) -> PPoly:
     """Return a hybrax.format PPoly for a TimeSeries carrier.
 
@@ -139,7 +124,25 @@ def _apply_feed_dilution(
       of retention: retention changes what leaves with the flow, not how
       much volume the flow removes.
     """
-    V = _require_reactor_volume_above_threshold(V, context="ODE state", V_min=V_min)
+    # Clamp only the divisor. The vector field is evaluated once per Runge-Kutta
+    # stage, including stages of TRIAL steps the step-size controller is about to
+    # reject, so a non-positive `V` here is usually numerical scratch rather than a
+    # physical state; erroring on it aborted otherwise-valid solves.
+    #
+    # What the clamp does depends on whether anything is being fed. With an inflow,
+    # `dilution`/`addition` divide by `V_safe`, so a trial step that undershoots
+    # produces a huge derivative, the controller sees a large error estimate and
+    # rejects the step -- the mechanism that is supposed to handle this. With only an
+    # unretained outflow (sigma=0), `total_in` and `retained_out_per_rmc` are both
+    # zero, so `dilution` vanishes and the transport terms do not depend on `V` at
+    # all: there is nothing to reject and the solve integrates straight through zero
+    # into negative volume.
+    #
+    # Detecting that belongs on ACCEPTED states, not here. `hybrax.train.physical_solve`
+    # checks the initial state and every post-sample state, but not yet the solver's
+    # accepted output states, so depletion driven purely by a continuous outflow
+    # mid-segment currently goes unreported.
+    V_safe = jnp.maximum(V, V_min)
 
     total_in = jnp.sum(u_controlled_Inflows) + jnp.sum(f_modeled_Inflows)  # >= 0
     total_out = -(jnp.sum(u_controlled_Outflows) + jnp.sum(f_modeled_Outflows))  # >= 0
@@ -149,19 +152,19 @@ def _apply_feed_dilution(
         retention_controlled_Outflows * (-u_controlled_Outflows)[:, None], axis=0
     ) + jnp.sum(retention_modeled_Outflows * (-f_modeled_Outflows)[:, None], axis=0)
 
-    dilution = -(total_in - retained_out_per_rmc) * c_RMCs / V
+    dilution = -(total_in - retained_out_per_rmc) * c_RMCs / V_safe
 
     addition = jnp.zeros(n_RMCs)
     if Cin_controlled_Inflows.shape[0] > 0:
         addition = (
             addition
             + jnp.sum(u_controlled_Inflows[:, None] * Cin_controlled_Inflows, axis=0)
-            / V
+            / V_safe
         )
     if Cin_modeled_Inflows.shape[0] > 0:
         addition = (
             addition
-            + jnp.sum(f_modeled_Inflows[:, None] * Cin_modeled_Inflows, axis=0) / V
+            + jnp.sum(f_modeled_Inflows[:, None] * Cin_modeled_Inflows, axis=0) / V_safe
         )
 
     return dilution + addition, dV

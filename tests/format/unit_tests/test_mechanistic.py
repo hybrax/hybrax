@@ -536,14 +536,42 @@ class TestRhsOde:
         dc = rhs(c, rates, u, f_modeled_Inflows, f_modeled_Outflows)
         assert dc.shape == (3,)  # 2 RMCs + 0 PVs + V
 
-    def test_custom_minimum_volume(self):
-        process = _make_process()
-        rhs = build_rhs_ode(process)
-        c = jnp.array([1.0, 5.0, 0.5])
-        rates = jnp.zeros(2)
+    def test_custom_minimum_volume_clamps_instead_of_raising(self):
+        """``V_min`` floors the transport divisor; it does not abort the RHS.
 
-        with pytest.raises(Exception, match="minimum reactor volume"):
-            rhs(c, rates, jnp.zeros(0), jnp.zeros(0), jnp.zeros(0), V_min=0.5)
+        The vector field is evaluated once per Runge-Kutta stage, including stages of
+        trial steps the step-size controller goes on to reject, so a non-positive ``V``
+        here is usually numerical scratch rather than a physical state. Raising on it
+        aborted otherwise-valid solves. Genuine depletion is checked on accepted states.
+        """
+        process = _make_process(with_controlled_Inflow=True, with_controlled_PV=False)
+        rhs = build_rhs_ode(process)
+        rates = jnp.zeros(2)
+        u = jnp.array([0.05])  # a real feed, so the divisor is observable
+
+        at_min = rhs(
+            jnp.array([1.0, 5.0, 0.5]), rates, u, jnp.zeros(0), jnp.zeros(0), V_min=0.5
+        )
+        below = rhs(
+            jnp.array([1.0, 5.0, 0.1]), rates, u, jnp.zeros(0), jnp.zeros(0), V_min=0.5
+        )
+        negative = rhs(
+            jnp.array([1.0, 5.0, -0.3]), rates, u, jnp.zeros(0), jnp.zeros(0), V_min=0.5
+        )
+
+        assert jnp.all(jnp.isfinite(at_min))
+        assert jnp.all(jnp.isfinite(below))
+        assert jnp.all(jnp.isfinite(negative))
+        # All three evaluate their transport terms at the clamped floor.
+        assert jnp.allclose(below, at_min)
+        assert jnp.allclose(negative, at_min)
+        # dV is a pure flow balance, independent of V and so untouched by the clamp.
+        assert float(below[-1]) == pytest.approx(0.05, abs=1e-6)
+        # The clamp must NOT bind above the floor, or it would corrupt real states.
+        healthy = rhs(
+            jnp.array([1.0, 5.0, 2.0]), rates, u, jnp.zeros(0), jnp.zeros(0), V_min=0.5
+        )
+        assert not jnp.allclose(healthy, at_min)
 
     def test_dV_from_Inflow(self):
         process = _make_process(with_controlled_Inflow=True, with_controlled_PV=False)
