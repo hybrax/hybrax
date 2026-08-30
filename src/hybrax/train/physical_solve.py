@@ -349,6 +349,32 @@ def solve_physical_states(
     # solve: ``fail_time == inf`` -> no-op.
     fail_time = sol.fail_time
     post_fail = ~within_fail_time(t_eval, fail_time)
+
+    # Genuine depletion, checked on ACCEPTED states. The vector field deliberately does
+    # NOT check this (see ``hybrax.format.mechanistic._apply_feed_dilution``): it runs
+    # on Runge-Kutta stages of trial steps the controller may still reject, where a
+    # non-positive volume is scratch. Every row here is instead a solver output read off
+    # an accepted step, so a volume at or below the floor is a real physical state.
+    #
+    # Catches the case the clamped right-hand side cannot signal at all: with an
+    # unretained outflow as the only volume driver the transport terms do not depend on
+    # ``V``, so nothing blows up, no step is rejected, and the solve integrates straight
+    # through zero. The ``affect_fn``/``y0`` guards above cover sample- and
+    # initial-state-driven depletion; this covers the continuous, mid-segment kind.
+    #
+    # Restricted to rows a caller actually reads. Padded slots are parked at ``t1`` and
+    # post-failure rows still hold ``inf`` at this point (both branches below overwrite
+    # them), and a non-finite row is a failure the ``fail_time`` machinery already owns
+    # -- none of those are physical states this check should judge.
+    V_reported = states[:, V_index]
+    depleted = (
+        meas_active & ~post_fail & jnp.isfinite(V_reported) & (V_reported <= min_V)
+    )
+    states = eqx.error_if(
+        states,
+        jnp.any(depleted),
+        "trajectory reached minimum reactor volume.",
+    )
     if return_fail_time:
         # LOSS-FACING path: replace post-failure rows with a finite ``y0`` placeholder
         # so the ``penalty(state) * mask`` idiom stays safe (an inf left in makes

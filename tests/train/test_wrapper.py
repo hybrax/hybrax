@@ -825,6 +825,82 @@ def test_physical_rhs_passes_process_minimum_volume_to_hybrax_format():
     assert not jnp.allclose(at_min, wrapper.physical_rhs(0.0, jnp.asarray([1.0, 1.0])))
 
 
+def _make_draining_process() -> BioProcess:
+    """No feed, one continuous unretained outflow that empties the reactor by ``t1``.
+
+    This is the depletion the vector field cannot signal: with ``total_in == 0`` and
+    retention 0, ``dilution`` vanishes and the transport terms do not depend on ``V``
+    at all, so nothing blows up, the controller rejects nothing, and the solve
+    integrates straight through zero.
+    """
+    process = _make_single_species_process(feed_rate=0.0)
+    process.volume.volume_changes["drain"] = Outflow(
+        name="drain",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        # initial_volume is 1.0, so this reaches exactly 0.0 at t = 2.0.
+        values=TimeSeries(times=[0.0, 2.0], values=[0.0, -1.0]),
+        retention={"biomass": 0.0},
+    )
+    return process
+
+
+def test_solve_rejects_volume_depleted_by_continuous_outflow():
+    """Depletion on ACCEPTED states is reported even though the RHS cannot see it."""
+    from hybrax.train.physical_solve import solve_physical_states
+
+    process = _make_draining_process()
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    module = ConstantReactionModule(
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
+    )
+    wrapper = _build_wrapper(process, controls, module)
+
+    with pytest.raises(Exception, match="trajectory reached minimum reactor volume"):
+        solve_physical_states(
+            wrapper,
+            t_eval=jnp.asarray([0.0, 2.0]),
+            n_measured=2,
+            RAW_y0=jnp.asarray([1.0, 1.0]),
+            max_steps=10_000,
+            rtol=1e-6,
+            atol=1e-8,
+        )
+
+
+def test_solve_accepts_trajectory_that_stays_above_minimum():
+    """The depletion check must not fire on a healthy trajectory.
+
+    Same draining process, stopped before the reactor empties, so a check keyed on
+    anything coarser than the actual volume (or on parked/padded rows) would fail here.
+    """
+    from hybrax.train.physical_solve import solve_physical_states
+
+    process = _make_draining_process()
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    module = ConstantReactionModule(
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
+    )
+    wrapper = _build_wrapper(process, controls, module)
+
+    states = solve_physical_states(
+        wrapper,
+        t_eval=jnp.asarray([0.0, 1.0]),
+        n_measured=2,
+        RAW_y0=jnp.asarray([1.0, 1.0]),
+        max_steps=10_000,
+        rtol=1e-6,
+        atol=1e-8,
+    )
+    # V = 1.0 - 0.5*t, minus the 0.1 L sample at t = 1.0 -> 0.4 L, well above min_V.
+    assert float(states[-1, -1]) == pytest.approx(0.4, abs=1e-6)
+
+
 @pytest.mark.parametrize("initial_volume", [0.001, 0.0005])
 def test_solve_rejects_initial_volume_at_or_below_minimum(initial_volume):
     from hybrax.train.physical_solve import solve_physical_states
