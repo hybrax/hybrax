@@ -26,7 +26,7 @@ The walkthrough below shows the file in pieces, next to the reasoning for each o
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-import json, os, shutil, subprocess, sys, textwrap
+import json, os, shutil, subprocess, sys, textwrap, warnings
 from pathlib import Path
 %matplotlib inline
 
@@ -148,7 +148,13 @@ cfg = run_config.RunConfig(prepare=run_config.PrepareConfig(
         noise_std={"biomass": 0.05, "glucose": 0.05, "lactate": 0.05, "product": 0.05},
     ),
 ))
-augmented = augmentation.augment_process_collection(raw, cfg, custom.augment_state_values)
+with warnings.catch_warnings(record=True) as caught_warnings:
+    warnings.simplefilter("always")
+    augmented = augmentation.augment_process_collection(
+        raw, cfg, custom.augment_state_values
+    )
+for warning in caught_warnings:
+    print(f"{warning.category.__name__}: {warning.message}")
 
 children = [n for n, p in augmented.processes.items() if hasattr(p, "parent_process")]
 print(f"{len(children)} synthetic children from 1 parent")

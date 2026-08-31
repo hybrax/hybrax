@@ -22,6 +22,7 @@
 #
 # Always finish with a clean docs_rebuild.sh run before calling anything done.
 set -euo pipefail
+export HYBRAX_LOG_TIMESTAMPS=0
 PYTHON="uv run --extra docs python"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # hybrax/docs/
 SRC="$ROOT/source"; OUT="$ROOT/html"; SCRATCH="$ROOT/_scratch"
@@ -36,6 +37,7 @@ LOG="$SCRATCH/build.log"
 echo "Build log: $LOG  (tail -f \"$LOG\" in another terminal to watch progress)"
 BUILD_START=$(date +%s)
 $PYTHON -m sphinx -b html -j 4 -d "$SCRATCH/doctrees" "$SRC" "$OUT" 2>&1 | tee "$LOG"
+$PYTHON "$ROOT/stabilize_html.py" "$OUT"
 
 if compgen -G "$JUPYTER_EXECUTE"/*.png > /dev/null; then
     mkdir -p "$JUPYTER_EXECUTE/figures"
