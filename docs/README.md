@@ -22,6 +22,17 @@ Then, from `docs/`:
   scratch and committed for publishing). Open `html/index.html` to preview.
 - `bash docs_rebuild_fast.sh` does an incremental rebuild for local iteration.
 
+To verify that clean builds are reproducible:
+
+```bash
+reference="$(mktemp -d)"
+bash docs_rebuild.sh
+cp -a html "$reference/html"
+bash docs_rebuild.sh
+diff -qr "$reference/html" html
+rm -rf "$reference"
+```
+
 ## Notes
 
 - The API reference is generated with **sphinx-autoapi**, which parses
@@ -30,3 +41,7 @@ Then, from `docs/`:
   build.
 - `source/autoapi/`, `source/_data/out/`, and `_scratch/` are generated and
   gitignored. `html/` is generated too, but committed for publishing.
+- The rebuild scripts do not regenerate the architecture diagrams. After a
+  Matplotlib change, run
+  `uv run --extra docs python source/_data/make_diagrams.py` from `docs/` and
+  commit the updated SVGs.
