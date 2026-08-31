@@ -1,4 +1,9 @@
-"""Normalize MyST-NB's clean versus incremental CSS cache suffix."""
+"""Make MyST-NB's CSS suffix match Sphinx's asset checksum.
+
+MyST-NB writes its CSS after clean pages render, so clean builds omit the
+suffix that incremental builds include. This mirrors
+``sphinx.builders.html._assets._file_checksum`` to canonicalize both.
+"""
 
 import re
 import sys
@@ -20,10 +25,10 @@ def main(output_dir: str) -> None:
         return f"{filename}?v={checksums[filename]}"
 
     for path in output.rglob("*.html"):
-        original = path.read_text()
+        original = path.read_text(encoding="utf-8")
         stable = CSS_LINK.sub(versioned, original)
         if stable != original:
-            path.write_text(stable)
+            path.write_text(stable, encoding="utf-8")
 
 
 if __name__ == "__main__":

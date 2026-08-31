@@ -153,6 +153,7 @@ with warnings.catch_warnings(record=True) as caught_warnings:
     augmented = augmentation.augment_process_collection(
         raw, cfg, custom.augment_state_values
     )
+assert caught_warnings
 for warning in caught_warnings:
     print(f"{warning.category.__name__}: {warning.message}")
 
