@@ -458,14 +458,11 @@ timepoint does not know that. The hook receives the noised values <em>after</em>
 transform and can repair them: here, a running maximum.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>5 synthetic children from 1 parent
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>UserWarning: fedbatch_1: spline for reactor-medium component 'glucose' evaluated below zero during augmentation
+5 synthetic children from 1 parent
   fedbatch_1__aug_000: parent=fedbatch_1  product monotone=True
   fedbatch_1__aug_001: parent=fedbatch_1  product monotone=True
   fedbatch_1__aug_002: parent=fedbatch_1  product monotone=True
-</pre></div>
-</div>
-<div class="output stderr highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>/tmp/ipykernel_2672085/1178419899.py:19: UserWarning: fedbatch_1: spline for reactor-medium component 'glucose' evaluated below zero during augmentation
-  augmented = augmentation.augment_process_collection(raw, cfg, custom.augment_state_values)
 </pre></div>
 </div>
 </div>
@@ -475,7 +472,7 @@ transform and can repair them: here, a running maximum.</p>
 <h2>Training on the Enlarged Dataset<a class="headerlink" href="#training-on-the-enlarged-dataset" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>2026-08-28 19:01:12 INFO __main__: training complete: first_mean_loss=356.227 last_mean_loss=1.15611 delta=-355.071
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=356.227 last_mean_loss=1.15611 delta=-355.071
 </pre></div>
 </div>
 </div>

@@ -95,9 +95,9 @@ Then, from `docs/`:
 bash docs_rebuild.sh
 ```
 
-builds `html/` from scratch (not committed; regenerated on demand). Open
-`docs/html/index.html` to preview. `docs_rebuild_fast.sh` does an incremental
-rebuild for local iteration.
+builds the committed `html/` output from scratch. Open `docs/html/index.html`
+to preview. `docs_rebuild_fast.sh` does an incremental rebuild for local
+iteration.
 
 ## See also
 
