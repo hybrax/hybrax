@@ -19,7 +19,7 @@ conda env create -f docs/environment.yml
 Then, from `docs/`:
 
 - `bash docs_rebuild.sh` does a full rebuild into `html/` (regenerated from
-  scratch, not committed). Open `html/index.html` to preview.
+  scratch and committed for publishing). Open `html/index.html` to preview.
 - `bash docs_rebuild_fast.sh` does an incremental rebuild for local iteration.
 
 ## Notes
@@ -28,5 +28,5 @@ Then, from `docs/`:
   `hybrax`'s source statically and never imports it. `hybrax.train`'s
   import-time device bootstrap and the heavy JAX stack never run during a
   build.
-- `source/autoapi/`, `source/_data/out/`, `_scratch/`, and `html/` are all
-  generated each build and are gitignored, not committed.
+- `source/autoapi/`, `source/_data/out/`, and `_scratch/` are generated and
+  gitignored. `html/` is generated too, but committed for publishing.
