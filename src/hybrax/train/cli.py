@@ -11,9 +11,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
 from hybrax.format.json_io import load_json
 from hybrax.format.serialization import load_process_collection
-import pandas as pd
 
 from .forward_plotting import plot_forward_predictions
 from .harness import (
@@ -36,8 +37,6 @@ from .loo import (
     run_loo_cv,
     train_prepared_fold,
 )
-from .runtime_artifact import FORMAT_VERSION
-from .runtime_context import original_parent_processes
 from .postprocessing import aggregate_dense_exports, export_predictions_csv
 from .prepare import prepare_artifact
 from .run_config import (
@@ -50,15 +49,19 @@ from .run_config import (
     load_train_config,
     resolve_prepared_path,
 )
+from .runtime_artifact import FORMAT_VERSION
+from .runtime_context import original_parent_processes
 from .serialization import (
     content_hash,
-    environment_versions as _environment_versions,
     read_run_config_json,
     resolve_forward_model_path,
     resolve_run_dir,
     run_config_to_jsonable,
     update_json,
     write_json,
+)
+from .serialization import (
+    environment_versions as _environment_versions,
 )
 from .training_data import TARGET_SOURCE_AUTO
 
@@ -544,7 +547,7 @@ def _handle_train(args: argparse.Namespace) -> int:
             forward_result=forward_result,
             prediction_processes=prediction_processes,
         )
-    except Exception as exc:  # noqa: BLE001 - record failure, then re-raise
+    except Exception as exc:
         update_json(
             config_json,
             status="failed",
@@ -1053,7 +1056,7 @@ def _handle_loo(args: argparse.Namespace) -> int:
                 output_dir=resume_dir,
                 resume=True,
             )
-        except Exception as exc:  # noqa: BLE001 - record failure, then re-raise
+        except Exception as exc:
             update_json(
                 config_json,
                 status="failed",
@@ -1155,7 +1158,7 @@ def _handle_loo(args: argparse.Namespace) -> int:
             config_path=bundle_path,
             output_dir=output_dir,
         )
-    except Exception as exc:  # noqa: BLE001 - record failure, then re-raise
+    except Exception as exc:
         update_json(
             config_json,
             status="failed",
@@ -1229,7 +1232,7 @@ def main(argv: list[str] | None = None) -> int:
     """
     parser = _build_parser()
     args = parser.parse_args(argv)
-    handler = getattr(args, "handler")
+    handler = args.handler
     return int(handler(args))
 
 

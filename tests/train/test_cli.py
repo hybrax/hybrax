@@ -4,15 +4,11 @@ import json
 from pathlib import Path
 
 import pytest
-from hybrax.format.serialization import save_process_collection
-
-from hybrax.train import cli
-from hybrax.train.harness import ForwardResult, TrainHarnessResult
 from test_prepare import _make_two_process_collection
 
-
-class _DummyCollection:
-    processes = {"p1": object(), "p2": object(), "p3": object()}
+from hybrax.format.serialization import save_process_collection
+from hybrax.train import cli
+from hybrax.train.harness import ForwardResult, TrainHarnessResult
 
 
 class _DummyStore:
