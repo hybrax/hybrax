@@ -621,10 +621,9 @@
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_configure_logging</span><span class="p">(</span><span class="n">level</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Configure CLI logging, with timestamps unless explicitly disabled."""</span>
-    <span class="n">timestamps</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"HYBRAX_LOG_TIMESTAMPS"</span><span class="p">,</span> <span class="s2">""</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span>
+    <span class="n">timestamps</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"HYBRAX_LOG_TIMESTAMPS"</span><span class="p">,</span> <span class="s2">""</span><span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span>
         <span class="s2">"0"</span><span class="p">,</span>
         <span class="s2">"false"</span><span class="p">,</span>
-        <span class="s2">"False"</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="n">prefix</span> <span class="o">=</span> <span class="s2">"</span><span class="si">%(asctime)s</span><span class="s2"> "</span> <span class="k">if</span> <span class="n">timestamps</span> <span class="k">else</span> <span class="s2">""</span>
     <span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span>

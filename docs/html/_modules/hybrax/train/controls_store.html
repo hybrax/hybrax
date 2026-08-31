@@ -903,6 +903,8 @@
     <span class="n">max_event_gap_fraction</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">max_measurements_per_event_gap</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
+<div class="viewcode-block" id="PerProcessControls.n_u">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.PerProcessControls.n_u">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">n_u</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Total control axis count: Inflows + Outflows + PVs."""</span>
@@ -910,27 +912,40 @@
             <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Inflows</span><span class="p">)</span>
             <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_Outflows</span><span class="p">)</span>
             <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_controlled_PVs</span><span class="p">)</span>
-        <span class="p">)</span>
+        <span class="p">)</span></div>
 
+
+<div class="viewcode-block" id="PerProcessControls.active_linear_grid">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.PerProcessControls.active_linear_grid">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">active_linear_grid</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""``linear_grid`` sliced to its unpadded length (``grid_length``)."""</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">linear_grid</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">grid_length</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">linear_grid</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">grid_length</span><span class="p">]</span></div>
 
+
+<div class="viewcode-block" id="PerProcessControls.active_jump_ts">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.PerProcessControls.active_jump_ts">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">active_jump_ts</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""``jump_ts`` sliced to its unpadded length (``jump_ts_length``)."""</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">jump_ts</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">jump_ts_length</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">jump_ts</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">jump_ts_length</span><span class="p">]</span></div>
 
+
+<div class="viewcode-block" id="PerProcessControls.active_control_values">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.PerProcessControls.active_control_values">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">active_control_values</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""``control_values`` sliced to its unpadded length (``grid_length``)."""</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">control_values</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">grid_length</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">control_values</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">grid_length</span><span class="p">]</span></div>
 
+
+<div class="viewcode-block" id="PerProcessControls.active_control_derivatives">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.PerProcessControls.active_control_derivatives">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">active_control_derivatives</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""``control_derivatives`` sliced to its unpadded length (``grid_length``)."""</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">control_derivatives</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">grid_length</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">control_derivatives</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">grid_length</span><span class="p">]</span></div>
+
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_eval_values</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ts</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Interpolate all control values in canonical flow/PV column order.</span>

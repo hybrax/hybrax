@@ -631,6 +631,8 @@
         <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
 
 
+<div class="viewcode-block" id="Scaler.shape">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.Scaler.shape">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">"""Array shape of one element on this axis (NOT a scalar ``width``).</span>
@@ -639,7 +641,8 @@
 <span class="sd">        ``*_Cin`` axes are 2-D ``(n_Inflows, n_RMCs)``, and several axes are</span>
 <span class="sd">        legitimately zero-width.</span>
 <span class="sd">        """</span>
-        <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
+
 
     <span class="c1"># Static contract for elementwise composition. Type-only so concrete eqx</span>
     <span class="c1"># modules can store ``scale`` / ``offset`` as fields (a runtime @property</span>
@@ -706,15 +709,21 @@
         <span class="k">return</span> <span class="n">SCL_rate</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale</span></div>
 
 
+<div class="viewcode-block" id="LinearScaler.shape">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LinearScaler.shape">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">"""Array shape of ``scale``."""</span>
-        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span></div>
 
+
+<div class="viewcode-block" id="LinearScaler.offset">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LinearScaler.offset">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">offset</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Always zero, matching :class:`AffineScaler`'s attribute for composition."""</span>
-        <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">)</span></div>
+
 
 <div class="viewcode-block" id="LinearScaler.astype">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LinearScaler.astype">[docs]</a>
@@ -815,10 +824,13 @@
         <span class="k">return</span> <span class="n">SCL_rate</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale</span></div>
 
 
+<div class="viewcode-block" id="AffineScaler.shape">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.AffineScaler.shape">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">shape</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">"""Array shape of ``scale``."""</span>
-        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span></div>
+
 
 <div class="viewcode-block" id="AffineScaler.astype">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.AffineScaler.astype">[docs]</a>
@@ -1115,50 +1127,77 @@
     <span class="c1"># need to thread `n_*` kwargs through `build_reaction_module`.</span>
     <span class="c1"># ------------------------------------------------------------------</span>
 
+<div class="viewcode-block" id="RateModule.n_modeled_RMCs">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_modeled_RMCs">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">n_modeled_RMCs</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Number of modeled RMCs (species)."""</span>
-        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_RMCs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_RMCs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span></div>
 
+
+<div class="viewcode-block" id="RateModule.n_modeled_PVs">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_modeled_PVs">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">n_modeled_PVs</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Number of modeled (uncontrolled, dynamic) process variables."""</span>
-        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_PVs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_PVs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span></div>
 
+
+<div class="viewcode-block" id="RateModule.n_modeled_Inflows">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_modeled_Inflows">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">n_modeled_Inflows</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Number of modeled Inflows."""</span>
-        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Inflows_cumulative</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Inflows_cumulative</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span></div>
 
+
+<div class="viewcode-block" id="RateModule.n_modeled_Outflows">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_modeled_Outflows">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">n_modeled_Outflows</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Number of modeled Outflows."""</span>
-        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Outflows_cumulative</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Outflows_cumulative</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span></div>
 
+
+<div class="viewcode-block" id="RateModule.n_modeled_ReactionOde_rates">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_modeled_ReactionOde_rates">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">n_modeled_ReactionOde_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Number of rates emitted by the ReactionOde block."""</span>
-        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_ReactionOde_rates</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_ReactionOde_rates</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span></div>
 
+
+<div class="viewcode-block" id="RateModule.n_controlled_Inflows">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_controlled_Inflows">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">n_controlled_Inflows</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Number of continuous controlled Inflows."""</span>
-        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_Inflows_cumulative</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_Inflows_cumulative</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span></div>
 
+
+<div class="viewcode-block" id="RateModule.n_controlled_Outflows">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_controlled_Outflows">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">n_controlled_Outflows</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Number of continuous controlled Outflows."""</span>
-        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_Outflows_cumulative</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_Outflows_cumulative</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span></div>
 
+
+<div class="viewcode-block" id="RateModule.n_controlled_PVs">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_controlled_PVs">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">n_controlled_PVs</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Number of controlled process-variable signals."""</span>
-        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_PVs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_controlled_PVs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span></div>
 
+
+<div class="viewcode-block" id="RateModule.n_latent">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.n_latent">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">n_latent</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Number of integrated latent-state dimensions."""</span>
-        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_latent</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">SCALE_latent</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span></div>
+
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_state_scalers</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Scaler</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
@@ -1170,6 +1209,8 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_modeled_Outflows_cumulative</span><span class="p">,</span>
         <span class="p">)</span>
 
+<div class="viewcode-block" id="RateModule.SCALE_state">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_state">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">SCALE_state</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Scaler</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Composed state scaler.</span>
@@ -1179,17 +1220,24 @@
 <span class="sd">        Zero-width parts (e.g. an empty PV axis) are preserved in the concat to</span>
 <span class="sd">        reproduce ``jnp.concatenate`` dtype promotion exactly — do NOT filter.</span>
 <span class="sd">        """</span>
-        <span class="k">return</span> <span class="n">_compose_scalers</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_state_scalers</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">_compose_scalers</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_state_scalers</span><span class="p">)</span></div>
 
+
+<div class="viewcode-block" id="RateModule.SCALE_modeled_V">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_modeled_V">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">SCALE_modeled_V</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Scaler</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Real-volume scale shares the V_in_cumulative scale (same units, L)."""</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_V_in_cumulative</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_V_in_cumulative</span></div>
 
+
+<div class="viewcode-block" id="RateModule.SCALE_integrated_state">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.SCALE_integrated_state">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">SCALE_integrated_state</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Scaler</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""State scaler used by the ODE solver, incl. trailing latent state."""</span>
-        <span class="k">return</span> <span class="n">_compose_scalers</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_state_scalers</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_latent</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">_compose_scalers</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_state_scalers</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_latent</span><span class="p">)</span></div>
+
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">ReactionInputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Override. Inputs in SCL space; return rates in SCL space.</span>
@@ -1200,10 +1248,13 @@
 <span class="sd">        """</span>
         <span class="k">raise</span> <span class="ne">NotImplementedError</span>
 
+<div class="viewcode-block" id="RateModule.latent_observables">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.latent_observables">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">latent_observables</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">"""Names of observables that require live latent state during the solve."""</span>
-        <span class="k">return</span> <span class="p">()</span>
+        <span class="k">return</span> <span class="p">()</span></div>
+
 
 <div class="viewcode-block" id="RateModule.observe">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.observe">[docs]</a>
@@ -1656,11 +1707,16 @@
 <span class="sd">    the harness partitions the whole wrapper by field tags.</span>
 <span class="sd">    """</span>
 
+<div class="viewcode-block" id="UserLossModule.loss_names">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserLossModule.loss_names">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">loss_names</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">"""Stable ordered term/panel names. MUST equal ``named_losses`` keys."""</span>
-        <span class="k">raise</span> <span class="ne">NotImplementedError</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
 
+
+<div class="viewcode-block" id="UserLossModule.dense_grid_n">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.UserLossModule.dense_grid_n">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">dense_grid_n</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Optional dense-grid opt-in.</span>
@@ -1682,7 +1738,8 @@
 <span class="sd">        evaluation per segment it is windowed into, and the ``dense_*`` views it</span>
 <span class="sd">        populates are real arrays in the loss.</span>
 <span class="sd">        """</span>
-        <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">return</span> <span class="kc">None</span></div>
+
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">LossInputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LossOutputs</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Override. Compute every named loss term from ``inputs``."""</span>

@@ -512,15 +512,21 @@
     <span class="n">raw_state_traces</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">RawTrace</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="o">...</span><span class="p">]</span>
     <span class="n">sample_volume_event_traces</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">RawTrace</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
 
+<div class="viewcode-block" id="ProducerCollectionData.process_order">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.ProducerCollectionData.process_order">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">process_order</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">"""Every process (parents and augmented children), in canonical order."""</span>
-        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">training_data</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">training_data</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span></div>
 
+
+<div class="viewcode-block" id="ProducerCollectionData.parent_process_order">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.ProducerCollectionData.parent_process_order">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">parent_process_order</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">"""Canonical originals aligned with the cached rich trace tuples."""</span>
-        <span class="k">return</span> <span class="n">original_parent_processes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">process_order</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">augmentation_parents</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">original_parent_processes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">process_order</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">augmentation_parents</span><span class="p">)</span></div>
+
 
 <div class="viewcode-block" id="ProducerCollectionData.from_collection">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.ProducerCollectionData.from_collection">[docs]</a>
@@ -661,22 +667,31 @@
     <span class="n">sample_volume_event_traces</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">RawTrace</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
     <span class="n">_control_scale_evidence</span><span class="p">:</span> <span class="n">ControlScaleEvidence</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 
+<div class="viewcode-block" id="RuntimeDataContext.rhs_ode">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.RuntimeDataContext.rhs_ode">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">rhs_ode</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""The shared ``RhsOde`` of every training parent; see</span>
 <span class="sd">        ``training_data.rhs_ode``.</span>
 <span class="sd">        """</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">training_data</span><span class="o">.</span><span class="n">rhs_ode</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">training_data</span><span class="o">.</span><span class="n">rhs_ode</span></div>
 
+
+<div class="viewcode-block" id="RuntimeDataContext.controls_store">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.RuntimeDataContext.controls_store">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">controls_store</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""The fold's ``ControlsStore``; see ``training_data.controls_store``."""</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">training_data</span><span class="o">.</span><span class="n">controls_store</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">training_data</span><span class="o">.</span><span class="n">controls_store</span></div>
 
+
+<div class="viewcode-block" id="RuntimeDataContext.process_order">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.RuntimeDataContext.process_order">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">process_order</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">"""Every training parent, in canonical order."""</span>
-        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">training_data</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">training_data</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span></div>
+
 
 <div class="viewcode-block" id="RuntimeDataContext.control_scale_evidence">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.RuntimeDataContext.control_scale_evidence">[docs]</a>

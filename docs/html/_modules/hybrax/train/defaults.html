@@ -627,10 +627,13 @@
             <span class="n">outflow_init_key</span><span class="p">,</span>
         <span class="p">)</span>
 
+<div class="viewcode-block" id="DefaultLstmReactionModule.hidden_width">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultLstmReactionModule.hidden_width">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">hidden_width</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Width of each hidden/cell half of the integrated latent state."""</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_latent</span> <span class="o">//</span> <span class="mi">2</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_latent</span> <span class="o">//</span> <span class="mi">2</span></div>
+
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">ReactionInputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""One LSTM step as a continuous-time latent derivative."""</span>
@@ -934,10 +937,13 @@
 <span class="w">        </span><span class="sd">"""Store the measured target names each become one loss term for."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">target_names</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">target_names</span><span class="p">)</span>
 
+<div class="viewcode-block" id="DefaultLossModule.loss_names">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultLossModule.loss_names">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">loss_names</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">"""Equal to ``target_names``, one loss term per measured target."""</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">target_names</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">target_names</span></div>
+
 
 <div class="viewcode-block" id="DefaultLossModule.residual_reduction">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultLossModule.residual_reduction">[docs]</a>

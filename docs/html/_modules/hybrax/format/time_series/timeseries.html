@@ -605,6 +605,8 @@
             <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"coeffs"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
             <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">"segment_start_piece_idx"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 
+<div class="viewcode-block" id="TimeSeries.dtype">
+<a class="viewcode-back" href="../../../../autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries.dtype">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">dtype</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">"""Floating-point dtype of the series arrays (float64 under x64)."""</span>
@@ -612,7 +614,8 @@
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">dtype</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">breaks</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">breaks</span><span class="o">.</span><span class="n">dtype</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">jump_times</span><span class="o">.</span><span class="n">dtype</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">jump_times</span><span class="o">.</span><span class="n">dtype</span></div>
+
 
 <div class="viewcode-block" id="TimeSeries.from_dict">
 <a class="viewcode-back" href="../../../../autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries.from_dict">[docs]</a>
@@ -658,12 +661,15 @@
         <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">values</span><span class="p">),</span> <span class="n">index</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">times</span><span class="p">))</span></div>
 
 
+<div class="viewcode-block" id="TimeSeries.poly">
+<a class="viewcode-back" href="../../../../autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries.poly">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">poly</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PPoly</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Return the owned spline evaluator for the canonical spline state."""</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">breaks</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">coeffs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
-        <span class="k">return</span> <span class="n">PPoly</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">breaks</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">coeffs</span><span class="p">,</span> <span class="n">continuity_side</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">continuity_side</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">PPoly</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">breaks</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">coeffs</span><span class="p">,</span> <span class="n">continuity_side</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">continuity_side</span><span class="p">)</span></div>
+
 
 <div class="viewcode-block" id="TimeSeries.lin_interp">
 <a class="viewcode-back" href="../../../../autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries.lin_interp">[docs]</a>

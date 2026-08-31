@@ -764,26 +764,38 @@
     <span class="c1"># Per-process controls view from ControlsStore.</span>
     <span class="n">controls</span><span class="p">:</span> <span class="n">PerProcessControls</span>
 
+<div class="viewcode-block" id="PerProcessTrainingData.active_t_measured">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.PerProcessTrainingData.active_t_measured">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">active_t_measured</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Active measurement-time prefix."""</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">t_measured</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_measured</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">t_measured</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_measured</span><span class="p">]</span></div>
 
+
+<div class="viewcode-block" id="PerProcessTrainingData.active_y_measured">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.PerProcessTrainingData.active_y_measured">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">active_y_measured</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Active measurement/value prefix."""</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">y_measured</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_measured</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">y_measured</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_measured</span><span class="p">]</span></div>
 
+
+<div class="viewcode-block" id="PerProcessTrainingData.active_mask_measured">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.PerProcessTrainingData.active_mask_measured">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">active_mask_measured</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Active measurement-mask prefix."""</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask_measured</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_measured</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">mask_measured</span><span class="p">[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_measured</span><span class="p">]</span></div>
 
+
+<div class="viewcode-block" id="PerProcessTrainingData.name_measured">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.PerProcessTrainingData.name_measured">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">name_measured</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">"""Combined measured-target names in state order</span>
 <span class="sd">        ``[name_measured_RMCs | name_measured_PVs]``."""</span>
         <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_measured_RMCs</span><span class="p">)</span> <span class="o">+</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_measured_PVs</span><span class="p">)</span></div>
+</div>
 
 
 
@@ -878,10 +890,13 @@
                 <span class="s2">"name_measured_PVs must be non-empty."</span>
             <span class="p">)</span>
 
+<div class="viewcode-block" id="TrainingDataStore.name_measured">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.TrainingDataStore.name_measured">[docs]</a>
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">name_measured</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">"""Loss/target column labels in ``[RMC targets | PV targets]`` order."""</span>
-        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_measured_RMCs</span><span class="p">)</span> <span class="o">+</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_measured_PVs</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_measured_RMCs</span><span class="p">)</span> <span class="o">+</span> <span class="nb">tuple</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name_measured_PVs</span><span class="p">)</span></div>
+
 
 <div class="viewcode-block" id="TrainingDataStore.from_collection">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/training_data/index.html#hybrax.train.training_data.TrainingDataStore.from_collection">[docs]</a>
