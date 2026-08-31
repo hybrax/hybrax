@@ -51,6 +51,31 @@ def _run_each_test_in_tmp_cwd(monkeypatch, tmp_path: Path):
     monkeypatch.chdir(tmp_path)
 
 
+@pytest.mark.parametrize(
+    ("value", "expected_prefix"),
+    [(None, "%(asctime)s "), ("0", ""), ("false", ""), ("False", "")],
+)
+def test_cli_log_timestamps_follow_environment(
+    monkeypatch, value: str | None, expected_prefix: str
+):
+    captured = {}
+    if value is None:
+        monkeypatch.delenv("HYBRAX_LOG_TIMESTAMPS", raising=False)
+    else:
+        monkeypatch.setenv("HYBRAX_LOG_TIMESTAMPS", value)
+    monkeypatch.setattr(
+        cli.logging, "basicConfig", lambda **kwargs: captured.update(kwargs)
+    )
+
+    cli._configure_logging("WARNING")
+
+    assert captured["level"] == cli.logging.WARNING
+    assert captured["format"] == (
+        f"{expected_prefix}%(levelname)s %(name)s: %(message)s"
+    )
+    assert captured["force"] is True
+
+
 def test_prepare_cli_dispatches_loaded_config(monkeypatch, tmp_path: Path):
     captured: dict[str, object] = {}
     config_path = tmp_path / "config.json"

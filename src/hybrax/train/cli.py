@@ -250,13 +250,24 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _handle_prepare(args: argparse.Namespace) -> int:
+def _configure_logging(level: str) -> None:
+    """Configure CLI logging, with timestamps unless explicitly disabled."""
+    timestamps = os.environ.get("HYBRAX_LOG_TIMESTAMPS", "") not in (
+        "0",
+        "false",
+        "False",
+    )
+    prefix = "%(asctime)s " if timestamps else ""
     logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        level=getattr(logging, level),
+        format=f"{prefix}%(levelname)s %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
         force=True,
     )
+
+
+def _handle_prepare(args: argparse.Namespace) -> int:
+    _configure_logging(args.log_level)
     loaded = load_prepare_config(args.config)
     cfg = _apply_train_cli_overrides(loaded.config, args)
     output_dir = Path(cfg.output.dir)
@@ -422,12 +433,7 @@ def _finalize_run_dir(
 
 
 def _handle_train(args: argparse.Namespace) -> int:
-    logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        force=True,
-    )
+    _configure_logging(args.log_level)
     log = logging.getLogger(__name__)
 
     # ---- Fresh run ----
@@ -712,12 +718,7 @@ def _resolve_model_names(models: tuple[ModelRef, ...]) -> list[str]:
 
 
 def _handle_forward(args: argparse.Namespace) -> int:
-    logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        force=True,
-    )
+    _configure_logging(args.log_level)
     log = logging.getLogger(__name__)
 
     # --- Build the forward config (models + data + output all from the file) ---
@@ -976,12 +977,7 @@ def _aggregate_forward_plot_losses(
 
 
 def _handle_loo(args: argparse.Namespace) -> int:
-    logging.basicConfig(
-        level=getattr(logging, args.log_level),
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-        force=True,
-    )
+    _configure_logging(args.log_level)
     log = logging.getLogger(__name__)
 
     if args.produce_runtime or args.runtime_artifact is not None:
