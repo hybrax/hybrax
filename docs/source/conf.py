@@ -29,6 +29,8 @@ extensions = [
     "sphinx_copybutton",
     "sphinx_design",  # dropdown directive (full-file listings in the gallery)
 ]
+# Keep source links within Hybrax instead of publishing imported stdlib modules.
+viewcode_follow_imported_members = False
 
 # myst-nb owns .md and .ipynb. Files without {code-cell} blocks are parsed as
 # plain MyST markdown, so ordinary pages are unaffected.
