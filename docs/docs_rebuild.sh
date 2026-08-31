@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-export HYBRAX_LOG_TIMESTAMPS=0
 PYTHON="uv run --extra docs python"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # hybrax/docs/
 SRC="$ROOT/source"; OUT="$ROOT/html"; SCRATCH="$ROOT/_scratch"

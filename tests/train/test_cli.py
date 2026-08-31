@@ -53,7 +53,13 @@ def _run_each_test_in_tmp_cwd(monkeypatch, tmp_path: Path):
 
 @pytest.mark.parametrize(
     ("value", "expected_prefix"),
-    [(None, "%(asctime)s "), ("0", ""), ("false", ""), ("False", "")],
+    [
+        (None, "%(asctime)s "),
+        ("0", ""),
+        ("false", ""),
+        ("FALSE", ""),
+        (" false ", ""),
+    ],
 )
 def test_cli_log_timestamps_follow_environment(
     monkeypatch, value: str | None, expected_prefix: str

@@ -252,10 +252,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _configure_logging(level: str) -> None:
     """Configure CLI logging, with timestamps unless explicitly disabled."""
-    timestamps = os.environ.get("HYBRAX_LOG_TIMESTAMPS", "") not in (
+    timestamps = os.environ.get("HYBRAX_LOG_TIMESTAMPS", "").strip().lower() not in (
         "0",
         "false",
-        "False",
     )
     prefix = "%(asctime)s " if timestamps else ""
     logging.basicConfig(
