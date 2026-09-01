@@ -35,8 +35,16 @@ $PYTHON "$SRC/_data/generate.py"
 LOG="$SCRATCH/build.log"
 echo "Build log: $LOG  (tail -f \"$LOG\" in another terminal to watch progress)"
 BUILD_START=$(date +%s)
+# myst-nb copies its CSS into _static on build-finished, i.e. after the pages linking
+# it have already been written, so a from-scratch build renders the link bare (Sphinx
+# cannot checksum a file that isn't there yet). docs_rebuild.sh wipes html/ and
+# therefore always gets that form. Without the next line an incremental build (i.e.
+# docs_rebuild_fast.sh) finds the last run's copy in place, renders `?v=<crc32>` into
+# only the pages it touched, causing HTML churn. The simplest way to avoid this is to
+# wipe the CSS before the incremental build, which costs nothing: it is a 43 KB static
+# file, and no cache keys on it.
+rm -f "$OUT"/_static/mystnb.*.css
 $PYTHON -m sphinx -b html -j 4 -d "$SCRATCH/doctrees" "$SRC" "$OUT" 2>&1 | tee "$LOG"
-$PYTHON "$ROOT/stabilize_html.py" "$OUT"
 
 if compgen -G "$JUPYTER_EXECUTE"/*.png > /dev/null; then
     mkdir -p "$JUPYTER_EXECUTE/figures"

@@ -61,7 +61,6 @@ BUILD_START=$(date +%s)
 # kept hybrax's own pytest -n from OOM-killing this WSL box; raise with
 # caution, not by default.
 $PYTHON -m sphinx -b html -j 4 -d "$SCRATCH/doctrees" "$SRC" "$OUT" 2>&1 | tee "$LOG"
-$PYTHON "$ROOT/stabilize_html.py" "$OUT"
 
 # myst-nb writes every executed cell's image output flat into jupyter_execute/,
 # hash-named for content-addressed dedup (see myst_nb.core.render.render_image) —
