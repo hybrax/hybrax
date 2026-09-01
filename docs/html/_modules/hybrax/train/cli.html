@@ -916,7 +916,7 @@
             <span class="n">forward_result</span><span class="o">=</span><span class="n">forward_result</span><span class="p">,</span>
             <span class="n">prediction_processes</span><span class="o">=</span><span class="n">prediction_processes</span><span class="p">,</span>
         <span class="p">)</span>
-    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>  <span class="c1"># record failure, then re-raise</span>
         <span class="n">update_json</span><span class="p">(</span>
             <span class="n">config_json</span><span class="p">,</span>
             <span class="n">status</span><span class="o">=</span><span class="s2">"failed"</span><span class="p">,</span>
@@ -1425,7 +1425,7 @@
                 <span class="n">output_dir</span><span class="o">=</span><span class="n">resume_dir</span><span class="p">,</span>
                 <span class="n">resume</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
             <span class="p">)</span>
-        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>  <span class="c1"># record failure, then re-raise</span>
             <span class="n">update_json</span><span class="p">(</span>
                 <span class="n">config_json</span><span class="p">,</span>
                 <span class="n">status</span><span class="o">=</span><span class="s2">"failed"</span><span class="p">,</span>
@@ -1527,7 +1527,7 @@
             <span class="n">config_path</span><span class="o">=</span><span class="n">bundle_path</span><span class="p">,</span>
             <span class="n">output_dir</span><span class="o">=</span><span class="n">output_dir</span><span class="p">,</span>
         <span class="p">)</span>
-    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>  <span class="c1"># record failure, then re-raise</span>
         <span class="n">update_json</span><span class="p">(</span>
             <span class="n">config_json</span><span class="p">,</span>
             <span class="n">status</span><span class="o">=</span><span class="s2">"failed"</span><span class="p">,</span>
