@@ -2,7 +2,7 @@
 
 MyST-NB writes its CSS after clean pages render, so clean builds omit the
 suffix that incremental builds include. This mirrors
-``sphinx.builders.html._assets._file_checksum`` to canonicalize both.
+`sphinx.builders.html._assets._file_checksum` to canonicalize both.
 """
 
 import re

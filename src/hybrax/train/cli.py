@@ -547,7 +547,7 @@ def _handle_train(args: argparse.Namespace) -> int:
             forward_result=forward_result,
             prediction_processes=prediction_processes,
         )
-    except Exception as exc:
+    except Exception as exc:  # record failure, then re-raise
         update_json(
             config_json,
             status="failed",
@@ -1056,7 +1056,7 @@ def _handle_loo(args: argparse.Namespace) -> int:
                 output_dir=resume_dir,
                 resume=True,
             )
-        except Exception as exc:
+        except Exception as exc:  # record failure, then re-raise
             update_json(
                 config_json,
                 status="failed",
@@ -1158,7 +1158,7 @@ def _handle_loo(args: argparse.Namespace) -> int:
             config_path=bundle_path,
             output_dir=output_dir,
         )
-    except Exception as exc:
+    except Exception as exc:  # record failure, then re-raise
         update_json(
             config_json,
             status="failed",
