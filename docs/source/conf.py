@@ -95,6 +95,7 @@ nb_merge_streams = True
 # The kernel inherits this environment. Keep the docs build single-device and
 # headless so it never competes for cores or tries to open a window.
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
+os.environ["JAX_ENABLE_COMPILATION_CACHE"] = "false"
 os.environ.setdefault("HYBRAX_TRAIN_DEVICES", "1")
 os.environ.setdefault("HYBRAX_LOG_TIMESTAMPS", "0")
 os.environ.setdefault("MPLBACKEND", "Agg")
