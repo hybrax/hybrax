@@ -15,8 +15,9 @@ docs/_scratch/
 
 # hidden files
 .*
-# keep .python-version though
+# except for the below
 !.python-version
+!.readthedocs.yaml
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
