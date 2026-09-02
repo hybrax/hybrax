@@ -36,7 +36,9 @@ import jax
 import jax.numpy as jnp
 
 from hybrax.train.diffrax_callbacks import (
+    CallbackSet,
     PresetTimeCallback,
+    StopConditionCallback,
     diffeqsolve_with_callbacks,
 )
 from .wrapper import HybridOdeWrapper
@@ -139,6 +141,10 @@ def solve_physical_states(
       stays safe; the caller must still mask them out via ``fail_time``.
     - ``return_fail_time=False`` (forward/export) returns ``states`` with those rows set
       to ``inf``, so a failed forward is detectable and never reads back a stale value.
+
+    Reactor-volume depletion is a fatal error, not a solver failure represented by
+    ``fail_time``. That guarantee requires Equinox runtime errors to remain enabled;
+    setting ``EQX_ON_ERROR=off`` deliberately disables it.
 
     ``max_steps`` (from ``--solver-max-steps``) is the **budget for the whole
     solve**: it
@@ -259,7 +265,6 @@ def solve_physical_states(
     # are handled by ``affect_fn`` below, NOT here.
     jump_ts_arg = jump_ts if jump_ts is not None and jump_ts.shape[0] > 0 else None
 
-    cb = PresetTimeCallback(times=preset_times, affect_fn=affect_fn)
     y0 = wrapper.initial_physical_state_from_raw(RAW_y0)
     V_index = n_RMCs + n_PVs
     y0 = eqx.error_if(
@@ -276,6 +281,16 @@ def solve_physical_states(
     # subtracted here — the value ``/`` path would subtract it).
     term = diffrax.ODETerm(
         lambda t, yy, a: SCALE.scale_derivative(wrapper.physical_rhs(t, yy * SCALE))
+    )
+
+    # A stop condition checks the initial state and accepted solver steps, but not
+    # rejected trial stages. No root finder is needed because depletion is an error.
+    def volume_depleted(y_scl, t, args):
+        return SCALE[V_index].unscale_value(y_scl[V_index]) <= min_V
+
+    callbacks = CallbackSet(
+        PresetTimeCallback(times=preset_times, affect_fn=affect_fn),
+        StopConditionCallback(condition_fn=volume_depleted),
     )
 
     # ``dt0`` must be strictly positive. For a degenerate window (``t1 == t0``: a single
@@ -295,7 +310,7 @@ def solve_physical_states(
         t1=t1,
         dt0=dt0,
         y0=y0 / SCALE,
-        callbacks=cb,
+        callbacks=callbacks,
         # N jump nodes need N+1 segments: one stop per node plus the final leg to t1.
         # (With measurement times in the preset set t1 was itself a preset, so the old
         # ``shape[0]`` already covered the last leg.)
@@ -320,6 +335,11 @@ def solve_physical_states(
         sol.output_states,
         sol.output_overflow,
         "output window too small: a segment owned more output times than it can hold",
+    )
+    states = eqx.error_if(
+        states,
+        sol.terminated_by_event,
+        "trajectory reached minimum reactor volume.",
     )
     states = states * SCALE  # scaled -> physical (states are returned unscaled)
     # Report the POST-sample state at a sample-coincident time: a well-mixed sample
@@ -350,22 +370,11 @@ def solve_physical_states(
     fail_time = sol.fail_time
     post_fail = ~within_fail_time(t_eval, fail_time)
 
-    # Genuine depletion, checked on ACCEPTED states. The vector field deliberately does
-    # NOT check this (see ``hybrax.format.mechanistic._apply_feed_dilution``): it runs
-    # on Runge-Kutta stages of trial steps the controller may still reject, where a
-    # non-positive volume is scratch. Every row here is instead a solver output read off
-    # an accepted step, so a volume at or below the floor is a real physical state.
-    #
-    # Catches the case the clamped right-hand side cannot signal at all: with an
-    # unretained outflow as the only volume driver the transport terms do not depend on
-    # ``V``, so nothing blows up, no step is rejected, and the solve integrates straight
-    # through zero. The ``affect_fn``/``y0`` guards above cover sample- and
-    # initial-state-driven depletion; this covers the continuous, mid-segment kind.
-    #
-    # Restricted to rows a caller actually reads. Padded slots are parked at ``t1`` and
-    # post-failure rows still hold ``inf`` at this point (both branches below overwrite
-    # them), and a non-finite row is a failure the ``fail_time`` machinery already owns
-    # -- none of those are physical states this check should judge.
+    # The stop condition above detects depletion independently of the output grid, but
+    # only localises it to the end of an accepted step. Also reject any requested output
+    # that is visibly depleted: a boolean event can overshoot the crossing, or miss a
+    # dip and recovery wholly inside one accepted step, while interpolation can expose
+    # the invalid rows on the caller's output grid.
     V_reported = states[:, V_index]
     depleted = (
         meas_active & ~post_fail & jnp.isfinite(V_reported) & (V_reported <= min_V)
@@ -373,7 +382,7 @@ def solve_physical_states(
     states = eqx.error_if(
         states,
         jnp.any(depleted),
-        "trajectory reached minimum reactor volume.",
+        "trajectory reached minimum reactor volume at a requested output.",
     )
     if return_fail_time:
         # LOSS-FACING path: replace post-failure rows with a finite ``y0`` placeholder

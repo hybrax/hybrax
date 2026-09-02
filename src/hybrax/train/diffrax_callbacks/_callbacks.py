@@ -3,6 +3,7 @@ Callback types for diffrax_callbacks.
 
 Julia DifferentialEquations.jl equivalents:
   ContinuousCallback  -> ContinuousCallback (zero-crossing with root-finding)
+  StopConditionCallback -> terminating boolean condition after accepted steps
   DiscreteCallback     -> DiscreteCallback (evaluated at segment boundaries)
   PresetTimeCallback   -> PresetTimeCallback (events at known times)
   PeriodicCallback     -> PeriodicCallback (events every Δt)
@@ -72,6 +73,25 @@ class ContinuousCallback(eqx.Module):
         elif self.direction == "down":
             return False
         return None
+
+
+# ================================================================
+# StopConditionCallback
+# ================================================================
+
+
+class StopConditionCallback(eqx.Module):
+    """Stops the complete solve when a boolean condition becomes true.
+
+    The condition is checked at the initial state and after each accepted solver
+    step. It applies no effect and is not included in the state-changing callback
+    event log.
+
+    Args:
+        condition_fn: ``(y, t, args) -> bool``.
+    """
+
+    condition_fn: Callable
 
 
 # ================================================================
@@ -229,10 +249,11 @@ class ManifoldProjection(eqx.Module):
 class CallbackSet(eqx.Module):
     """Combines multiple callbacks with priority handling.
 
-    Priority order (matching Julia):
-      1. ContinuousCallbacks — earliest event wins
-      2. PresetTimeCallbacks / PeriodicCallbacks — at exact times
-      3. DiscreteCallbacks / ManifoldProjection — at segment boundaries
+    Priority order:
+      1. StopConditionCallbacks — terminate without applying an effect
+      2. ContinuousCallbacks — earliest event wins
+      3. PresetTimeCallbacks / PeriodicCallbacks — at exact times
+      4. DiscreteCallbacks / ManifoldProjection — at segment boundaries
 
     DiscreteCallbacks run AFTER every segment (including after continuous
     and preset events).
@@ -249,6 +270,7 @@ class CallbackSet(eqx.Module):
     """
 
     continuous_callbacks: tuple[ContinuousCallback, ...]
+    stop_condition_callbacks: tuple[StopConditionCallback, ...]
     preset_callbacks: tuple[PresetTimeCallback, ...]
     discrete_callbacks: tuple[DiscreteCallback, ...]
 
@@ -256,6 +278,7 @@ class CallbackSet(eqx.Module):
         self,
         *callbacks: Union[
             ContinuousCallback,
+            StopConditionCallback,
             DiscreteCallback,
             PresetTimeCallback,
             PeriodicCallback,
@@ -264,11 +287,14 @@ class CallbackSet(eqx.Module):
         ],
     ):
         continuous = []
+        stop_conditions = []
         preset = []
         discrete = []
         for cb in callbacks:
             if isinstance(cb, ContinuousCallback):
                 continuous.append(cb)
+            elif isinstance(cb, StopConditionCallback):
+                stop_conditions.append(cb)
             elif isinstance(cb, PresetTimeCallback):
                 preset.append(cb)
             elif isinstance(cb, PeriodicCallback):
@@ -279,11 +305,13 @@ class CallbackSet(eqx.Module):
                 discrete.append(cb.to_discrete())
             elif isinstance(cb, CallbackSet):
                 continuous.extend(cb.continuous_callbacks)
+                stop_conditions.extend(cb.stop_condition_callbacks)
                 preset.extend(cb.preset_callbacks)
                 discrete.extend(cb.discrete_callbacks)
             else:
                 raise TypeError(f"Unknown callback type: {type(cb)}")
         object.__setattr__(self, "continuous_callbacks", tuple(continuous))
+        object.__setattr__(self, "stop_condition_callbacks", tuple(stop_conditions))
         object.__setattr__(self, "preset_callbacks", tuple(preset))
         object.__setattr__(self, "discrete_callbacks", tuple(discrete))
 
@@ -291,6 +319,11 @@ class CallbackSet(eqx.Module):
     def n_continuous(self) -> int:
         """Number of continuous callbacks in the set."""
         return len(self.continuous_callbacks)
+
+    @property
+    def n_stop_conditions(self) -> int:
+        """Number of terminating boolean conditions in the set."""
+        return len(self.stop_condition_callbacks)
 
     @property
     def n_preset(self) -> int:

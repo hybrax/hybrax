@@ -7,6 +7,7 @@ from ._callbacks import (
     ManifoldProjection,
     PeriodicCallback,
     PresetTimeCallback,
+    StopConditionCallback,
 )
 from ._solution import CallbackSolution
 from ._solve import diffeqsolve_with_callbacks, evaluate_trajectory
@@ -19,6 +20,7 @@ __all__ = [
     "ManifoldProjection",
     "PeriodicCallback",
     "PresetTimeCallback",
+    "StopConditionCallback",
     "diffeqsolve_with_callbacks",
     "evaluate_trajectory",
 ]

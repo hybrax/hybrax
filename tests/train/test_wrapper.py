@@ -10,6 +10,7 @@ from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
+    DiscreteEvents,
     FeedMedium,
     FeedMediumComponent,
     Inflow,
@@ -834,6 +835,7 @@ def _make_draining_process() -> BioProcess:
     integrates straight through zero.
     """
     process = _make_single_species_process(feed_rate=0.0)
+    del process.volume.volume_changes["sample_1"]
     process.volume.volume_changes["drain"] = Outflow(
         name="drain",
         unit="L",
@@ -897,8 +899,127 @@ def test_solve_accepts_trajectory_that_stays_above_minimum():
         rtol=1e-6,
         atol=1e-8,
     )
-    # V = 1.0 - 0.5*t, minus the 0.1 L sample at t = 1.0 -> 0.4 L, well above min_V.
-    assert float(states[-1, -1]) == pytest.approx(0.4, abs=1e-6)
+    # V = 1.0 - 0.5*t, so the trajectory remains well above min_V.
+    assert float(states[-1, -1]) == pytest.approx(0.5, abs=1e-6)
+
+
+def test_volume_stop_condition_unscales_affine_volume():
+    """A nonzero scaler offset must not look like physical depletion."""
+    from hybrax.train.physical_solve import solve_physical_states
+
+    process = _make_draining_process()
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    module = ConstantReactionModule(
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
+    )
+    wrapper = _build_wrapper(process, controls, module)
+    wrapper = eqx.tree_at(
+        lambda w: w.reaction_module.SCALE_V_in_cumulative,
+        wrapper,
+        AffineScaler(scale=jnp.asarray(2.0), offset=jnp.asarray(10.0)),
+    )
+
+    states = solve_physical_states(
+        wrapper,
+        t_eval=jnp.asarray([0.0, 1.0]),
+        n_measured=2,
+        RAW_y0=jnp.asarray([1.0, 1.0]),
+        max_steps=10_000,
+        rtol=1e-6,
+        atol=1e-8,
+    )
+
+    assert float(states[-1, -1]) == pytest.approx(0.5, abs=1e-6)
+
+
+@pytest.mark.parametrize("t_eval", [[0.0, 2.0], [0.0, 1.0, 2.0]])
+def test_transient_drain_refill_detection_is_output_grid_invariant(t_eval):
+    """A depleted interval cannot be hidden between requested output times."""
+    from hybrax.train.physical_solve import solve_physical_states
+
+    process = _make_single_species_process(feed_rate=0.0)
+    del process.volume.volume_changes["sample_1"]
+    process.discrete_events = DiscreteEvents(times=jnp.asarray([1.0]))
+    process.volume.volume_changes["feed_A"].values = TimeSeries(
+        times=[0.0, 1.0, 2.0], values=[0.0, 0.0, 1.1]
+    )
+    process.volume.volume_changes["drain"] = Outflow(
+        name="drain",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        values=TimeSeries(times=[0.0, 1.0, 2.0], values=[0.0, -1.1, -1.1]),
+        retention={"biomass": 0.0},
+    )
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    module = ConstantReactionModule(
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
+    )
+
+    with pytest.raises(Exception, match="trajectory reached minimum reactor volume"):
+        solve_physical_states(
+            _build_wrapper(process, controls, module),
+            t_eval=jnp.asarray(t_eval),
+            n_measured=len(t_eval),
+            RAW_y0=jnp.asarray([1.0, 1.0]),
+            max_steps=10_000,
+            rtol=1e-6,
+            atol=1e-8,
+            jump_ts=controls.active_jump_ts,
+        )
+
+
+def test_sampled_smooth_volume_dip_is_rejected():
+    """Output validation catches a dip missed within one accepted solver step.
+
+    V(t) = 1 + 2t² - 4t is positive at t=0 and t=2, but reaches -1 L at the
+    requested midpoint, below the positive volume floor. This test includes that
+    midpoint; with only [0, 2] requested, the bounded accepted-step limitation means
+    the smooth dip and recovery can still be missed.
+    """
+    from hybrax.train.physical_solve import solve_physical_states
+
+    process = _make_single_species_process(
+        feed_rate=0.0, feed_biomass_concentration=1.0
+    )
+    del process.volume.volume_changes["sample_1"]
+    process.volume.volume_changes["feed_A"].values = TimeSeries(
+        times=[0.0, 2.0],
+        values=[0.0, 8.0],
+        breaks=[0.0, 2.0],
+        coeffs=[[0.0, 0.0, 2.0, 0.0]],
+        segment_start_piece_idx=[0],
+        continuity_side="right",
+    )
+    process.volume.volume_changes["drain"] = Outflow(
+        name="drain",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        values=TimeSeries(times=[0.0, 2.0], values=[0.0, -8.0]),
+        retention={"biomass": 0.0},
+    )
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process}, metadata={})
+    ).get_controls("p1")
+    module = ConstantReactionModule(
+        specific_rates=jnp.zeros((1,)), modeled_Inflows_rates=jnp.zeros((0,))
+    )
+
+    with pytest.raises(Exception, match="trajectory reached minimum reactor volume"):
+        solve_physical_states(
+            _build_wrapper(process, controls, module),
+            t_eval=jnp.asarray([0.0, 1.0, 2.0]),
+            n_measured=3,
+            RAW_y0=jnp.asarray([1.0, 1.0]),
+            max_steps=10_000,
+            rtol=1e-6,
+            atol=1e-8,
+        )
 
 
 @pytest.mark.parametrize("initial_volume", [0.001, 0.0005])

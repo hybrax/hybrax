@@ -2,7 +2,7 @@
 
 **Julia-style callback system for [Diffrax](https://github.com/patrick-kidger/diffrax): differentiable discrete event handling for Neural ODEs in JAX.**
 
-Brings `ContinuousCallback`, `DiscreteCallback`, `PresetTimeCallback`, `PeriodicCallback`, `ManifoldProjection`, and `CallbackSet` to JAX/Diffrax — with full differentiability through discrete events.
+Brings `ContinuousCallback`, `StopConditionCallback`, `DiscreteCallback`, `PresetTimeCallback`, `PeriodicCallback`, `ManifoldProjection`, and `CallbackSet` to JAX/Diffrax — with full differentiability through discrete events.
 
 ## Why?
 
@@ -98,6 +98,20 @@ ContinuousCallback(
 
 **Julia equivalent:** `ContinuousCallback(condition, affect!; direction)`
 
+### StopConditionCallback
+
+Stops the complete solve when a boolean condition is true at the initial state or
+after an accepted solver step. It applies no effect and is not added to the
+state-changing callback event log. If a stop condition and continuous callback fire
+within the same accepted step, the stop condition wins even when the continuous root
+is earlier in that step.
+
+```python
+StopConditionCallback(
+    condition_fn,  # (y, t, args) -> bool
+)
+```
+
 ### DiscreteCallback
 
 Evaluated at every segment boundary (between events). Useful for clamping, validation, or corrections.
@@ -153,13 +167,15 @@ ManifoldProjection(
 ### CallbackSet
 
 Combines multiple callbacks with priority handling:
-1. ContinuousCallbacks — earliest event wins
-2. PresetTimeCallbacks — at exact times
-3. DiscreteCallbacks / ManifoldProjection — at every segment boundary
+1. StopConditionCallbacks — terminate without applying an effect
+2. ContinuousCallbacks — earliest event wins
+3. PresetTimeCallbacks — at exact times
+4. DiscreteCallbacks / ManifoldProjection — at every segment boundary
 
 ```python
 callbacks = CallbackSet(
     ContinuousCallback(...),   # feed on low substrate
+    StopConditionCallback(...), # stop on an invalid state
     ContinuousCallback(...),   # bleed on high biomass
     PresetTimeCallback(...),   # scheduled samples
     PeriodicCallback(...),     # periodic logging
@@ -179,9 +195,9 @@ sol = diffeqsolve_with_callbacks(
     y0,                     # initial state
     args,                   # passed to ODE, condition_fn, and affect_fn
     callbacks=...,          # single callback or CallbackSet
-    max_events=20,          # event budget (fixed for JIT)
+    max_events=20,          # callback-event budget (fixed for JIT)
     stepsize_controller=..., # adaptive stepping
-    max_steps_per_segment=4096,
+    max_steps=4096,
     adjoint=...,            # diffrax adjoint method
 )
 ```
@@ -190,20 +206,25 @@ sol = diffeqsolve_with_callbacks(
 
 The solver wraps `diffrax.diffeqsolve` in a `jax.lax.scan` loop:
 
-1. **Solve** until the next event (continuous crossing or preset time)
-2. **Apply** the corresponding `affect_fn` to modify state
-3. **Run** DiscreteCallbacks / ManifoldProjection at the boundary
-4. **Restart** from the modified state
-5. **Repeat** up to `max_events` times
+1. **Solve** until the next callback, stop condition, or final time
+2. **Stop** if a `StopConditionCallback` fired
+3. **Apply** a callback's `affect_fn` to modify state otherwise
+4. **Run** DiscreteCallbacks / ManifoldProjection at the boundary
+5. **Restart** from the modified state and repeat up to `max_events` times
 
-Everything is JIT-compiled and fully differentiable via JAX's autodiff.
+Boolean stop conditions and numeric `ContinuousCallback`s share one composed
+Diffrax event, so they can be used together.
+
+Everything is JIT-compiled. State-changing callbacks remain differentiable via
+JAX's autodiff; the boolean decision to stop is not differentiable.
 
 ### The Solution Object
 
 ```python
 sol.y_final           # final state
-sol.t_final           # final time
-sol.event_count       # number of events triggered
+sol.t_final           # final time reached
+sol.terminated_by_event  # whether a StopConditionCallback ended the solve early
+sol.event_count       # number of state-changing callbacks triggered
 sol.event_times       # (max_events,) when each event fired
 sol.event_types       # (max_events,) which callback triggered (-1 = unused)
 sol.event_states_before  # state just before each event

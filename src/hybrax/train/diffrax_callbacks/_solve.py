@@ -3,6 +3,7 @@ Core solver: diffeqsolve_with_callbacks.
 
 Features:
   - ContinuousCallbacks: zero-crossing detection with root-finding + repeat_nudge
+  - StopConditionCallbacks: boolean termination after accepted solver steps
   - DiscreteCallbacks: evaluated at every segment boundary
   - PresetTimeCallbacks: events at known times
   - PeriodicCallbacks: events every Δt
@@ -19,6 +20,7 @@ import diffrax
 
 from ._callbacks import (
     ContinuousCallback,
+    StopConditionCallback,
     DiscreteCallback,
     PresetTimeCallback,
     PeriodicCallback,
@@ -35,42 +37,36 @@ def _wrap_single_callback(callback):
 
 
 def _build_diffrax_event(callback_set: CallbackSet):
-    """Build a diffrax.Event from all ContinuousCallbacks."""
-    if callback_set.n_continuous == 0:
+    """Build one Diffrax event from numeric callbacks and boolean stops."""
+    continuous = callback_set.continuous_callbacks
+    stop_conditions = callback_set.stop_condition_callbacks
+    if not continuous and not stop_conditions:
         return None
 
-    ccs = callback_set.continuous_callbacks
+    def make_condition(callback):
+        def condition(t, y, args, **kwargs):
+            return callback.condition_fn(y, t, args)
 
-    if len(ccs) == 1:
-        cc = ccs[0]
+        return condition
 
-        def cond_fn(t, y, args, **kwargs):
-            return cc.condition_fn(y, t, args)
+    cond_fns = []
+    directions = []
+    # Diffrax keeps only the first mask when events coincide, so stop conditions must
+    # precede state-changing callbacks to enforce CallbackSet's priority contract.
+    for callback in stop_conditions:
+        cond_fns.append(make_condition(callback))
+        directions.append(None)
 
-        return diffrax.Event(
-            cond_fn=cond_fn,
-            root_finder=cc.root_finder,
-            direction=cc._diffrax_direction,
-        )
-    else:
-        cond_fns = []
-        directions = []
-        root_finder = ccs[0].root_finder
-        for cc in ccs:
+    for callback in continuous:
+        cond_fns.append(make_condition(callback))
+        directions.append(callback._diffrax_direction)
 
-            def _make_cond(cc_captured):
-                def cond_fn(t, y, args, **kwargs):
-                    return cc_captured.condition_fn(y, t, args)
-
-                return cond_fn
-
-            cond_fns.append(_make_cond(cc))
-            directions.append(cc._diffrax_direction)
-        return diffrax.Event(
-            cond_fn=cond_fns,
-            root_finder=root_finder,
-            direction=directions,
-        )
+    root_finder = continuous[0].root_finder if continuous else None
+    return diffrax.Event(
+        cond_fn=cond_fns,
+        root_finder=root_finder,
+        direction=directions,
+    )
 
 
 # Event/segment time comparisons are magnitude-relative *and* dtype-aware: the tolerance
@@ -154,6 +150,7 @@ def diffeqsolve_with_callbacks(
     args=None,
     *,
     callbacks: ContinuousCallback
+    | StopConditionCallback
     | DiscreteCallback
     | PresetTimeCallback
     | PeriodicCallback
@@ -171,11 +168,12 @@ def diffeqsolve_with_callbacks(
     """Solve an ODE with Julia-style callbacks.
 
     Wraps diffrax.diffeqsolve in a scan-based event loop:
-      1. Solves until the next event (continuous, preset, or t1)
-      2. Applies the corresponding affect function
-      3. Runs DiscreteCallbacks / ManifoldProjection at segment boundary
-      4. Restarts from the modified state
-      5. Repeats up to max_events times
+      1. Solves until the next continuous callback, preset time, stop condition,
+         or final time
+      2. Stops the complete solve if a StopConditionCallback fired
+      3. Otherwise applies the corresponding callback affect
+      4. Runs DiscreteCallbacks / ManifoldProjection at the segment boundary
+      5. Restarts from the modified state and repeats up to ``max_events`` times
 
     Args:
         terms: Diffrax term (e.g., ODETerm).
@@ -191,8 +189,9 @@ def diffeqsolve_with_callbacks(
             Each segment saves its own share with ``SaveAt(ts=...)``, which is pure
             interpolation and costs no extra solver steps -- so an output time does NOT
             have to be a preset, and asking for a finer trajectory no longer subdivides
-            the integration. ``None`` keeps the segment solves on ``SaveAt(t1=True)``
-            and leaves ``output_states`` as ``None``.
+            the integration. Rows after an early stop condition remain ``inf``.
+            ``None`` keeps the segment solves on ``SaveAt(t1=True)`` and leaves
+            ``output_states`` as ``None``.
         output_window: Optional static bound on how many ``output_times`` entries a
             single segment may own. Each segment then only sees a ``dynamic_slice``
             window of that size instead of the whole grid. Without it the per-segment
@@ -254,10 +253,12 @@ def diffeqsolve_with_callbacks(
         window = 0
 
     n_continuous = callback_set.n_continuous
+    n_stop_conditions = callback_set.n_stop_conditions
     n_preset = callback_set.n_preset
     n_discrete = callback_set.n_discrete
     has_presets = n_preset > 0
     has_continuous = n_continuous > 0
+    has_stop_conditions = n_stop_conditions > 0
     has_discrete = n_discrete > 0
     repeat_nudge = callback_set.get_max_repeat_nudge()
 
@@ -406,7 +407,10 @@ def diffeqsolve_with_callbacks(
             # Clipping is required (diffrax rejects ts outside [t0, t1]) and exact at
             # both ends; it is monotone, so an ascending grid stays ascending.
             saveat = diffrax.SaveAt(
-                t1=True, ts=jnp.clip(ts_window, t_current, segment_t1)
+                subs=(
+                    diffrax.SubSaveAt(ts=jnp.clip(ts_window, t_current, segment_t1)),
+                    diffrax.SubSaveAt(t1=True),
+                )
             )
         else:
             saveat = diffrax.SaveAt(t1=True)
@@ -427,14 +431,19 @@ def diffeqsolve_with_callbacks(
             adjoint=adjoint,
         )
 
-        y_at_stop = sol.ys[-1]
-        t_at_stop = sol.ts[-1]
+        if has_output:
+            seg_saved, stop_ys = sol.ys
+            _, stop_ts = sol.ts
+            y_at_stop = stop_ys[-1]
+            t_at_stop = stop_ts[-1]
+        else:
+            y_at_stop = sol.ys[-1]
+            t_at_stop = sol.ts[-1]
 
         # A segment "fails" when diffrax bails before reaching segment_t1. Treat every
         # result EXCEPT the two legitimate stops as failure: ``successful`` (reached the
-        # segment end) and ``event_occurred`` (a continuous-callback zero-crossing — the
-        # inner solve's ``event`` is built only from continuous callbacks, so that is
-        # the sole valid non-``successful`` code). This covers ``max_steps_reached``,
+        # segment end) and ``event_occurred`` (a continuous callback or stop condition
+        # fired). This covers ``max_steps_reached``,
         # ``dt_min_reached``, nonlinear-solve failures, etc.; a naive ``!= successful``
         # would instead wrongly poison legitimate event stops.
         #
@@ -470,12 +479,8 @@ def diffeqsolve_with_callbacks(
         )
 
         if has_output:
-            # With ``SaveAt(ts=...)`` diffrax fills every UNREACHED save slot -- the
-            # ``t1`` one included -- with ``inf`` on a bail, where ``SaveAt(t1=True)``
-            # alone hands back the last-reached (finite) state. An ``inf`` ``t_at_stop``
-            # would NaN ``t_next``, ``dt`` and the collapse arithmetic on every later
-            # iteration, so freeze time at the segment start. Nothing is lost:
-            # ``fail_time`` is derived separately just below.
+            # Preserve the conservative segment-boundary cutoff used by output solves;
+            # ``fail_time`` below records the same boundary.
             t_at_stop = jnp.where(seg_failed, t_current, t_at_stop)
 
         y_at_stop = jnp.where(
@@ -483,15 +488,20 @@ def diffeqsolve_with_callbacks(
         )
 
         if has_output:
-            # OWNERSHIP: half-open ``(t_current, segment_t1]``. Exactly one live segment
-            # owns each output time, and a time landing ON an event is owned by the
-            # segment that ENDS there -- i.e. it reports the PRE-affect state,
-            # matching ``event_states_before``. Assigning it to the starting segment
-            # instead would return the post-jump state and silently shift volumes and
-            # concentrations at
-            # exactly the times every yield and rate is anchored to.
-            owns = (ts_window > t_current) & (ts_window <= segment_t1) & live
-            seg_saved = sol.ys[:-1]
+            # OWNERSHIP is half-open ``(t_current, ownership_t1]``. A requested time
+            # no later than the numerically located event belongs to the ending segment
+            # and reports the pre-affect state, matching ``event_states_before``. If a
+            # root lands just below a nominally equal requested time, that row remains
+            # ``inf`` rather than incorrectly reporting the post-affect state.
+            #
+            # An event may stop before the planned ``segment_t1``. Keeping the final
+            # state in a separate SubSaveAt prevents Diffrax from placing it in the
+            # first unreached output slot; the actual stop-time bound then leaves every
+            # later row at its initial ``inf``. Failed segments keep the planned bound
+            # because their reached slots remain useful and their unreached slots
+            # already contain ``inf``.
+            ownership_t1 = jnp.where(seg_failed, segment_t1, t_at_stop)
+            owns = (ts_window > t_current) & (ts_window <= ownership_t1) & live
             # A bailing segment's REACHED slots are genuine converged values, so
             # they are kept (poisoning them would put ``inf`` into rows
             # ``fail_time`` calls valid).
@@ -533,15 +543,24 @@ def diffeqsolve_with_callbacks(
         new_fail_time = jnp.where(first_failure, t_current, fail_time)
 
         # ---- Determine what happened ----
+        live_event = (~done) & (~terminated) & (~seg_failed)
+        event_masks = jax.tree.leaves(sol.event_mask)
+
+        if has_stop_conditions:
+            stop_masks = jnp.array(event_masks[:n_stop_conditions])
+            stop_condition_triggered = jnp.any(stop_masks) & live_event
+        else:
+            stop_condition_triggered = jnp.bool_(False)
+
         if has_continuous:
-            if n_continuous == 1:
-                continuous_triggered = sol.event_mask & (~done) & (~terminated)
-            else:
-                continuous_triggered = (
-                    jax.tree.reduce(lambda a, b: a | b, sol.event_mask)
-                    & (~done)
-                    & (~terminated)
-                )
+            continuous_masks = event_masks[
+                n_stop_conditions : n_stop_conditions + n_continuous
+            ]
+            continuous_triggered = (
+                jnp.any(jnp.array(continuous_masks))
+                & live_event
+                & (~stop_condition_triggered)
+            )
         else:
             continuous_triggered = jnp.bool_(False)
 
@@ -549,8 +568,8 @@ def diffeqsolve_with_callbacks(
             preset_triggered = (
                 (next_preset_idx >= 0)
                 & (~continuous_triggered)
-                & (~done)
-                & (~terminated)
+                & (~stop_condition_triggered)
+                & live_event
                 & (
                     jnp.abs(t_at_stop - next_preset_time)
                     < _dtype_tol(next_preset_time, _EVENT_TOL_FACTOR)
@@ -559,13 +578,15 @@ def diffeqsolve_with_callbacks(
         else:
             preset_triggered = jnp.bool_(False)
 
+        # A stop condition has no affect, so it is deliberately not a callback event:
+        # the existing ``~any_event`` path below ends the outer solve.
         any_event = continuous_triggered | preset_triggered
         y_before_event = y_at_stop
 
         # ---- Apply continuous or preset affect ----
         if has_continuous and has_presets:
             y_cont = _dispatch_continuous_affect(
-                y_at_stop, t_at_stop, args, sol.event_mask
+                y_at_stop, t_at_stop, args, continuous_masks
             )
             preset_index = jnp.where(
                 preset_triggered,
@@ -586,7 +607,7 @@ def diffeqsolve_with_callbacks(
             )
         elif has_continuous:
             y_cont = _dispatch_continuous_affect(
-                y_at_stop, t_at_stop, args, sol.event_mask
+                y_at_stop, t_at_stop, args, continuous_masks
             )
             y_after = jnp.where(continuous_triggered, y_cont, y_at_stop)
         elif has_presets:
@@ -609,7 +630,7 @@ def diffeqsolve_with_callbacks(
         # ---- Apply discrete callbacks at segment boundary ----
         if has_discrete:
             y_after = jnp.where(
-                ~terminated,
+                (~done) & (~terminated) & (~stop_condition_triggered),
                 _apply_discrete_callbacks(y_after, t_at_stop, args),
                 y_after,
             )
@@ -622,20 +643,9 @@ def diffeqsolve_with_callbacks(
         # segments are collapsed and skip the callbacks, so ``seg_failed`` is enough.
         y_after = jnp.where(seg_failed, jnp.asarray(jnp.inf, y_after.dtype), y_after)
 
-        # ---- Check for termination signal ----
-        # Termination is signaled by the affect returning NaN in the
-        # last state element and Inf in the second-to-last.
-        # (This is a workaround since we can't return tuples from
-        # lax.switch branches with different structures.)
-        # For now, termination is handled via the `terminated` flag
-        # in the carry, set when no event fires (simulation complete).
-
         # ---- Event type for logging ----
-        if has_continuous and n_continuous == 1:
-            continuous_idx = jnp.int32(0)
-        elif has_continuous:
-            mask_leaves = jnp.array(jax.tree.leaves(sol.event_mask))
-            continuous_idx = jnp.argmax(mask_leaves).astype(jnp.int32)
+        if has_continuous:
+            continuous_idx = jnp.argmax(jnp.array(continuous_masks)).astype(jnp.int32)
         else:
             continuous_idx = jnp.int32(0)
 
@@ -652,8 +662,7 @@ def diffeqsolve_with_callbacks(
             jnp.where(preset_triggered, preset_type_idx, jnp.int32(-1)),
         )
 
-        # ---- repeat_nudge: advance time slightly after continuous events ----
-        # Clamp to t1 so we don't overshoot the end time
+        # Continuous callbacks nudge past a root before continuing.
         t_next = jnp.where(
             continuous_triggered,
             jnp.minimum(t_at_stop + repeat_nudge, t1),
@@ -672,6 +681,7 @@ def diffeqsolve_with_callbacks(
             y_before_event,
             y_after,
             jnp.asarray(sol.stats["num_steps"], dtype=jnp.int32),
+            stop_condition_triggered,
         )
 
         # Seed the next segment from what this one actually sustained: its average
@@ -737,7 +747,14 @@ def diffeqsolve_with_callbacks(
         output_states,
         output_overflow,
     ) = final_carry
-    event_times, event_types, states_before, states_after, segment_num_steps = outputs
+    (
+        event_times,
+        event_types,
+        states_before,
+        states_after,
+        segment_num_steps,
+        stop_condition_triggered,
+    ) = outputs
 
     event_count = jnp.sum((event_types >= 0).astype(jnp.int32))
 
@@ -745,6 +762,7 @@ def diffeqsolve_with_callbacks(
         y_final=y_final,
         t_final=t_final,
         fail_time=fail_time,
+        terminated_by_event=jnp.any(stop_condition_triggered),
         event_times=event_times,
         event_types=event_types,
         event_states_before=states_before,
@@ -785,7 +803,10 @@ def evaluate_trajectory(
         sol: Solution from diffeqsolve_with_callbacks.
         terms: Same terms used in the original solve.
         solver: Same solver.
-        t0, t1: Same time interval.
+        t0, t1: Same time interval. Reconstruction stops at ``sol.t_final`` when a
+            stop condition ended the original solve. For a boolean condition this is
+            an accepted-step endpoint and may lie after the condition first became true,
+            so the final reconstructed segment can include that overshoot.
         dt0: Initial step size.
         y0: Initial state.
         args: Same args.
@@ -805,11 +826,12 @@ def evaluate_trajectory(
 
     n_events = int(sol.event_count)
 
-    # Build segment boundaries: [t0, event_1, event_2, ..., t1]
+    # Build segment boundaries: [t0, event_1, event_2, ..., final boundary]
     boundaries = [float(t0)]
     for i in range(n_events):
         boundaries.append(float(sol.event_times[i]))
-    boundaries.append(float(t1))
+    final_boundary = sol.t_final if bool(sol.terminated_by_event) else t1
+    boundaries.append(float(final_boundary))
 
     # Initial states for each segment: y0, then post-event states
     segment_y0s = [y0]

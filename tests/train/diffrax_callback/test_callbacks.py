@@ -13,6 +13,7 @@ from hybrax.train.diffrax_callbacks import (
     ContinuousCallback,
     DiscreteCallback,
     PresetTimeCallback,
+    StopConditionCallback,
     PeriodicCallback,
     ManifoldProjection,
     CallbackSet,
@@ -232,6 +233,30 @@ class TestContinuousCallback:
         assert int(sol.event_count) > 0
         assert sol.y_final[3] > 1.0  # volume increased from feeds
 
+    def test_nominal_event_output_is_never_post_affect(self):
+        output_times = jnp.asarray([0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0])
+        sol = diffeqsolve_with_callbacks(
+            diffrax.ODETerm(lambda t, y, args: jnp.ones_like(y)),
+            SOLVER,
+            0.0,
+            3.0,
+            0.25,
+            jnp.asarray([0.0]),
+            callbacks=ContinuousCallback(
+                condition_fn=lambda y, t, args: y[0] - 1.0,
+                affect_fn=lambda y, t, args: y + 1.0,
+                direction="up",
+            ),
+            max_events=5,
+            output_times=output_times,
+        )
+
+        value = sol.output_states[2, 0]
+        before = sol.event_states_before[0, 0]
+        after = sol.event_states_after[0, 0]
+        assert jnp.isinf(value) or value == pytest.approx(float(before))
+        assert not jnp.isclose(value, after)
+
     def test_event_times_are_ordered(self):
         cb = ContinuousCallback(
             condition_fn=lambda y, t, args: y[1] - 1.0,
@@ -267,6 +292,247 @@ class TestContinuousCallback:
         assert sol.event_states_before[0, 0] == pytest.approx(5.0, abs=0.01)
 
 
+class TestStopConditionCallback:
+    def test_stops_at_initial_state(self):
+        sol = diffeqsolve_with_callbacks(
+            TERMS,
+            SOLVER,
+            0.0,
+            T_END,
+            0.01,
+            Y0,
+            callbacks=StopConditionCallback(
+                condition_fn=lambda y, t, args: jnp.bool_(True)
+            ),
+            max_events=3,
+        )
+
+        assert sol.terminated_by_event
+        assert sol.t_final == 0.0
+        assert jnp.array_equal(sol.y_final, Y0)
+
+    def test_stops_when_condition_becomes_true(self):
+        callback = StopConditionCallback(condition_fn=lambda y, t, args: y[0] >= 5.0)
+        sol = diffeqsolve_with_callbacks(
+            TERMS,
+            SOLVER,
+            0.0,
+            T_END,
+            0.01,
+            Y0,
+            callbacks=callback,
+            max_events=3,
+        )
+
+        assert sol.terminated_by_event
+        assert int(sol.event_count) == 0
+        assert sol.y_final[0] >= 5.0
+        assert sol.t_final < T_END
+
+    @pytest.mark.parametrize("output_times", [[0.0, 2.0], [0.0, 1.0, 2.0]])
+    def test_output_rows_after_termination_stay_unreached(self, output_times):
+        output_times = jnp.asarray(output_times)
+        callback = StopConditionCallback(condition_fn=lambda y, t, args: y[0] >= 0.75)
+        sol = diffeqsolve_with_callbacks(
+            diffrax.ODETerm(lambda t, y, args: jnp.ones_like(y)),
+            SOLVER,
+            0.0,
+            2.0,
+            0.5,
+            jnp.asarray([0.0]),
+            callbacks=callback,
+            max_events=3,
+            output_times=output_times,
+            stepsize_controller=diffrax.ConstantStepSize(),
+        )
+
+        assert sol.terminated_by_event
+        assert float(sol.t_final) == pytest.approx(1.0)
+        assert jnp.all(jnp.isfinite(sol.output_states[output_times <= sol.t_final]))
+        assert jnp.all(jnp.isinf(sol.output_states[output_times > sol.t_final]))
+
+    def test_combines_with_continuous_callback(self):
+        callbacks = CallbackSet(
+            ContinuousCallback(
+                condition_fn=lambda y, t, args: y - 0.5,
+                affect_fn=lambda y, t, args: y + 1.0,
+                direction="up",
+            ),
+            StopConditionCallback(condition_fn=lambda y, t, args: y >= 1.75),
+        )
+        sol = diffeqsolve_with_callbacks(
+            diffrax.ODETerm(lambda t, y, args: jnp.ones_like(y)),
+            SOLVER,
+            0.0,
+            2.0,
+            0.1,
+            jnp.asarray(0.0),
+            callbacks=callbacks,
+            max_events=3,
+        )
+
+        assert sol.terminated_by_event
+        assert int(sol.event_count) == 1
+        assert float(sol.event_states_before[0]) == pytest.approx(0.5)
+        assert sol.y_final >= 1.75
+
+    @pytest.mark.parametrize(
+        ("continuous_threshold", "stop_threshold"),
+        [(0.75, 0.7), (0.7, 0.75)],
+    )
+    def test_stop_takes_priority_over_coincident_continuous_callback(
+        self, continuous_threshold, stop_threshold
+    ):
+        callbacks = CallbackSet(
+            ContinuousCallback(
+                condition_fn=lambda y, t, args: y - continuous_threshold,
+                affect_fn=lambda y, t, args: y + 10.0,
+            ),
+            StopConditionCallback(condition_fn=lambda y, t, args: y >= stop_threshold),
+        )
+        sol = diffeqsolve_with_callbacks(
+            diffrax.ODETerm(lambda t, y, args: jnp.ones_like(y)),
+            SOLVER,
+            0.0,
+            2.0,
+            0.5,
+            jnp.asarray(0.0),
+            callbacks=callbacks,
+            max_events=3,
+            stepsize_controller=diffrax.ConstantStepSize(),
+        )
+
+        assert sol.terminated_by_event
+        assert int(sol.event_count) == 0
+        assert sol.t_final == pytest.approx(1.0)
+        assert sol.y_final == pytest.approx(1.0)
+
+    def test_checks_all_stop_conditions(self):
+        callbacks = CallbackSet(
+            StopConditionCallback(condition_fn=lambda y, t, args: y >= 10.0),
+            StopConditionCallback(condition_fn=lambda y, t, args: y >= 1.0),
+        )
+        sol = diffeqsolve_with_callbacks(
+            diffrax.ODETerm(lambda t, y, args: jnp.ones_like(y)),
+            SOLVER,
+            0.0,
+            2.0,
+            0.25,
+            jnp.asarray(0.0),
+            callbacks=callbacks,
+            max_events=3,
+            stepsize_controller=diffrax.ConstantStepSize(),
+        )
+
+        assert sol.terminated_by_event
+        assert sol.y_final >= 1.0
+        assert sol.t_final < 2.0
+
+    def test_discrete_callback_does_not_run_after_termination(self):
+        callbacks = CallbackSet(
+            DiscreteCallback(
+                condition_fn=lambda y, t, args: jnp.bool_(True),
+                affect_fn=lambda y, t, args: y + 1.0,
+            ),
+            StopConditionCallback(condition_fn=lambda y, t, args: jnp.bool_(True)),
+        )
+        sol = diffeqsolve_with_callbacks(
+            diffrax.ODETerm(lambda t, y, args: jnp.zeros_like(y)),
+            SOLVER,
+            0.0,
+            1.0,
+            0.1,
+            jnp.asarray(0.0),
+            callbacks=callbacks,
+            max_events=3,
+        )
+
+        assert sol.terminated_by_event
+        assert int(sol.event_count) == 0
+        assert sol.y_final == 0.0
+
+    def test_stops_after_preset_callback(self):
+        callbacks = CallbackSet(
+            PresetTimeCallback(
+                times=jnp.asarray([0.5]),
+                affect_fn=lambda y, t, args, preset_index: y,
+            ),
+            StopConditionCallback(condition_fn=lambda y, t, args: y >= 0.75),
+        )
+        sol = diffeqsolve_with_callbacks(
+            diffrax.ODETerm(lambda t, y, args: jnp.ones_like(y)),
+            SOLVER,
+            0.0,
+            2.0,
+            0.5,
+            jnp.asarray(0.0),
+            callbacks=callbacks,
+            max_events=3,
+        )
+
+        assert sol.terminated_by_event
+        assert int(sol.event_count) == 1
+        assert float(sol.event_times[0]) == pytest.approx(0.5)
+        assert 0.75 <= sol.y_final < 2.0
+
+    def test_step_budget_failure_takes_priority_over_termination(self):
+        callbacks = CallbackSet(
+            PresetTimeCallback(
+                times=jnp.asarray([0.5]),
+                affect_fn=lambda y, t, args, preset_index: y,
+            ),
+            StopConditionCallback(condition_fn=lambda y, t, args: y >= 0.75),
+        )
+        sol = diffeqsolve_with_callbacks(
+            diffrax.ODETerm(lambda t, y, args: jnp.ones_like(y)),
+            SOLVER,
+            0.0,
+            2.0,
+            0.5,
+            jnp.asarray(0.0),
+            callbacks=callbacks,
+            max_events=3,
+            max_steps=1,
+        )
+
+        assert not sol.terminated_by_event
+        assert float(sol.fail_time) == pytest.approx(0.5)
+        assert not jnp.isfinite(sol.y_final)
+
+    def test_ignores_rejected_trial_stages(self):
+        term = diffrax.ODETerm(lambda t, y, args: -1000.0 * (y - 1.0))
+        controller = diffrax.PIDController(rtol=1e-6, atol=1e-8)
+        raw_sol = diffrax.diffeqsolve(
+            term,
+            SOLVER,
+            0.0,
+            1.0,
+            1.0,
+            jnp.asarray(2.0),
+            stepsize_controller=controller,
+            max_steps=10_000,
+        )
+        assert int(raw_sol.stats["num_rejected_steps"]) > 0
+
+        callback = StopConditionCallback(condition_fn=lambda y, t, args: y <= 0.0)
+        sol = diffeqsolve_with_callbacks(
+            term,
+            SOLVER,
+            0.0,
+            1.0,
+            1.0,
+            jnp.asarray(2.0),
+            callbacks=callback,
+            max_events=3,
+            stepsize_controller=controller,
+            max_steps=10_000,
+        )
+
+        assert not sol.terminated_by_event
+        assert int(sol.event_count) == 0
+        assert sol.y_final == pytest.approx(1.0, abs=1e-5)
+
+
 class TestRepeatNudge:
     def test_prevents_infinite_retriggering(self):
         """Bleed that doesn't change X concentration. Without nudge, loops forever."""
@@ -299,6 +565,24 @@ class TestRepeatNudge:
 
 
 class TestDiscreteCallback:
+    def test_does_not_rerun_during_padded_scan_iterations(self):
+        callback = DiscreteCallback(
+            condition_fn=lambda y, t, args: jnp.bool_(True),
+            affect_fn=lambda y, t, args: y + 1.0,
+        )
+        sol = diffeqsolve_with_callbacks(
+            diffrax.ODETerm(lambda t, y, args: jnp.zeros_like(y)),
+            SOLVER,
+            0.0,
+            1.0,
+            0.1,
+            jnp.asarray(0.0),
+            callbacks=callback,
+            max_events=3,
+        )
+
+        assert sol.y_final == 1.0
+
     def test_clamping(self):
         """Discrete callback clamps states to non-negative."""
         cb = CallbackSet(

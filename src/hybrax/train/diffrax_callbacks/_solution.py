@@ -17,8 +17,9 @@ class CallbackSolution(eqx.Module):
         fail_time: Time of the first segment failure (max_steps / dt_min / etc.);
             ``inf`` if the lane never failed. Measurements at ``t > fail_time`` are
             past a failed solve and should be masked out of the loss.
+        terminated_by_event: Whether a StopConditionCallback ended the solve early.
 
-        event_times: (max_events,) times when events triggered.
+        event_times: (max_events,) times when callbacks triggered.
             Padded with t1 for unused slots.
         event_types: (max_events,) int. Which callback triggered:
             -1 = no event (unused slot)
@@ -35,10 +36,12 @@ class CallbackSolution(eqx.Module):
             TRAJECTORY readout: unlike the event log it does not require an output time
             to be a segment boundary, because each segment saves its own points with
             ``SaveAt(ts=...)`` (pure interpolation, no extra solver steps). A time
-            coinciding with an event is owned by the segment that ENDS there, so it
-            reports the PRE-affect state -- the same convention as
-            ``event_states_before``. Rows the solve never reached (past a bail) are
-            ``inf``; use ``fail_time`` to classify them.
+            no later than the numerically located event is owned by the segment that
+            ENDS there, so it reports the PRE-affect state -- the same convention as
+            ``event_states_before``. A nominal event time just above the located root
+            remains ``inf`` rather than reporting the post-affect state. Rows the solve
+            never reached after a failure or stop condition are also ``inf``; use
+            ``fail_time`` to classify failures.
         output_overflow: scalar bool, or ``None`` when ``output_times`` was not passed.
             True if any segment owned more output points than ``output_window`` could
             carry, which would silently drop the excess. Callers must treat this as a
@@ -48,6 +51,7 @@ class CallbackSolution(eqx.Module):
     y_final: jnp.ndarray
     t_final: jnp.ndarray
     fail_time: jnp.ndarray
+    terminated_by_event: jnp.ndarray
 
     event_times: jnp.ndarray
     event_types: jnp.ndarray
