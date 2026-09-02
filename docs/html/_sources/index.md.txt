@@ -1,20 +1,22 @@
 # Bioprocess Modeling with Hybrax
 
-**Get your fermentation data into one shape, then fit models to it without
-re-implementing the physics.**
+**Import your fermentation data into the right format once, then fit different
+mechanistic and hybrid models to it with little extra code.**
 
 One package, two halves:
 
-- **hybrax.format** is the data model. It describes a bioprocess run (what was in the
-  reactor, what was fed, what was sampled, what was measured) and turns that
-  description into a differentiable ODE right-hand side. It knows about dilution,
-  feed composition, boluses and sampling, so you don't have to write those terms
-  again.
-- **`hybrax.train`** fits models on top of it. You plug in a reaction module (neural,
-  mechanistic, or both) and a loss module; it runs `prepare → train → forward / loo`
-  on JAX + Diffrax.
-
-If you have measurements and you want rates, this is the stack.
+- **`hybrax.format`** is the data model. It describes a bioprocess run (what was
+  in the reactor, what was fed, how much was sampled, what was measured) and
+  turns that description into the structure needed for modeling. It knows about
+  dilution, feed composition, boluses and sampling, so you don't have to write
+  those terms again.
+- **`hybrax.train`** fits models to your data. You plug in a reaction module
+  (data-driven, mechanistic, or hybrid) that describes the biological part of
+  the ODE right-hand side and the library handles the rest. The training pipeline is split into multiple stages:
+  - `prepare`: additional data prep (filtering, augmentation, etc.)
+  - `train`: train a single model on one or multiple bioprocess runs
+  - `loo`: cross-validation (leave-one-out per default but customizable) on a
+    set of runs
 
 ---
 

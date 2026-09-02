@@ -375,20 +375,26 @@
         <article role="main" id="furo-main-content">
           <section class="tex2jax_ignore mathjax_ignore" id="bioprocess-modeling-with-hybrax">
 <h1>Bioprocess Modeling with Hybrax<a class="headerlink" href="#bioprocess-modeling-with-hybrax" title="Link to this heading">¶</a></h1>
-<p><strong>Get your fermentation data into one shape, then fit models to it without
-re-implementing the physics.</strong></p>
+<p><strong>Import your fermentation data into the right format once, then fit different
+mechanistic and hybrid models to it with little extra code.</strong></p>
 <p>One package, two halves:</p>
 <ul class="simple">
-<li><p><strong>hybrax.format</strong> is the data model. It describes a bioprocess run (what was in the
-reactor, what was fed, what was sampled, what was measured) and turns that
-description into a differentiable ODE right-hand side. It knows about dilution,
-feed composition, boluses and sampling, so you don’t have to write those terms
-again.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code></strong> fits models on top of it. You plug in a reaction module (neural,
-mechanistic, or both) and a loss module; it runs <code class="docutils literal notranslate"><span class="pre">prepare</span> <span class="pre">→</span> <span class="pre">train</span> <span class="pre">→</span> <span class="pre">forward</span> <span class="pre">/</span> <span class="pre">loo</span></code>
-on JAX + Diffrax.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code></strong> is the data model. It describes a bioprocess run (what was
+in the reactor, what was fed, how much was sampled, what was measured) and
+turns that description into the structure needed for modeling. It knows about
+dilution, feed composition, boluses and sampling, so you don’t have to write
+those terms again.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code></strong> fits models to your data. You plug in a reaction module
+(data-driven, mechanistic, or hybrid) that describes the biological part of
+the ODE right-hand side and the library handles the rest. The training pipeline is split into multiple stages:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">prepare</span></code>: additional data prep (filtering, augmentation, etc.)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">train</span></code>: train a single model on one or multiple bioprocess runs</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">loo</span></code>: cross-validation (leave-one-out per default but customizable) on a
+set of runs</p></li>
 </ul>
-<p>If you have measurements and you want rates, this is the stack.</p>
+</li>
+</ul>
 <hr class="docutils" />
 <section id="where-to-start">
 <h2>Where to start<a class="headerlink" href="#where-to-start" title="Link to this heading">¶</a></h2>
