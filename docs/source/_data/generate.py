@@ -1,6 +1,6 @@
 """Generate the demo datasets the documentation is written against.
 
-Ten datasets, deterministic, regenerated on every ``docs_rebuild.sh``.
+Nine datasets, deterministic, regenerated on every ``docs_rebuild.sh``.
 ``demo_batch``/``demo_fedbatch`` are the site's two-organism spine: one
 bacterial, one mammalian, so every page can pick the shape (batch / fed-batch)
 and flavor (fast, simple / slow, byproduct-forming) that fits what it needs to
@@ -60,12 +60,6 @@ point neither spine shape can carry.
     For ``gallery/pseudobatch_splines.md``, which takes 5 measurements
     straddling the jump and recovers the underlying curve from them.
 
-``demo_continuous_overflow``
-    One noiseless process that moves from batch through a one-hour pause and
-    fed-batch fill into continuous culture. Equal prescribed feed and overflow
-    rates hold the reactor at 1 L during the continuous phase. For
-    ``gallery/continuous_overflow.md``.
-
 ``demo_modeled_pv``
     Three batch-with-one-bolus CHO-like runs, two independent first-order
     states: ``biomass`` (an ordinary modeled reactor component) and
@@ -93,13 +87,12 @@ Run directly to regenerate::
 from __future__ import annotations
 
 import json
-from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
 
 import hybrax.format as hxf
-from hybrax.format.time_series import PPoly, TimeSeries
+from hybrax.format.time_series import TimeSeries
 
 OUT = Path(__file__).parent / "out"
 
@@ -649,12 +642,14 @@ def build_demo_products() -> None:
                 meas[species][0] = truth[species][0]
             run_name = f"{key}_run_{r + 1}"
             processes[run_name] = _products_process(run_name, meas, sample_times, end)
-            processes[run_name].process_variables["is_new_product"] = hxf.ProcessVariable(
-                name="is_new_product",
-                unit="-",
-                is_controlled=True,
-                values=hxf.StaticVariable(1.0 if key == "T" else 0.0),
-                bounds=(0.0, 1.0),
+            processes[run_name].process_variables["is_new_product"] = (
+                hxf.ProcessVariable(
+                    name="is_new_product",
+                    unit="-",
+                    is_controlled=True,
+                    values=hxf.StaticVariable(1.0 if key == "T" else 0.0),
+                    bounds=(0.0, 1.0),
+                )
             )
 
     collection = hxf.BioProcessCollection(
@@ -1825,218 +1820,6 @@ def build_demo_spline_jump() -> None:
     )
 
 
-# ===========================================================================
-# demo_continuous_overflow
-# ===========================================================================
-
-CO_INITIAL_VOLUME = 0.5  # L
-CO_OVERFLOW_VOLUME = 1.0  # L
-CO_INITIAL_BIOMASS = 0.5  # g/L
-CO_INITIAL_GLUCOSE = 5.0  # g/L
-CO_FEED_GLUCOSE = 50.0  # g/L
-CO_FLOW_RATE = 0.1  # L/h
-CO_YIELD_XS = 0.5  # g biomass / g glucose
-CO_MU_MAX = 0.5  # 1/h
-CO_KS = 0.5  # g/L
-CO_END_TIME = 40.0  # h
-CO_BATCH_END = (
-    np.log((CO_INITIAL_BIOMASS + CO_YIELD_XS * CO_INITIAL_GLUCOSE) / CO_INITIAL_BIOMASS)
-    / CO_MU_MAX
-)
-CO_FEED_START = CO_BATCH_END + 1.0
-CO_OVERFLOW_START = (
-    CO_FEED_START + (CO_OVERFLOW_VOLUME - CO_INITIAL_VOLUME) / CO_FLOW_RATE
-)
-CO_SAMPLE_TIMES = np.linspace(0.0, CO_END_TIME, 21)
-
-
-def _co_cumulative_series(breaks, coeffs, values) -> TimeSeries:
-    """An exact piecewise-linear cumulative-volume trace."""
-    return TimeSeries(
-        times=breaks,
-        values=values,
-        poly=PPoly(breaks, coeffs),
-        segment_start_piece_idx=[0],
-    )
-
-
-def _simulate_continuous_overflow() -> dict[str, np.ndarray]:
-    """RK4 on amounts, splitting the grid exactly at both flow changes."""
-    dt = 0.002
-    grid = np.unique(
-        np.concatenate(
-            [
-                np.arange(0.0, CO_END_TIME, dt),
-                CO_SAMPLE_TIMES,
-                [CO_FEED_START, CO_OVERFLOW_START, CO_END_TIME],
-            ]
-        )
-    )
-    amounts = np.empty((grid.size, 3))
-    amounts[0] = [
-        CO_INITIAL_BIOMASS * CO_INITIAL_VOLUME,
-        CO_INITIAL_GLUCOSE * CO_INITIAL_VOLUME,
-        CO_INITIAL_VOLUME,
-    ]
-
-    def derivative(state, feed_rate, overflow_rate):
-        biomass_amount, glucose_amount, volume = state
-        biomass = biomass_amount / volume
-        glucose = max(glucose_amount / volume, 0.0)
-        mu = CO_MU_MAX * glucose / (CO_KS + glucose)
-        return np.asarray(
-            [
-                mu * biomass_amount - overflow_rate * biomass,
-                -mu * biomass_amount / CO_YIELD_XS
-                + feed_rate * CO_FEED_GLUCOSE
-                - overflow_rate * glucose,
-                feed_rate - overflow_rate,
-            ]
-        )
-
-    for i, (start, end) in enumerate(pairwise(grid)):
-        step = end - start
-        midpoint = (start + end) / 2
-        feed_rate = CO_FLOW_RATE if midpoint >= CO_FEED_START else 0.0
-        overflow_rate = CO_FLOW_RATE if midpoint >= CO_OVERFLOW_START else 0.0
-        state = amounts[i]
-        k1 = derivative(state, feed_rate, overflow_rate)
-        k2 = derivative(state + step * k1 / 2, feed_rate, overflow_rate)
-        k3 = derivative(state + step * k2 / 2, feed_rate, overflow_rate)
-        k4 = derivative(state + step * k3, feed_rate, overflow_rate)
-        amounts[i + 1] = state + step * (k1 + 2 * k2 + 2 * k3 + k4) / 6
-
-    sample_indices = np.searchsorted(grid, CO_SAMPLE_TIMES)
-    sampled = amounts[sample_indices]
-    return {
-        "biomass": sampled[:, 0] / sampled[:, 2],
-        "glucose": sampled[:, 1] / sampled[:, 2],
-    }
-
-
-def build_demo_continuous_overflow() -> None:
-    """Write the batch-to-continuous process used by the gallery example."""
-    out = OUT / "demo_continuous_overflow"
-    out.mkdir(parents=True, exist_ok=True)
-    measurements = _simulate_continuous_overflow()
-
-    feed = _co_cumulative_series(
-        [0.0, CO_FEED_START, CO_END_TIME],
-        [[0.0, 0.0, 0.0, 0.0], [0.0, CO_FLOW_RATE, 0.0, 0.0]],
-        [0.0, 0.0, CO_FLOW_RATE * (CO_END_TIME - CO_FEED_START)],
-    )
-    overflow = _co_cumulative_series(
-        [0.0, CO_OVERFLOW_START, CO_END_TIME],
-        [[0.0, 0.0, 0.0, 0.0], [0.0, -CO_FLOW_RATE, 0.0, 0.0]],
-        [0.0, 0.0, -CO_FLOW_RATE * (CO_END_TIME - CO_OVERFLOW_START)],
-    )
-    components = {
-        name: hxf.ReactorMediumComponent(
-            name=name,
-            unit="g/L",
-            concentration=TimeSeries(times=CO_SAMPLE_TIMES, values=values),
-        )
-        for name, values in measurements.items()
-    }
-    process = hxf.BioProcess(
-        metadata=hxf.BioProcessMetadata(
-            name="continuous_1",
-            process_type="continuous",
-            notes=(
-                "Noiseless batch-to-continuous Monod simulation for the "
-                "documentation gallery."
-            ),
-        ),
-        time_axis=hxf.TimeAxis(
-            unit="h", start=0.0, end=CO_END_TIME, time_reference="inoculation"
-        ),
-        volume=hxf.Volume(
-            initial_volume=CO_INITIAL_VOLUME,
-            unit="L",
-            volume_changes={
-                "feed": hxf.Inflow(
-                    name="feed",
-                    unit="L",
-                    is_controlled=True,
-                    is_continuous=True,
-                    values=feed,
-                    feed_medium=hxf.FeedMedium(
-                        name="fresh_medium",
-                        density=1.0,
-                        density_unit="kg/L",
-                        components={
-                            "biomass": hxf.FeedMediumComponent(
-                                name="biomass",
-                                unit="g/L",
-                                concentration=hxf.StaticVariable(0.0),
-                                is_controlled=False,
-                            ),
-                            "glucose": hxf.FeedMediumComponent(
-                                name="glucose",
-                                unit="g/L",
-                                concentration=hxf.StaticVariable(CO_FEED_GLUCOSE),
-                                is_controlled=False,
-                            ),
-                        },
-                    ),
-                ),
-                "overflow": hxf.Outflow(
-                    name="overflow",
-                    unit="L",
-                    is_controlled=True,
-                    is_continuous=True,
-                    values=overflow,
-                ),
-            },
-        ),
-        reactor_medium=hxf.ReactorMedium(
-            name="broth",
-            density=1.0,
-            density_unit="kg/L",
-            components=components,
-        ),
-        reaction_ode=hxf.ReactionOde(
-            rates={"mu": (None, None)},
-            derivatives={
-                "biomass": "mu * biomass",
-                "glucose": f"-mu * biomass / {CO_YIELD_XS}",
-            },
-        ),
-        discrete_events=hxf.DiscreteEvents(
-            times=np.asarray([CO_FEED_START, CO_OVERFLOW_START]),
-            labels=["feed starts", "overflow starts"],
-        ),
-    )
-    collection = hxf.BioProcessCollection(
-        case_id="demo_continuous_overflow",
-        organism="None (synthetic Monod culture)",
-        citation="Simulated data — Hybrax documentation demo, not an experiment.",
-        processes={"continuous_1": process},
-    )
-    hxf.serialization.save_process_collection(collection, out / "data.json")
-    (out / "ground_truth.json").write_text(
-        json.dumps(
-            {
-                "initial_volume": CO_INITIAL_VOLUME,
-                "overflow_volume": CO_OVERFLOW_VOLUME,
-                "initial_biomass": CO_INITIAL_BIOMASS,
-                "initial_glucose": CO_INITIAL_GLUCOSE,
-                "feed_glucose": CO_FEED_GLUCOSE,
-                "flow_rate": CO_FLOW_RATE,
-                "yield_xs": CO_YIELD_XS,
-                "mu_max": CO_MU_MAX,
-                "Ks": CO_KS,
-                "batch_end": CO_BATCH_END,
-                "feed_start": CO_FEED_START,
-                "overflow_start": CO_OVERFLOW_START,
-                "end_time": CO_END_TIME,
-            },
-            indent=2,
-        )
-        + "\n"
-    )
-
-
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     build_demo_batch()
@@ -2046,7 +1829,6 @@ def main() -> None:
     build_demo_ecoli_blend()
     build_demo_optfed()
     build_demo_glutamine_decay()
-    build_demo_continuous_overflow()
     build_demo_modeled_pv()
     build_demo_spline_jump()
     print(f"demo datasets written to {OUT}")

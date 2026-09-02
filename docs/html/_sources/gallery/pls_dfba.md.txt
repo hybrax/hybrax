@@ -110,7 +110,8 @@ directly, once, when it builds each process:
 ```{literalinclude} ../_data/generate.py
 :language: python
 :linenos:
-:lines: 1059-1065
+:start-at: processes[name].process_variables["media_blend_fraction"]
+:end-before: collection = hxf.BioProcessCollection
 :dedent: 8
 ```
 

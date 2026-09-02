@@ -106,7 +106,6 @@ gallery/index
 Pseudobatch Splines <gallery/pseudobatch_splines>
 Augmentation <gallery/augmentation>
 Feeds, Boluses, and Samples <gallery/fed_batch>
-Continuous Culture with Controlled Overflow <gallery/continuous_overflow>
 Modeled Process Variables <gallery/modeled_pv>
 Freezing Parameters <gallery/freezing>
 Mechanistic Models <gallery/mechanistic_rates>

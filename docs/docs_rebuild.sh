@@ -43,7 +43,6 @@ sync_example demo_batch gallery_kan data.json
 sync_example demo_batch gallery_stateful data.json
 sync_example demo_batch gallery_loo data.json
 sync_example demo_fedbatch gallery_fed_batch data.json
-sync_example demo_continuous_overflow gallery_continuous_overflow data.json ground_truth.json
 sync_example demo_fedbatch gallery_augmentation data.json
 sync_example demo_products gallery_knowledge_transfer data.json
 sync_example demo_ecoli_fba gallery_fba_hyb data.json

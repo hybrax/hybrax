@@ -255,7 +255,6 @@
 <li class="toctree-l1"><a class="reference internal" href="pseudobatch_splines.html">Pseudobatch Splines</a></li>
 <li class="toctree-l1"><a class="reference internal" href="augmentation.html">Augmentation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="fed_batch.html">Feeds, Boluses, and Samples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="continuous_overflow.html">Continuous Culture with Controlled Overflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="modeled_pv.html">Modeled Process Variables</a></li>
 <li class="toctree-l1"><a class="reference internal" href="freezing.html">Freezing Parameters</a></li>
 <li class="toctree-l1"><a class="reference internal" href="mechanistic_rates.html">Mechanistic Models</a></li>
@@ -435,25 +434,22 @@ needed at all.</p>
 <tr class="row-even"><td><p><a class="reference internal" href="fed_batch.html"><span class="std std-doc">Feeds, Boluses, and Samples</span></a></p></td>
 <td><p>Continuous feed <strong>and</strong> boluses <strong>and</strong> sampling in one run; a reaction module that reads the feed and a controlled process variable as real inputs.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="continuous_overflow.html"><span class="std std-doc">Continuous Culture with Controlled Overflow</span></a></p></td>
-<td><p>One process moving through batch, fed-batch filling, and continuous culture; equal continuous inflow/outflow traces; mechanistic and neural growth laws compared during training.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="modeled_pv.html"><span class="std std-doc">Modeled Process Variables</span></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="modeled_pv.html"><span class="std std-doc">Modeled Process Variables</span></a></p></td>
 <td><p>A process variable with its own trained rate, contrasted against a modeled reactor component: a large feed bolus dilutes the component but leaves the process variable untouched.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="freezing.html"><span class="std std-doc">Freezing Parameters</span></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="freezing.html"><span class="std std-doc">Freezing Parameters</span></a></p></td>
 <td><p>Splitting a reaction module into a frozen part and a trainable part with field tags, checked with <code class="docutils literal notranslate"><span class="pre">print_trainable_structure</span></code>, and what freezing actually costs.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic Models</span></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic Models</span></a></p></td>
 <td><p>Mechanistic kinetics (Monod, Luedeking-Piret) instead of a bare MLP; recovering physical parameters, and where they trade off against each other.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="dense_loss.html"><span class="std std-doc">Custom Losses</span></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="dense_loss.html"><span class="std std-doc">Custom Losses</span></a></p></td>
 <td><p>A loss module that constrains the trajectory <em>between</em> measurements: bounds on states and rates read from hybrax.format’s own metadata, plus a rate-smoothness penalty.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="stateful.html"><span class="std std-doc">Stateful Models</span></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="stateful.html"><span class="std std-doc">Stateful Models</span></a></p></td>
 <td><p>A continuous-time LSTM (a reaction module with its own memory, integrated as extra ODE latents) and the opt-in that guards it.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="glutamine_decay.html"><span class="std std-doc">Glutamine Degradation</span></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="glutamine_decay.html"><span class="std std-doc">Glutamine Degradation</span></a></p></td>
 <td><p>One declared rate feeding two coupled derivatives at once, a sink in one, a source in the other, recovered from data as a single shared number.</p></td>
 </tr>
 </tbody>

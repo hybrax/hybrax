@@ -255,7 +255,6 @@
 <li class="toctree-l1"><a class="reference internal" href="pseudobatch_splines.html">Pseudobatch Splines</a></li>
 <li class="toctree-l1"><a class="reference internal" href="augmentation.html">Augmentation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="fed_batch.html">Feeds, Boluses, and Samples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="continuous_overflow.html">Continuous Culture with Controlled Overflow</a></li>
 <li class="toctree-l1"><a class="reference internal" href="modeled_pv.html">Modeled Process Variables</a></li>
 <li class="toctree-l1"><a class="reference internal" href="freezing.html">Freezing Parameters</a></li>
 <li class="toctree-l1"><a class="reference internal" href="mechanistic_rates.html">Mechanistic Models</a></li>
@@ -400,14 +399,17 @@ cell lines: see <a class="reference download internal" download="" href="../_dow
 “which product produced this state” signal, using only existing, unmodified
 hybrax machinery. <a class="reference download internal" download="" href="../_downloads/0d8a528685aba25cca4f8af1bdd7c58b/generate.py"><span class="xref download myst">The data generator</span></a>’s
 <code class="docutils literal notranslate"><span class="pre">build_demo_products()</span></code> attaches it directly, once, when it builds each process:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">1</span><span class="n">processes</span><span class="p">[</span><span class="n">run_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">_products_process</span><span class="p">(</span><span class="n">run_name</span><span class="p">,</span> <span class="n">meas</span><span class="p">,</span> <span class="n">sample_times</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
-<span class="linenos">2</span><span class="n">processes</span><span class="p">[</span><span class="n">run_name</span><span class="p">]</span><span class="o">.</span><span class="n">process_variables</span><span class="p">[</span><span class="s2">"is_new_product"</span><span class="p">]</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">ProcessVariable</span><span class="p">(</span>
-<span class="linenos">3</span>    <span class="n">name</span><span class="o">=</span><span class="s2">"is_new_product"</span><span class="p">,</span>
-<span class="linenos">4</span>    <span class="n">unit</span><span class="o">=</span><span class="s2">"-"</span><span class="p">,</span>
-<span class="linenos">5</span>    <span class="n">is_controlled</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-<span class="linenos">6</span>    <span class="n">values</span><span class="o">=</span><span class="n">hxf</span><span class="o">.</span><span class="n">StaticVariable</span><span class="p">(</span><span class="mf">1.0</span> <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">"T"</span> <span class="k">else</span> <span class="mf">0.0</span><span class="p">),</span>
-<span class="linenos">7</span>    <span class="n">bounds</span><span class="o">=</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),</span>
-<span class="linenos">8</span><span class="p">)</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="n">processes</span><span class="p">[</span><span class="n">run_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">_products_process</span><span class="p">(</span><span class="n">run_name</span><span class="p">,</span> <span class="n">meas</span><span class="p">,</span> <span class="n">sample_times</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
+<span class="linenos"> 2</span><span class="n">processes</span><span class="p">[</span><span class="n">run_name</span><span class="p">]</span><span class="o">.</span><span class="n">process_variables</span><span class="p">[</span><span class="s2">"is_new_product"</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+<span class="linenos"> 3</span>    <span class="n">hxf</span><span class="o">.</span><span class="n">ProcessVariable</span><span class="p">(</span>
+<span class="linenos"> 4</span>        <span class="n">name</span><span class="o">=</span><span class="s2">"is_new_product"</span><span class="p">,</span>
+<span class="linenos"> 5</span>        <span class="n">unit</span><span class="o">=</span><span class="s2">"-"</span><span class="p">,</span>
+<span class="linenos"> 6</span>        <span class="n">is_controlled</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="linenos"> 7</span>        <span class="n">values</span><span class="o">=</span><span class="n">hxf</span><span class="o">.</span><span class="n">StaticVariable</span><span class="p">(</span><span class="mf">1.0</span> <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">"T"</span> <span class="k">else</span> <span class="mf">0.0</span><span class="p">),</span>
+<span class="linenos"> 8</span>        <span class="n">bounds</span><span class="o">=</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),</span>
+<span class="linenos"> 9</span>    <span class="p">)</span>
+<span class="linenos">10</span><span class="p">)</span>
+<span class="linenos">11</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">is_new_product</span></code> is <code class="docutils literal notranslate"><span class="pre">0.0</span></code> for every historical run’s process, <code class="docutils literal notranslate"><span class="pre">1.0</span></code> for the target’s:

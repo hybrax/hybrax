@@ -88,7 +88,8 @@ hybrax machinery. [The data generator](../_data/generate.py)'s
 ```{literalinclude} ../_data/generate.py
 :language: python
 :linenos:
-:lines: 651-658
+:start-at: processes[run_name] = _products_process
+:end-before: collection = hxf.BioProcessCollection
 :dedent: 12
 ```
 
