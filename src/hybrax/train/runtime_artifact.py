@@ -31,7 +31,8 @@ from .runtime_context import (
 )
 from .training_data import TrainingDataStore
 
-FORMAT_VERSION = 4
+FORMAT_VERSION = 5
+_FLOW_SIGN_VALIDATION_VERSION = 1
 _CONTROL_ARRAYS = (
     "spline_breaks",
     "spline_coeffs",
@@ -145,6 +146,26 @@ def _digest(value: bytes) -> str:
 def _file_digest(path: Path) -> str:
     with path.open("rb") as file:
         return "sha256:" + hashlib.file_digest(file, "sha256").hexdigest()
+
+
+def _flow_sign_validation_record(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Record that the writer ran the flow-sign check on the manifest's content.
+
+    Loaders skip the check only when the stored record equals a freshly computed
+    one. The content hash makes the record go stale when a tool rewrites arrays
+    and recomputes the manifest identity without re-running producer checks.
+    It is not authentication: anyone can recompute it. Bump the version when the
+    check changes so older artifacts are checked again.
+    """
+    content = {
+        key: value
+        for key, value in manifest.items()
+        if key not in {"identity", "flow_sign_validation"}
+    }
+    return {
+        "version": _FLOW_SIGN_VALIDATION_VERSION,
+        "identity": _digest(_canonical_json(content)),
+    }
 
 
 def _json_value(value: Any) -> Any:
@@ -460,6 +481,7 @@ def write_runtime_artifact(
             "training_parent_collection": parent_collection_record,
             "folds": fold_records,
         }
+        manifest["flow_sign_validation"] = _flow_sign_validation_record(manifest)
         manifest["identity"] = _digest(_canonical_json(manifest))
         (temporary / "manifest.json").write_bytes(_canonical_json(manifest))
         _publish_directory(temporary, path)
@@ -480,6 +502,7 @@ def _read_manifest(root: Path) -> dict[str, Any]:
         "arrays",
         "training_parent_collection",
         "folds",
+        "flow_sign_validation",
         "identity",
     }:
         raise ValueError("invalid runtime artifact manifest schema")
@@ -1061,6 +1084,8 @@ def _expect_array(
 def _validate_semantic_arrays(
     base: dict[str, Any],
     arrays: dict[str, np.ndarray],
+    *,
+    validate_flow_signs: bool = True,
 ) -> None:
     descriptor = _rhs_names_from_payload(base["rhs"])
     store = base["store"]
@@ -1311,12 +1336,13 @@ def _validate_semantic_arrays(
         or np.any(y0[..., y0_outflow_slice] > 0)
     ):
         raise ValueError("runtime measurements contain sign-invalid flows")
-    _validate_flow_control_signs(
-        controls,
-        arrays,
-        n_inflows=n_controlled_inflow,
-        n_outflows=n_controlled_outflow,
-    )
+    if validate_flow_signs:
+        _validate_flow_control_signs(
+            controls,
+            arrays,
+            n_inflows=n_controlled_inflow,
+            n_outflows=n_controlled_outflow,
+        )
     mask_measured = np.asarray(arrays["shared.store.mask_measured"])
     for row, length in enumerate(n_measured):
         active_times = measured_times[row, : int(length)]
@@ -1384,7 +1410,13 @@ def _validate_scale_arrays(
 
 
 def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
-    """Load one fold; unselected fold scale files are never opened or checksummed."""
+    """Load one fold, verifying checksums before reusing producer validation.
+
+    The flow-sign check is skipped when the manifest records that the writer
+    ran the current version of it on the current content. An outdated or stale
+    record requires a fresh check. Unselected fold scale files are never opened
+    or checksummed.
+    """
     if type(fold_id) is not int:
         raise ValueError("fold_id must be an integer")
     root = Path(path)
@@ -1451,7 +1483,13 @@ def load_runtime_artifact(path: str | Path, *, fold_id: int) -> RuntimeArtifact:
     } | selected_scale_keys
     arrays = {name: _read_array(root, name, records[name]) for name in required}
     _validate_control_partition(full_parent_collection, base["controls"])
-    _validate_semantic_arrays(base, arrays)
+    _validate_semantic_arrays(
+        base,
+        arrays,
+        validate_flow_signs=(
+            manifest["flow_sign_validation"] != _flow_sign_validation_record(manifest)
+        ),
+    )
     rhs_names = _rhs_names_from_payload(base["rhs"])
     _validate_process_matrices(
         {

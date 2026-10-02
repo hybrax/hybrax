@@ -136,18 +136,24 @@ reload can detect a data/code mismatch and fail fast.
 
 ### Runtime artifacts
 
-Distributed workers consume runtime artifact format 4. Its shared arrays store
+Distributed workers consume runtime artifact format 5. Its shared arrays store
 all four process-aligned transport matrices: controlled and modeled Inflow
 composition, plus controlled and modeled Outflow retention. The loader rebuilds
 canonical parent RHS objects through hybrax.format, verifies biological-expression
 agreement and every cached parent/augmented row, then applies the selected
-process row before hooks or dynamics run. Format 3 is rejected rather than
-compatibility-mapped.
+process row before hooks or dynamics run. Older formats are rejected rather
+than compatibility-mapped.
 
 Only the selected fold's numeric scale payload is read. Integrity checks cover
 identity, inventory, checksums, axes, shapes, dtypes, finite values, positive
 scales, retention in `[0, 1]`, non-negative Inflow values/rates, and
 non-positive Outflow values/rates. The worker context remains collection-free.
+
+The writer checks controlled-flow signs once and records that in the manifest
+as a validator version plus a hash of the manifest content. Loaders skip the
+check only when that record matches, so a changed validator or a tool that
+rewrites arrays without re-running producer checks forces a fresh check. The
+hash is not authentication.
 
 ## Introspection
 

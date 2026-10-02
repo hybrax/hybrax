@@ -1536,6 +1536,101 @@ def test_runtime_artifact_rejects_sign_invalid_controlled_flows(tmp_path, name):
         load_runtime_artifact(artifact, fold_id=0)
 
 
+def test_flow_sign_validation_runs_once_at_publication(tmp_path, monkeypatch):
+    artifact = tmp_path / "artifact"
+    calls = []
+    validate = runtime_artifact._validate_flow_control_signs
+
+    def counting_validator(*args, **kwargs):
+        calls.append(True)
+        return validate(*args, **kwargs)
+
+    monkeypatch.setattr(
+        runtime_artifact, "_validate_flow_control_signs", counting_validator
+    )
+    _artifact_from_collection(
+        artifact,
+        _differing_parent_augmented_collection(),
+        ("p1",),
+        ("p2",),
+    )
+    assert len(calls) == 1
+    load_runtime_artifact(artifact, fold_id=0)
+    load_runtime_artifact(artifact, fold_id=0)
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("record_state", ["outdated", "changed"])
+def test_flow_sign_validation_requires_matching_record(
+    tmp_path, monkeypatch, record_state
+):
+    artifact = tmp_path / "artifact"
+    _artifact_from_collection(
+        artifact,
+        _differing_parent_augmented_collection(),
+        ("p1",),
+        ("p2",),
+    )
+    manifest = json.loads((artifact / "manifest.json").read_text())
+    if record_state == "outdated":
+        manifest["flow_sign_validation"]["version"] = 0
+    else:
+        manifest["flow_sign_validation"]["identity"] = "sha256:" + "0" * 64
+    _write_manifest(artifact, manifest)
+    calls = []
+    validate = runtime_artifact._validate_flow_control_signs
+
+    def counting_validator(*args, **kwargs):
+        calls.append(True)
+        return validate(*args, **kwargs)
+
+    monkeypatch.setattr(
+        runtime_artifact, "_validate_flow_control_signs", counting_validator
+    )
+    load_runtime_artifact(artifact, fold_id=0)
+    assert len(calls) == 1
+
+
+def test_flow_sign_validation_record_is_required(tmp_path):
+    artifact = tmp_path / "artifact"
+    _artifact_from_collection(
+        artifact,
+        _differing_parent_augmented_collection(),
+        ("p1",),
+        ("p2",),
+    )
+    manifest = json.loads((artifact / "manifest.json").read_text())
+    del manifest["flow_sign_validation"]
+    _write_manifest(artifact, manifest)
+    with pytest.raises(ValueError, match="manifest schema"):
+        load_runtime_artifact(artifact, fold_id=0)
+
+
+def test_writer_rejects_sign_invalid_controlled_flows(
+    tmp_path, producer_data, scales, rhs_names
+):
+    store = producer_data.training_data
+    controls = dataclasses.replace(
+        store.controls_store,
+        spline_coeffs=store.controls_store.spline_coeffs.at[0, 0, 0, 0].set(-1.0),
+    )
+    invalid = dataclasses.replace(
+        producer_data,
+        training_data=dataclasses.replace(store, controls_store=controls),
+    )
+    process_order = store.process_order
+    fold = RuntimeArtifactFold(0, (process_order[0],), (process_order[1],), "fold", 0)
+    artifact = tmp_path / "artifact"
+    with pytest.raises(ValueError, match="sign-invalid flows"):
+        write_runtime_artifact(
+            artifact,
+            producer_data=invalid,
+            folds=((fold, scales),),
+            rhs_names=rhs_names,
+        )
+    assert not artifact.exists()
+
+
 @pytest.mark.parametrize("name", ["y_measured", "y0_measured"])
 def test_runtime_artifact_rejects_sign_invalid_modeled_outflows(tmp_path, name):
     artifact = tmp_path / "artifact"
