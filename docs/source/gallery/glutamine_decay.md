@@ -236,8 +236,8 @@ page's own executed run is at `./source/_data/out/runs/gallery_glutamine_decay/`
   `derivatives`, and the unit-consistency rule this page relies on.
 - [Mechanistic Models](mechanistic_rates.md): the same "did it recover the true
   parameters" question, asked of a Monod-form rate law instead.
-- [OptFed](optfed.md): a rate law with real kinetic structure, and the same
-  "identifiability needs the true value inside the sampled range" lesson.
+- [OptFed](optfed.md): an eleven-parameter mechanistic rate law fitted directly
+  to concentrations, with temperature and feed controls.
 - [The Reaction Module](../train/reaction_module.md): `trainable_field` and
   everything else a `RateModule` can return.
 

@@ -1,14 +1,14 @@
 {
   "case_id": "demo_optfed",
-  "organism": "Escherichia coli (recombinant protein production, OptFed-inspired)",
-  "citation": "Simulated data \u2014 bp-docs demo, not a real experiment.",
+  "organism": "Synthetic recombinant E. coli fed-batch",
+  "citation": "Synthetic documentation data, not experimental measurements.",
   "metadata": null,
   "processes": {
-    "center": {
+    "limited_cool": {
       "metadata": {
-        "name": "center",
+        "name": "limited_cool",
         "process_type": "fed_batch",
-        "notes": "Simulated from OptFed's non-competitive-inhibition rate law with Eyring temperature dependence (documentation demo)."
+        "notes": "Synthetic reduced OptFed kinetics with 2% measurement noise."
       },
       "time_axis": {
         "unit": "h",
@@ -40,12 +40,12 @@
               "values": {
                 "__ndarray__": [
                   20.0,
-                  24.11212731318709,
-                  27.553365144148955,
-                  30.430670938586513,
-                  33.93885293734394,
-                  34.215441872785064,
-                  36.88999479525882
+                  24.640144818605364,
+                  27.87471577039309,
+                  32.84666048030686,
+                  37.697490705967255,
+                  41.19887425240846,
+                  43.19482535707997
                 ],
                 "dtype": "float64"
               },
@@ -58,8 +58,8 @@
               "continuity_side": "right"
             }
           },
-          "glucose": {
-            "name": "glucose",
+          "glycerol": {
+            "name": "glycerol",
             "unit": "g/L",
             "concentration": {
               "times": {
@@ -76,13 +76,13 @@
               },
               "values": {
                 "__ndarray__": [
-                  0.5,
-                  1.8113150656492476,
-                  2.207057604087915,
-                  2.4466152706008932,
-                  2.8605007123001847,
-                  3.2833271892580065,
-                  3.737929892159572
+                  0.0,
+                  1.2534097036940535e-16,
+                  1.746829653020005e-16,
+                  3.233337967380506e-16,
+                  4.784293217945458e-16,
+                  4.72373674888022e-16,
+                  4.972262306163178e-16
                 ],
                 "dtype": "float64"
               },
@@ -114,12 +114,12 @@
               "values": {
                 "__ndarray__": [
                   0.0,
-                  0.9277448740869876,
-                  1.7359767863973405,
-                  2.594856917349096,
-                  2.9836707675158567,
-                  3.790091212330739,
-                  4.273845441967621
+                  3.3906540087903787,
+                  6.91593847108833,
+                  10.3376684199551,
+                  13.664581367062672,
+                  17.366591351291817,
+                  19.71479347451768
                 ],
                 "dtype": "float64"
               },
@@ -137,7 +137,7 @@
       "process_variables": {
         "temperature": {
           "name": "temperature",
-          "unit": "degC",
+          "unit": "K",
           "is_controlled": true,
           "values": {
             "times": {
@@ -154,13 +154,13 @@
             },
             "values": {
               "__ndarray__": [
-                32.0,
-                32.0,
-                32.0,
-                32.0,
-                32.0,
-                32.0,
-                32.0
+                301.15,
+                301.15,
+                301.15,
+                301.15,
+                301.15,
+                301.15,
+                301.15
               ],
               "dtype": "float64"
             },
@@ -171,10 +171,44 @@
               "dtype": "float64"
             },
             "continuity_side": "right"
-          },
-          "bounds": {
-            "lower": 0.0,
-            "upper": 60.0
+          }
+        },
+        "supply_limited_uptake": {
+          "name": "supply_limited_uptake",
+          "unit": "1",
+          "is_controlled": true,
+          "values": {
+            "times": {
+              "__ndarray__": [
+                0.0,
+                2.0,
+                4.0,
+                6.0,
+                8.0,
+                10.0,
+                12.0
+              ],
+              "dtype": "float64"
+            },
+            "values": {
+              "__ndarray__": [
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "dtype": "float64"
+            },
+            "type": "TimeSeries",
+            "derived": false,
+            "jump_times": {
+              "__ndarray__": [],
+              "dtype": "float64"
+            },
+            "continuity_side": "right"
           }
         }
       },
@@ -182,8 +216,8 @@
         "initial_volume": 1.0,
         "unit": "L",
         "volume_changes": {
-          "glucose_feed": {
-            "name": "glucose_feed",
+          "carbon_feed": {
+            "name": "carbon_feed",
             "unit": "L",
             "is_controlled": true,
             "is_continuous": true,
@@ -203,12 +237,12 @@
               "values": {
                 "__ndarray__": [
                   0.0,
-                  0.042068366792046875,
-                  0.08856110234155641,
-                  0.13994352157265605,
-                  0.19672987700723843,
-                  0.2594885055770459,
-                  0.3288475167307082
+                  0.016,
+                  0.032,
+                  0.048,
+                  0.064,
+                  0.08,
+                  0.096
                 ],
                 "dtype": "float64"
               },
@@ -221,26 +255,26 @@
             },
             "type": "Inflow",
             "feed_medium": {
-              "name": "optfed_feed",
+              "name": "carbon_feed",
               "density": 1.0,
               "density_unit": "kg/L",
               "components": {
-                "glucose": {
-                  "name": "glucose",
-                  "unit": "g/L",
-                  "is_controlled": false,
-                  "concentration": {
-                    "type": "StaticVariable",
-                    "value": 400.0
-                  }
-                },
                 "biomass": {
                   "name": "biomass",
                   "unit": "g/L",
                   "is_controlled": false,
                   "concentration": {
                     "type": "StaticVariable",
-                    "value": 0.0
+                    "value": 0
+                  }
+                },
+                "glycerol": {
+                  "name": "glycerol",
+                  "unit": "g/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 500.0
                   }
                 },
                 "product": {
@@ -249,35 +283,73 @@
                   "is_controlled": false,
                   "concentration": {
                     "type": "StaticVariable",
-                    "value": 0.0
+                    "value": 0
                   }
                 }
               }
             }
+          },
+          "sampling": {
+            "name": "sampling",
+            "unit": "L",
+            "is_controlled": true,
+            "is_continuous": false,
+            "values": {
+              "times": {
+                "__ndarray__": [
+                  2.0,
+                  4.0,
+                  6.0,
+                  8.0,
+                  10.0,
+                  12.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002
+                ],
+                "dtype": "float64"
+              },
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            },
+            "type": "Outflow",
+            "retention": {}
           }
         }
       },
       "reaction_ode": {
         "algebraic": {
-          "X_active": "biomass - product"
+          "active_biomass": "biomass - product"
         },
         "rates": {
           "q_biomass": null,
-          "q_glucose": null,
+          "q_glycerol": null,
           "q_product": null
         },
         "derivatives": {
-          "biomass": "q_biomass * X_active + q_product * X_active",
-          "glucose": "-q_glucose * biomass",
-          "product": "q_product * X_active"
+          "biomass": "(q_biomass + q_product) * active_biomass",
+          "glycerol": "-q_glycerol * active_biomass",
+          "product": "q_product * active_biomass"
         }
       }
     },
-    "T_low": {
+    "limited_center": {
       "metadata": {
-        "name": "T_low",
+        "name": "limited_center",
         "process_type": "fed_batch",
-        "notes": "Simulated from OptFed's non-competitive-inhibition rate law with Eyring temperature dependence (documentation demo)."
+        "notes": "Synthetic reduced OptFed kinetics with 2% measurement noise."
       },
       "time_axis": {
         "unit": "h",
@@ -309,12 +381,12 @@
               "values": {
                 "__ndarray__": [
                   20.0,
-                  23.468833744735488,
-                  26.54129447052642,
-                  30.45824286755265,
-                  33.5239351919121,
-                  39.51277080625511,
-                  41.171342329343624
+                  26.93350739962716,
+                  34.50662367051822,
+                  38.92062689091296,
+                  44.142051973636136,
+                  52.64462120145145,
+                  56.79872481328848
                 ],
                 "dtype": "float64"
               },
@@ -327,8 +399,8 @@
               "continuity_side": "right"
             }
           },
-          "glucose": {
-            "name": "glucose",
+          "glycerol": {
+            "name": "glycerol",
             "unit": "g/L",
             "concentration": {
               "times": {
@@ -345,13 +417,13 @@
               },
               "values": {
                 "__ndarray__": [
-                  0.5,
-                  1.4351130227623665,
-                  1.6917614311831346,
-                  1.9340347662872934,
-                  2.1190576880812415,
-                  2.3477297449819323,
-                  2.828107827565936
+                  0.0,
+                  1.4961136293232852e-16,
+                  0.0,
+                  0.0,
+                  0.0,
+                  1.8180295989317524e-16,
+                  0.0
                 ],
                 "dtype": "float64"
               },
@@ -383,12 +455,12 @@
               "values": {
                 "__ndarray__": [
                   0.0,
-                  1.1381368313012608,
-                  2.0367125138897078,
-                  2.768808923324405,
-                  3.669477950361972,
-                  4.404883423298906,
-                  5.093970850319864
+                  5.473887367392909,
+                  10.184114428243197,
+                  14.892731639349062,
+                  19.744566138151182,
+                  24.32315344512596,
+                  29.928499145752564
                 ],
                 "dtype": "float64"
               },
@@ -406,7 +478,7 @@
       "process_variables": {
         "temperature": {
           "name": "temperature",
-          "unit": "degC",
+          "unit": "K",
           "is_controlled": true,
           "values": {
             "times": {
@@ -423,13 +495,13 @@
             },
             "values": {
               "__ndarray__": [
-                28.0,
-                28.0,
-                28.0,
-                28.0,
-                28.0,
-                28.0,
-                28.0
+                305.15,
+                305.15,
+                305.15,
+                305.15,
+                305.15,
+                305.15,
+                305.15
               ],
               "dtype": "float64"
             },
@@ -440,10 +512,44 @@
               "dtype": "float64"
             },
             "continuity_side": "right"
-          },
-          "bounds": {
-            "lower": 0.0,
-            "upper": 60.0
+          }
+        },
+        "supply_limited_uptake": {
+          "name": "supply_limited_uptake",
+          "unit": "1",
+          "is_controlled": true,
+          "values": {
+            "times": {
+              "__ndarray__": [
+                0.0,
+                2.0,
+                4.0,
+                6.0,
+                8.0,
+                10.0,
+                12.0
+              ],
+              "dtype": "float64"
+            },
+            "values": {
+              "__ndarray__": [
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "dtype": "float64"
+            },
+            "type": "TimeSeries",
+            "derived": false,
+            "jump_times": {
+              "__ndarray__": [],
+              "dtype": "float64"
+            },
+            "continuity_side": "right"
           }
         }
       },
@@ -451,8 +557,8 @@
         "initial_volume": 1.0,
         "unit": "L",
         "volume_changes": {
-          "glucose_feed": {
-            "name": "glucose_feed",
+          "carbon_feed": {
+            "name": "carbon_feed",
             "unit": "L",
             "is_controlled": true,
             "is_continuous": true,
@@ -472,12 +578,12 @@
               "values": {
                 "__ndarray__": [
                   0.0,
-                  0.042068366792046875,
-                  0.08856110234155641,
-                  0.13994352157265605,
-                  0.19672987700723843,
-                  0.2594885055770459,
-                  0.3288475167307082
+                  0.024,
+                  0.048,
+                  0.07200000000000001,
+                  0.096,
+                  0.12,
+                  0.14400000000000002
                 ],
                 "dtype": "float64"
               },
@@ -490,26 +596,26 @@
             },
             "type": "Inflow",
             "feed_medium": {
-              "name": "optfed_feed",
+              "name": "carbon_feed",
               "density": 1.0,
               "density_unit": "kg/L",
               "components": {
-                "glucose": {
-                  "name": "glucose",
-                  "unit": "g/L",
-                  "is_controlled": false,
-                  "concentration": {
-                    "type": "StaticVariable",
-                    "value": 400.0
-                  }
-                },
                 "biomass": {
                   "name": "biomass",
                   "unit": "g/L",
                   "is_controlled": false,
                   "concentration": {
                     "type": "StaticVariable",
-                    "value": 0.0
+                    "value": 0
+                  }
+                },
+                "glycerol": {
+                  "name": "glycerol",
+                  "unit": "g/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 500.0
                   }
                 },
                 "product": {
@@ -518,35 +624,73 @@
                   "is_controlled": false,
                   "concentration": {
                     "type": "StaticVariable",
-                    "value": 0.0
+                    "value": 0
                   }
                 }
               }
             }
+          },
+          "sampling": {
+            "name": "sampling",
+            "unit": "L",
+            "is_controlled": true,
+            "is_continuous": false,
+            "values": {
+              "times": {
+                "__ndarray__": [
+                  2.0,
+                  4.0,
+                  6.0,
+                  8.0,
+                  10.0,
+                  12.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002
+                ],
+                "dtype": "float64"
+              },
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            },
+            "type": "Outflow",
+            "retention": {}
           }
         }
       },
       "reaction_ode": {
         "algebraic": {
-          "X_active": "biomass - product"
+          "active_biomass": "biomass - product"
         },
         "rates": {
           "q_biomass": null,
-          "q_glucose": null,
+          "q_glycerol": null,
           "q_product": null
         },
         "derivatives": {
-          "biomass": "q_biomass * X_active + q_product * X_active",
-          "glucose": "-q_glucose * biomass",
-          "product": "q_product * X_active"
+          "biomass": "(q_biomass + q_product) * active_biomass",
+          "glycerol": "-q_glycerol * active_biomass",
+          "product": "q_product * active_biomass"
         }
       }
     },
-    "T_high": {
+    "limited_warm": {
       "metadata": {
-        "name": "T_high",
+        "name": "limited_warm",
         "process_type": "fed_batch",
-        "notes": "Simulated from OptFed's non-competitive-inhibition rate law with Eyring temperature dependence (documentation demo)."
+        "notes": "Synthetic reduced OptFed kinetics with 2% measurement noise."
       },
       "time_axis": {
         "unit": "h",
@@ -578,12 +722,12 @@
               "values": {
                 "__ndarray__": [
                   20.0,
-                  21.823508320875582,
-                  23.275363618081627,
-                  26.157018838112627,
-                  28.91967340034137,
-                  27.851128018664113,
-                  31.38506657050681
+                  29.07617784003985,
+                  37.8644930710753,
+                  44.509797918816865,
+                  51.63192872946753,
+                  59.10222116045275,
+                  65.90618236627424
                 ],
                 "dtype": "float64"
               },
@@ -596,8 +740,8 @@
               "continuity_side": "right"
             }
           },
-          "glucose": {
-            "name": "glucose",
+          "glycerol": {
+            "name": "glycerol",
             "unit": "g/L",
             "concentration": {
               "times": {
@@ -614,13 +758,13 @@
               },
               "values": {
                 "__ndarray__": [
-                  0.5,
-                  6.551387212325957,
-                  11.743922788692826,
-                  17.135461273318466,
-                  23.89112305661558,
-                  29.336846367736438,
-                  35.13890286774562
+                  0.0,
+                  1.5119717472299693e-16,
+                  5.281637018725494e-16,
+                  7.501738014671595e-16,
+                  6.771531203036653e-16,
+                  1.139329361661083e-15,
+                  7.932373886018372e-16
                 ],
                 "dtype": "float64"
               },
@@ -652,12 +796,12 @@
               "values": {
                 "__ndarray__": [
                   0.0,
-                  0.45763816553328784,
-                  0.8962400062676262,
-                  1.2169806696645316,
-                  1.635945036437544,
-                  1.9350729252873595,
-                  2.4049900345702255
+                  3.5231521007575144,
+                  7.534274096254972,
+                  11.59552411827961,
+                  15.881553448982775,
+                  19.02825477714944,
+                  24.721737301181985
                 ],
                 "dtype": "float64"
               },
@@ -675,7 +819,7 @@
       "process_variables": {
         "temperature": {
           "name": "temperature",
-          "unit": "degC",
+          "unit": "K",
           "is_controlled": true,
           "values": {
             "times": {
@@ -692,13 +836,13 @@
             },
             "values": {
               "__ndarray__": [
-                40.0,
-                40.0,
-                40.0,
-                40.0,
-                40.0,
-                40.0,
-                40.0
+                309.15,
+                309.15,
+                309.15,
+                309.15,
+                309.15,
+                309.15,
+                309.15
               ],
               "dtype": "float64"
             },
@@ -709,10 +853,44 @@
               "dtype": "float64"
             },
             "continuity_side": "right"
-          },
-          "bounds": {
-            "lower": 0.0,
-            "upper": 60.0
+          }
+        },
+        "supply_limited_uptake": {
+          "name": "supply_limited_uptake",
+          "unit": "1",
+          "is_controlled": true,
+          "values": {
+            "times": {
+              "__ndarray__": [
+                0.0,
+                2.0,
+                4.0,
+                6.0,
+                8.0,
+                10.0,
+                12.0
+              ],
+              "dtype": "float64"
+            },
+            "values": {
+              "__ndarray__": [
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "dtype": "float64"
+            },
+            "type": "TimeSeries",
+            "derived": false,
+            "jump_times": {
+              "__ndarray__": [],
+              "dtype": "float64"
+            },
+            "continuity_side": "right"
           }
         }
       },
@@ -720,8 +898,8 @@
         "initial_volume": 1.0,
         "unit": "L",
         "volume_changes": {
-          "glucose_feed": {
-            "name": "glucose_feed",
+          "carbon_feed": {
+            "name": "carbon_feed",
             "unit": "L",
             "is_controlled": true,
             "is_continuous": true,
@@ -741,12 +919,12 @@
               "values": {
                 "__ndarray__": [
                   0.0,
-                  0.042068366792046875,
-                  0.08856110234155641,
-                  0.13994352157265605,
-                  0.19672987700723843,
-                  0.2594885055770459,
-                  0.3288475167307082
+                  0.032,
+                  0.064,
+                  0.096,
+                  0.128,
+                  0.16,
+                  0.192
                 ],
                 "dtype": "float64"
               },
@@ -759,26 +937,26 @@
             },
             "type": "Inflow",
             "feed_medium": {
-              "name": "optfed_feed",
+              "name": "carbon_feed",
               "density": 1.0,
               "density_unit": "kg/L",
               "components": {
-                "glucose": {
-                  "name": "glucose",
-                  "unit": "g/L",
-                  "is_controlled": false,
-                  "concentration": {
-                    "type": "StaticVariable",
-                    "value": 400.0
-                  }
-                },
                 "biomass": {
                   "name": "biomass",
                   "unit": "g/L",
                   "is_controlled": false,
                   "concentration": {
                     "type": "StaticVariable",
-                    "value": 0.0
+                    "value": 0
+                  }
+                },
+                "glycerol": {
+                  "name": "glycerol",
+                  "unit": "g/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 500.0
                   }
                 },
                 "product": {
@@ -787,35 +965,73 @@
                   "is_controlled": false,
                   "concentration": {
                     "type": "StaticVariable",
-                    "value": 0.0
+                    "value": 0
                   }
                 }
               }
             }
+          },
+          "sampling": {
+            "name": "sampling",
+            "unit": "L",
+            "is_controlled": true,
+            "is_continuous": false,
+            "values": {
+              "times": {
+                "__ndarray__": [
+                  2.0,
+                  4.0,
+                  6.0,
+                  8.0,
+                  10.0,
+                  12.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002
+                ],
+                "dtype": "float64"
+              },
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            },
+            "type": "Outflow",
+            "retention": {}
           }
         }
       },
       "reaction_ode": {
         "algebraic": {
-          "X_active": "biomass - product"
+          "active_biomass": "biomass - product"
         },
         "rates": {
           "q_biomass": null,
-          "q_glucose": null,
+          "q_glycerol": null,
           "q_product": null
         },
         "derivatives": {
-          "biomass": "q_biomass * X_active + q_product * X_active",
-          "glucose": "-q_glucose * biomass",
-          "product": "q_product * X_active"
+          "biomass": "(q_biomass + q_product) * active_biomass",
+          "glycerol": "-q_glycerol * active_biomass",
+          "product": "q_product * active_biomass"
         }
       }
     },
-    "feed_low": {
+    "kinetic_cool": {
       "metadata": {
-        "name": "feed_low",
+        "name": "kinetic_cool",
         "process_type": "fed_batch",
-        "notes": "Simulated from OptFed's non-competitive-inhibition rate law with Eyring temperature dependence (documentation demo)."
+        "notes": "Synthetic reduced OptFed kinetics with 2% measurement noise."
       },
       "time_axis": {
         "unit": "h",
@@ -847,12 +1063,12 @@
               "values": {
                 "__ndarray__": [
                   20.0,
-                  24.188331124044826,
-                  26.42102259398287,
-                  30.44482096373012,
-                  31.013398392856868,
-                  33.71993430758501,
-                  33.95668017060772
+                  26.466160521203268,
+                  29.80366964620719,
+                  33.12621151571416,
+                  36.82104653866151,
+                  40.394930875305874,
+                  41.24295550721374
                 ],
                 "dtype": "float64"
               },
@@ -865,8 +1081,8 @@
               "continuity_side": "right"
             }
           },
-          "glucose": {
-            "name": "glucose",
+          "glycerol": {
+            "name": "glycerol",
             "unit": "g/L",
             "concentration": {
               "times": {
@@ -883,13 +1099,13 @@
               },
               "values": {
                 "__ndarray__": [
-                  0.5,
-                  1.4131634110628992,
-                  1.334551773451828,
-                  1.2285186675448336,
-                  1.1482738092868219,
-                  1.0042424433055515,
-                  0.9236124716473113
+                  20.0,
+                  43.70397077817206,
+                  66.92347293037584,
+                  84.85971526686639,
+                  99.32712332979023,
+                  118.16224927868767,
+                  131.25684882506306
                 ],
                 "dtype": "float64"
               },
@@ -921,12 +1137,12 @@
               "values": {
                 "__ndarray__": [
                   0.0,
-                  0.9515730667530882,
-                  1.760452117900304,
-                  2.5808030562045996,
-                  3.027045437640881,
-                  3.6930721444315266,
-                  4.272046799124159
+                  3.8892675309574005,
+                  7.011230719482369,
+                  10.810003220794725,
+                  13.12823694258723,
+                  16.458617593151917,
+                  18.396584395841888
                 ],
                 "dtype": "float64"
               },
@@ -944,7 +1160,7 @@
       "process_variables": {
         "temperature": {
           "name": "temperature",
-          "unit": "degC",
+          "unit": "K",
           "is_controlled": true,
           "values": {
             "times": {
@@ -961,13 +1177,13 @@
             },
             "values": {
               "__ndarray__": [
-                32.0,
-                32.0,
-                32.0,
-                32.0,
-                32.0,
-                32.0,
-                32.0
+                301.15,
+                301.15,
+                301.15,
+                301.15,
+                301.15,
+                301.15,
+                301.15
               ],
               "dtype": "float64"
             },
@@ -978,10 +1194,44 @@
               "dtype": "float64"
             },
             "continuity_side": "right"
-          },
-          "bounds": {
-            "lower": 0.0,
-            "upper": 60.0
+          }
+        },
+        "supply_limited_uptake": {
+          "name": "supply_limited_uptake",
+          "unit": "1",
+          "is_controlled": true,
+          "values": {
+            "times": {
+              "__ndarray__": [
+                0.0,
+                2.0,
+                4.0,
+                6.0,
+                8.0,
+                10.0,
+                12.0
+              ],
+              "dtype": "float64"
+            },
+            "values": {
+              "__ndarray__": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "dtype": "float64"
+            },
+            "type": "TimeSeries",
+            "derived": false,
+            "jump_times": {
+              "__ndarray__": [],
+              "dtype": "float64"
+            },
+            "continuity_side": "right"
           }
         }
       },
@@ -989,8 +1239,8 @@
         "initial_volume": 1.0,
         "unit": "L",
         "volume_changes": {
-          "glucose_feed": {
-            "name": "glucose_feed",
+          "carbon_feed": {
+            "name": "carbon_feed",
             "unit": "L",
             "is_controlled": true,
             "is_continuous": true,
@@ -1010,12 +1260,12 @@
               "values": {
                 "__ndarray__": [
                   0.0,
-                  0.040402680036677185,
-                  0.08162154835076749,
-                  0.12367309303918882,
-                  0.16657413528051138,
-                  0.21034183606365317,
-                  0.2549937030525042
+                  0.08,
+                  0.16,
+                  0.24,
+                  0.32,
+                  0.4,
+                  0.48
                 ],
                 "dtype": "float64"
               },
@@ -1028,26 +1278,26 @@
             },
             "type": "Inflow",
             "feed_medium": {
-              "name": "optfed_feed",
+              "name": "carbon_feed",
               "density": 1.0,
               "density_unit": "kg/L",
               "components": {
-                "glucose": {
-                  "name": "glucose",
-                  "unit": "g/L",
-                  "is_controlled": false,
-                  "concentration": {
-                    "type": "StaticVariable",
-                    "value": 400.0
-                  }
-                },
                 "biomass": {
                   "name": "biomass",
                   "unit": "g/L",
                   "is_controlled": false,
                   "concentration": {
                     "type": "StaticVariable",
-                    "value": 0.0
+                    "value": 0
+                  }
+                },
+                "glycerol": {
+                  "name": "glycerol",
+                  "unit": "g/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 500.0
                   }
                 },
                 "product": {
@@ -1056,35 +1306,73 @@
                   "is_controlled": false,
                   "concentration": {
                     "type": "StaticVariable",
-                    "value": 0.0
+                    "value": 0
                   }
                 }
               }
             }
+          },
+          "sampling": {
+            "name": "sampling",
+            "unit": "L",
+            "is_controlled": true,
+            "is_continuous": false,
+            "values": {
+              "times": {
+                "__ndarray__": [
+                  2.0,
+                  4.0,
+                  6.0,
+                  8.0,
+                  10.0,
+                  12.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002
+                ],
+                "dtype": "float64"
+              },
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            },
+            "type": "Outflow",
+            "retention": {}
           }
         }
       },
       "reaction_ode": {
         "algebraic": {
-          "X_active": "biomass - product"
+          "active_biomass": "biomass - product"
         },
         "rates": {
           "q_biomass": null,
-          "q_glucose": null,
+          "q_glycerol": null,
           "q_product": null
         },
         "derivatives": {
-          "biomass": "q_biomass * X_active + q_product * X_active",
-          "glucose": "-q_glucose * biomass",
-          "product": "q_product * X_active"
+          "biomass": "(q_biomass + q_product) * active_biomass",
+          "glycerol": "-q_glycerol * active_biomass",
+          "product": "q_product * active_biomass"
         }
       }
     },
-    "feed_high": {
+    "kinetic_center": {
       "metadata": {
-        "name": "feed_high",
+        "name": "kinetic_center",
         "process_type": "fed_batch",
-        "notes": "Simulated from OptFed's non-competitive-inhibition rate law with Eyring temperature dependence (documentation demo)."
+        "notes": "Synthetic reduced OptFed kinetics with 2% measurement noise."
       },
       "time_axis": {
         "unit": "h",
@@ -1116,12 +1404,12 @@
               "values": {
                 "__ndarray__": [
                   20.0,
-                  23.709667115245722,
-                  27.06276572547964,
-                  30.67940396217582,
-                  34.04446043509176,
-                  37.24957091684094,
-                  40.630257393160555
+                  23.931646909637326,
+                  26.908933430230128,
+                  28.624459514346825,
+                  28.83348270713656,
+                  29.298262801662954,
+                  29.790729388580733
                 ],
                 "dtype": "float64"
               },
@@ -1134,8 +1422,8 @@
               "continuity_side": "right"
             }
           },
-          "glucose": {
-            "name": "glucose",
+          "glycerol": {
+            "name": "glycerol",
             "unit": "g/L",
             "concentration": {
               "times": {
@@ -1152,13 +1440,13 @@
               },
               "values": {
                 "__ndarray__": [
-                  0.5,
-                  2.324872371583567,
-                  4.159263182598015,
-                  6.721977850588817,
-                  11.114567433171214,
-                  17.222165439383417,
-                  26.065344393294197
+                  30.0,
+                  62.42003438897302,
+                  90.369367674047,
+                  116.25300834809997,
+                  141.18362673573526,
+                  159.5554617417744,
+                  181.77619716952145
                 ],
                 "dtype": "float64"
               },
@@ -1190,12 +1478,12 @@
               "values": {
                 "__ndarray__": [
                   0.0,
-                  0.913993961484751,
-                  1.729450467853762,
-                  2.541434002762367,
-                  3.1673343436936134,
-                  3.856752031128811,
-                  4.361280836358507
+                  4.594595662130443,
+                  8.285176376992222,
+                  11.035262898854008,
+                  13.14985282266556,
+                  14.90396015189019,
+                  16.086638644224323
                 ],
                 "dtype": "float64"
               },
@@ -1213,7 +1501,7 @@
       "process_variables": {
         "temperature": {
           "name": "temperature",
-          "unit": "degC",
+          "unit": "K",
           "is_controlled": true,
           "values": {
             "times": {
@@ -1230,13 +1518,13 @@
             },
             "values": {
               "__ndarray__": [
-                32.0,
-                32.0,
-                32.0,
-                32.0,
-                32.0,
-                32.0,
-                32.0
+                305.15,
+                305.15,
+                305.15,
+                305.15,
+                305.15,
+                305.15,
+                305.15
               ],
               "dtype": "float64"
             },
@@ -1247,10 +1535,44 @@
               "dtype": "float64"
             },
             "continuity_side": "right"
-          },
-          "bounds": {
-            "lower": 0.0,
-            "upper": 60.0
+          }
+        },
+        "supply_limited_uptake": {
+          "name": "supply_limited_uptake",
+          "unit": "1",
+          "is_controlled": true,
+          "values": {
+            "times": {
+              "__ndarray__": [
+                0.0,
+                2.0,
+                4.0,
+                6.0,
+                8.0,
+                10.0,
+                12.0
+              ],
+              "dtype": "float64"
+            },
+            "values": {
+              "__ndarray__": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "dtype": "float64"
+            },
+            "type": "TimeSeries",
+            "derived": false,
+            "jump_times": {
+              "__ndarray__": [],
+              "dtype": "float64"
+            },
+            "continuity_side": "right"
           }
         }
       },
@@ -1258,8 +1580,8 @@
         "initial_volume": 1.0,
         "unit": "L",
         "volume_changes": {
-          "glucose_feed": {
-            "name": "glucose_feed",
+          "carbon_feed": {
+            "name": "carbon_feed",
             "unit": "L",
             "is_controlled": true,
             "is_continuous": true,
@@ -1279,12 +1601,12 @@
               "values": {
                 "__ndarray__": [
                   0.0,
-                  0.04428054978701102,
-                  0.098364935429715,
-                  0.16442375322711206,
-                  0.24510817548565264,
-                  0.34365635137279404,
-                  0.4640233652130025
+                  0.1,
+                  0.2,
+                  0.30000000000000004,
+                  0.4,
+                  0.5,
+                  0.6000000000000001
                 ],
                 "dtype": "float64"
               },
@@ -1297,26 +1619,26 @@
             },
             "type": "Inflow",
             "feed_medium": {
-              "name": "optfed_feed",
+              "name": "carbon_feed",
               "density": 1.0,
               "density_unit": "kg/L",
               "components": {
-                "glucose": {
-                  "name": "glucose",
-                  "unit": "g/L",
-                  "is_controlled": false,
-                  "concentration": {
-                    "type": "StaticVariable",
-                    "value": 400.0
-                  }
-                },
                 "biomass": {
                   "name": "biomass",
                   "unit": "g/L",
                   "is_controlled": false,
                   "concentration": {
                     "type": "StaticVariable",
-                    "value": 0.0
+                    "value": 0
+                  }
+                },
+                "glycerol": {
+                  "name": "glycerol",
+                  "unit": "g/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 500.0
                   }
                 },
                 "product": {
@@ -1325,35 +1647,73 @@
                   "is_controlled": false,
                   "concentration": {
                     "type": "StaticVariable",
-                    "value": 0.0
+                    "value": 0
                   }
                 }
               }
             }
+          },
+          "sampling": {
+            "name": "sampling",
+            "unit": "L",
+            "is_controlled": true,
+            "is_continuous": false,
+            "values": {
+              "times": {
+                "__ndarray__": [
+                  2.0,
+                  4.0,
+                  6.0,
+                  8.0,
+                  10.0,
+                  12.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002
+                ],
+                "dtype": "float64"
+              },
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            },
+            "type": "Outflow",
+            "retention": {}
           }
         }
       },
       "reaction_ode": {
         "algebraic": {
-          "X_active": "biomass - product"
+          "active_biomass": "biomass - product"
         },
         "rates": {
           "q_biomass": null,
-          "q_glucose": null,
+          "q_glycerol": null,
           "q_product": null
         },
         "derivatives": {
-          "biomass": "q_biomass * X_active + q_product * X_active",
-          "glucose": "-q_glucose * biomass",
-          "product": "q_product * X_active"
+          "biomass": "(q_biomass + q_product) * active_biomass",
+          "glycerol": "-q_glycerol * active_biomass",
+          "product": "q_product * active_biomass"
         }
       }
     },
-    "corner": {
+    "kinetic_warm": {
       "metadata": {
-        "name": "corner",
+        "name": "kinetic_warm",
         "process_type": "fed_batch",
-        "notes": "Simulated from OptFed's non-competitive-inhibition rate law with Eyring temperature dependence (documentation demo)."
+        "notes": "Synthetic reduced OptFed kinetics with 2% measurement noise."
       },
       "time_axis": {
         "unit": "h",
@@ -1385,12 +1745,12 @@
               "values": {
                 "__ndarray__": [
                   20.0,
-                  23.33073669052385,
-                  25.474959579468077,
-                  28.021631458613026,
-                  29.38170063894586,
-                  31.615126753541396,
-                  32.71660937025567
+                  23.48445252329043,
+                  25.264087455232666,
+                  26.065227895873743,
+                  27.626176338542297,
+                  27.153973642615547,
+                  27.97138250381008
                 ],
                 "dtype": "float64"
               },
@@ -1403,8 +1763,8 @@
               "continuity_side": "right"
             }
           },
-          "glucose": {
-            "name": "glucose",
+          "glycerol": {
+            "name": "glycerol",
             "unit": "g/L",
             "concentration": {
               "times": {
@@ -1421,13 +1781,13 @@
               },
               "values": {
                 "__ndarray__": [
-                  0.5,
-                  4.9931829228298685,
-                  10.422842852792224,
-                  16.99711519120329,
-                  27.014361833970092,
-                  36.91414210825793,
-                  49.18729102102102
+                  40.0,
+                  79.86061515371642,
+                  115.38138337946775,
+                  140.01533140488243,
+                  168.58536417887439,
+                  186.00098472706156,
+                  210.7712392515405
                 ],
                 "dtype": "float64"
               },
@@ -1459,12 +1819,12 @@
               "values": {
                 "__ndarray__": [
                   0.0,
-                  0.5568371240588909,
-                  1.0923468484640093,
-                  1.6704588121754098,
-                  1.9857987057165776,
-                  2.466574017425928,
-                  2.7459568775376
+                  2.8891602450265883,
+                  4.91834881363895,
+                  7.240109992304195,
+                  8.620418413661975,
+                  10.212107787912927,
+                  11.046183348992331
                 ],
                 "dtype": "float64"
               },
@@ -1482,7 +1842,7 @@
       "process_variables": {
         "temperature": {
           "name": "temperature",
-          "unit": "degC",
+          "unit": "K",
           "is_controlled": true,
           "values": {
             "times": {
@@ -1499,13 +1859,13 @@
             },
             "values": {
               "__ndarray__": [
-                38.0,
-                38.0,
-                38.0,
-                38.0,
-                38.0,
-                38.0,
-                38.0
+                309.15,
+                309.15,
+                309.15,
+                309.15,
+                309.15,
+                309.15,
+                309.15
               ],
               "dtype": "float64"
             },
@@ -1516,10 +1876,44 @@
               "dtype": "float64"
             },
             "continuity_side": "right"
-          },
-          "bounds": {
-            "lower": 0.0,
-            "upper": 60.0
+          }
+        },
+        "supply_limited_uptake": {
+          "name": "supply_limited_uptake",
+          "unit": "1",
+          "is_controlled": true,
+          "values": {
+            "times": {
+              "__ndarray__": [
+                0.0,
+                2.0,
+                4.0,
+                6.0,
+                8.0,
+                10.0,
+                12.0
+              ],
+              "dtype": "float64"
+            },
+            "values": {
+              "__ndarray__": [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "dtype": "float64"
+            },
+            "type": "TimeSeries",
+            "derived": false,
+            "jump_times": {
+              "__ndarray__": [],
+              "dtype": "float64"
+            },
+            "continuity_side": "right"
           }
         }
       },
@@ -1527,8 +1921,8 @@
         "initial_volume": 1.0,
         "unit": "L",
         "volume_changes": {
-          "glucose_feed": {
-            "name": "glucose_feed",
+          "carbon_feed": {
+            "name": "carbon_feed",
             "unit": "L",
             "is_controlled": true,
             "is_continuous": true,
@@ -1548,12 +1942,12 @@
               "values": {
                 "__ndarray__": [
                   0.0,
-                  0.04382607921460543,
-                  0.09629542220788288,
-                  0.15911263067102835,
-                  0.23431848334594838,
-                  0.3243562359767434,
-                  0.4321509967627977
+                  0.12,
+                  0.24,
+                  0.36,
+                  0.48,
+                  0.6,
+                  0.72
                 ],
                 "dtype": "float64"
               },
@@ -1566,26 +1960,26 @@
             },
             "type": "Inflow",
             "feed_medium": {
-              "name": "optfed_feed",
+              "name": "carbon_feed",
               "density": 1.0,
               "density_unit": "kg/L",
               "components": {
-                "glucose": {
-                  "name": "glucose",
-                  "unit": "g/L",
-                  "is_controlled": false,
-                  "concentration": {
-                    "type": "StaticVariable",
-                    "value": 400.0
-                  }
-                },
                 "biomass": {
                   "name": "biomass",
                   "unit": "g/L",
                   "is_controlled": false,
                   "concentration": {
                     "type": "StaticVariable",
-                    "value": 0.0
+                    "value": 0
+                  }
+                },
+                "glycerol": {
+                  "name": "glycerol",
+                  "unit": "g/L",
+                  "is_controlled": false,
+                  "concentration": {
+                    "type": "StaticVariable",
+                    "value": 500.0
                   }
                 },
                 "product": {
@@ -1594,27 +1988,65 @@
                   "is_controlled": false,
                   "concentration": {
                     "type": "StaticVariable",
-                    "value": 0.0
+                    "value": 0
                   }
                 }
               }
             }
+          },
+          "sampling": {
+            "name": "sampling",
+            "unit": "L",
+            "is_controlled": true,
+            "is_continuous": false,
+            "values": {
+              "times": {
+                "__ndarray__": [
+                  2.0,
+                  4.0,
+                  6.0,
+                  8.0,
+                  10.0,
+                  12.0
+                ],
+                "dtype": "float64"
+              },
+              "values": {
+                "__ndarray__": [
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002,
+                  -0.002
+                ],
+                "dtype": "float64"
+              },
+              "derived": false,
+              "jump_times": {
+                "__ndarray__": [],
+                "dtype": "float64"
+              },
+              "continuity_side": "right"
+            },
+            "type": "Outflow",
+            "retention": {}
           }
         }
       },
       "reaction_ode": {
         "algebraic": {
-          "X_active": "biomass - product"
+          "active_biomass": "biomass - product"
         },
         "rates": {
           "q_biomass": null,
-          "q_glucose": null,
+          "q_glycerol": null,
           "q_product": null
         },
         "derivatives": {
-          "biomass": "q_biomass * X_active + q_product * X_active",
-          "glucose": "-q_glucose * biomass",
-          "product": "q_product * X_active"
+          "biomass": "(q_biomass + q_product) * active_biomass",
+          "glycerol": "-q_glycerol * active_biomass",
+          "product": "q_product * active_biomass"
         }
       }
     }
