@@ -16,6 +16,7 @@ import pandas as pd
 from hybrax.format.json_io import load_json
 from hybrax.format.serialization import load_process_collection
 
+from .checkpointing import CheckpointWriter
 from .forward_plotting import plot_forward_predictions
 from .harness import (
     ForwardConfig,
@@ -462,6 +463,15 @@ def _handle_train(args: argparse.Namespace) -> int:
             )
             return 1
 
+    if not args.overwrite:
+        try:
+            CheckpointWriter.check_retention_directory(
+                run_dir / "checkpoints", keep_best=cfg.checkpoint.keep_best
+            )
+        except ValueError as exc:
+            log.error("%s", exc)
+            return 1
+
     collection = load_process_collection(cfg.data.prepared)
 
     if args.overwrite:
@@ -511,6 +521,16 @@ def _handle_train(args: argparse.Namespace) -> int:
             run_config=cfg,
         )
         del collection
+        if cfg.train.holdout_processes is not None and cfg.data.processes is None:
+            # Reloading must rebuild static scales/modules from the same split.
+            cfg = cfg.model_copy(
+                update={
+                    "data": cfg.data.model_copy(
+                        update={"processes": prepared.config.process_names}
+                    )
+                }
+            )
+            update_json(config_json, config=run_config_to_jsonable(cfg))
         result = train_collection(
             prepared.store,
             reaction_module=prepared.reaction_module,
@@ -521,6 +541,8 @@ def _handle_train(args: argparse.Namespace) -> int:
         eval_processes = tuple(
             prepared.config.process_names or prepared.store.process_order
         )
+        training_processes = eval_processes
+        eval_processes += tuple(prepared.config.holdout_processes or ())
         prediction_processes = _select_prediction_processes(
             cfg.output.predictions,
             eval_processes,
@@ -539,7 +561,7 @@ def _handle_train(args: argparse.Namespace) -> int:
                 solver_use_jump_ts=prepared.config.solver_use_jump_ts,
             ),
             target_names=tuple(prepared.loss_module.loss_names),
-            training_process_names=eval_processes,
+            training_process_names=training_processes,
             prediction_process_names=prediction_processes,
         )
         _write_train_results(

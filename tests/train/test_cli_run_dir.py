@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import weakref
 
 import pytest
+import pandas as pd
 from hybrax.format.serialization import save_process_collection
 
 import hybrax.train
@@ -241,3 +242,62 @@ def test_train_cli_info_logs_reach_output_by_default(tmp_path: Path, capsys):
     assert main(["train", "--config", str(config)]) == 0
 
     assert "run start" in capsys.readouterr().err
+
+
+def test_train_retention_rejects_old_checkpoints_before_loading_data(
+    tmp_path, monkeypatch, capsys
+):
+    run = tmp_path / "failed-run"
+    old = run / "checkpoints" / "step_00010"
+    old.mkdir(parents=True)
+    marker = old / "params.eqx"
+    marker.write_text("preserve previous attempt")
+    config = _write_config(
+        tmp_path / "config.json", prepared=tmp_path / "missing.json", run_dir=run
+    )
+    data = json.loads(config.read_text())
+    data["checkpoint"]["keep_best"] = 0
+    config.write_text(json.dumps(data))
+    prior_metadata = json.dumps(
+        {
+            "config": data,
+            "status": "failed",
+            "error": {"type": "RuntimeError", "message": "previous failure"},
+        }
+    )
+    run_config = run / "config.json"
+    run_config.write_text(prior_metadata)
+    monkeypatch.setattr(
+        "hybrax.train.cli.load_process_collection",
+        lambda *_: pytest.fail("loaded data before retention guard"),
+    )
+    assert main(["train", "--config", str(config)]) == 1
+    assert "--overwrite" in capsys.readouterr().err
+    assert marker.read_text() == "preserve previous attempt"
+    assert run_config.read_text() == prior_metadata
+
+
+def test_train_holdout_split_survives_loading_and_appears_in_results(tmp_path):
+    prepared = tmp_path / "prepared.json"
+    save_process_collection(_collection(n_processes=2), prepared)
+    run = tmp_path / "run"
+    config = _write_config(
+        tmp_path / "train.json",
+        prepared=prepared,
+        run_dir=run,
+        epochs=1,
+        every=1,
+        predictions="none",
+    )
+    data = json.loads(config.read_text())
+    data["train"]["holdout_processes"] = ["p2"]
+    data["checkpoint"].update(keep_best=1, select_by="holdout_loss")
+    config.write_text(json.dumps(data))
+    assert main(["train", "--config", str(config)]) == 0
+    _, loaded = hybrax.train.model_load(run)
+    assert loaded.data.processes == ("p1",)
+    _, checkpoint = hybrax.train.model_load(run / "checkpoints" / "latest")
+    assert checkpoint.data.processes == ("p1",)
+    rows = pd.read_csv(run / "losses.csv")
+    assert rows.set_index("process").loc["p2", "split"] == "holdout"
+    assert rows.set_index("process").loc["p1", "split"] == "train"

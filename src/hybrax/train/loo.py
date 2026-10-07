@@ -762,6 +762,10 @@ def _fold_from_record(fold: RuntimeArtifactFold) -> Fold:
 
 
 def _fold_harness_config(effective_cfg: RunConfig, fold: Fold, fold_dir: Path):
+    if effective_cfg.train.holdout_processes is not None:
+        raise ValueError(
+            "train.holdout_processes is train-only; LOO folds define holdouts"
+        )
     return dataclasses.replace(
         train_harness_config_from_run_config(effective_cfg, run_dir=fold_dir),
         holdout_processes=fold.test,

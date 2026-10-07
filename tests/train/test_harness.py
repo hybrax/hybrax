@@ -18,6 +18,7 @@ import optax
 import pandas as pd
 import pytest
 from hybrax.format.dataclasses import (
+    AugmentedBioProcess,
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
@@ -1997,3 +1998,101 @@ def test_resolve_estimated_scales_receives_runtime_data():
     assert seen == {"data": runtime_data}
     for field in dataclasses.fields(EstimatedScales):
         assert isinstance(getattr(estimated, field.name), LinearScaler)
+
+
+@pytest.mark.parametrize("metric", ["holdout_loss", "train_loss", "epoch_mean_loss"])
+def test_checkpoint_selection_uses_requested_metric(tmp_path, metric):
+    metrics = tmp_path / "metrics.csv"
+    result = train_from_collection(
+        _make_multi_process_collection(3),
+        config=TrainHarnessConfig(
+            process_names=("p1", "p2"),
+            holdout_processes=("p3",),
+            target_variable_order=("biomass",),
+            target_source="reactor_components",
+            epochs=3,
+            batch_size=1,
+            shuffle_batches=False,
+            checkpoint_dir=tmp_path / "checkpoints",
+            checkpoint_every=1,
+            checkpoint_keep_best=1,
+            checkpoint_select_by=metric,
+            metrics_csv=str(metrics),
+        ),
+    )
+    rows = pd.read_csv(metrics)
+    rows = rows.loc[rows["batch_in_epoch"] == 2]
+    column = "mean_loss" if metric == "train_loss" else metric
+    assert not np.allclose(rows["mean_loss"], rows["epoch_mean_loss"])
+    best_step = int(rows.loc[rows[column].idxmin(), "step"])
+    manifest = json.loads((tmp_path / "checkpoints" / "retention.json").read_text())
+    assert manifest["best"][0]["step"] == best_step
+    assert manifest["best"][0]["score"] == pytest.approx(rows[column].min())
+    state = json.loads(
+        (tmp_path / "checkpoints" / "latest" / "train_state.json").read_text()
+    )
+    assert state["selection_score"] == pytest.approx(rows.iloc[-1][column])
+    assert set(result.holdout_loss_by_step) == {2, 4, 6}
+    assert {p.name for p in (tmp_path / "checkpoints").glob("step_*")} == {
+        f"step_{best_step:05d}",
+        "step_00006",
+    }
+
+
+def test_epoch_mean_selection_rejects_mid_epoch_checkpoint(tmp_path):
+    with pytest.raises(ValueError, match="epoch ends"):
+        train_from_collection(
+            _make_collection(),
+            config=TrainHarnessConfig(
+                batch_size=1,
+                checkpoint_dir=tmp_path,
+                checkpoint_every=0.5,
+                checkpoint_keep_best=1,
+                checkpoint_select_by="epoch_mean_loss",
+            ),
+        )
+
+
+def test_holdout_selection_requires_holdout(tmp_path):
+    store = TrainingDataStore.from_collection(
+        _make_collection(),
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    with pytest.raises(ValueError, match="requires holdout"):
+        train_collection(
+            store,
+            reaction_module=_LinearReactionModule(),
+            config=TrainHarnessConfig(
+                checkpoint_dir=tmp_path,
+                checkpoint_keep_best=1,
+                checkpoint_select_by="holdout_loss",
+            ),
+        )
+
+
+def test_train_holdout_group_is_removed_before_scaling(monkeypatch):
+    collection = _make_multi_process_collection(3)
+    child = collection.processes["p3"]
+    collection.processes["p3"] = AugmentedBioProcess(
+        **{f.name: getattr(child, f.name) for f in dataclasses.fields(child)},
+        parent_process="p2",
+    )
+    original = harness_module._resolve_estimated_scales
+    seen = []
+
+    def record_scales(**kwargs):
+        seen.append(tuple(kwargs["runtime_data"].training_parent_collection.processes))
+        return original(**kwargs)
+
+    monkeypatch.setattr(harness_module, "_resolve_estimated_scales", record_scales)
+    prepared = harness_module.prepare_training(
+        collection, config=TrainHarnessConfig(holdout_processes=("p2",))
+    )
+    assert prepared.config.process_names == ("p1",)
+    assert seen == [("p1",)]
+    with pytest.raises(ValueError, match="overlaps"):
+        harness_module.prepare_training(
+            collection,
+            config=TrainHarnessConfig(process_names=("p3",), holdout_processes=("p2",)),
+        )

@@ -83,6 +83,37 @@ def original_parent_processes(
     )
 
 
+def training_selection_excluding_holdout(
+    process_order: tuple[str, ...],
+    augmentation_parents: tuple[str | None, ...],
+    requested: tuple[str, ...] | None,
+    holdout: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Exclude whole holdout parent groups before scaling or training.
+
+    An explicit training selection may not overlap a held-out parent or any
+    of its children. With no selection, train on all remaining groups.
+    """
+    parent_of = {
+        name: parent or name
+        for name, parent in zip(process_order, augmentation_parents, strict=True)
+    }
+    holdout_parents = {parent_of[name] for name in holdout}
+    excluded = {name for name in process_order if parent_of[name] in holdout_parents}
+    if requested is None:
+        selected = tuple(name for name in process_order if name not in excluded)
+    else:
+        overlap = sorted(set(requested) & excluded)
+        if overlap:
+            raise ValueError(
+                f"training overlaps holdout augmentation groups: {overlap}"
+            )
+        selected = requested
+    if not selected:
+        raise ValueError("training selection contains no processes outside holdout")
+    return selected
+
+
 def canonical_training_parents(
     process_order: tuple[str, ...],
     augmentation_parents: tuple[str | None, ...],

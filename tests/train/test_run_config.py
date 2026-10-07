@@ -7,10 +7,12 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from hybrax.train.harness import train_harness_config_from_run_config
 from hybrax.train.run_config import (
     DefaultCustomConfig,
     ForwardRunConfig,
     RunConfig,
+    load_loo_config,
     load_prepare_config,
     load_train_config,
 )
@@ -402,3 +404,47 @@ def test_prepare_requires_prepare(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="requires a prepare"):
         load_prepare_config(config_path)
+
+
+@pytest.mark.parametrize(
+    "checkpoint",
+    [
+        {"keep_best": -1},
+        {"keep_best": 1},
+        {"select_by": "train_loss"},
+        {"keep_best": 1, "select_by": "unknown"},
+        {"keep_best": 0, "select_by": "train_loss"},
+    ],
+)
+def test_retention_config_rejects_invalid_policy(checkpoint):
+    with pytest.raises(ValidationError):
+        RunConfig.model_validate({"checkpoint": checkpoint})
+
+
+def test_retention_and_holdout_config_mapping(tmp_path):
+    cfg = RunConfig.model_validate(
+        {
+            "train": {"holdout_processes": ["Br7"]},
+            "checkpoint": {"keep_best": 3, "select_by": "holdout_loss", "every": 10},
+        }
+    )
+    harness = train_harness_config_from_run_config(cfg, run_dir=tmp_path)
+    assert harness.holdout_processes == ("Br7",)
+    assert harness.checkpoint_keep_best == 3
+    assert harness.checkpoint_select_by == "holdout_loss"
+    assert (
+        RunConfig.model_validate({"checkpoint": {"keep_best": 0}}).checkpoint.select_by
+        is None
+    )
+    path = _write_json(
+        tmp_path / "loo.json",
+        {"data": {"prepared": "data.json"}, "train": {"holdout_processes": ["Br7"]}},
+    )
+    with pytest.raises(ValueError, match="train-only"):
+        load_loo_config(path)
+
+
+@pytest.mark.parametrize("holdouts", [[], ["Br7", "Br7"]])
+def test_train_holdouts_must_be_nonempty_and_unique(holdouts):
+    with pytest.raises(ValidationError):
+        RunConfig.model_validate({"train": {"holdout_processes": holdouts}})

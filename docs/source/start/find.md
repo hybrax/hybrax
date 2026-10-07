@@ -54,6 +54,7 @@ learned; scan for your row.
 | choose what is optimized and what is frozen | [The Reaction Module](../train/reaction_module.md) |
 | use a learning-rate schedule | [Training](../train/train.md) |
 | use more than one CPU core | [Training](../train/train.md) |
+| limit checkpoint disk use | [Checkpoint retention](../train/train.md#checkpoints-and-retention) |
 | resume an interrupted run | [The Python API](../train/save_load_predict.md) |
 
 ## Evaluating
@@ -63,7 +64,7 @@ learned; scan for your row.
 | re-simulate with a trained model | [Forward](../train/forward.md) |
 | get dense trajectories and rates as CSV | [Forward](../train/forward.md) |
 | cross-validate | [Cross-Validation](../train/loo.md), worked: [Gallery](../gallery/loo.md) |
-| do a cheap holdout check without a full LOO run | `holdout_processes`: [Gallery: cross-validation](../gallery/loo.md) |
+| do a cheap holdout check without a full LOO run | [Ordinary training holdouts](../train/train.md#hold-out-processes-in-ordinary-training), worked: [Gallery](../gallery/loo.md) |
 | average several models and get a spread | [Forward](../train/forward.md) |
 | load a trained model in Python and predict | [The Python API](../train/save_load_predict.md) |
 | see which parameters are actually being trained | `print_trainable_structure`: [The Reaction Module](../train/reaction_module.md) |

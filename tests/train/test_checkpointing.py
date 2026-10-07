@@ -525,3 +525,97 @@ def test_symlink_form_is_replaced_by_the_copy_form_and_vice_versa(
     w._update_latest(_write_step(tmp_path, "step_00300"))  # -> symlink again
     assert (tmp_path / "latest").is_symlink()
     assert (tmp_path / "latest").resolve().name == "step_00300"
+
+
+@pytest.mark.parametrize("copy_latest", [False, True])
+@pytest.mark.parametrize("invalid_score", [float("nan"), float("inf"), -float("inf")])
+def test_retention_keeps_ranked_best_and_latest(
+    tmp_path, monkeypatch, caplog, copy_latest, invalid_score
+):
+    if copy_latest:
+
+        def no_symlink(*args, **kwargs):
+            raise OSError("no symlinks")
+
+        monkeypatch.setattr(Path, "symlink_to", no_symlink)
+    module = _TrainableModule()
+    writer = CheckpointWriter(tmp_path, keep_best=2, select_by="holdout_loss")
+    scores = [3.0, 1.0, 1.0, 5.0, invalid_score, 0.5, 7.0]
+    expected = [{1}, {1, 2}, {2, 3}, {2, 3, 4}, {2, 3, 5}, {2, 6}, {2, 6, 7}]
+    for step, (score, kept) in enumerate(zip(scores, expected), 1):
+        module = eqx.tree_at(lambda m: m.w, module, jnp.array([step, step]))
+        writer.write(
+            step=step,
+            samples_seen=step,
+            wrapper=module,
+            opt_state=_opt_state_for(module),
+            mean_loss=score,
+            holdout_loss=score,
+            score=score,
+        )
+        assert {
+            int(p.name.removeprefix("step_")) for p in tmp_path.glob("step_*")
+        } == kept
+        loaded = load_trained_wrapper(
+            tmp_path / "latest" / "params.eqx", template=module
+        )
+        assert jnp.array_equal(loaded.w, jnp.array([step, step]))
+    manifest = json.loads((tmp_path / "retention.json").read_text())
+    assert manifest["best"] == [
+        {"step": 6, "dir": "step_00006", "score": 0.5},
+        {"step": 2, "dir": "step_00002", "score": 1.0},
+    ]
+    assert manifest["latest"] == "step_00007"
+    assert "invalid selection score" in caplog.text
+    state = json.loads((tmp_path / "step_00006" / "train_state.json").read_text())
+    assert state["selection_metric"] == "holdout_loss"
+    assert state["selection_score"] == 0.5
+
+
+def test_latest_only_and_stale_directory_guard(tmp_path):
+    module = _TrainableModule()
+    writer = CheckpointWriter(tmp_path, keep_best=0)
+    for step in [1, 2, 3]:
+        writer.write(
+            step=step,
+            samples_seen=step,
+            wrapper=module,
+            opt_state=_opt_state_for(module),
+            mean_loss=1.0,
+            holdout_loss=None,
+        )
+    assert [p.name for p in tmp_path.glob("step_*")] == ["step_00003"]
+    assert json.loads((tmp_path / "retention.json").read_text())["best"] == []
+    with pytest.raises(ValueError, match="--overwrite"):
+        CheckpointWriter(tmp_path, keep_best=0)
+    # Failed before writing a checkpoint: no restriction.
+    CheckpointWriter(tmp_path / "empty", keep_best=0)
+
+
+def test_failed_save_does_not_prune_previous_checkpoint(tmp_path, monkeypatch):
+    module = _TrainableModule()
+    writer = CheckpointWriter(tmp_path, keep_best=0)
+    writer.write(
+        step=1,
+        samples_seen=1,
+        wrapper=module,
+        opt_state=_opt_state_for(module),
+        mean_loss=1.0,
+        holdout_loss=None,
+    )
+
+    def fail_save(*args):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("hybrax.train.checkpointing.save_model", fail_save)
+    with pytest.raises(OSError, match="disk full"):
+        writer.write(
+            step=2,
+            samples_seen=2,
+            wrapper=module,
+            opt_state=_opt_state_for(module),
+            mean_loss=1.0,
+            holdout_loss=None,
+        )
+    assert (tmp_path / "step_00001" / "params.eqx").is_file()
+    assert (tmp_path / "latest").resolve().name == "step_00001"

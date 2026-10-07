@@ -34,6 +34,7 @@ from hybrax.train.runtime_context import (
     _series_scale_evidence,
     canonical_training_parents,
     original_parent_processes,
+    training_selection_excluding_holdout,
 )
 from hybrax.train.training_data import TrainingDataStore
 
@@ -752,3 +753,22 @@ def test_overlapping_sample_streams_merge_into_one_ordered_trace():
     assert np.any(np.diff(times) == 0)
     np.testing.assert_array_equal(times, np.repeat(source_times, 2))
     np.testing.assert_array_equal(values, np.repeat(source_values, 2))
+
+
+def test_holdout_selection_excludes_whole_parent_group():
+    order = ("P0", "P0_aug", "P1", "P1_aug", "P2")
+    parents = (None, "P0", None, "P1", None)
+    assert training_selection_excluding_holdout(order, parents, None, ("P1_aug",)) == (
+        "P0",
+        "P0_aug",
+        "P2",
+    )
+    assert training_selection_excluding_holdout(order, parents, ("P2",), ("P1",)) == (
+        "P2",
+    )
+    with pytest.raises(ValueError, match="overlaps"):
+        training_selection_excluding_holdout(order, parents, ("P1_aug",), ("P1",))
+    with pytest.raises(KeyError):
+        training_selection_excluding_holdout(order, parents, None, ("missing",))
+    with pytest.raises(ValueError, match="no processes"):
+        training_selection_excluding_holdout(order, parents, None, ("P0", "P1", "P2"))

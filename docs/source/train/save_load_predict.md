@@ -33,8 +33,11 @@ run/
 ├── model/
 │   ├── params.eqx       trainable parameters only
 │   └── opt_state.eqx    optimizer state, for resuming
-└── checkpoints/step_NNNNN/    the same again, plus train_state.json and
-                                  holdout_predictions.csv when holdout data exists
+└── checkpoints/
+    ├── step_NNNNN/      checkpoint params, optimizer, config, custom.py, data,
+    │                   train_state.json, and optional holdout_predictions.csv
+    ├── latest          points to the newest checkpoint (copy if no symlinks)
+    └── retention.json  best checkpoint ranking, when retention is enabled
 ```
 
 You can copy a run directory to another machine and load it, provided hybrax is
@@ -93,6 +96,13 @@ optimizer's momentum intact rather than restarting cold. Checkpoint frequency:
 ```json
 { "checkpoint": { "every": 100 } }
 ```
+
+To limit stored checkpoints, set `checkpoint.keep_best`. `null` keeps all,
+`0` keeps latest only without a metric, and positive N keeps best N plus latest
+using `checkpoint.select_by`. See [Checkpoints and retention](train.md#checkpoints-and-retention)
+for score timing, the ranked manifest, and output-directory requirements.
+Default run loading still uses the final model; load a best checkpoint by its
+explicit path from `checkpoints/retention.json`.
 
 Because each checkpoint is self-contained by default, it re-exports predictions and
 re-writes the bundled data. On a fast run that can dominate the wall clock: set `every`

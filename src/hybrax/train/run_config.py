@@ -128,6 +128,11 @@ class TrainConfig(ConfigBase):
     for reaction modules with a nonzero latent state: training raises before
     it starts without it, because a latent state changes what the model
     *is*, not just its size.
+
+    ``holdout_processes`` is for ordinary train runs. These processes use the
+    training loss module at checkpoint boundaries. Default training excludes
+    their parent groups; explicit overlapping training selections raise.
+    LOO defines holdouts through folds and rejects this setting.
     """
 
     epochs: int = Field(5, gt=0)
@@ -140,6 +145,15 @@ class TrainConfig(ConfigBase):
     batch_seed: int | None = None
     devices: int | Literal["max"] = 1
     allow_stateful_models: bool = False
+    # Ordinary train only; LOO defines holdouts through its folds.
+    holdout_processes: tuple[str, ...] | None = Field(None, min_length=1)
+
+    @field_validator("holdout_processes")
+    @classmethod
+    def _unique_holdouts(cls, value: tuple[str, ...] | None):
+        if value is not None and len(set(value)) != len(value):
+            raise ValueError("train.holdout_processes must be unique")
+        return value
 
 
 class SolverConfig(ConfigBase):
@@ -178,6 +192,14 @@ class CheckpointConfig(ConfigBase):
     ``bundle_prepared`` (default ``True``) includes prepared data so every
     checkpoint is self-contained; disable it to reduce repeated disk use.
 
+    ``keep_best=None`` keeps all checkpoints. Zero keeps latest only and
+    requires ``select_by`` to be omitted. Positive N keeps best N plus latest,
+    ranked by ``select_by``: holdout loss, last-batch training loss, or epoch
+    mean training loss. Epoch mean requires boundaries at epoch ends. Lower
+    wins; ties keep older checkpoints; nonfinite scores cannot enter best N.
+    ``retention.json`` lists best checkpoints. Retention requires a fresh
+    checkpoint directory and does not reduce checkpoint write frequency.
+
     Checkpointing re-exports predictions and re-writes the bundled data, so
     on a fast run it can dominate the wall clock — set it coarse enough
     that it is not the bottleneck.
@@ -185,6 +207,25 @@ class CheckpointConfig(ConfigBase):
 
     every: float | None = Field(None, ge=0)
     bundle_prepared: bool = True
+    keep_best: int | None = Field(None, ge=0)
+    select_by: Literal["holdout_loss", "train_loss", "epoch_mean_loss"] | None = None
+
+    @model_validator(mode="after")
+    def _validate_retention(self):
+        """Allow three retention policies and their matching metric settings.
+
+        ``keep_best=None`` keeps all checkpoints; omit ``select_by``.
+        ``keep_best=0`` keeps latest only; omit ``select_by``.
+        ``keep_best>0`` keeps best N plus latest; require ``select_by``.
+        """
+        if self.keep_best is None and self.select_by is not None:
+            raise ValueError("checkpoint.select_by requires checkpoint.keep_best")
+        if self.keep_best is not None and self.keep_best > 0:
+            if self.select_by is None:
+                raise ValueError("checkpoint.keep_best > 0 requires select_by")
+        if self.keep_best == 0 and self.select_by is not None:
+            raise ValueError("checkpoint.keep_best=0 needs no select_by; omit it")
+        return self
 
     @field_validator("every")
     @classmethod
@@ -565,6 +606,10 @@ def load_run_config(config_path: str | Path, *, command: _Command) -> LoadedRunC
     base_dir = path.parent.resolve()
     view = _command_view(raw, command=command)
     config = RunConfig.model_validate(view)
+    if command == "loo" and config.train.holdout_processes is not None:
+        raise ValueError(
+            "train.holdout_processes is train-only; LOO folds define holdouts"
+        )
     _validate_required_sections(config, command=command)
     config = _resolve_config_paths(
         config,

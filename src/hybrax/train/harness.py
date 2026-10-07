@@ -74,13 +74,14 @@ from .training_data import (
     TrainingDataStore,
     replace_rhs_ode_process_matrices,
 )
-from .run_config import RunConfig
+from .run_config import CheckpointConfig, RunConfig
 from .runtime_artifact import RuntimeArtifact
 from .runtime_context import (
     ProducerCollectionData,
     RuntimeDataContext,
     canonical_training_parents,
     original_parent_processes,
+    training_selection_excluding_holdout,
 )
 from .utils import (
     get_hook,
@@ -346,9 +347,11 @@ class TrainHarnessConfig:
     # bundled into every checkpoint to make it self-contained.
     checkpoint_dir: Path | None = None
     checkpoint_every: float | None = None
+    checkpoint_keep_best: int | None = None
+    checkpoint_select_by: str | None = None
     prepared_path: Path | None = None
     bundle_prepared: bool = True
-    # Optional LOO holdout set, evaluated whenever a checkpoint is written.
+    # Optional holdout set, evaluated whenever a checkpoint is written.
     holdout_processes: tuple[str, ...] | None = None
     # Non-augmented holdout processes whose existing evaluation trajectories are
     # written with checkpoints.
@@ -1242,10 +1245,71 @@ def train_collection(
         loss_module = DefaultLossModule(target_names=_loss_target_labels(store))
     effective_batched_loss_fn = _BATCHED_LOSS_FN
     selected_processes = _ensure_process_names(store, cfg.process_names)
+    overlap = set(selected_processes) & set(cfg.holdout_processes or ())
+    if overlap:
+        raise ValueError(f"training overlaps holdout processes: {sorted(overlap)}")
     store.validate_control_support(selected_processes)
 
     effective_batch_size, batches_per_epoch, total_updates = derive_update_budget(
         cfg, selected_process_count=len(selected_processes)
+    )
+    if cfg.holdout_processes:
+        unknown = [n for n in cfg.holdout_processes if n not in store.process_order]
+        if unknown:
+            raise ValueError(
+                f"holdout_processes contains unknown names: {unknown}; "
+                f"available={tuple(store.process_order)}"
+            )
+        if cfg.holdout_prediction_processes is not None and not set(
+            cfg.holdout_prediction_processes
+        ).issubset(set(cfg.holdout_processes)):
+            raise ValueError(
+                "holdout_prediction_processes must be a subset of holdout_processes"
+            )
+
+    policy = CheckpointConfig(
+        every=cfg.checkpoint_every,
+        keep_best=cfg.checkpoint_keep_best,
+        select_by=cfg.checkpoint_select_by,
+    )
+    if policy.select_by == "holdout_loss" and not cfg.holdout_processes:
+        raise ValueError("checkpoint.select_by=holdout_loss requires holdout_processes")
+    checkpoint_enabled = cfg.checkpoint_dir is not None
+    resolved_checkpoint_every = _resolve_checkpoint_every(
+        cfg.checkpoint_every, epochs=cfg.epochs
+    )
+    checkpoint_boundaries = (
+        _checkpoint_update_boundaries(
+            resolved_checkpoint_every,
+            batches_per_epoch=batches_per_epoch,
+            total_updates=total_updates,
+        )
+        if checkpoint_enabled
+        else frozenset()
+    )
+    if checkpoint_enabled and cfg.checkpoint_every is None:
+        logger.info(
+            "checkpoint_every is null; using sensible automatic default "
+            "every=%d epochs (%d checkpoints including final)",
+            resolved_checkpoint_every,
+            len(checkpoint_boundaries),
+        )
+    if policy.select_by == "epoch_mean_loss" and any(
+        step % batches_per_epoch for step in checkpoint_boundaries
+    ):
+        raise ValueError(
+            "checkpoint.select_by=epoch_mean_loss requires checkpoint boundaries "
+            "at epoch ends; change checkpoint.every"
+        )
+    checkpoint_writer = (
+        CheckpointWriter(
+            Path(cfg.checkpoint_dir),
+            prepared_src=cfg.prepared_path if cfg.bundle_prepared else None,
+            keep_best=cfg.checkpoint_keep_best,
+            select_by=cfg.checkpoint_select_by,
+        )
+        if cfg.checkpoint_dir is not None
+        else None
     )
     selected_process_indices = jnp.asarray(
         [store.process_order.index(name) for name in selected_processes],
@@ -1926,52 +1990,10 @@ def train_collection(
         float(warmup_loss),
     )
 
-    checkpoint_enabled = cfg.checkpoint_dir is not None
-    resolved_checkpoint_every = _resolve_checkpoint_every(
-        cfg.checkpoint_every, epochs=cfg.epochs
-    )
-    checkpoint_boundaries = (
-        _checkpoint_update_boundaries(
-            resolved_checkpoint_every,
-            batches_per_epoch=batches_per_epoch,
-            total_updates=total_updates,
-        )
-        if checkpoint_enabled
-        else frozenset()
-    )
-    if checkpoint_enabled and cfg.checkpoint_every is None:
-        logger.info(
-            "checkpoint_every is null; using sensible automatic default "
-            "every=%d epochs (%d checkpoints including final)",
-            resolved_checkpoint_every,
-            len(checkpoint_boundaries),
-        )
-    checkpoint_writer = (
-        CheckpointWriter(
-            Path(cfg.checkpoint_dir),
-            prepared_src=cfg.prepared_path if cfg.bundle_prepared else None,
-        )
-        if cfg.checkpoint_dir is not None
-        else None
-    )
     # The train/holdout loss series the final curve needs are already accumulated
     # by ``RunLogger`` (see ``finalize()`` below); only the per-target holdout
     # breakdown is tracked here, because it is a result field rather than history.
     holdout_per_target_so_far: dict[int, tuple[float, ...]] = {}
-
-    if cfg.holdout_processes:
-        unknown = [n for n in cfg.holdout_processes if n not in store.process_order]
-        if unknown:
-            raise ValueError(
-                f"holdout_processes contains unknown names: {unknown}; "
-                f"available={tuple(store.process_order)}"
-            )
-        if cfg.holdout_prediction_processes is not None and not set(
-            cfg.holdout_prediction_processes
-        ).issubset(set(cfg.holdout_processes)):
-            raise ValueError(
-                "holdout_prediction_processes must be a subset of holdout_processes"
-            )
 
     def _evaluate_holdout(step: int):
         if not cfg.holdout_processes:
@@ -2160,6 +2182,15 @@ def train_collection(
                     mean_loss=float(loss),
                     holdout_loss=holdout_loss,
                     holdout_predictions=holdout_predictions,
+                    score=(
+                        {
+                            "holdout_loss": holdout_loss,
+                            "train_loss": float(loss),
+                            "epoch_mean_loss": epoch_mean_loss,
+                        }[policy.select_by]
+                        if policy.select_by is not None
+                        else None
+                    ),
                 )
                 _write_training_plots(
                     history=run_log.snapshot(),
@@ -2378,13 +2409,21 @@ def prepare_training(
     print_rhs_ode(collection)
     sys.stdout.flush()
 
-    selected_processes = _ensure_process_names(store, cfg.process_names)
+    producer_data = ProducerCollectionData.from_collection(store, collection)
+    requested = cfg.process_names
+    if cfg.holdout_processes:
+        requested = training_selection_excluding_holdout(
+            tuple(store.process_order),
+            producer_data.augmentation_parents,
+            requested,
+            cfg.holdout_processes,
+        )
+    selected_processes = _ensure_process_names(store, requested)
     train_cfg = dataclasses.replace(
         cfg,
         process_names=selected_processes,
         target_variable_order=effective_target_order,
     )
-    producer_data = ProducerCollectionData.from_collection(store, collection)
     scale_data = producer_data.select_training_parents(collection, selected_processes)
     return _prepare_training_from_selected_parents(
         store=store,
@@ -2460,6 +2499,9 @@ def train_harness_config_from_run_config(
         metrics_csv=str(Path(run_dir) / "metrics.csv"),
         checkpoint_dir=Path(run_dir) / "checkpoints",
         checkpoint_every=cfg.checkpoint.every,
+        checkpoint_keep_best=cfg.checkpoint.keep_best,
+        checkpoint_select_by=cfg.checkpoint.select_by,
+        holdout_processes=cfg.train.holdout_processes,
         prepared_path=cfg.data.prepared if cfg.data is not None else None,
         bundle_prepared=cfg.checkpoint.bundle_prepared,
         allow_stateful_models=cfg.train.allow_stateful_models,

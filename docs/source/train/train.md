@@ -151,16 +151,105 @@ Several JAX processes each claiming cores will oversubscribe and, on constrained
 machines, get OOM-killed. Run one at a time, or shard within one run using `devices`.
 :::
 
-## Checkpoints and resuming
+## Checkpoints and retention
 
 ```json
-{ "checkpoint": { "every": 100 } }
+{
+  "train": { "holdout_processes": ["Br7"] },
+  "checkpoint": {
+    "every": 10,
+    "keep_best": 3,
+    "select_by": "holdout_loss"
+  }
+}
 ```
 
-Each checkpoint directory is **self-contained**: parameters, optimizer state, config,
-`custom.py`, and the prepared data. You can point `forward` at a checkpoint exactly as
-at a run directory to get that step's predictions or plots; checkpoints themselves
-carry neither, by design (see [Forward](forward.md)).
+`every` is measured in epochs and controls both checkpoint writes and holdout
+checks. Omit it or use `null` for an automatic cadence of at least five epochs
+and at most 20 checkpoints. Use `0` to disable periodic writes. The final step
+always writes a checkpoint, even when it is also a periodic boundary.
+
+Each checkpoint directory is self-contained: parameters, optimizer state,
+config, `custom.py`, and prepared data. Set `bundle_prepared: false` to omit
+prepared data from checkpoints. Checkpoints also contain measurement-grid
+holdout predictions when original holdout processes are available. Use `forward`
+for additional predictions or plots.
+
+### Limit disk use
+
+`keep_best` controls retention:
+
+- Omitted or `null`: retain every checkpoint, the default. Omit `select_by`.
+- `0`: retain latest only. Omit `select_by`; no ranking metric is needed.
+- Positive N: retain the best N scored checkpoints plus latest. Set `select_by`.
+  When latest is already among the best N, it is stored only once.
+
+For example, `{ "every": 10, "keep_best": 0 }` replaces the previous checkpoint
+at every boundary. With `keep_best: 3`, at most four `step_*` directories remain
+once pruning completes. The new checkpoint is fully written and `latest` updated
+before old checkpoints are deleted, so allow space for one temporary extra
+checkpoint. On filesystems without symlinks, `latest` is a separate copy and uses
+another checkpoint's worth of space.
+
+Every boundary still writes a full checkpoint. Retention limits stored disk
+space, not serialization or export work. Loss history retains scores for pruned
+steps. `checkpoints/retention.json` lists surviving best checkpoints in ascending
+score order and identifies latest. Each checkpoint's `train_state.json` records
+its selection metric and score. Equal scores retain the older checkpoint.
+Nonfinite scores produce a warning and cannot enter the best N, but their
+checkpoint remains while it is latest.
+
+`latest` always identifies the newest checkpoint. The completed run's `model/`
+and default loading from the run directory use the final model, even if another
+checkpoint scores better. To load a best checkpoint, use its directory from
+`retention.json`; an explicit path to a pruned checkpoint no longer exists.
+
+With retention enabled, an output directory containing old `step_*` checkpoints
+is rejected before training. Choose a fresh output directory to preserve the
+previous attempt, or pass `--overwrite` to clear it and start fresh. This also
+applies to failed runs; restarting training does not resume old optimizer state
+or combine checkpoint rankings. An incomplete output directory with no
+checkpoints can be reused.
+
+### Choose a selection metric
+
+All supported metrics minimize loss and reuse existing results. They add no
+extra prediction passes over training data:
+
+- `holdout_loss`: evaluates the updated model saved in the checkpoint, using
+  the same loss module as training. Requires holdout processes.
+- `train_loss`: the last batch's logged loss before its optimizer update.
+  It lags the saved parameters by one update and can be noisy with minibatches.
+- `epoch_mean_loss`: averages logged batch losses over the epoch as parameters
+  change. Every checkpoint boundary must land at an epoch end. A fractional
+  `every` that produces a mid-epoch boundary is rejected; no stale score is used.
+
+Other metric names are rejected. Custom selection hooks are not supported.
+
+### Hold out processes in ordinary training
+
+`train.holdout_processes` selects processes from the prepared data for evaluation
+at checkpoint boundaries. If `data.processes` is omitted, training uses all
+remaining processes, excluding each holdout's entire augmentation group, its
+parent and children. An explicit `data.processes` selection that overlaps those
+groups raises an error. Holdout groups are excluded before estimating scales
+and constructing modules from training parents.
+
+Holdout names must exist in the prepared dataset and be unique; the holdout list
+must not be empty. Only the named holdouts are evaluated, even though their whole
+augmentation groups are excluded from training.
+
+For the example above, you can explicitly set
+`data.processes` to `["Br1", "Br2", "Br3", "Br4", "Br9"]` and leave Br7 in the
+prepared dataset. Final results include training and holdout losses for the
+final model. The saved config records the resolved training selection so loading
+rebuilds scales and modules from the same training parents. No additional custom
+scoring hook is needed.
+
+`train.holdout_processes` is for `train` only. LOO folds define their own holdouts
+and reject this setting. Retention works separately within each fold. Using
+`holdout_loss` to select a fold's best checkpoint uses that fold's test data;
+LOO's reported results continue to use the final model.
 
 See [The Python API](save_load_predict.md).
 
@@ -183,8 +272,9 @@ concentration plot and obvious in the rate one.
 
 ## Gotchas
 
-- **`--overwrite` is required** to reuse a run directory, and deletes everything already
-  there, regardless of what put it there, before writing fresh output.
+- **`--overwrite` is required** to reuse a completed run directory, or an
+  incomplete one containing checkpoints when retention is enabled. It deletes
+  the previous output before starting fresh.
 - **`--epochs` overrides the config**, which is what you want while iterating.
 - **`batch_size` greater than the process count** raises rather than clamping.
 - **Stateful modules need `train.allow_stateful_models: true`.**

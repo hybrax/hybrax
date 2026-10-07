@@ -61,9 +61,9 @@ pipeline if you want to.
 |---|---|---|
 | `prepare` | prepare | `raw_input`, validation strictness, required controls, `augmentation` |
 | `data` | train, loo | `prepared`, `processes`, `targets`, `target_source` |
-| `train` | train, loo | `epochs`, `seed`, `optimizer`, `learning_rate`, `grad_clip_norm`, `batch_size`, `shuffle`, `devices`, `allow_stateful_models` |
+| `train` | train, loo | `epochs`, `seed`, `optimizer`, `learning_rate`, `grad_clip_norm`, `batch_size`, `shuffle`, `devices`, `allow_stateful_models`; `holdout_processes` for train only |
 | `solver` | train, forward, loo | `max_steps`, `rtol`, `atol` |
-| `checkpoint` | train, loo | `every` |
+| `checkpoint` | train, loo | `every`, `bundle_prepared`, `keep_best`, `select_by` |
 | `output` | all | `dir`, plotting |
 | `logging` | all | `decimals`: rounding precision for logged numbers |
 | `custom_py` | all | path to your hooks file |
@@ -74,6 +74,10 @@ pipeline if you want to.
 Exact fields, types and defaults are in the
 [API reference](../autoapi/hybrax/train/run_config/index): not repeated here, because they
 change and this page would be wrong first.
+
+See [Checkpoints and retention](train.md#checkpoints-and-retention) for the
+retention policies and [ordinary training holdouts](train.md#hold-out-processes-in-ordinary-training)
+for how `train.holdout_processes` interacts with `data.processes`.
 
 ## Persistent JAX compilation cache
 
