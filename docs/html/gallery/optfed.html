@@ -7,7 +7,7 @@
         <link rel="prefetch" href="../_static/hybrax_logo.png" as="image">
 
     <link rel="shortcut icon" href="../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
-        <title>OptFed - Bioprocess Modeling with Hybrax</title>
+        <title>OptFed mechanistic model - Bioprocess Modeling with Hybrax</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
     <link rel="stylesheet" type="text/css" href="../_static/graphviz.css?v=4ae1632d" />
@@ -267,7 +267,7 @@
 <li class="toctree-l1"><a class="reference internal" href="fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="kan.html">KAN Models</a></li>
-<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">OptFed Models</a></li>
+<li class="toctree-l1 current current-page"><a class="current reference internal" href="#">OptFed mechanistic model</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
 <ul>
@@ -372,263 +372,819 @@
           </label>
         </div>
         <article role="main" id="furo-main-content">
-          <section class="tex2jax_ignore mathjax_ignore" id="optfed">
-<h1>OptFed<a class="headerlink" href="#optfed" title="Link to this heading">¶</a></h1>
-<blockquote>
-<div><p>A real, published rate law for substrate uptake, growth, and production, driven by a
-controlled process variable, <code class="docutils literal notranslate"><span class="pre">temperature</span></code>, instead of a neural network. Its
-temperature term is the Eyring equation: a reaction speeds up with heat, then
-collapses again as the enzyme denatures.</p>
-</div></blockquote>
-<p>Inspired by Schlögl, Lück, Kittler, Spadiut, Kopp, Zanghellini &amp; Gotsmy 2024
-<a href="#ref-optfed">[1]</a>, <em>“Optimizing bioprocessing efficiency with
-OptFed: Dynamic nonlinear modeling improves product-to-biomass yield,”</em> whose model
-predicts substrate uptake, growth, and product formation as independent, multiplicative
-inhibition and activation terms, each carrying its own Eyring-equation temperature
-term. This page reproduces that structure for all three rates, with a smaller set of
-inhibiting and activating variables than the paper uses, fit by ordinary gradient
-descent through the whole ODE rather than the paper’s own multi-stage fitting
-pipeline.</p>
-<p>The walkthrough below shows the file in pieces, next to the reasoning for each one.</p>
-<section id="the-rate-law">
-<h2>The Rate Law<a class="headerlink" href="#the-rate-law" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">def</span><span class="w"> </span><span class="nf">_eyring_rate_ceiling</span><span class="p">(</span><span class="n">T_K</span><span class="p">,</span> <span class="n">log_A</span><span class="p">,</span> <span class="n">log_Ea_R</span><span class="p">,</span> <span class="n">raw_Teq</span><span class="p">,</span> <span class="n">log_dHeq_R</span><span class="p">):</span>
-<span class="linenos"> 2</span><span class="w">    </span><span class="sd">"""Algebraically reparameterized Eq. 4e, vectorized over parameter arrays."""</span>
-<span class="linenos"> 3</span>    <span class="n">A</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_A</span><span class="p">)</span>
-<span class="linenos"> 4</span>    <span class="n">Ea_R</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_Ea_R</span><span class="p">)</span>
-<span class="linenos"> 5</span>    <span class="n">Teq</span> <span class="o">=</span> <span class="mf">290.0</span> <span class="o">+</span> <span class="mf">40.0</span> <span class="o">*</span> <span class="n">jax</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">sigmoid</span><span class="p">(</span><span class="n">raw_Teq</span><span class="p">)</span>
-<span class="linenos"> 6</span>    <span class="n">dHeq_R</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_dHeq_R</span><span class="p">)</span>
-<span class="linenos"> 7</span>    <span class="k">return</span> <span class="p">(</span>
-<span class="linenos"> 8</span>        <span class="n">A</span>
-<span class="linenos"> 9</span>        <span class="o">*</span> <span class="n">T_K</span>
-<span class="linenos">10</span>        <span class="o">*</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">Ea_R</span> <span class="o">/</span> <span class="n">T_K</span><span class="p">)</span>
-<span class="linenos">11</span>        <span class="o">/</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">dHeq_R</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">Teq</span> <span class="o">-</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">T_K</span><span class="p">)))</span>
-<span class="linenos">12</span>    <span class="p">)</span>
-<span class="linenos">13</span>
-<span class="linenos">14</span>
-<span class="linenos">15</span><span class="k">def</span><span class="w"> </span><span class="nf">_inhibition_product</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">log_K</span><span class="p">):</span>
-<span class="linenos">16</span>    <span class="n">K</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_K</span><span class="p">)</span>
-<span class="linenos">17</span>    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="o">/</span> <span class="n">K</span><span class="p">))</span>
-<span class="linenos">18</span>
-<span class="linenos">19</span>
-<span class="linenos">20</span><span class="k">def</span><span class="w"> </span><span class="nf">_activation_product</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">log_K</span><span class="p">):</span>
-<span class="linenos">21</span>    <span class="n">K</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_K</span><span class="p">)</span>
-<span class="linenos">22</span>    <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="o">/</span> <span class="n">K</span><span class="p">)</span>
+          <section class="tex2jax_ignore mathjax_ignore" id="optfed-mechanistic-model">
+<h1>OptFed mechanistic model<a class="headerlink" href="#optfed-mechanistic-model" title="Link to this heading">¶</a></h1>
+<p>Hybrax is designed primarily for hybrid models that combine mechanistic balances
+with learned rates. It also fits fully mechanistic models. Here we fit the
+11-parameter reduced OptFed model directly to glycerol, biomass, and product
+concentrations, with no neural network and no intermediate rate estimation.</p>
+<p>The kinetic structure follows Schlögl et al. <a class="reference internal" href="#ref-optfed">1</a>. Uptake supplies
+maintenance, product formation, and growth. Temperature affects product
+formation through an Eyring rate law, and accumulated generations inhibit
+production. The yields and glycerol saturation constant remain fixed.</p>
+<p>This example uses the twelve experimental fed-batch processes published with
+OptFed <a class="reference internal" href="#ref-optfed-data">2</a>, originating from Kittler et al. <a class="reference internal" href="#ref-kittler">3</a>.
+Nine are substrate-limited:
+when glycerol remains near zero, its mass balance determines uptake from the
+feed supply. OptFed’s authors likewise inferred uptake from the glycerol balance
+in their rate-fitting stage <a class="reference internal" href="#ref-optfed">1</a>. We use that feed-implied uptake for
+these processes and fit kinetic uptake for the other three. The model fits all
+twelve processes jointly with one shared set of eleven parameters.</p>
+<section id="load-the-published-data">
+<h2>Load the published data<a class="headerlink" href="#load-the-published-data" title="Link to this heading">¶</a></h2>
+<p>The bundled <a class="reference download internal" download="" href="../_downloads/163f3e980775214b067495c8d6332c05/data.json"><code class="xref download docutils literal notranslate"><span class="pre">data.json</span></code></a>
+is a Hybrax <code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code>. Training and docs
+builds use this local file without downloading data. To regenerate it from the
+four CSVs at a pinned OptFed commit, run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>examples/gallery_optfed/import_data.py
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">_eyring_rate_ceiling</span></code> is an algebraically reparameterized Eq. 4e, vectorized
-over its three instances. It combines the Eyring transition-state factor with
-a reversible-inactivation equilibrium factor and returns temperature-dependent
-maximum prefactors for uptake and production and a minimum prefactor for
-maintenance. <code class="docutils literal notranslate"><span class="pre">_inhibition_product</span></code>/<code class="docutils literal notranslate"><span class="pre">_activation_product</span></code> are the paper’s own
-independent-multiplicative-terms idea (Eq. 4a-4c): each named influence
-variable contributes its own factor, <code class="docutils literal notranslate"><span class="pre">1/(1+v/K)</span></code> to suppress a rate,
-<code class="docutils literal notranslate"><span class="pre">1+v/K</span></code> to boost it, and the factors multiply.</p>
+<p>The <a class="reference download internal" download="" href="../_downloads/05d57e03efda8398aeafb8922f46842d/import_data.py"><code class="xref download docutils literal notranslate"><span class="pre">importer</span></code></a> maps
+the published data as follows:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">sampling_points.csv</span></code> supplies initial reactor mass and raw glycerol, total
+biomass, and product concentrations. Time zero is induction. As in OptFed’s
+fitting script, row 40
+of <code class="docutils literal notranslate"><span class="pre">DoE1_R3</span></code> is excluded as an erroneous measurement. Its withdrawal event
+remains in the mass balance.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">volume_flow_rates.csv</span></code> supplies cumulative carbon and base feeds. Each feed
+starts at zero added mass at induction. Downward
+reactor-mass jumps estimate individual withdrawals, including extra draws
+between concentration measurements.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">temperatures.csv</span></code> supplies the measured temperature control in Kelvin.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">c_feed.csv</span></code> supplies glycerol concentration in the carbon feed. The importer
+uses OptFed’s density correction to convert this value from g/L to g/kg.</p></li>
+</ul>
+<p>OptFed uses a mass-based balance. Here <code class="docutils literal notranslate"><span class="pre">volume</span></code> stores reactor mass in kg,
+feed amounts are in kg, and concentrations use g/kg. The reactor-density field
+is set to 1 kg/L; it does not enter this mass-based calculation. Feed and
+temperature traces use Hybrax’s default piecewise-linear interpolation. The
+concentration targets remain the actual measurements, without spline smoothing.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">collection</span> <span class="o">=</span> <span class="n">load_process_collection</span><span class="p">(</span><span class="n">WORK</span> <span class="o">/</span> <span class="s2">"data.json"</span><span class="p">)</span>
+<span class="n">summary</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">([</span>
+    <span class="p">{</span>
+        <span class="s2">"Process"</span><span class="p">:</span> <span class="n">name</span><span class="p">,</span>
+        <span class="s2">"Measurements"</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span>
+            <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="s2">"biomass"</span><span class="p">]</span><span class="o">.</span><span class="n">concentration</span><span class="o">.</span><span class="n">times</span>
+        <span class="p">),</span>
+        <span class="s2">"Duration [h]"</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">end</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
+        <span class="s2">"Max glycerol [g/kg]"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span>
+            <span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="s2">"glycerol"</span><span class="p">]</span><span class="o">.</span><span class="n">concentration</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+        <span class="p">),</span>
+        <span class="s2">"Uptake"</span><span class="p">:</span> <span class="s2">"Feed-implied"</span> <span class="k">if</span> <span class="n">process</span><span class="o">.</span><span class="n">process_variables</span><span class="p">[</span>
+            <span class="s2">"supply_limited_uptake"</span>
+        <span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">else</span> <span class="s2">"Kinetic"</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">process</span> <span class="ow">in</span> <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+<span class="p">])</span>
+<span class="n">display</span><span class="p">(</span><span class="n">summary</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">summary</span><span class="p">)</span><span class="si">}</span><span class="s2"> processes, </span><span class="si">{</span><span class="n">summary</span><span class="o">.</span><span class="n">Measurements</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span><span class="si">}</span><span class="s2"> measurement rows"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html"><div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Process</th>
+      <th>Measurements</th>
+      <th>Duration [h]</th>
+      <th>Max glycerol [g/kg]</th>
+      <th>Uptake</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>DoE1_R1</td>
+      <td>7</td>
+      <td>12.03</td>
+      <td>141.018953</td>
+      <td>Kinetic</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>DoE1_R2</td>
+      <td>7</td>
+      <td>12.16</td>
+      <td>0.000000</td>
+      <td>Feed-implied</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>DoE1_R3</td>
+      <td>6</td>
+      <td>12.25</td>
+      <td>0.000000</td>
+      <td>Feed-implied</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>DoE1_R4</td>
+      <td>7</td>
+      <td>12.27</td>
+      <td>0.000000</td>
+      <td>Feed-implied</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>DoE2_R1</td>
+      <td>7</td>
+      <td>12.04</td>
+      <td>139.032248</td>
+      <td>Kinetic</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>DoE2_R2</td>
+      <td>7</td>
+      <td>12.03</td>
+      <td>0.000000</td>
+      <td>Feed-implied</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>DoE2_R3</td>
+      <td>7</td>
+      <td>11.99</td>
+      <td>0.000000</td>
+      <td>Feed-implied</td>
+    </tr>
+    <tr>
+      <th>7</th>
+      <td>DoE2_R4</td>
+      <td>7</td>
+      <td>12.02</td>
+      <td>0.000000</td>
+      <td>Feed-implied</td>
+    </tr>
+    <tr>
+      <th>8</th>
+      <td>DoE3_R1</td>
+      <td>7</td>
+      <td>11.68</td>
+      <td>0.000000</td>
+      <td>Feed-implied</td>
+    </tr>
+    <tr>
+      <th>9</th>
+      <td>DoE3_R2</td>
+      <td>7</td>
+      <td>12.15</td>
+      <td>133.782414</td>
+      <td>Kinetic</td>
+    </tr>
+    <tr>
+      <th>10</th>
+      <td>DoE3_R3</td>
+      <td>7</td>
+      <td>12.14</td>
+      <td>0.000000</td>
+      <td>Feed-implied</td>
+    </tr>
+    <tr>
+      <th>11</th>
+      <td>DoE3_R4</td>
+      <td>7</td>
+      <td>12.03</td>
+      <td>0.000000</td>
+      <td>Feed-implied</td>
+    </tr>
+  </tbody>
+</table>
+</div></div><div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>12 processes, 83 measurement rows
+</pre></div>
+</div>
+</div>
+</div>
 </section>
-<section id="the-reaction-module">
-<h2>The Reaction Module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">class</span><span class="w"> </span><span class="nc">OptFedModule</span><span class="p">(</span><span class="n">RateModule</span><span class="p">):</span>
-<span class="linenos"> 2</span><span class="w">    </span><span class="sd">"""Eyring axis order: [0]=gamma_deg (uptake), [1]=gamma_pi (production),</span>
-<span class="linenos"> 3</span><span class="sd">    [2]=gamma_alpha (maintenance)."""</span>
-<span class="linenos"> 4</span>
-<span class="linenos"> 5</span>    <span class="n">eyring_log_A</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 6</span>    <span class="n">eyring_log_Ea_R</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 7</span>    <span class="n">eyring_raw_Teq</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 8</span>    <span class="n">eyring_log_dHeq_R</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos"> 9</span>    <span class="n">log_Km</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (2,) [Km_deg, Km_pi]</span>
-<span class="linenos">10</span>    <span class="n">log_K_inhib</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="p">(</span>
-<span class="linenos">11</span>        <span class="n">trainable_field</span><span class="p">()</span>
-<span class="linenos">12</span>    <span class="p">)</span>  <span class="c1"># (2, 2) [[deg_px, deg_x], [pi_px, pi_x]]</span>
-<span class="linenos">13</span>    <span class="n">log_K_activ</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">trainable_field</span><span class="p">()</span>  <span class="c1"># (2,) [a_deg, a_x]</span>
-<span class="linenos">14</span>    <span class="n">Y_XrG</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">frozen_field</span><span class="p">()</span>
-<span class="linenos">15</span>    <span class="n">Y_PG</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">=</span> <span class="n">frozen_field</span><span class="p">()</span>
-<span class="linenos">16</span>
-<span class="linenos">17</span>    <span class="n">i_biomass</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="linenos">18</span>    <span class="n">i_glucose</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="linenos">19</span>    <span class="n">i_product</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="linenos">20</span>
-<span class="linenos">21</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">i_biomass</span><span class="p">,</span> <span class="n">i_glucose</span><span class="p">,</span> <span class="n">i_product</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">):</span>
-<span class="linenos">22</span>        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
-<span class="linenos">23</span>        <span class="bp">self</span><span class="o">.</span><span class="n">i_biomass</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">i_glucose</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">i_product</span> <span class="o">=</span> <span class="n">i_biomass</span><span class="p">,</span> <span class="n">i_glucose</span><span class="p">,</span> <span class="n">i_product</span>
-<span class="linenos">24</span>        <span class="c1"># Deliberately mediocre starting guesses: the point is that they move.</span>
-<span class="linenos">25</span>        <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_A</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">]))</span>
-<span class="linenos">26</span>        <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_Ea_R</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1000.0</span><span class="p">,</span> <span class="mf">1000.0</span><span class="p">,</span> <span class="mf">1000.0</span><span class="p">]))</span>
-<span class="linenos">27</span>        <span class="bp">self</span><span class="o">.</span><span class="n">eyring_raw_Teq</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>  <span class="c1"># sigmoid(0)=0.5 -&gt; Teq=310 K</span>
-<span class="linenos">28</span>        <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_dHeq_R</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">10000.0</span><span class="p">,</span> <span class="mf">10000.0</span><span class="p">,</span> <span class="mf">10000.0</span><span class="p">]))</span>
-<span class="linenos">29</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_Km</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]))</span>
-<span class="linenos">30</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_K_inhib</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">]]))</span>
-<span class="linenos">31</span>        <span class="bp">self</span><span class="o">.</span><span class="n">log_K_activ</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">]))</span>
-<span class="linenos">32</span>        <span class="bp">self</span><span class="o">.</span><span class="n">Y_XrG</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="mf">0.45</span><span class="p">)</span>
-<span class="linenos">33</span>        <span class="bp">self</span><span class="o">.</span><span class="n">Y_PG</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="mf">0.25</span><span class="p">)</span>
+<section id="define-the-rate-laws">
+<h2>Define the rate laws<a class="headerlink" href="#define-the-rate-laws" title="Link to this heading">¶</a></h2>
+<p>Measured biomass (X) includes intracellular product (P). The model uses
+(X-P) as active biomass, which drives uptake and production. Both concentrations
+are in g/kg. Hybrax adds the feed and sampling balances to these reaction terms:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">reaction_ode</span><span class="o">=</span><span class="n">hxf</span><span class="o">.</span><span class="n">ReactionOde</span><span class="p">(</span>
+    <span class="n">algebraic</span><span class="o">=</span><span class="p">{</span><span class="s2">"active_biomass"</span><span class="p">:</span> <span class="s2">"biomass - product"</span><span class="p">},</span>
+    <span class="n">rates</span><span class="o">=</span><span class="p">{</span>
+        <span class="n">name</span><span class="p">:</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"q_biomass"</span><span class="p">,</span> <span class="s2">"q_glycerol"</span><span class="p">,</span> <span class="s2">"q_product"</span><span class="p">)</span>
+    <span class="p">},</span>
+    <span class="n">derivatives</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">"biomass"</span><span class="p">:</span> <span class="s2">"(q_biomass + q_product) * active_biomass"</span><span class="p">,</span>
+        <span class="s2">"glycerol"</span><span class="p">:</span> <span class="s2">"-q_glycerol * active_biomass"</span><span class="p">,</span>
+        <span class="s2">"product"</span><span class="p">:</span> <span class="s2">"q_product * active_biomass"</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">),</span>
 </pre></div>
 </div>
-<p>Twenty trainable scalars: 4 per temperature term (<code class="docutils literal notranslate"><span class="pre">log_A</span></code>, <code class="docutils literal notranslate"><span class="pre">log_Ea_R</span></code>,
-<code class="docutils literal notranslate"><span class="pre">raw_Teq</span></code>, <code class="docutils literal notranslate"><span class="pre">log_dHeq_R</span></code>) times 3 instances, plus the two Michaelis constants
-and the four inhibition/activation constants. <code class="docutils literal notranslate"><span class="pre">Y_XrG</span></code>/<code class="docutils literal notranslate"><span class="pre">Y_PG</span></code> are
-<code class="docutils literal notranslate"><span class="pre">frozen_field()</span></code>s: the paper itself states these yields come from a genome-scale
-model, so they stay fixed rather than fitted.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
-<span class="linenos"> 2</span>        <span class="k">del</span> <span class="n">t</span>
-<span class="linenos"> 3</span>        <span class="n">RAW</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unscale_modeled_RMCs</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">)</span>
-<span class="linenos"> 4</span>        <span class="n">X</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">RAW</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">i_biomass</span><span class="p">],</span> <span class="mf">1e-6</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<span class="linenos"> 5</span>        <span class="n">G</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">RAW</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">i_glucose</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<span class="linenos"> 6</span>        <span class="n">P</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">RAW</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">i_product</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<span class="linenos"> 7</span>        <span class="n">T_K</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unscale_controlled_PVs</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_PVs</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mf">273.15</span>
-<span class="linenos"> 8</span>        <span class="n">px</span> <span class="o">=</span> <span class="n">P</span> <span class="o">/</span> <span class="n">X</span>
-<span class="linenos"> 9</span>
-<span class="linenos">10</span>        <span class="n">gdeg_max</span><span class="p">,</span> <span class="n">gpi_max</span><span class="p">,</span> <span class="n">galpha_min</span> <span class="o">=</span> <span class="n">_eyring_rate_ceiling</span><span class="p">(</span>
-<span class="linenos">11</span>            <span class="n">T_K</span><span class="p">,</span>
-<span class="linenos">12</span>            <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_A</span><span class="p">,</span>
-<span class="linenos">13</span>            <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_Ea_R</span><span class="p">,</span>
-<span class="linenos">14</span>            <span class="bp">self</span><span class="o">.</span><span class="n">eyring_raw_Teq</span><span class="p">,</span>
-<span class="linenos">15</span>            <span class="bp">self</span><span class="o">.</span><span class="n">eyring_log_dHeq_R</span><span class="p">,</span>
-<span class="linenos">16</span>        <span class="p">)</span>
-<span class="linenos">17</span>
-<span class="linenos">18</span>        <span class="n">Km_deg</span><span class="p">,</span> <span class="n">Km_pi</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">log_Km</span><span class="p">)</span>
-<span class="linenos">19</span>        <span class="n">gdeg</span> <span class="o">=</span> <span class="p">(</span>
-<span class="linenos">20</span>            <span class="n">gdeg_max</span>
-<span class="linenos">21</span>            <span class="o">*</span> <span class="p">(</span><span class="n">G</span> <span class="o">/</span> <span class="p">(</span><span class="n">Km_deg</span> <span class="o">+</span> <span class="n">G</span><span class="p">))</span>
-<span class="linenos">22</span>            <span class="o">*</span> <span class="n">_inhibition_product</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">px</span><span class="p">,</span> <span class="n">X</span><span class="p">]),</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_K_inhib</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-<span class="linenos">23</span>        <span class="p">)</span>
-<span class="linenos">24</span>
-<span class="linenos">25</span>        <span class="n">galpha</span> <span class="o">=</span> <span class="n">galpha_min</span> <span class="o">*</span> <span class="n">_activation_product</span><span class="p">(</span>
-<span class="linenos">26</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">gdeg</span><span class="p">,</span> <span class="n">X</span><span class="p">]),</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_K_activ</span>
-<span class="linenos">27</span>        <span class="p">)</span>
-<span class="linenos">28</span>
-<span class="linenos">29</span>        <span class="n">driver</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">gdeg</span> <span class="o">-</span> <span class="n">galpha</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-<span class="linenos">30</span>        <span class="n">gpi</span> <span class="o">=</span> <span class="p">(</span>
-<span class="linenos">31</span>            <span class="n">gpi_max</span>
-<span class="linenos">32</span>            <span class="o">*</span> <span class="p">(</span><span class="n">driver</span> <span class="o">/</span> <span class="p">(</span><span class="n">Km_pi</span> <span class="o">+</span> <span class="n">driver</span><span class="p">))</span>
-<span class="linenos">33</span>            <span class="o">*</span> <span class="n">_inhibition_product</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">px</span><span class="p">,</span> <span class="n">X</span><span class="p">]),</span> <span class="bp">self</span><span class="o">.</span><span class="n">log_K_inhib</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
-<span class="linenos">34</span>        <span class="p">)</span>
-<span class="linenos">35</span>
-<span class="linenos">36</span>        <span class="n">gmu</span> <span class="o">=</span> <span class="n">gdeg</span> <span class="o">-</span> <span class="n">gpi</span> <span class="o">-</span> <span class="n">galpha</span>
-<span class="linenos">37</span>
-<span class="linenos">38</span>        <span class="n">q_biomass</span> <span class="o">=</span> <span class="n">gmu</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">Y_XrG</span>
-<span class="linenos">39</span>        <span class="n">q_product</span> <span class="o">=</span> <span class="n">gpi</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">Y_PG</span>
-<span class="linenos">40</span>        <span class="n">q_glucose</span> <span class="o">=</span> <span class="n">gdeg</span>
-<span class="linenos">41</span>
-<span class="linenos">42</span>        <span class="n">RAW_rates</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">q_biomass</span><span class="p">,</span> <span class="n">q_glucose</span><span class="p">,</span> <span class="n">q_product</span><span class="p">])</span>
-<span class="linenos">43</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos">44</span>            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_ReactionOde_rates</span><span class="p">(</span>
-<span class="linenos">45</span>                <span class="n">RAW_rates</span>
-<span class="linenos">46</span>            <span class="p">),</span>
-<span class="linenos">47</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos">48</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos">49</span>        <span class="p">)</span>
+<p>Write the mechanistic rates in <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>. Parameters are fitted in unconstrained
+space and mapped into physical bounds with a sigmoid. Positive parameters use
+logarithmic bounds; the equilibrium temperature uses linear bounds.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">BOUNDS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"uptake_max"</span><span class="p">:</span> <span class="p">((</span><span class="mf">1e-12</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),),</span>  <span class="c1"># g glycerol / (g active biomass h)</span>
+    <span class="s2">"glycerol_inhibition"</span><span class="p">:</span> <span class="p">((</span><span class="mf">1e-5</span><span class="p">,</span> <span class="mf">1e4</span><span class="p">),),</span>  <span class="c1"># g/kg</span>
+    <span class="s2">"maintenance"</span><span class="p">:</span> <span class="p">((</span><span class="mf">1e-12</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),),</span>  <span class="c1"># g glycerol / (g active biomass h)</span>
+    <span class="s2">"uptake_maintenance"</span><span class="p">:</span> <span class="p">((</span><span class="mf">1e-12</span><span class="p">,</span> <span class="mf">1e6</span><span class="p">),),</span>  <span class="c1"># g active biomass h / g glycerol</span>
+    <span class="s2">"product_maintenance"</span><span class="p">:</span> <span class="p">((</span><span class="mf">1e-12</span><span class="p">,</span> <span class="mf">1e6</span><span class="p">),),</span>  <span class="c1"># g total biomass / g product</span>
+    <span class="s2">"production_max"</span><span class="p">:</span> <span class="p">((</span><span class="mf">1e-12</span><span class="p">,</span> <span class="mf">1e-5</span><span class="p">),),</span>  <span class="c1"># g glycerol / g active biomass</span>
+    <span class="s2">"production_half_saturation"</span><span class="p">:</span> <span class="p">((</span><span class="mf">1e-12</span><span class="p">,</span> <span class="mf">1e2</span><span class="p">),),</span>  <span class="c1"># same units as uptake</span>
+    <span class="s2">"generation_inhibition"</span><span class="p">:</span> <span class="p">((</span><span class="mf">1e-12</span><span class="p">,</span> <span class="mf">1e4</span><span class="p">),),</span>  <span class="c1"># generations</span>
+    <span class="s2">"temperature"</span><span class="p">:</span> <span class="p">((</span><span class="mf">4e4</span><span class="p">,</span> <span class="mf">1e5</span><span class="p">),</span> <span class="p">(</span><span class="mf">1e5</span><span class="p">,</span> <span class="mf">1e7</span><span class="p">),</span> <span class="p">(</span><span class="mf">300.0</span><span class="p">,</span> <span class="mf">315.0</span><span class="p">)),</span>  <span class="c1"># J/mol, J/mol, K</span>
+<span class="p">}</span>
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">temperature</span></code> comes in through <code class="docutils literal notranslate"><span class="pre">unscale_controlled_PVs(inputs.SCL_controlled_PVs)</span></code>,
-the same mechanism <a class="reference internal" href="pls_dfba.html"><span class="std std-doc">PLS-dFBA</span></a> uses for its blend fraction, here
-feeding a real physical rate equation instead of a neural network’s input
-layer. <code class="docutils literal notranslate"><span class="pre">gamma_deg</span></code> (uptake) is computed first, <code class="docutils literal notranslate"><span class="pre">gamma_alpha</span></code> (maintenance)
-next since it uses <code class="docutils literal notranslate"><span class="pre">gamma_deg</span></code> as one of its own activation variables (the
-paper’s real coupling: more total uptake activates more maintenance), then
-<code class="docutils literal notranslate"><span class="pre">gamma_pi</span></code> (production) saturates in <code class="docutils literal notranslate"><span class="pre">gamma_deg</span> <span class="pre">-</span> <span class="pre">gamma_alpha</span></code>. <code class="docutils literal notranslate"><span class="pre">X_active</span></code>
-(declared in the dataset’s <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> block as <code class="docutils literal notranslate"><span class="pre">biomass</span> <span class="pre">-</span> <span class="pre">product</span></code>)
-does the rest for every rate except <code class="docutils literal notranslate"><span class="pre">q_glucose</span></code>. <code class="docutils literal notranslate"><span class="pre">q_biomass</span></code> and <code class="docutils literal notranslate"><span class="pre">q_product</span></code> are
-<em>specific</em> (per unit active biomass), so no manual <code class="docutils literal notranslate"><span class="pre">Xr/X</span></code> correction is needed inside
-<code class="docutils literal notranslate"><span class="pre">__call__</span></code> for them. <code class="docutils literal notranslate"><span class="pre">X_active</span></code> in the declared derivative strings does that
-division-then-multiplication implicitly and exactly. <code class="docutils literal notranslate"><span class="pre">q_glucose</span></code> is the one rate that
-stays scaled by total <code class="docutils literal notranslate"><span class="pre">biomass</span></code> instead: a deliberate simplification versus the paper’s
-own scaling, the same one <a class="reference download internal" download="" href="../_downloads/0d8a528685aba25cca4f8af1bdd7c58b/generate.py"><span class="xref download myst">the data generator</span></a> applies when it
-forward-simulates this page’s training data, so the model and its own ground truth stay
-self-consistent.</p>
+<section id="allocate-glycerol-uptake">
+<h3>Allocate glycerol uptake<a class="headerlink" href="#allocate-glycerol-uptake" title="Link to this heading">¶</a></h3>
+<p>The per-process flag <code class="docutils literal notranslate"><span class="pre">supply_limited_uptake</span></code> selects the uptake rule. It is stored
+as a controlled process variable so Hybrax passes it to the reaction module.
+The summary above shows the reason for the split: glycerol accumulates in
+<code class="docutils literal notranslate"><span class="pre">DoE1_R1</span></code>, <code class="docutils literal notranslate"><span class="pre">DoE2_R1</span></code>, and <code class="docutils literal notranslate"><span class="pre">DoE3_R2</span></code>, whereas it stays near zero in the other nine.</p>
+<p>For substrate-limited processes, the carbon-feed rate and composition arrive
+through Hybrax’s controls interface. Their product gives glycerol supplied per
+hour. Dividing by reactor mass and active biomass gives specific uptake:</p>
+<p>[
+g = \frac{F_C G_{\mathrm{feed}}}{V(X-P)}.
+]</p>
+<p>Here (F_C) is carbon-feed mass flow in kg/h, (G_{\mathrm{feed}}) is its
+glycerol concentration in g/kg, and (V) is reactor mass in kg.
+For the other processes, uptake follows
+(g_{\max}G/(0.001+G)/(1+G/K_I)), where (G) is reactor glycerol in g/kg
+and (K_I) is <code class="docutils literal notranslate"><span class="pre">glycerol_inhibition</span></code> in g/kg.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">kinetic_uptake</span> <span class="o">=</span> <span class="n">p</span><span class="p">[</span><span class="s2">"uptake_max"</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">kinetic_uptake</span> <span class="o">*=</span> <span class="n">glycerol</span> <span class="o">/</span> <span class="p">(</span><span class="n">K_GLYCEROL</span> <span class="o">+</span> <span class="n">glycerol</span><span class="p">)</span>
+<span class="n">kinetic_uptake</span> <span class="o">*=</span> <span class="n">_inhibition</span><span class="p">(</span><span class="n">glycerol</span><span class="p">,</span> <span class="n">p</span><span class="p">[</span><span class="s2">"glycerol_inhibition"</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
+
+<span class="n">volume</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unscale_modeled_V</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_V</span><span class="p">)</span>
+<span class="n">feed_rates</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unscale_controlled_Inflows_rates</span><span class="p">(</span>
+    <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_Inflows_rates</span>
+<span class="p">)</span>
+<span class="n">feed_compositions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unscale_controlled_Inflows_Cin</span><span class="p">(</span>
+    <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_controlled_Inflows_Cin</span>
+<span class="p">)</span>
+<span class="n">glycerol_feed</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">feed_rates</span> <span class="o">*</span> <span class="n">feed_compositions</span><span class="p">[:,</span> <span class="bp">self</span><span class="o">.</span><span class="n">i_glycerol</span><span class="p">])</span>
+<span class="n">supply_uptake</span> <span class="o">=</span> <span class="n">glycerol_feed</span> <span class="o">/</span> <span class="p">(</span><span class="n">volume</span> <span class="o">*</span> <span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">active_biomass</span><span class="p">,</span> <span class="mf">1e-8</span><span class="p">))</span>
+<span class="n">uptake</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">lax</span><span class="o">.</span><span class="n">cond</span><span class="p">(</span>
+    <span class="n">controls</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">i_supply_limited</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mf">0.5</span><span class="p">,</span>
+    <span class="k">lambda</span><span class="p">:</span> <span class="n">supply_uptake</span><span class="p">,</span>
+    <span class="k">lambda</span><span class="p">:</span> <span class="n">kinetic_uptake</span><span class="p">,</span>
+<span class="p">)</span>
+
+</pre></div>
+</div>
 </section>
-<section id="training">
-<h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
-<div class="cell tag_remove-input docutils container">
-<div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.551404 last_mean_loss=0.000265368 delta=-0.551138
-run directory: ./source/_data/out/runs/gallery_optfed/run
+<section id="allocate-maintenance">
+<h3>Allocate maintenance<a class="headerlink" href="#allocate-maintenance" title="Link to this heading">¶</a></h3>
+<p>Maintenance increases with uptake and the product-to-biomass ratio. It cannot
+consume more glycerol than uptake supplies. Specific glycerol uptake and
+maintenance have units g glycerol per g active biomass per hour.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">maintenance</span> <span class="o">=</span> <span class="n">p</span><span class="p">[</span><span class="s2">"maintenance"</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">maintenance</span> <span class="o">*=</span> <span class="mf">1.0</span> <span class="o">+</span> <span class="n">uptake</span> <span class="o">*</span> <span class="n">p</span><span class="p">[</span><span class="s2">"uptake_maintenance"</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">maintenance</span> <span class="o">*=</span> <span class="mf">1.0</span> <span class="o">+</span> <span class="n">product_biomass</span> <span class="o">*</span> <span class="n">p</span><span class="p">[</span><span class="s2">"product_maintenance"</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">maintenance</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">maintenance</span><span class="p">,</span> <span class="n">uptake</span><span class="p">)</span>
+
 </pre></div>
 </div>
-</div>
-</div>
-<div class="cell tag_remove-input docutils container">
-<div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>biomass    R2 = 0.9759
-glucose    R2 = 0.9987
-product    R2 = 0.9971
-</pre></div>
-</div>
-</div>
-</div>
-<div class="cell tag_remove-input docutils container">
-<div class="cell_output docutils container">
-<img alt="../_images/6832cbcbfac7e4ffbe6bff5541a522119a91ca83443b64ab04498c346ce5c8a7.png" src="../_images/6832cbcbfac7e4ffbe6bff5541a522119a91ca83443b64ab04498c346ce5c8a7.png" />
-</div>
-</div>
-<p><code class="docutils literal notranslate"><span class="pre">T_high</span></code> (40°C, the hottest of this page’s six runs) is worth looking at
-specifically: reversible inactivation has reduced the temperature-dependent
-uptake prefactor enough that feed exceeds cellular uptake and glucose
-concentration rises.</p>
 </section>
-<section id="what-did-it-learn-about-the-eyring-parameters">
-<h2>What Did It Learn About the Eyring Parameters?<a class="headerlink" href="#what-did-it-learn-about-the-eyring-parameters" title="Link to this heading">¶</a></h2>
-<div class="cell tag_remove-input docutils container">
+<section id="allocate-production-and-growth">
+<h3>Allocate production and growth<a class="headerlink" href="#allocate-production-and-growth" title="Link to this heading">¶</a></h3>
+<p>Product formation uses glycerol left after maintenance. Its production ceiling
+depends on temperature through the Eyring equation. The activation energy,
+inactivation enthalpy, equilibrium temperature, and prefactor are trainable.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">_temperature_ceiling</span><span class="p">(</span><span class="n">temperature</span><span class="p">,</span> <span class="n">constant</span><span class="p">,</span> <span class="n">parameters</span><span class="p">):</span>
+    <span class="n">activation_energy</span><span class="p">,</span> <span class="n">enthalpy</span><span class="p">,</span> <span class="n">equilibrium_temperature</span> <span class="o">=</span> <span class="n">parameters</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">constant</span>
+        <span class="o">*</span> <span class="n">K_B</span>
+        <span class="o">*</span> <span class="n">temperature</span>
+        <span class="o">*</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">activation_energy</span> <span class="o">/</span> <span class="p">(</span><span class="n">R</span> <span class="o">*</span> <span class="n">temperature</span><span class="p">))</span>
+        <span class="o">/</span> <span class="p">(</span>
+            <span class="n">H</span>
+            <span class="o">*</span> <span class="p">(</span>
+                <span class="mf">1.0</span>
+                <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span>
+                    <span class="n">enthalpy</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">equilibrium_temperature</span> <span class="o">-</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">temperature</span><span class="p">)</span> <span class="o">/</span> <span class="n">R</span>
+                <span class="p">)</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="o">*</span> <span class="mf">3600.0</span>
+    <span class="p">)</span>
+</pre></div>
+</div>
+<p>Temperature is in Kelvin, and both energies are in J/mol. The factor <code class="docutils literal notranslate"><span class="pre">3600</span></code>
+converts the Eyring rate from seconds to hours.
+Uptake has two parameters, maintenance has three, and production has six,
+for eleven trainable scalars in total. The initial production prefactor is small
+enough to keep the rate below its substrate cap, where its parameters have
+nonzero gradients.</p>
+<p>Product formation saturates in the remaining uptake and decreases with
+accumulated generations. Its glycerol demand is capped by available uptake.
+The fixed yields convert the remaining glycerol allocations into active biomass
+and product formation rates.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">available</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">uptake</span> <span class="o">-</span> <span class="n">maintenance</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+<span class="n">production</span> <span class="o">=</span> <span class="n">_temperature_ceiling</span><span class="p">(</span>
+    <span class="n">temperature</span><span class="p">,</span> <span class="n">p</span><span class="p">[</span><span class="s2">"production_max"</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">p</span><span class="p">[</span><span class="s2">"temperature"</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="n">production</span> <span class="o">*=</span> <span class="n">available</span> <span class="o">/</span> <span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s2">"production_half_saturation"</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">available</span><span class="p">)</span>
+<span class="n">production</span> <span class="o">*=</span> <span class="n">_inhibition</span><span class="p">(</span><span class="n">generations</span><span class="p">,</span> <span class="n">p</span><span class="p">[</span><span class="s2">"generation_inhibition"</span><span class="p">][</span><span class="mi">0</span><span class="p">])</span>
+<span class="n">production</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">production</span><span class="p">,</span> <span class="n">available</span><span class="p">)</span>
+
+<span class="n">q_biomass</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">available</span> <span class="o">-</span> <span class="n">production</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">*</span> <span class="n">Y_XG</span>
+<span class="n">q_product</span> <span class="o">=</span> <span class="n">production</span> <span class="o">*</span> <span class="n">Y_PG</span>
+<span class="n">growth_rate</span> <span class="o">=</span> <span class="p">(</span><span class="n">q_biomass</span> <span class="o">+</span> <span class="n">q_product</span><span class="p">)</span> <span class="o">*</span> <span class="n">active_biomass</span> <span class="o">/</span> <span class="n">biomass</span>
+</pre></div>
+</div>
+<p>The generation count is a single latent state initialized at zero. Its derivative
+is (\mu/\ln 2), where
+(\mu=(q_{\mathrm{biomass}}+q_{\mathrm{product}})(X-P)/X) is the biological
+specific growth rate of total biomass. Integrating growth keeps this count independent
+of dilution and the volume removed during sampling. It has no extra fitted
+parameters. Set <code class="docutils literal notranslate"><span class="pre">allow_stateful_models</span></code> to enable this latent state.</p>
+</section>
+</section>
+<section id="prepare-and-fit-concentrations">
+<h2>Prepare and fit concentrations<a class="headerlink" href="#prepare-and-fit-concentrations" title="Link to this heading">¶</a></h2>
+<p>State and control scales come from the training data. State scaling also weights
+the default concentration loss, so glycerol does not dominate simply because
+its concentrations are larger than product concentrations.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">SCALE_modeled_RMCs</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
+    <span class="p">[</span>
+        <span class="nb">max</span><span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">name</span><span class="p">)[</span><span class="mi">1</span><span class="p">])</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">indices</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">name_modeled_RMCs</span>
+    <span class="p">]</span>
+<span class="p">),</span>
+</pre></div>
+</div>
+<p>Use Adam for 500 epochs, with gradient clipping configured at <code class="docutils literal notranslate"><span class="pre">0.05</span></code> and a
+warmup followed by cosine learning-rate decay, supplied by the
+<code class="docutils literal notranslate"><span class="pre">build_learning_rate</span></code> hook in <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>. The default loss compares
+predicted concentrations with the supplied measurements. No rate targets are
+constructed.
+Each update uses one process in a fixed order. An epoch visits all twelve, so
+500 epochs give 6,000 updates. Solver tolerances are <code class="docutils literal notranslate"><span class="pre">rtol=1e-5</span></code> and <code class="docutils literal notranslate"><span class="pre">atol=1e-7</span></code>.
+Allow tens of minutes for the full fit on CPU. The standalone runner below
+streams training progress; this notebook prints the final status.</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"prepared"</span><span class="p">:</span><span class="w"> </span><span class="s2">"prepared"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"targets"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">"biomass"</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">"glycerol"</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">"product"</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">"target_source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"reactor_components"</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"custom_py"</span><span class="p">:</span><span class="w"> </span><span class="s2">"custom.py"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"epochs"</span><span class="p">:</span><span class="w"> </span><span class="mi">500</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"seed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"learning_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.01</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"grad_clip_norm"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.05</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"allow_stateful_models"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"batch_size"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"shuffle"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"solver"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"max_steps"</span><span class="p">:</span><span class="w"> </span><span class="mi">100000</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"rtol"</span><span class="p">:</span><span class="w"> </span><span class="mf">1e-05</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"atol"</span><span class="p">:</span><span class="w"> </span><span class="mf">1e-07</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"checkpoint"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"every"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"output"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"dir"</span><span class="p">:</span><span class="w"> </span><span class="s2">"run"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"predictions"</span><span class="p">:</span><span class="w"> </span><span class="s2">"parents"</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">hxt_cli</span><span class="p">(</span><span class="s2">"prepare"</span><span class="p">,</span> <span class="s2">"--config"</span><span class="p">,</span> <span class="s2">"prepare-config.json"</span><span class="p">,</span>
+        <span class="s2">"--output-dir"</span><span class="p">,</span> <span class="s2">"prepared"</span><span class="p">,</span> <span class="s2">"--overwrite"</span><span class="p">)</span>
+<span class="n">output</span> <span class="o">=</span> <span class="n">hxt_cli</span><span class="p">(</span><span class="s2">"train"</span><span class="p">,</span> <span class="s2">"--config"</span><span class="p">,</span> <span class="s2">"train-config.json"</span><span class="p">,</span> <span class="s2">"--overwrite"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">line</span> <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">output</span><span class="o">.</span><span class="n">splitlines</span><span class="p">()</span> <span class="k">if</span> <span class="s2">"training complete"</span> <span class="ow">in</span> <span class="n">line</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Run directory: docs/source/_data/out/runs/gallery_optfed/run/"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>rate           fitted Teq     true Teq
-uptake            31.7 °C      35.9 °C
-production        33.0 °C      32.9 °C
-maintenance       32.1 °C      46.9 °C
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.0791738 last_mean_loss=0.00140788 delta=-0.0777659
+Run directory: docs/source/_data/out/runs/gallery_optfed/run/
 </pre></div>
 </div>
 </div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">Teq</span></code> locates the midpoint of the reversible-inactivation equilibrium, where
-the active-enzyme fraction in <code class="docutils literal notranslate"><span class="pre">_eyring_rate_ceiling</span></code> is one half. For example,
-the rendered uptake fit is 31.7°C versus a true <code class="docutils literal notranslate"><span class="pre">Teq</span></code> of 35.9°C, a 4.2°C
-difference. Trajectories can fit despite this mismatch because <code class="docutils literal notranslate"><span class="pre">A</span></code>, <code class="docutils literal notranslate"><span class="pre">Ea_R</span></code>,
-<code class="docutils literal notranslate"><span class="pre">Teq</span></code>, and <code class="docutils literal notranslate"><span class="pre">dHeq_R</span></code> jointly shape the temperature response. Estimating their
-individual values requires experiments that distinguish the activation and
-reversible-inactivation regimes.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">predictions</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">WORK</span> <span class="o">/</span> <span class="s2">"run/predictions.csv"</span><span class="p">)</span>
+<span class="n">original</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="n">WORK</span> <span class="o">/</span> <span class="s2">"original_predictions.csv"</span><span class="p">)</span>
+<span class="n">points</span> <span class="o">=</span> <span class="n">sampling_predictions</span><span class="p">(</span><span class="n">collection</span><span class="p">,</span> <span class="n">predictions</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">scores</span><span class="p">(</span><span class="n">points</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">:</span><span class="s2">10s</span><span class="si">}</span><span class="s2"> R2 = </span><span class="si">{</span><span class="n">value</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="n">model</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">model_load</span><span class="p">(</span><span class="n">WORK</span> <span class="o">/</span> <span class="s2">"run"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>biomass    R2 = 0.7306
+glycerol   R2 = 0.8885
+product    R2 = 0.8533
+P_X        R2 = 0.7416
+</pre></div>
+</div>
+</div>
+</div>
+<p>The table below shows the fitted values and their bounds. In the units,
+(G) denotes glycerol, (A) active biomass, and (P) product.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">units</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"uptake_max"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"g_G/(g_A h)"</span><span class="p">],</span>
+    <span class="s2">"glycerol_inhibition"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"g/kg"</span><span class="p">],</span>
+    <span class="s2">"maintenance"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"g_G/(g_A h)"</span><span class="p">],</span>
+    <span class="s2">"uptake_maintenance"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"g_A h/g_G"</span><span class="p">],</span>
+    <span class="s2">"product_maintenance"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"g biomass/g_P"</span><span class="p">],</span>
+    <span class="s2">"production_max"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"g_G/g_A"</span><span class="p">],</span>
+    <span class="s2">"production_half_saturation"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"g_G/(g_A h)"</span><span class="p">],</span>
+    <span class="s2">"generation_inhibition"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"generations"</span><span class="p">],</span>
+    <span class="s2">"temperature"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"J/mol"</span><span class="p">,</span> <span class="s2">"J/mol"</span><span class="p">,</span> <span class="s2">"K"</span><span class="p">],</span>
+<span class="p">}</span>
+<span class="n">temperature_names</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="s2">"activation_energy"</span><span class="p">,</span> <span class="s2">"inactivation_enthalpy"</span><span class="p">,</span> <span class="s2">"equilibrium_temperature"</span>
+<span class="p">]</span>
+<span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">values</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">reaction_module</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">bounds</span><span class="p">,</span> <span class="n">unit</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">values</span><span class="p">,</span> <span class="n">BOUNDS</span><span class="p">[</span><span class="n">name</span><span class="p">],</span> <span class="n">units</span><span class="p">[</span><span class="n">name</span><span class="p">])):</span>
+        <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+            <span class="s2">"Parameter"</span><span class="p">:</span> <span class="n">temperature_names</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="n">name</span> <span class="o">==</span> <span class="s2">"temperature"</span> <span class="k">else</span> <span class="n">name</span><span class="p">,</span>
+            <span class="s2">"Unit"</span><span class="p">:</span> <span class="n">unit</span><span class="p">,</span> <span class="s2">"Lower"</span><span class="p">:</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+            <span class="s2">"Fitted"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">),</span> <span class="s2">"Upper"</span><span class="p">:</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
+        <span class="p">})</span>
+<span class="n">display</span><span class="p">(</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">rows</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html"><div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Parameter</th>
+      <th>Unit</th>
+      <th>Lower</th>
+      <th>Fitted</th>
+      <th>Upper</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>uptake_max</td>
+      <td>g_G/(g_A h)</td>
+      <td>1.000000e-12</td>
+      <td>5.003575e-01</td>
+      <td>1.000000e+00</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>glycerol_inhibition</td>
+      <td>g/kg</td>
+      <td>1.000000e-05</td>
+      <td>1.029247e+02</td>
+      <td>1.000000e+04</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>maintenance</td>
+      <td>g_G/(g_A h)</td>
+      <td>1.000000e-12</td>
+      <td>6.531107e-03</td>
+      <td>1.000000e+00</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>uptake_maintenance</td>
+      <td>g_A h/g_G</td>
+      <td>1.000000e-12</td>
+      <td>5.593578e+01</td>
+      <td>1.000000e+06</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>product_maintenance</td>
+      <td>g biomass/g_P</td>
+      <td>1.000000e-12</td>
+      <td>2.383569e+00</td>
+      <td>1.000000e+06</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>production_max</td>
+      <td>g_G/g_A</td>
+      <td>1.000000e-12</td>
+      <td>2.203618e-09</td>
+      <td>1.000000e-05</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>production_half_saturation</td>
+      <td>g_G/(g_A h)</td>
+      <td>1.000000e-12</td>
+      <td>1.746170e-01</td>
+      <td>1.000000e+02</td>
+    </tr>
+    <tr>
+      <th>7</th>
+      <td>generation_inhibition</td>
+      <td>generations</td>
+      <td>1.000000e-12</td>
+      <td>1.030740e+00</td>
+      <td>1.000000e+04</td>
+    </tr>
+    <tr>
+      <th>8</th>
+      <td>activation_energy</td>
+      <td>J/mol</td>
+      <td>4.000000e+04</td>
+      <td>4.990425e+04</td>
+      <td>1.000000e+05</td>
+    </tr>
+    <tr>
+      <th>9</th>
+      <td>inactivation_enthalpy</td>
+      <td>J/mol</td>
+      <td>1.000000e+05</td>
+      <td>5.592124e+05</td>
+      <td>1.000000e+07</td>
+    </tr>
+    <tr>
+      <th>10</th>
+      <td>equilibrium_temperature</td>
+      <td>K</td>
+      <td>3.000000e+02</td>
+      <td>3.094612e+02</td>
+      <td>3.150000e+02</td>
+    </tr>
+  </tbody>
+</table>
+</div></div></div>
+</div>
+</section>
+<section id="inspect-the-fitted-trajectories">
+<h2>Inspect the fitted trajectories<a class="headerlink" href="#inspect-the-fitted-trajectories" title="Link to this heading">¶</a></h2>
+<p>The following plots compare the fitted Hybrax model, the original OptFed model,
+and the experimental measurements. Original OptFed curves are semi-transparent
+solid lines; Hybrax curves are dashed. The original curves come from the authors’
+global reduced-model fit to derived rates, exported from their saved predictions.
+The bundled <a class="reference download internal" download="" href="../_downloads/1738ce07f35efd1085b8988abfb4646f/original_predictions.csv"><code class="xref download docutils literal notranslate"><span class="pre">reference</span> <span class="pre">curves</span></code></a> and
+<a class="reference download internal" download="" href="../_downloads/bef644cdc6ce59f67a3f71218cab4c2a/original_sampling_predictions.csv"><code class="xref download docutils literal notranslate"><span class="pre">measurement-time</span> <span class="pre">predictions</span></code></a> let this
+comparison run without downloading or refitting OptFed. Hybrax fits
+concentrations directly.
+The reported scores describe the same processes used for training, so they
+measure goodness of fit rather than performance on unseen processes.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">fig</span><span class="p">,</span> <span class="n">axes</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="mi">12</span><span class="p">),</span> <span class="n">layout</span><span class="o">=</span><span class="s2">"constrained"</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">ax</span><span class="p">,</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">observed</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">axes</span><span class="o">.</span><span class="n">flat</span><span class="p">,</span> <span class="n">points</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">"process"</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">)):</span>
+    <span class="n">trajectory</span> <span class="o">=</span> <span class="n">predictions</span><span class="p">[</span><span class="n">predictions</span><span class="o">.</span><span class="n">process</span> <span class="o">==</span> <span class="n">name</span><span class="p">]</span>
+    <span class="n">reference</span> <span class="o">=</span> <span class="n">original</span><span class="p">[(</span><span class="n">original</span><span class="o">.</span><span class="n">process</span> <span class="o">==</span> <span class="n">name</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span>
+        <span class="n">original</span><span class="o">.</span><span class="n">t</span> <span class="o">&lt;=</span> <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">end</span>
+    <span class="p">)]</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">reference</span><span class="o">.</span><span class="n">t</span><span class="p">,</span> <span class="n">reference</span><span class="o">.</span><span class="n">P</span> <span class="o">/</span> <span class="n">reference</span><span class="o">.</span><span class="n">X</span><span class="p">,</span>
+            <span class="n">color</span><span class="o">=</span><span class="s2">"tab:blue"</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.45</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">"Original OptFed"</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">trajectory</span><span class="o">.</span><span class="n">t</span><span class="p">,</span> <span class="n">trajectory</span><span class="o">.</span><span class="n">c_product</span> <span class="o">/</span> <span class="n">trajectory</span><span class="o">.</span><span class="n">c_biomass</span><span class="p">,</span>
+            <span class="n">color</span><span class="o">=</span><span class="s2">"tab:orange"</span><span class="p">,</span> <span class="n">linestyle</span><span class="o">=</span><span class="s2">"--"</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">"Hybrax"</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">observed</span><span class="o">.</span><span class="n">t</span><span class="p">,</span> <span class="n">observed</span><span class="o">.</span><span class="n">P_X</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"black"</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span>
+               <span class="n">label</span><span class="o">=</span><span class="s2">"Measurements"</span><span class="p">)</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="n">name</span><span class="p">,</span> <span class="n">xlabel</span><span class="o">=</span><span class="s2">"Time [h]"</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="s2">"Product / biomass [g/g]"</span><span class="p">)</span>
+<span class="n">axes</span><span class="o">.</span><span class="n">flat</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">suptitle</span><span class="p">(</span>
+    <span class="s2">"Product / biomass: pooled measurement scores</span><span class="se">\n</span><span class="s2">"</span>
+    <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">: R²=</span><span class="si">{</span><span class="n">row</span><span class="p">[</span><span class="s1">'P/X R²'</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, NRMSE=</span><span class="si">{</span><span class="n">row</span><span class="p">[</span><span class="s1">'P/X NRMSE'</span><span class="p">]</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">"</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">comparison</span><span class="o">.</span><span class="n">iterrows</span><span class="p">()</span>
+    <span class="p">),</span>
+    <span class="n">fontsize</span><span class="o">=</span><span class="mi">11</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">WORK</span> <span class="o">/</span> <span class="s2">"run/PX_fit.png"</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="mi">140</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">fig</span><span class="p">)</span>
+<span class="n">display</span><span class="p">(</span><span class="n">Image</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">WORK</span> <span class="o">/</span> <span class="s2">"run/PX_fit.png"</span><span class="p">)))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="../_images/27e298919003fcb2d82a8e2a4fd7e874708df349312fb9cb3041dcf3fbc2fab7.png" src="../_images/27e298919003fcb2d82a8e2a4fd7e874708df349312fb9cb3041dcf3fbc2fab7.png" />
+</div>
+</div>
+<p>Inspect the three fitted concentrations as well. A similar product-to-biomass
+ratio can conceal different biomass and product predictions.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">fig</span><span class="p">,</span> <span class="n">axes</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">12</span><span class="p">,</span> <span class="mi">24</span><span class="p">),</span> <span class="n">layout</span><span class="o">=</span><span class="s2">"constrained"</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">row</span><span class="p">,</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">observed</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">axes</span><span class="p">,</span> <span class="n">points</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">"process"</span><span class="p">,</span> <span class="n">sort</span><span class="o">=</span><span class="kc">False</span><span class="p">)):</span>
+    <span class="n">trajectory</span> <span class="o">=</span> <span class="n">predictions</span><span class="p">[</span><span class="n">predictions</span><span class="o">.</span><span class="n">process</span> <span class="o">==</span> <span class="n">name</span><span class="p">]</span>
+    <span class="n">reference</span> <span class="o">=</span> <span class="n">original</span><span class="p">[(</span><span class="n">original</span><span class="o">.</span><span class="n">process</span> <span class="o">==</span> <span class="n">name</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span>
+        <span class="n">original</span><span class="o">.</span><span class="n">t</span> <span class="o">&lt;=</span> <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">end</span>
+    <span class="p">)]</span>
+    <span class="k">for</span> <span class="n">ax</span><span class="p">,</span> <span class="n">species</span><span class="p">,</span> <span class="n">field</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span>
+        <span class="n">row</span><span class="p">,</span> <span class="p">(</span><span class="s2">"glycerol"</span><span class="p">,</span> <span class="s2">"biomass"</span><span class="p">,</span> <span class="s2">"product"</span><span class="p">),</span> <span class="p">(</span><span class="s2">"G"</span><span class="p">,</span> <span class="s2">"X"</span><span class="p">,</span> <span class="s2">"P"</span><span class="p">)</span>
+    <span class="p">):</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">reference</span><span class="o">.</span><span class="n">t</span><span class="p">,</span> <span class="n">reference</span><span class="p">[</span><span class="n">field</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="s2">"tab:blue"</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.45</span><span class="p">,</span>
+                <span class="n">label</span><span class="o">=</span><span class="s2">"Original OptFed"</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">trajectory</span><span class="o">.</span><span class="n">t</span><span class="p">,</span> <span class="n">trajectory</span><span class="p">[</span><span class="sa">f</span><span class="s2">"c_</span><span class="si">{</span><span class="n">species</span><span class="si">}</span><span class="s2">"</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="s2">"tab:orange"</span><span class="p">,</span>
+                <span class="n">linestyle</span><span class="o">=</span><span class="s2">"--"</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">"Hybrax"</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">scatter</span><span class="p">(</span><span class="n">observed</span><span class="o">.</span><span class="n">t</span><span class="p">,</span> <span class="n">observed</span><span class="p">[</span><span class="n">species</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="s2">"black"</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
+                   <span class="n">label</span><span class="o">=</span><span class="s2">"Measurements"</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">title</span><span class="o">=</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">species</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span> <span class="n">ylabel</span><span class="o">=</span><span class="s2">"Concentration [g/kg]"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">species</span> <span class="o">==</span> <span class="s2">"glycerol"</span><span class="p">:</span>
+            <span class="c1"># Keep solver roundoff around zero from filling the panel.</span>
+            <span class="n">upper</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">observed</span><span class="p">[</span><span class="n">species</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">(),</span> <span class="n">trajectory</span><span class="o">.</span><span class="n">c_glycerol</span><span class="o">.</span><span class="n">max</span><span class="p">(),</span>
+                        <span class="n">reference</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">max</span><span class="p">(),</span> <span class="mf">0.1</span><span class="p">)</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">set_ylim</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">1.05</span> <span class="o">*</span> <span class="n">upper</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">ax</span> <span class="ow">in</span> <span class="n">axes</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s2">"Time [h]"</span><span class="p">)</span>
+<span class="n">axes</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">suptitle</span><span class="p">(</span>
+    <span class="s2">"Glycerol, biomass, product: pooled measurement scores</span><span class="se">\n</span><span class="s2">"</span>
+    <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">: R²=</span><span class="si">{</span><span class="n">row</span><span class="p">[</span><span class="s1">'Total R²'</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, NRMSE=</span><span class="si">{</span><span class="n">row</span><span class="p">[</span><span class="s1">'Total NRMSE'</span><span class="p">]</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">"</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">comparison</span><span class="o">.</span><span class="n">iterrows</span><span class="p">()</span>
+    <span class="p">),</span>
+    <span class="n">fontsize</span><span class="o">=</span><span class="mi">11</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">fig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">WORK</span> <span class="o">/</span> <span class="s2">"run/concentration_fit.png"</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="mi">140</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">fig</span><span class="p">)</span>
+<span class="n">display</span><span class="p">(</span><span class="n">Image</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">WORK</span> <span class="o">/</span> <span class="s2">"run/concentration_fit.png"</span><span class="p">)))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="../_images/dfad28aa2b311e12e2b39a0c7022b33a04d7caa21392cca1e54cbb4eef3e38d5.png" src="../_images/dfad28aa2b311e12e2b39a0c7022b33a04d7caa21392cca1e54cbb4eef3e38d5.png" />
+</div>
+</div>
+</section>
+<section id="compare-fitting-objectives">
+<h2>Compare fitting objectives<a class="headerlink" href="#compare-fitting-objectives" title="Link to this heading">¶</a></h2>
+<p>Direct concentration fitting of these experimental measurements can achieve
+aggregate fit quality comparable to the original OptFed results, while yielding
+different parameter estimates and trajectories.
+Similar goodness of fit therefore does not guarantee recovery of the original
+parameters. This suggests weak parameter identifiability, but does not establish
+it: OptFed fitted derived rates, and some uptake assumptions also differ. This
+comparison uses the same measured processes, with different fitting objectives.
+The following comparison uses all 83 retained measurement rows, including the
+initial conditions. Combined NRMSE is the root mean squared error across all
+249 concentration values, after dividing each species by its maximum observed
+concentration across the twelve processes. Total R² uses the same scaled
+concentrations, with each species centered on its own mean. P/X NRMSE divides
+ratio residuals by the maximum observed P/X. Both models use the same scales.
+These metrics differ from the optimizer’s training loss.</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">display</span><span class="p">(</span><span class="n">comparison</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html"><div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>Total R²</th>
+      <th>Total NRMSE</th>
+      <th>P/X R²</th>
+      <th>P/X NRMSE</th>
+    </tr>
+    <tr>
+      <th>Model</th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>Original OptFed</th>
+      <td>0.856371</td>
+      <td>0.088486</td>
+      <td>0.734308</td>
+      <td>0.152348</td>
+    </tr>
+    <tr>
+      <th>Hybrax</th>
+      <td>0.839740</td>
+      <td>0.093469</td>
+      <td>0.741617</td>
+      <td>0.150238</td>
+    </tr>
+  </tbody>
+</table>
+</div></div></div>
+</div>
+<p>Hybrax’s combined NRMSE is about 6% higher: 0.0935 versus 0.0885. Its pooled
+product-to-biomass (R^2) is 0.742 versus 0.734. These scores describe comparable
+aggregate agreement with measurements, despite the differences in individual
+trajectories. They are our measurement-based comparison, not quoted
+cross-validation scores from the paper. The reference scores use the authors’
+saved predictions at the exact measurement times, rather than interpolation
+from the plotted curves.</p>
+<p>In the nine feed-implied processes, uptake balances glycerol feed by construction.
+Their predicted glycerol therefore only dilutes from its initial value. Glycerol
+fit quality in these processes does not validate uptake kinetics. Only the three
+kinetic processes inform <code class="docutils literal notranslate"><span class="pre">uptake_max</span></code> and <code class="docutils literal notranslate"><span class="pre">glycerol_inhibition</span></code>.
+The Eyring prefactor and activation energy can also compensate for each other
+over a narrow temperature range. A good fit does not establish unique parameters.</p>
 </section>
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><strong>Eyring parameters are jointly identified by the temperature response.</strong>
-<code class="docutils literal notranslate"><span class="pre">A</span></code>, <code class="docutils literal notranslate"><span class="pre">Ea_R</span></code>, <code class="docutils literal notranslate"><span class="pre">Teq</span></code>, and <code class="docutils literal notranslate"><span class="pre">dHeq_R</span></code> can compensate for one another over a narrow
-temperature range. Use experiments that distinguish the activation and
-reversible-inactivation regimes before interpreting individual values.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">gamma_mu</span> <span class="pre">=</span> <span class="pre">gamma_deg</span> <span class="pre">-</span> <span class="pre">gamma_pi</span> <span class="pre">-</span> <span class="pre">gamma_alpha</span></code> can go transiently
-negative early in training.</strong> It is left unclipped, matching the paper’s own
-rate law literally; a bad early step just means slower growth.</p></li>
-<li><p><strong>The temperature term’s <code class="docutils literal notranslate"><span class="pre">exp</span></code> terms need <code class="docutils literal notranslate"><span class="pre">T</span></code> in Kelvin.</strong> The dataset
-stores <code class="docutils literal notranslate"><span class="pre">temperature</span></code> in °C (the unit a real process log would use);
-<code class="docutils literal notranslate"><span class="pre">__call__</span></code> converts on the way in, once.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">n_pv</span></code>/<code class="docutils literal notranslate"><span class="pre">n_fvc</span></code> being zero anywhere breaks a naive <code class="docutils literal notranslate"><span class="pre">jnp.asarray([])</span></code>
-reshape.</strong> <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code> guards every controlled axis with <code class="docutils literal notranslate"><span class="pre">if</span> <span class="pre">n_fvc</span> <span class="pre">else</span> <span class="pre">empty</span></code>/<code class="docutils literal notranslate"><span class="pre">if</span> <span class="pre">n_pv</span> <span class="pre">else</span> <span class="pre">empty</span></code> for exactly this reason.</p></li>
+<li><p>Temperature must be in Kelvin. The published temperature trace uses Kelvin.</p></li>
+<li><p>Feed-implied uptake assumes negligible glycerol accumulation. Set
+<code class="docutils literal notranslate"><span class="pre">supply_limited_uptake</span></code> only for processes where this assumption is appropriate.</p></li>
 </ul>
 </section>
-<section id="see-also">
-<h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
-<p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
-<code class="docutils literal notranslate"><span class="pre">examples/gallery_optfed/</span></code> at the repo root, no docs build required. This page’s own
-executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_optfed/</span></code>.</p>
-<ul class="simple">
-<li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic Models</span></a>: a smaller structured rate law,
-the same “did it recover the true parameters” question asked there too.</p></li>
-<li><p><a class="reference internal" href="pls_dfba.html"><span class="std std-doc">PLS-dFBA</span></a>: the same controlled-process-variable-as-extra
--input mechanism, there feeding a learned component instead of closed-form
-kinetics.</p></li>
-<li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: <code class="docutils literal notranslate"><span class="pre">frozen_field</span></code>,
-<code class="docutils literal notranslate"><span class="pre">trainable_field</span></code>, and everything else a <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> can return.</p></li>
-<li><p><a class="reference internal" href="../format/bioprocess_ode.html"><span class="std std-doc">The Bioprocess ODE</span></a>: <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>,
-<code class="docutils literal notranslate"><span class="pre">algebraic</span></code>, and the <code class="docutils literal notranslate"><span class="pre">X_active</span></code> pattern this page reuses.</p></li>
-<li><p><a class="reference internal" href="glutamine_decay.html"><span class="std std-doc">Glutamine Degradation</span></a>: a smaller worked example of
-identifiability requiring observations that distinguish a rate’s effect.</p></li>
-</ul>
+<section id="run-the-example-locally">
+<h2>Run the example locally<a class="headerlink" href="#run-the-example-locally" title="Link to this heading">¶</a></h2>
+<p>From the repository root, run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>uv<span class="w"> </span>run<span class="w"> </span>python<span class="w"> </span>examples/gallery_optfed/run.py
+</pre></div>
+</div>
+<p>The standalone run writes to <code class="docutils literal notranslate"><span class="pre">examples/gallery_optfed/run/</span></code>. This page’s
+executed run is in <code class="docutils literal notranslate"><span class="pre">docs/source/_data/out/runs/gallery_optfed/run/</span></code>.
+Regenerate the bundled dataset with
+<code class="docutils literal notranslate"><span class="pre">uv</span> <span class="pre">run</span> <span class="pre">python</span> <span class="pre">examples/gallery_optfed/import_data.py</span></code>. This step downloads the
+four published CSVs; fitting the bundled dataset does not need network access.</p>
+<p>See <a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic models</span></a> for a smaller rate law and
+<a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The reaction module</span></a> for the <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> interface.</p>
 </section>
 <section id="references">
-<h2>References<a class="headerlink" href="#references" title="Link to this heading">¶</a></h2>
+<span id="ref-optfed"></span><h2>References<a class="headerlink" href="#references" title="Link to this heading">¶</a></h2>
 <ol class="arabic simple">
-<li><p><a id="ref-optfed"></a>Schlögl, G., Lück, R., Kittler, S., Spadiut, O.,
+<li><p>Schlögl, G., Lück, R., Kittler, S., Spadiut, O.,
 Kopp, J., Zanghellini, J., &amp; Gotsmy, M. (2024). Optimizing bioprocessing
 efficiency with OptFed: Dynamic nonlinear modeling improves
 product-to-biomass yield. <em>Computational and Structural Biotechnology
 Journal</em>, 23, 3651-3661.
-<a class="reference external" href="https://doi.org/10.1016/j.csbj.2024.09.024">https://doi.org/10.1016/j.csbj.2024.09.024</a></p></li>
+<a class="reference external" href="https://doi.org/10.1016/j.csbj.2024.09.024">doi:10.1016/j.csbj.2024.09.024</a></p></li>
+</ol>
+<ol class="arabic simple" id="ref-optfed-data" start="2">
+<li><p><a class="reference external" href="https://github.com/gschloegel/OptFed/tree/7811f7b9ef76d624f53b852c03d06cb1b5cc96a3">OptFed experimental CSVs and analysis code</a>.</p></li>
+</ol>
+<ol class="arabic simple" id="ref-kittler" start="3">
+<li><p>Kittler et al. (2022). Recombinant protein L: production, purification and
+characterization of a universal binding ligand. <em>Journal of Biotechnology</em>,
+359, 108-115.
+<a class="reference external" href="https://doi.org/10.1016/j.jbiotec.2022.10.002">doi:10.1016/j.jbiotec.2022.10.002</a></p></li>
 </ol>
 </section>
 </section>
@@ -688,13 +1244,19 @@ Journal</em>, 23, 3651-3661.
         <div class="toc-tree-container">
           <div class="toc-tree">
             <ul>
-<li><a class="reference internal" href="#">OptFed</a><ul>
-<li><a class="reference internal" href="#the-rate-law">The Rate Law</a></li>
-<li><a class="reference internal" href="#the-reaction-module">The Reaction Module</a></li>
-<li><a class="reference internal" href="#training">Training</a></li>
-<li><a class="reference internal" href="#what-did-it-learn-about-the-eyring-parameters">What Did It Learn About the Eyring Parameters?</a></li>
+<li><a class="reference internal" href="#">OptFed mechanistic model</a><ul>
+<li><a class="reference internal" href="#load-the-published-data">Load the published data</a></li>
+<li><a class="reference internal" href="#define-the-rate-laws">Define the rate laws</a><ul>
+<li><a class="reference internal" href="#allocate-glycerol-uptake">Allocate glycerol uptake</a></li>
+<li><a class="reference internal" href="#allocate-maintenance">Allocate maintenance</a></li>
+<li><a class="reference internal" href="#allocate-production-and-growth">Allocate production and growth</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#prepare-and-fit-concentrations">Prepare and fit concentrations</a></li>
+<li><a class="reference internal" href="#inspect-the-fitted-trajectories">Inspect the fitted trajectories</a></li>
+<li><a class="reference internal" href="#compare-fitting-objectives">Compare fitting objectives</a></li>
 <li><a class="reference internal" href="#gotchas">Gotchas</a></li>
-<li><a class="reference internal" href="#see-also">See Also</a></li>
+<li><a class="reference internal" href="#run-the-example-locally">Run the example locally</a></li>
 <li><a class="reference internal" href="#references">References</a></li>
 </ul>
 </li>

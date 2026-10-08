@@ -47,7 +47,6 @@ sync_example demo_fedbatch gallery_augmentation data.json
 sync_example demo_products gallery_knowledge_transfer data.json
 sync_example demo_ecoli_fba gallery_fba_hyb data.json
 sync_example demo_ecoli_blend gallery_pls_dfba data.json
-sync_example demo_optfed gallery_optfed data.json ground_truth.json
 sync_example demo_glutamine_decay gallery_glutamine_decay data.json ground_truth.json
 sync_example demo_modeled_pv gallery_modeled_pv data.json ground_truth.json
 sync_example demo_spline_jump gallery_pseudobatch_splines data.json

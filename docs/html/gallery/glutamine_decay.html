@@ -267,7 +267,7 @@
 <li class="toctree-l1"><a class="reference internal" href="fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="kan.html">KAN Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="optfed.html">OptFed Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="optfed.html">OptFed mechanistic model</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
 <ul>
@@ -557,7 +557,8 @@ carry whatever unit bridges it. See <a class="reference internal" href="../forma
 <li><p><strong>A slow rate needs a long enough window to be identifiable.</strong> <code class="docutils literal notranslate"><span class="pre">r_Gln</span></code>’s ~8-day
 half-life would leave almost no visible trace over a 10-15 h batch window; this
 page’s 120 h duration exists specifically so the effect is separable from noise,
-the same lesson <a class="reference internal" href="optfed.html#gotchas"><span class="std std-ref">OptFed</span></a>’s Eyring-identifiability Gotcha teaches
+the same lesson discussed in
+<a class="reference internal" href="optfed.html#compare-fitting-objectives"><span class="std std-ref">OptFed’s comparison of fitting objectives</span></a>
 for a different rate.</p></li>
 <li><p><strong>This page’s unusual rate shape (one rate feeding two derivatives) needs no custom
 reaction module at all, technically.</strong> <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s default reaction module sizes
@@ -577,8 +578,8 @@ page’s own executed run is at <code class="docutils literal notranslate"><span
 <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>, and the unit-consistency rule this page relies on.</p></li>
 <li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic Models</span></a>: the same “did it recover the true
 parameters” question, asked of a Monod-form rate law instead.</p></li>
-<li><p><a class="reference internal" href="optfed.html"><span class="std std-doc">OptFed</span></a>: a rate law with real kinetic structure, and the same
-“identifiability needs the true value inside the sampled range” lesson.</p></li>
+<li><p><a class="reference internal" href="optfed.html"><span class="std std-doc">OptFed</span></a>: an eleven-parameter mechanistic rate law fitted directly
+to concentrations, with temperature and feed controls.</p></li>
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: <code class="docutils literal notranslate"><span class="pre">trainable_field</span></code> and
 everything else a <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> can return.</p></li>
 </ul>

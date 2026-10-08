@@ -118,7 +118,7 @@ Knowledge Transfer <gallery/knowledge_transfer>
 FBA-Hyb <gallery/fba_hyb>
 PLS-dFBA <gallery/pls_dfba>
 KAN Models <gallery/kan>
-OptFed Models <gallery/optfed>
+OptFed mechanistic model <gallery/optfed>
 ```
 
 ```{toctree}

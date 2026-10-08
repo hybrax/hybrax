@@ -217,7 +217,8 @@ everything above it is setup.
 - **A slow rate needs a long enough window to be identifiable.** `r_Gln`'s ~8-day
   half-life would leave almost no visible trace over a 10-15 h batch window; this
   page's 120 h duration exists specifically so the effect is separable from noise,
-  the same lesson [OptFed](optfed.md#gotchas)'s Eyring-identifiability Gotcha teaches
+  the same lesson discussed in
+  [OptFed's comparison of fitting objectives](optfed.md#compare-fitting-objectives)
   for a different rate.
 - **This page's unusual rate shape (one rate feeding two derivatives) needs no custom
   reaction module at all, technically.** `hybrax.train`'s default reaction module sizes
@@ -236,8 +237,8 @@ page's own executed run is at `./source/_data/out/runs/gallery_glutamine_decay/`
   `derivatives`, and the unit-consistency rule this page relies on.
 - [Mechanistic Models](mechanistic_rates.md): the same "did it recover the true
   parameters" question, asked of a Monod-form rate law instead.
-- [OptFed](optfed.md): a rate law with real kinetic structure, and the same
-  "identifiability needs the true value inside the sampled range" lesson.
+- [OptFed](optfed.md): an eleven-parameter mechanistic rate law fitted directly
+  to concentrations, with temperature and feed controls.
 - [The Reaction Module](../train/reaction_module.md): `trainable_field` and
   everything else a `RateModule` can return.
 
