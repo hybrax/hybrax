@@ -442,13 +442,14 @@
     <span class="n">TrainingDataStore</span><span class="p">,</span>
     <span class="n">replace_rhs_ode_process_matrices</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.run_config</span><span class="w"> </span><span class="kn">import</span> <span class="n">RunConfig</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.run_config</span><span class="w"> </span><span class="kn">import</span> <span class="n">CheckpointConfig</span><span class="p">,</span> <span class="n">RunConfig</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.runtime_artifact</span><span class="w"> </span><span class="kn">import</span> <span class="n">RuntimeArtifact</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.runtime_context</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">ProducerCollectionData</span><span class="p">,</span>
     <span class="n">RuntimeDataContext</span><span class="p">,</span>
     <span class="n">canonical_training_parents</span><span class="p">,</span>
     <span class="n">original_parent_processes</span><span class="p">,</span>
+    <span class="n">training_selection_excluding_holdout</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">get_hook</span><span class="p">,</span>
@@ -722,9 +723,11 @@
     <span class="c1"># bundled into every checkpoint to make it self-contained.</span>
     <span class="n">checkpoint_dir</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">checkpoint_every</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">checkpoint_keep_best</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">checkpoint_select_by</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">prepared_path</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">bundle_prepared</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
-    <span class="c1"># Optional LOO holdout set, evaluated whenever a checkpoint is written.</span>
+    <span class="c1"># Optional holdout set, evaluated whenever a checkpoint is written.</span>
     <span class="n">holdout_processes</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="c1"># Non-augmented holdout processes whose existing evaluation trajectories are</span>
     <span class="c1"># written with checkpoints.</span>
@@ -1645,10 +1648,71 @@
         <span class="n">loss_module</span> <span class="o">=</span> <span class="n">DefaultLossModule</span><span class="p">(</span><span class="n">target_names</span><span class="o">=</span><span class="n">_loss_target_labels</span><span class="p">(</span><span class="n">store</span><span class="p">))</span>
     <span class="n">effective_batched_loss_fn</span> <span class="o">=</span> <span class="n">_BATCHED_LOSS_FN</span>
     <span class="n">selected_processes</span> <span class="o">=</span> <span class="n">_ensure_process_names</span><span class="p">(</span><span class="n">store</span><span class="p">,</span> <span class="n">cfg</span><span class="o">.</span><span class="n">process_names</span><span class="p">)</span>
+    <span class="n">overlap</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">selected_processes</span><span class="p">)</span> <span class="o">&amp;</span> <span class="nb">set</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">holdout_processes</span> <span class="ow">or</span> <span class="p">())</span>
+    <span class="k">if</span> <span class="n">overlap</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"training overlaps holdout processes: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">overlap</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="n">store</span><span class="o">.</span><span class="n">validate_control_support</span><span class="p">(</span><span class="n">selected_processes</span><span class="p">)</span>
 
     <span class="n">effective_batch_size</span><span class="p">,</span> <span class="n">batches_per_epoch</span><span class="p">,</span> <span class="n">total_updates</span> <span class="o">=</span> <span class="n">derive_update_budget</span><span class="p">(</span>
         <span class="n">cfg</span><span class="p">,</span> <span class="n">selected_process_count</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">selected_processes</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">holdout_processes</span><span class="p">:</span>
+        <span class="n">unknown</span> <span class="o">=</span> <span class="p">[</span><span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">cfg</span><span class="o">.</span><span class="n">holdout_processes</span> <span class="k">if</span> <span class="n">n</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">store</span><span class="o">.</span><span class="n">process_order</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"holdout_processes contains unknown names: </span><span class="si">{</span><span class="n">unknown</span><span class="si">}</span><span class="s2">; "</span>
+                <span class="sa">f</span><span class="s2">"available=</span><span class="si">{</span><span class="nb">tuple</span><span class="p">(</span><span class="n">store</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">holdout_prediction_processes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">set</span><span class="p">(</span>
+            <span class="n">cfg</span><span class="o">.</span><span class="n">holdout_prediction_processes</span>
+        <span class="p">)</span><span class="o">.</span><span class="n">issubset</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">holdout_processes</span><span class="p">)):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"holdout_prediction_processes must be a subset of holdout_processes"</span>
+            <span class="p">)</span>
+
+    <span class="n">policy</span> <span class="o">=</span> <span class="n">CheckpointConfig</span><span class="p">(</span>
+        <span class="n">every</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint_every</span><span class="p">,</span>
+        <span class="n">keep_best</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint_keep_best</span><span class="p">,</span>
+        <span class="n">select_by</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint_select_by</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">policy</span><span class="o">.</span><span class="n">select_by</span> <span class="o">==</span> <span class="s2">"holdout_loss"</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">cfg</span><span class="o">.</span><span class="n">holdout_processes</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"checkpoint.select_by=holdout_loss requires holdout_processes"</span><span class="p">)</span>
+    <span class="n">checkpoint_enabled</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint_dir</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+    <span class="n">resolved_checkpoint_every</span> <span class="o">=</span> <span class="n">_resolve_checkpoint_every</span><span class="p">(</span>
+        <span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint_every</span><span class="p">,</span> <span class="n">epochs</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">epochs</span>
+    <span class="p">)</span>
+    <span class="n">checkpoint_boundaries</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">_checkpoint_update_boundaries</span><span class="p">(</span>
+            <span class="n">resolved_checkpoint_every</span><span class="p">,</span>
+            <span class="n">batches_per_epoch</span><span class="o">=</span><span class="n">batches_per_epoch</span><span class="p">,</span>
+            <span class="n">total_updates</span><span class="o">=</span><span class="n">total_updates</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">checkpoint_enabled</span>
+        <span class="k">else</span> <span class="nb">frozenset</span><span class="p">()</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">checkpoint_enabled</span> <span class="ow">and</span> <span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint_every</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">"checkpoint_every is null; using sensible automatic default "</span>
+            <span class="s2">"every=</span><span class="si">%d</span><span class="s2"> epochs (</span><span class="si">%d</span><span class="s2"> checkpoints including final)"</span><span class="p">,</span>
+            <span class="n">resolved_checkpoint_every</span><span class="p">,</span>
+            <span class="nb">len</span><span class="p">(</span><span class="n">checkpoint_boundaries</span><span class="p">),</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">policy</span><span class="o">.</span><span class="n">select_by</span> <span class="o">==</span> <span class="s2">"epoch_mean_loss"</span> <span class="ow">and</span> <span class="nb">any</span><span class="p">(</span>
+        <span class="n">step</span> <span class="o">%</span> <span class="n">batches_per_epoch</span> <span class="k">for</span> <span class="n">step</span> <span class="ow">in</span> <span class="n">checkpoint_boundaries</span>
+    <span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"checkpoint.select_by=epoch_mean_loss requires checkpoint boundaries "</span>
+            <span class="s2">"at epoch ends; change checkpoint.every"</span>
+        <span class="p">)</span>
+    <span class="n">checkpoint_writer</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">CheckpointWriter</span><span class="p">(</span>
+            <span class="n">Path</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint_dir</span><span class="p">),</span>
+            <span class="n">prepared_src</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">prepared_path</span> <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">bundle_prepared</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">keep_best</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint_keep_best</span><span class="p">,</span>
+            <span class="n">select_by</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint_select_by</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint_dir</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="k">else</span> <span class="kc">None</span>
     <span class="p">)</span>
     <span class="n">selected_process_indices</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
         <span class="p">[</span><span class="n">store</span><span class="o">.</span><span class="n">process_order</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">selected_processes</span><span class="p">],</span>
@@ -2329,52 +2393,10 @@
         <span class="nb">float</span><span class="p">(</span><span class="n">warmup_loss</span><span class="p">),</span>
     <span class="p">)</span>
 
-    <span class="n">checkpoint_enabled</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint_dir</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-    <span class="n">resolved_checkpoint_every</span> <span class="o">=</span> <span class="n">_resolve_checkpoint_every</span><span class="p">(</span>
-        <span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint_every</span><span class="p">,</span> <span class="n">epochs</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">epochs</span>
-    <span class="p">)</span>
-    <span class="n">checkpoint_boundaries</span> <span class="o">=</span> <span class="p">(</span>
-        <span class="n">_checkpoint_update_boundaries</span><span class="p">(</span>
-            <span class="n">resolved_checkpoint_every</span><span class="p">,</span>
-            <span class="n">batches_per_epoch</span><span class="o">=</span><span class="n">batches_per_epoch</span><span class="p">,</span>
-            <span class="n">total_updates</span><span class="o">=</span><span class="n">total_updates</span><span class="p">,</span>
-        <span class="p">)</span>
-        <span class="k">if</span> <span class="n">checkpoint_enabled</span>
-        <span class="k">else</span> <span class="nb">frozenset</span><span class="p">()</span>
-    <span class="p">)</span>
-    <span class="k">if</span> <span class="n">checkpoint_enabled</span> <span class="ow">and</span> <span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint_every</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-            <span class="s2">"checkpoint_every is null; using sensible automatic default "</span>
-            <span class="s2">"every=</span><span class="si">%d</span><span class="s2"> epochs (</span><span class="si">%d</span><span class="s2"> checkpoints including final)"</span><span class="p">,</span>
-            <span class="n">resolved_checkpoint_every</span><span class="p">,</span>
-            <span class="nb">len</span><span class="p">(</span><span class="n">checkpoint_boundaries</span><span class="p">),</span>
-        <span class="p">)</span>
-    <span class="n">checkpoint_writer</span> <span class="o">=</span> <span class="p">(</span>
-        <span class="n">CheckpointWriter</span><span class="p">(</span>
-            <span class="n">Path</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint_dir</span><span class="p">),</span>
-            <span class="n">prepared_src</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">prepared_path</span> <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">bundle_prepared</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="p">)</span>
-        <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint_dir</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-        <span class="k">else</span> <span class="kc">None</span>
-    <span class="p">)</span>
     <span class="c1"># The train/holdout loss series the final curve needs are already accumulated</span>
     <span class="c1"># by ``RunLogger`` (see ``finalize()`` below); only the per-target holdout</span>
     <span class="c1"># breakdown is tracked here, because it is a result field rather than history.</span>
     <span class="n">holdout_per_target_so_far</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="o">...</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
-
-    <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">holdout_processes</span><span class="p">:</span>
-        <span class="n">unknown</span> <span class="o">=</span> <span class="p">[</span><span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">cfg</span><span class="o">.</span><span class="n">holdout_processes</span> <span class="k">if</span> <span class="n">n</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">store</span><span class="o">.</span><span class="n">process_order</span><span class="p">]</span>
-        <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="sa">f</span><span class="s2">"holdout_processes contains unknown names: </span><span class="si">{</span><span class="n">unknown</span><span class="si">}</span><span class="s2">; "</span>
-                <span class="sa">f</span><span class="s2">"available=</span><span class="si">{</span><span class="nb">tuple</span><span class="p">(</span><span class="n">store</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
-            <span class="p">)</span>
-        <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">holdout_prediction_processes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">set</span><span class="p">(</span>
-            <span class="n">cfg</span><span class="o">.</span><span class="n">holdout_prediction_processes</span>
-        <span class="p">)</span><span class="o">.</span><span class="n">issubset</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">holdout_processes</span><span class="p">)):</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="s2">"holdout_prediction_processes must be a subset of holdout_processes"</span>
-            <span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_evaluate_holdout</span><span class="p">(</span><span class="n">step</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">cfg</span><span class="o">.</span><span class="n">holdout_processes</span><span class="p">:</span>
@@ -2563,6 +2585,15 @@
                     <span class="n">mean_loss</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">loss</span><span class="p">),</span>
                     <span class="n">holdout_loss</span><span class="o">=</span><span class="n">holdout_loss</span><span class="p">,</span>
                     <span class="n">holdout_predictions</span><span class="o">=</span><span class="n">holdout_predictions</span><span class="p">,</span>
+                    <span class="n">score</span><span class="o">=</span><span class="p">(</span>
+                        <span class="p">{</span>
+                            <span class="s2">"holdout_loss"</span><span class="p">:</span> <span class="n">holdout_loss</span><span class="p">,</span>
+                            <span class="s2">"train_loss"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">loss</span><span class="p">),</span>
+                            <span class="s2">"epoch_mean_loss"</span><span class="p">:</span> <span class="n">epoch_mean_loss</span><span class="p">,</span>
+                        <span class="p">}[</span><span class="n">policy</span><span class="o">.</span><span class="n">select_by</span><span class="p">]</span>
+                        <span class="k">if</span> <span class="n">policy</span><span class="o">.</span><span class="n">select_by</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                        <span class="k">else</span> <span class="kc">None</span>
+                    <span class="p">),</span>
                 <span class="p">)</span>
                 <span class="n">_write_training_plots</span><span class="p">(</span>
                     <span class="n">history</span><span class="o">=</span><span class="n">run_log</span><span class="o">.</span><span class="n">snapshot</span><span class="p">(),</span>
@@ -2790,13 +2821,21 @@
     <span class="n">print_rhs_ode</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
     <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
 
-    <span class="n">selected_processes</span> <span class="o">=</span> <span class="n">_ensure_process_names</span><span class="p">(</span><span class="n">store</span><span class="p">,</span> <span class="n">cfg</span><span class="o">.</span><span class="n">process_names</span><span class="p">)</span>
+    <span class="n">producer_data</span> <span class="o">=</span> <span class="n">ProducerCollectionData</span><span class="o">.</span><span class="n">from_collection</span><span class="p">(</span><span class="n">store</span><span class="p">,</span> <span class="n">collection</span><span class="p">)</span>
+    <span class="n">requested</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">process_names</span>
+    <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">holdout_processes</span><span class="p">:</span>
+        <span class="n">requested</span> <span class="o">=</span> <span class="n">training_selection_excluding_holdout</span><span class="p">(</span>
+            <span class="nb">tuple</span><span class="p">(</span><span class="n">store</span><span class="o">.</span><span class="n">process_order</span><span class="p">),</span>
+            <span class="n">producer_data</span><span class="o">.</span><span class="n">augmentation_parents</span><span class="p">,</span>
+            <span class="n">requested</span><span class="p">,</span>
+            <span class="n">cfg</span><span class="o">.</span><span class="n">holdout_processes</span><span class="p">,</span>
+        <span class="p">)</span>
+    <span class="n">selected_processes</span> <span class="o">=</span> <span class="n">_ensure_process_names</span><span class="p">(</span><span class="n">store</span><span class="p">,</span> <span class="n">requested</span><span class="p">)</span>
     <span class="n">train_cfg</span> <span class="o">=</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
         <span class="n">cfg</span><span class="p">,</span>
         <span class="n">process_names</span><span class="o">=</span><span class="n">selected_processes</span><span class="p">,</span>
         <span class="n">target_variable_order</span><span class="o">=</span><span class="n">effective_target_order</span><span class="p">,</span>
     <span class="p">)</span>
-    <span class="n">producer_data</span> <span class="o">=</span> <span class="n">ProducerCollectionData</span><span class="o">.</span><span class="n">from_collection</span><span class="p">(</span><span class="n">store</span><span class="p">,</span> <span class="n">collection</span><span class="p">)</span>
     <span class="n">scale_data</span> <span class="o">=</span> <span class="n">producer_data</span><span class="o">.</span><span class="n">select_training_parents</span><span class="p">(</span><span class="n">collection</span><span class="p">,</span> <span class="n">selected_processes</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_prepare_training_from_selected_parents</span><span class="p">(</span>
         <span class="n">store</span><span class="o">=</span><span class="n">store</span><span class="p">,</span>
@@ -2878,6 +2917,9 @@
         <span class="n">metrics_csv</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">run_dir</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"metrics.csv"</span><span class="p">),</span>
         <span class="n">checkpoint_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="n">run_dir</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"checkpoints"</span><span class="p">,</span>
         <span class="n">checkpoint_every</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint</span><span class="o">.</span><span class="n">every</span><span class="p">,</span>
+        <span class="n">checkpoint_keep_best</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint</span><span class="o">.</span><span class="n">keep_best</span><span class="p">,</span>
+        <span class="n">checkpoint_select_by</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint</span><span class="o">.</span><span class="n">select_by</span><span class="p">,</span>
+        <span class="n">holdout_processes</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">holdout_processes</span><span class="p">,</span>
         <span class="n">prepared_path</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">prepared</span> <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">bundle_prepared</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">checkpoint</span><span class="o">.</span><span class="n">bundle_prepared</span><span class="p">,</span>
         <span class="n">allow_stateful_models</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">allow_stateful_models</span><span class="p">,</span>

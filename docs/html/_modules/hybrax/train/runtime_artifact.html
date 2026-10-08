@@ -399,7 +399,8 @@
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.training_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">TrainingDataStore</span>
 
-<span class="n">FORMAT_VERSION</span> <span class="o">=</span> <span class="mi">4</span>
+<span class="n">FORMAT_VERSION</span> <span class="o">=</span> <span class="mi">5</span>
+<span class="n">_FLOW_SIGN_VALIDATION_VERSION</span> <span class="o">=</span> <span class="mi">1</span>
 <span class="n">_CONTROL_ARRAYS</span> <span class="o">=</span> <span class="p">(</span>
     <span class="s2">"spline_breaks"</span><span class="p">,</span>
     <span class="s2">"spline_coeffs"</span><span class="p">,</span>
@@ -528,6 +529,26 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">_file_digest</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
     <span class="k">with</span> <span class="n">path</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">"rb"</span><span class="p">)</span> <span class="k">as</span> <span class="n">file</span><span class="p">:</span>
         <span class="k">return</span> <span class="s2">"sha256:"</span> <span class="o">+</span> <span class="n">hashlib</span><span class="o">.</span><span class="n">file_digest</span><span class="p">(</span><span class="n">file</span><span class="p">,</span> <span class="s2">"sha256"</span><span class="p">)</span><span class="o">.</span><span class="n">hexdigest</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_flow_sign_validation_record</span><span class="p">(</span><span class="n">manifest</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Record that the writer ran the flow-sign check on the manifest's content.</span>
+
+<span class="sd">    Loaders skip the check only when the stored record equals a freshly computed</span>
+<span class="sd">    one. The content hash makes the record go stale when a tool rewrites arrays</span>
+<span class="sd">    and recomputes the manifest identity without re-running producer checks.</span>
+<span class="sd">    It is not authentication: anyone can recompute it. Bump the version when the</span>
+<span class="sd">    check changes so older artifacts are checked again.</span>
+<span class="sd">    """</span>
+    <span class="n">content</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">key</span><span class="p">:</span> <span class="n">value</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">manifest</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"identity"</span><span class="p">,</span> <span class="s2">"flow_sign_validation"</span><span class="p">}</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">"version"</span><span class="p">:</span> <span class="n">_FLOW_SIGN_VALIDATION_VERSION</span><span class="p">,</span>
+        <span class="s2">"identity"</span><span class="p">:</span> <span class="n">_digest</span><span class="p">(</span><span class="n">_canonical_json</span><span class="p">(</span><span class="n">content</span><span class="p">)),</span>
+    <span class="p">}</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_json_value</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
@@ -845,6 +866,7 @@
             <span class="s2">"training_parent_collection"</span><span class="p">:</span> <span class="n">parent_collection_record</span><span class="p">,</span>
             <span class="s2">"folds"</span><span class="p">:</span> <span class="n">fold_records</span><span class="p">,</span>
         <span class="p">}</span>
+        <span class="n">manifest</span><span class="p">[</span><span class="s2">"flow_sign_validation"</span><span class="p">]</span> <span class="o">=</span> <span class="n">_flow_sign_validation_record</span><span class="p">(</span><span class="n">manifest</span><span class="p">)</span>
         <span class="n">manifest</span><span class="p">[</span><span class="s2">"identity"</span><span class="p">]</span> <span class="o">=</span> <span class="n">_digest</span><span class="p">(</span><span class="n">_canonical_json</span><span class="p">(</span><span class="n">manifest</span><span class="p">))</span>
         <span class="p">(</span><span class="n">temporary</span> <span class="o">/</span> <span class="s2">"manifest.json"</span><span class="p">)</span><span class="o">.</span><span class="n">write_bytes</span><span class="p">(</span><span class="n">_canonical_json</span><span class="p">(</span><span class="n">manifest</span><span class="p">))</span>
         <span class="n">_publish_directory</span><span class="p">(</span><span class="n">temporary</span><span class="p">,</span> <span class="n">path</span><span class="p">)</span>
@@ -866,6 +888,7 @@
         <span class="s2">"arrays"</span><span class="p">,</span>
         <span class="s2">"training_parent_collection"</span><span class="p">,</span>
         <span class="s2">"folds"</span><span class="p">,</span>
+        <span class="s2">"flow_sign_validation"</span><span class="p">,</span>
         <span class="s2">"identity"</span><span class="p">,</span>
     <span class="p">}:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"invalid runtime artifact manifest schema"</span><span class="p">)</span>
@@ -1447,6 +1470,8 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">_validate_semantic_arrays</span><span class="p">(</span>
     <span class="n">base</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
     <span class="n">arrays</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">validate_flow_signs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
     <span class="n">descriptor</span> <span class="o">=</span> <span class="n">_rhs_names_from_payload</span><span class="p">(</span><span class="n">base</span><span class="p">[</span><span class="s2">"rhs"</span><span class="p">])</span>
     <span class="n">store</span> <span class="o">=</span> <span class="n">base</span><span class="p">[</span><span class="s2">"store"</span><span class="p">]</span>
@@ -1697,12 +1722,13 @@
         <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">y0</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">y0_outflow_slice</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
     <span class="p">):</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"runtime measurements contain sign-invalid flows"</span><span class="p">)</span>
-    <span class="n">_validate_flow_control_signs</span><span class="p">(</span>
-        <span class="n">controls</span><span class="p">,</span>
-        <span class="n">arrays</span><span class="p">,</span>
-        <span class="n">n_inflows</span><span class="o">=</span><span class="n">n_controlled_inflow</span><span class="p">,</span>
-        <span class="n">n_outflows</span><span class="o">=</span><span class="n">n_controlled_outflow</span><span class="p">,</span>
-    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">validate_flow_signs</span><span class="p">:</span>
+        <span class="n">_validate_flow_control_signs</span><span class="p">(</span>
+            <span class="n">controls</span><span class="p">,</span>
+            <span class="n">arrays</span><span class="p">,</span>
+            <span class="n">n_inflows</span><span class="o">=</span><span class="n">n_controlled_inflow</span><span class="p">,</span>
+            <span class="n">n_outflows</span><span class="o">=</span><span class="n">n_controlled_outflow</span><span class="p">,</span>
+        <span class="p">)</span>
     <span class="n">mask_measured</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">arrays</span><span class="p">[</span><span class="s2">"shared.store.mask_measured"</span><span class="p">])</span>
     <span class="k">for</span> <span class="n">row</span><span class="p">,</span> <span class="n">length</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">n_measured</span><span class="p">):</span>
         <span class="n">active_times</span> <span class="o">=</span> <span class="n">measured_times</span><span class="p">[</span><span class="n">row</span><span class="p">,</span> <span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">length</span><span class="p">)]</span>
@@ -1772,7 +1798,13 @@
 <div class="viewcode-block" id="load_runtime_artifact">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/runtime_artifact/index.html#hybrax.train.runtime_artifact.load_runtime_artifact">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">load_runtime_artifact</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">fold_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RuntimeArtifact</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Load one fold; unselected fold scale files are never opened or checksummed."""</span>
+<span class="w">    </span><span class="sd">"""Load one fold, verifying checksums before reusing producer validation.</span>
+
+<span class="sd">    The flow-sign check is skipped when the manifest records that the writer</span>
+<span class="sd">    ran the current version of it on the current content. An outdated or stale</span>
+<span class="sd">    record requires a fresh check. Unselected fold scale files are never opened</span>
+<span class="sd">    or checksummed.</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">fold_id</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="nb">int</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"fold_id must be an integer"</span><span class="p">)</span>
     <span class="n">root</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
@@ -1839,7 +1871,13 @@
     <span class="p">}</span> <span class="o">|</span> <span class="n">selected_scale_keys</span>
     <span class="n">arrays</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">_read_array</span><span class="p">(</span><span class="n">root</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">records</span><span class="p">[</span><span class="n">name</span><span class="p">])</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">required</span><span class="p">}</span>
     <span class="n">_validate_control_partition</span><span class="p">(</span><span class="n">full_parent_collection</span><span class="p">,</span> <span class="n">base</span><span class="p">[</span><span class="s2">"controls"</span><span class="p">])</span>
-    <span class="n">_validate_semantic_arrays</span><span class="p">(</span><span class="n">base</span><span class="p">,</span> <span class="n">arrays</span><span class="p">)</span>
+    <span class="n">_validate_semantic_arrays</span><span class="p">(</span>
+        <span class="n">base</span><span class="p">,</span>
+        <span class="n">arrays</span><span class="p">,</span>
+        <span class="n">validate_flow_signs</span><span class="o">=</span><span class="p">(</span>
+            <span class="n">manifest</span><span class="p">[</span><span class="s2">"flow_sign_validation"</span><span class="p">]</span> <span class="o">!=</span> <span class="n">_flow_sign_validation_record</span><span class="p">(</span><span class="n">manifest</span><span class="p">)</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
     <span class="n">rhs_names</span> <span class="o">=</span> <span class="n">_rhs_names_from_payload</span><span class="p">(</span><span class="n">base</span><span class="p">[</span><span class="s2">"rhs"</span><span class="p">])</span>
     <span class="n">_validate_process_matrices</span><span class="p">(</span>
         <span class="p">{</span>

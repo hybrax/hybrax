@@ -437,6 +437,9 @@ stays safe; the caller must still mask them out via <code class="docutils litera
 <li><p><code class="docutils literal notranslate"><span class="pre">return_fail_time=False</span></code> (forward/export) returns <code class="docutils literal notranslate"><span class="pre">states</span></code> with those rows set
 to <code class="docutils literal notranslate"><span class="pre">inf</span></code>, so a failed forward is detectable and never reads back a stale value.</p></li>
 </ul>
+<p>Reactor-volume depletion is a fatal error, not a solver failure represented by
+<code class="docutils literal notranslate"><span class="pre">fail_time</span></code>. That guarantee requires Equinox runtime errors to remain enabled;
+setting <code class="docutils literal notranslate"><span class="pre">EQX_ON_ERROR=off</span></code> deliberately disables it.</p>
 <p><code class="docutils literal notranslate"><span class="pre">max_steps</span></code> (from <code class="docutils literal notranslate"><span class="pre">--solver-max-steps</span></code>) is the <strong>budget for the whole
 solve</strong>: it
 bounds each segment’s inner solve and the running sum across segments, so exceeding

@@ -1154,6 +1154,10 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_fold_harness_config</span><span class="p">(</span><span class="n">effective_cfg</span><span class="p">:</span> <span class="n">RunConfig</span><span class="p">,</span> <span class="n">fold</span><span class="p">:</span> <span class="n">Fold</span><span class="p">,</span> <span class="n">fold_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">effective_cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">holdout_processes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"train.holdout_processes is train-only; LOO folds define holdouts"</span>
+        <span class="p">)</span>
     <span class="k">return</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
         <span class="n">train_harness_config_from_run_config</span><span class="p">(</span><span class="n">effective_cfg</span><span class="p">,</span> <span class="n">run_dir</span><span class="o">=</span><span class="n">fold_dir</span><span class="p">),</span>
         <span class="n">holdout_processes</span><span class="o">=</span><span class="n">fold</span><span class="o">.</span><span class="n">test</span><span class="p">,</span>

@@ -147,6 +147,14 @@ Module Contents
    ``bundle_prepared`` (default ``True``) includes prepared data so every
    checkpoint is self-contained; disable it to reduce repeated disk use.
 
+   ``keep_best=None`` keeps all checkpoints. Zero keeps latest only and
+   requires ``select_by`` to be omitted. Positive N keeps best N plus latest,
+   ranked by ``select_by``: holdout loss, last-batch training loss, or epoch
+   mean training loss. Epoch mean requires boundaries at epoch ends. Lower
+   wins; ties keep older checkpoints; nonfinite scores cannot enter best N.
+   ``retention.json`` lists best checkpoints. Retention requires a fresh
+   checkpoint directory and does not reduce checkpoint write frequency.
+
    Checkpointing re-exports predictions and re-writes the bundled data, so
    on a fast run it can dominate the wall clock — set it coarse enough
    that it is not the bottleneck.
@@ -160,6 +168,18 @@ Module Contents
 
    .. py:attribute:: every
       :type:  float | None
+      :value: None
+
+
+
+   .. py:attribute:: keep_best
+      :type:  int | None
+      :value: None
+
+
+
+   .. py:attribute:: select_by
+      :type:  Literal['holdout_loss', 'train_loss', 'epoch_mean_loss'] | None
       :value: None
 
 
@@ -720,6 +740,11 @@ Module Contents
    it starts without it, because a latent state changes what the model
    *is*, not just its size.
 
+   ``holdout_processes`` is for ordinary train runs. These processes use the
+   training loss module at checkpoint boundaries. Default training excludes
+   their parent groups; explicit overlapping training selections raise.
+   LOO defines holdouts through folds and rejects this setting.
+
 
    .. py:attribute:: allow_stateful_models
       :type:  bool
@@ -753,6 +778,12 @@ Module Contents
 
    .. py:attribute:: grad_clip_norm
       :type:  float
+      :value: None
+
+
+
+   .. py:attribute:: holdout_processes
+      :type:  tuple[str, ...] | None
       :value: None
 
 

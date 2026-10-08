@@ -460,6 +460,40 @@
 
 
 
+<div class="viewcode-block" id="training_selection_excluding_holdout">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.training_selection_excluding_holdout">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">training_selection_excluding_holdout</span><span class="p">(</span>
+    <span class="n">process_order</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">augmentation_parents</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">requested</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">holdout</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Exclude whole holdout parent groups before scaling or training.</span>
+
+<span class="sd">    An explicit training selection may not overlap a held-out parent or any</span>
+<span class="sd">    of its children. With no selection, train on all remaining groups.</span>
+<span class="sd">    """</span>
+    <span class="n">parent_of</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">name</span><span class="p">:</span> <span class="n">parent</span> <span class="ow">or</span> <span class="n">name</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">parent</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">process_order</span><span class="p">,</span> <span class="n">augmentation_parents</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="p">}</span>
+    <span class="n">holdout_parents</span> <span class="o">=</span> <span class="p">{</span><span class="n">parent_of</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">holdout</span><span class="p">}</span>
+    <span class="n">excluded</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">process_order</span> <span class="k">if</span> <span class="n">parent_of</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="ow">in</span> <span class="n">holdout_parents</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">requested</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">process_order</span> <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">excluded</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">overlap</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">requested</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">excluded</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">overlap</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"training overlaps holdout augmentation groups: </span><span class="si">{</span><span class="n">overlap</span><span class="si">}</span><span class="s2">"</span>
+            <span class="p">)</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="n">requested</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">selected</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"training selection contains no processes outside holdout"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">selected</span></div>
+
+
+
 <div class="viewcode-block" id="canonical_training_parents">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.canonical_training_parents">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">canonical_training_parents</span><span class="p">(</span>

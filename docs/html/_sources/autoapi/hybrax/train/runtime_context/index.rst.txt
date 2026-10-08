@@ -38,6 +38,7 @@ Functions
    hybrax.train.runtime_context.original_parent_processes
    hybrax.train.runtime_context.rhs_ode_from_training_parents
    hybrax.train.runtime_context.select_parent_collection
+   hybrax.train.runtime_context.training_selection_excluding_holdout
 
 
 Module Contents
@@ -271,6 +272,14 @@ Module Contents
 .. py:function:: select_parent_collection(collection, parent_names)
 
    Copy a collection and retain the requested parents in canonical order.
+
+
+.. py:function:: training_selection_excluding_holdout(process_order, augmentation_parents, requested, holdout)
+
+   Exclude whole holdout parent groups before scaling or training.
+
+   An explicit training selection may not overlap a held-out parent or any
+   of its children. With no selection, train on all remaining groups.
 
 
 .. py:data:: RawTrace

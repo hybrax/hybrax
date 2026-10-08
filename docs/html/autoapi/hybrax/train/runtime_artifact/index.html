@@ -414,7 +414,7 @@
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.runtime_artifact.load_runtime_artifact" title="hybrax.train.runtime_artifact.load_runtime_artifact"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_runtime_artifact</span></code></a>(path, *, fold_id)</p></td>
-<td><p>Load one fold; unselected fold scale files are never opened or checksummed.</p></td>
+<td><p>Load one fold, verifying checksums before reusing producer validation.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.runtime_artifact.read_runtime_artifact_metadata" title="hybrax.train.runtime_artifact.read_runtime_artifact_metadata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">read_runtime_artifact_metadata</span></code></a>(path)</p></td>
 <td><p>Validate artifact declarations without opening any numeric array file.</p></td>
@@ -587,7 +587,11 @@ the filtered collection’s own keys.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="hybrax.train.runtime_artifact.load_runtime_artifact">
 <span class="sig-prename descclassname"><span class="pre">hybrax.train.runtime_artifact.</span></span><span class="sig-name descname"><span class="pre">load_runtime_artifact</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_id</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/runtime_artifact.html#load_runtime_artifact"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.runtime_artifact.load_runtime_artifact" title="Link to this definition">¶</a></dt>
-<dd><p>Load one fold; unselected fold scale files are never opened or checksummed.</p>
+<dd><p>Load one fold, verifying checksums before reusing producer validation.</p>
+<p>The flow-sign check is skipped when the manifest records that the writer
+ran the current version of it on the current content. An outdated or stale
+record requires a fresh check. Unselected fold scale files are never opened
+or checksummed.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -639,7 +643,7 @@ the filtered collection’s own keys.</p>
 
 <dl class="py data">
 <dt class="sig sig-object py" id="hybrax.train.runtime_artifact.FORMAT_VERSION">
-<span class="sig-prename descclassname"><span class="pre">hybrax.train.runtime_artifact.</span></span><span class="sig-name descname"><span class="pre">FORMAT_VERSION</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">4</span></span><a class="headerlink" href="#hybrax.train.runtime_artifact.FORMAT_VERSION" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.runtime_artifact.</span></span><span class="sig-name descname"><span class="pre">FORMAT_VERSION</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">5</span></span><a class="headerlink" href="#hybrax.train.runtime_artifact.FORMAT_VERSION" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </section>

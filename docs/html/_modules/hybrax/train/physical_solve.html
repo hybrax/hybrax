@@ -404,7 +404,9 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.train.diffrax_callbacks</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">CallbackSet</span><span class="p">,</span>
     <span class="n">PresetTimeCallback</span><span class="p">,</span>
+    <span class="n">StopConditionCallback</span><span class="p">,</span>
     <span class="n">diffeqsolve_with_callbacks</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.wrapper</span><span class="w"> </span><span class="kn">import</span> <span class="n">HybridOdeWrapper</span>
@@ -512,6 +514,10 @@
 <span class="sd">      stays safe; the caller must still mask them out via ``fail_time``.</span>
 <span class="sd">    - ``return_fail_time=False`` (forward/export) returns ``states`` with those rows set</span>
 <span class="sd">      to ``inf``, so a failed forward is detectable and never reads back a stale value.</span>
+
+<span class="sd">    Reactor-volume depletion is a fatal error, not a solver failure represented by</span>
+<span class="sd">    ``fail_time``. That guarantee requires Equinox runtime errors to remain enabled;</span>
+<span class="sd">    setting ``EQX_ON_ERROR=off`` deliberately disables it.</span>
 
 <span class="sd">    ``max_steps`` (from ``--solver-max-steps``) is the **budget for the whole</span>
 <span class="sd">    solve**: it</span>
@@ -632,7 +638,6 @@
     <span class="c1"># are handled by ``affect_fn`` below, NOT here.</span>
     <span class="n">jump_ts_arg</span> <span class="o">=</span> <span class="n">jump_ts</span> <span class="k">if</span> <span class="n">jump_ts</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">jump_ts</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="kc">None</span>
 
-    <span class="n">cb</span> <span class="o">=</span> <span class="n">PresetTimeCallback</span><span class="p">(</span><span class="n">times</span><span class="o">=</span><span class="n">preset_times</span><span class="p">,</span> <span class="n">affect_fn</span><span class="o">=</span><span class="n">affect_fn</span><span class="p">)</span>
     <span class="n">y0</span> <span class="o">=</span> <span class="n">wrapper</span><span class="o">.</span><span class="n">initial_physical_state_from_raw</span><span class="p">(</span><span class="n">RAW_y0</span><span class="p">)</span>
     <span class="n">V_index</span> <span class="o">=</span> <span class="n">n_RMCs</span> <span class="o">+</span> <span class="n">n_PVs</span>
     <span class="n">y0</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">error_if</span><span class="p">(</span>
@@ -649,6 +654,16 @@
     <span class="c1"># subtracted here — the value ``/`` path would subtract it).</span>
     <span class="n">term</span> <span class="o">=</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">ODETerm</span><span class="p">(</span>
         <span class="k">lambda</span> <span class="n">t</span><span class="p">,</span> <span class="n">yy</span><span class="p">,</span> <span class="n">a</span><span class="p">:</span> <span class="n">SCALE</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span><span class="n">wrapper</span><span class="o">.</span><span class="n">physical_rhs</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">yy</span> <span class="o">*</span> <span class="n">SCALE</span><span class="p">))</span>
+    <span class="p">)</span>
+
+    <span class="c1"># A stop condition checks the initial state and accepted solver steps, but not</span>
+    <span class="c1"># rejected trial stages. No root finder is needed because depletion is an error.</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">volume_depleted</span><span class="p">(</span><span class="n">y_scl</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">args</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">SCALE</span><span class="p">[</span><span class="n">V_index</span><span class="p">]</span><span class="o">.</span><span class="n">unscale_value</span><span class="p">(</span><span class="n">y_scl</span><span class="p">[</span><span class="n">V_index</span><span class="p">])</span> <span class="o">&lt;=</span> <span class="n">min_V</span>
+
+    <span class="n">callbacks</span> <span class="o">=</span> <span class="n">CallbackSet</span><span class="p">(</span>
+        <span class="n">PresetTimeCallback</span><span class="p">(</span><span class="n">times</span><span class="o">=</span><span class="n">preset_times</span><span class="p">,</span> <span class="n">affect_fn</span><span class="o">=</span><span class="n">affect_fn</span><span class="p">),</span>
+        <span class="n">StopConditionCallback</span><span class="p">(</span><span class="n">condition_fn</span><span class="o">=</span><span class="n">volume_depleted</span><span class="p">),</span>
     <span class="p">)</span>
 
     <span class="c1"># ``dt0`` must be strictly positive. For a degenerate window (``t1 == t0``: a single</span>
@@ -668,7 +683,7 @@
         <span class="n">t1</span><span class="o">=</span><span class="n">t1</span><span class="p">,</span>
         <span class="n">dt0</span><span class="o">=</span><span class="n">dt0</span><span class="p">,</span>
         <span class="n">y0</span><span class="o">=</span><span class="n">y0</span> <span class="o">/</span> <span class="n">SCALE</span><span class="p">,</span>
-        <span class="n">callbacks</span><span class="o">=</span><span class="n">cb</span><span class="p">,</span>
+        <span class="n">callbacks</span><span class="o">=</span><span class="n">callbacks</span><span class="p">,</span>
         <span class="c1"># N jump nodes need N+1 segments: one stop per node plus the final leg to t1.</span>
         <span class="c1"># (With measurement times in the preset set t1 was itself a preset, so the old</span>
         <span class="c1"># ``shape[0]`` already covered the last leg.)</span>
@@ -693,6 +708,11 @@
         <span class="n">sol</span><span class="o">.</span><span class="n">output_states</span><span class="p">,</span>
         <span class="n">sol</span><span class="o">.</span><span class="n">output_overflow</span><span class="p">,</span>
         <span class="s2">"output window too small: a segment owned more output times than it can hold"</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">states</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">error_if</span><span class="p">(</span>
+        <span class="n">states</span><span class="p">,</span>
+        <span class="n">sol</span><span class="o">.</span><span class="n">terminated_by_event</span><span class="p">,</span>
+        <span class="s2">"trajectory reached minimum reactor volume."</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="n">states</span> <span class="o">=</span> <span class="n">states</span> <span class="o">*</span> <span class="n">SCALE</span>  <span class="c1"># scaled -&gt; physical (states are returned unscaled)</span>
     <span class="c1"># Report the POST-sample state at a sample-coincident time: a well-mixed sample</span>
@@ -722,6 +742,21 @@
     <span class="c1"># solve: ``fail_time == inf`` -&gt; no-op.</span>
     <span class="n">fail_time</span> <span class="o">=</span> <span class="n">sol</span><span class="o">.</span><span class="n">fail_time</span>
     <span class="n">post_fail</span> <span class="o">=</span> <span class="o">~</span><span class="n">within_fail_time</span><span class="p">(</span><span class="n">t_eval</span><span class="p">,</span> <span class="n">fail_time</span><span class="p">)</span>
+
+    <span class="c1"># The stop condition above detects depletion independently of the output grid, but</span>
+    <span class="c1"># only localises it to the end of an accepted step. Also reject any requested output</span>
+    <span class="c1"># that is visibly depleted: a boolean event can overshoot the crossing, or miss a</span>
+    <span class="c1"># dip and recovery wholly inside one accepted step, while interpolation can expose</span>
+    <span class="c1"># the invalid rows on the caller's output grid.</span>
+    <span class="n">V_reported</span> <span class="o">=</span> <span class="n">states</span><span class="p">[:,</span> <span class="n">V_index</span><span class="p">]</span>
+    <span class="n">depleted</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">meas_active</span> <span class="o">&amp;</span> <span class="o">~</span><span class="n">post_fail</span> <span class="o">&amp;</span> <span class="n">jnp</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">V_reported</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">V_reported</span> <span class="o">&lt;=</span> <span class="n">min_V</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">states</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">error_if</span><span class="p">(</span>
+        <span class="n">states</span><span class="p">,</span>
+        <span class="n">jnp</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">depleted</span><span class="p">),</span>
+        <span class="s2">"trajectory reached minimum reactor volume at a requested output."</span><span class="p">,</span>
+    <span class="p">)</span>
     <span class="k">if</span> <span class="n">return_fail_time</span><span class="p">:</span>
         <span class="c1"># LOSS-FACING path: replace post-failure rows with a finite ``y0`` placeholder</span>
         <span class="c1"># so the ``penalty(state) * mask`` idiom stays safe (an inf left in makes</span>

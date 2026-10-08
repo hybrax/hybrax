@@ -375,6 +375,21 @@
           <section id="module-hybrax.train.checkpointing">
 <span id="hybrax-train-checkpointing"></span><h1>hybrax.train.checkpointing<a class="headerlink" href="#module-hybrax.train.checkpointing" title="Link to this heading">¶</a></h1>
 <p>Self-contained training checkpoint writer.</p>
+<section id="attributes">
+<h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading">¶</a></h2>
+<div class="table-wrapper autosummary longtable docutils container">
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.checkpointing.STEP_DIR_PREFIX" title="hybrax.train.checkpointing.STEP_DIR_PREFIX"><code class="xref py py-obj docutils literal notranslate"><span class="pre">STEP_DIR_PREFIX</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.checkpointing.logger" title="hybrax.train.checkpointing.logger"><code class="xref py py-obj docutils literal notranslate"><span class="pre">logger</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
 <section id="classes">
 <h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
@@ -391,7 +406,7 @@
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
 <dl class="py class">
 <dt class="sig sig-object py" id="hybrax.train.checkpointing.CheckpointWriter">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.checkpointing.</span></span><span class="sig-name descname"><span class="pre">CheckpointWriter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">checkpoints_dir</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_src</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/checkpointing.html#CheckpointWriter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.checkpointing.CheckpointWriter" title="Link to this definition">¶</a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.checkpointing.</span></span><span class="sig-name descname"><span class="pre">CheckpointWriter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">checkpoints_dir</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">prepared_src</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_best</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">select_by</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/checkpointing.html#CheckpointWriter"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.checkpointing.CheckpointWriter" title="Link to this definition">¶</a></dt>
 <dd><p>Writes self-contained <code class="docutils literal notranslate"><span class="pre">checkpoints/step_NNNNN/</span></code> directories and
 updates <code class="docutils literal notranslate"><span class="pre">latest</span></code>.</p>
 <p>Each checkpoint bundles everything needed to resume or reload the run:
@@ -402,13 +417,35 @@ available) the run’s <code class="docutils literal notranslate"><span class="p
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>checkpoints_dir</strong> (<em>pathlib.Path</em>)</p></li>
 <li><p><strong>prepared_src</strong> (<em>pathlib.Path</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>keep_best</strong> (<em>int</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>select_by</strong> (<em>str</em><em> | </em><em>None</em>)</p></li>
 </ul>
 </dd>
 </dl>
 <dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.checkpointing.CheckpointWriter.check_retention_directory">
+<span class="property"><span class="k"><span class="pre">static</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">check_retention_directory</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_best</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/checkpointing.html#CheckpointWriter.check_retention_directory"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.checkpointing.CheckpointWriter.check_retention_directory" title="Link to this definition">¶</a></dt>
+<dd><p>Refuse old checkpoints rather than mix independent training attempts.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> (<em>pathlib.Path</em>)</p></li>
+<li><p><strong>keep_best</strong> (<em>int</em><em> | </em><em>None</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="hybrax.train.checkpointing.CheckpointWriter.write">
-<span class="sig-name descname"><span class="pre">write</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">step</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">samples_seen</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wrapper</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_state</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean_loss</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">holdout_loss</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">holdout_predictions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/checkpointing.html#CheckpointWriter.write"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.checkpointing.CheckpointWriter.write" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">write</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">step</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">samples_seen</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wrapper</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_state</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean_loss</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">holdout_loss</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">holdout_predictions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">score</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/checkpointing.html#CheckpointWriter.write"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.checkpointing.CheckpointWriter.write" title="Link to this definition">¶</a></dt>
 <dd><p>Write one checkpoint directory and point <code class="docutils literal notranslate"><span class="pre">latest</span></code> at it.</p>
+<p>With retention enabled, update <code class="docutils literal notranslate"><span class="pre">retention.json</span></code> and prune older
+checkpoints after the save and latest update succeed. Keep best N
+plus the new latest, or just latest when <code class="docutils literal notranslate"><span class="pre">keep_best=0</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -423,6 +460,9 @@ checkpoint directory (<code class="docutils literal notranslate"><span class="pr
 when no holdout was evaluated.</p></li>
 <li><p><strong>holdout_predictions</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><a class="reference internal" href="../postprocessing/index.html#hybrax.train.postprocessing.DenseProcessExport" title="hybrax.train.postprocessing.DenseProcessExport"><em>hybrax.train.postprocessing.DenseProcessExport</em></a><em>] </em><em>| </em><em>None</em>) – Measurement-grid holdout predictions to write,
 or <code class="docutils literal notranslate"><span class="pre">None</span></code> to omit the CSV artifact.</p></li>
+<li><p><strong>score</strong> (<em>float</em><em> | </em><em>None</em>) – Selection loss for positive keep_best. Lower is better;
+ties keep older checkpoints. Nonfinite scores retain latest
+but cannot enter the best set.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -435,6 +475,16 @@ or <code class="docutils literal notranslate"><span class="pre">None</span></cod
 </dd></dl>
 
 </dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="hybrax.train.checkpointing.STEP_DIR_PREFIX">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.checkpointing.</span></span><span class="sig-name descname"><span class="pre">STEP_DIR_PREFIX</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'step_'</span></span><a class="headerlink" href="#hybrax.train.checkpointing.STEP_DIR_PREFIX" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="hybrax.train.checkpointing.logger">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.checkpointing.</span></span><span class="sig-name descname"><span class="pre">logger</span></span><a class="headerlink" href="#hybrax.train.checkpointing.logger" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
 
 </section>
 </section>
@@ -495,12 +545,16 @@ or <code class="docutils literal notranslate"><span class="pre">None</span></cod
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">hybrax.train.checkpointing</a><ul>
+<li><a class="reference internal" href="#attributes">Attributes</a></li>
 <li><a class="reference internal" href="#classes">Classes</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li><a class="reference internal" href="#hybrax.train.checkpointing.CheckpointWriter"><code class="docutils literal notranslate"><span class="pre">CheckpointWriter</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.checkpointing.CheckpointWriter.check_retention_directory"><code class="docutils literal notranslate"><span class="pre">CheckpointWriter.check_retention_directory()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.checkpointing.CheckpointWriter.write"><code class="docutils literal notranslate"><span class="pre">CheckpointWriter.write()</span></code></a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#hybrax.train.checkpointing.STEP_DIR_PREFIX"><code class="docutils literal notranslate"><span class="pre">STEP_DIR_PREFIX</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.checkpointing.logger"><code class="docutils literal notranslate"><span class="pre">logger</span></code></a></li>
 </ul>
 </li>
 </ul>

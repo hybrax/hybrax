@@ -405,8 +405,11 @@ directory without it cannot be loaded.</p></li>
 ├── model/
 │   ├── params.eqx       trainable parameters only
 │   └── opt_state.eqx    optimizer state, for resuming
-└── checkpoints/step_NNNNN/    the same again, plus train_state.json and
-                                  holdout_predictions.csv when holdout data exists
+└── checkpoints/
+    ├── step_NNNNN/      checkpoint params, optimizer, config, custom.py, data,
+    │                   train_state.json, and optional holdout_predictions.csv
+    ├── latest          points to the newest checkpoint (copy if no symlinks)
+    └── retention.json  best checkpoint ranking, when retention is enabled
 </pre></div>
 </div>
 <p>You can copy a run directory to another machine and load it, provided hybrax is
@@ -458,6 +461,12 @@ optimizer’s momentum intact rather than restarting cold. Checkpoint frequency:
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"checkpoint"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"every"</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
+<p>To limit stored checkpoints, set <code class="docutils literal notranslate"><span class="pre">checkpoint.keep_best</span></code>. <code class="docutils literal notranslate"><span class="pre">null</span></code> keeps all,
+<code class="docutils literal notranslate"><span class="pre">0</span></code> keeps latest only without a metric, and positive N keeps best N plus latest
+using <code class="docutils literal notranslate"><span class="pre">checkpoint.select_by</span></code>. See <a class="reference internal" href="train.html#checkpoints-and-retention"><span class="std std-ref">Checkpoints and retention</span></a>
+for score timing, the ranked manifest, and output-directory requirements.
+Default run loading still uses the final model; load a best checkpoint by its
+explicit path from <code class="docutils literal notranslate"><span class="pre">checkpoints/retention.json</span></code>.</p>
 <p>Because each checkpoint is self-contained by default, it re-exports predictions and
 re-writes the bundled data. On a fast run that can dominate the wall clock: set <code class="docutils literal notranslate"><span class="pre">every</span></code>
 coarse enough that checkpointing is not the bottleneck. To omit <code class="docutils literal notranslate"><span class="pre">prepared.json.gz</span></code> from

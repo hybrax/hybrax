@@ -9,6 +9,15 @@ hybrax.train.checkpointing
 
 
 
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.checkpointing.STEP_DIR_PREFIX
+   hybrax.train.checkpointing.logger
+
+
 Classes
 -------
 
@@ -20,7 +29,7 @@ Classes
 Module Contents
 ---------------
 
-.. py:class:: CheckpointWriter(checkpoints_dir, *, prepared_src = None)
+.. py:class:: CheckpointWriter(checkpoints_dir, *, prepared_src = None, keep_best = None, select_by = None)
 
    Writes self-contained ``checkpoints/step_NNNNN/`` directories and
    updates ``latest``.
@@ -30,9 +39,21 @@ Module Contents
    available) the run's ``config.json``/``custom.py``/prepared data.
 
 
-   .. py:method:: write(*, step, samples_seen, wrapper, opt_state, mean_loss, holdout_loss, holdout_predictions = None)
+   .. py:method:: check_retention_directory(path, *, keep_best)
+      :staticmethod:
+
+
+      Refuse old checkpoints rather than mix independent training attempts.
+
+
+
+   .. py:method:: write(*, step, samples_seen, wrapper, opt_state, mean_loss, holdout_loss, holdout_predictions = None, score = None)
 
       Write one checkpoint directory and point ``latest`` at it.
+
+      With retention enabled, update ``retention.json`` and prune older
+      checkpoints after the save and latest update succeed. Keep best N
+      plus the new latest, or just latest when ``keep_best=0``.
 
       :param step: Optimizer step this checkpoint is taken at; names the
                    checkpoint directory (``step_{step:05d}``).
@@ -45,8 +66,17 @@ Module Contents
                            when no holdout was evaluated.
       :param holdout_predictions: Measurement-grid holdout predictions to write,
                                   or ``None`` to omit the CSV artifact.
+      :param score: Selection loss for positive keep_best. Lower is better;
+                    ties keep older checkpoints. Nonfinite scores retain latest
+                    but cannot enter the best set.
 
       :returns: The checkpoint directory that was written.
 
 
+
+.. py:data:: STEP_DIR_PREFIX
+   :value: 'step_'
+
+
+.. py:data:: logger
 

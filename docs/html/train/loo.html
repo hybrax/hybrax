@@ -420,6 +420,10 @@ fold’s output directory and summary row; without it, the directory is derived 
 test process names. <code class="docutils literal notranslate"><span class="pre">train</span></code> (optional) pins the exact training set; omitted, it means
 every process not in <code class="docutils literal notranslate"><span class="pre">test</span></code>. See <a class="reference internal" href="../gallery/loo.html"><span class="std std-doc">Cross-validation, worked</span></a> for a
 full run of this.</p>
+<p>Do not set <code class="docutils literal notranslate"><span class="pre">train.holdout_processes</span></code> in a LOO config: the folds define their own
+holdouts. <a class="reference internal" href="train.html#checkpoints-and-retention"><span class="std std-ref">Checkpoint retention</span></a> applies
+independently to each fold. Selecting a best checkpoint by <code class="docutils literal notranslate"><span class="pre">holdout_loss</span></code> uses
+the fold’s test data; reported LOO results still use the final model.</p>
 </section>
 <section id="what-it-produces">
 <h2>What it produces<a class="headerlink" href="#what-it-produces" title="Link to this heading">¶</a></h2>
@@ -480,9 +484,11 @@ augmentation, use <code class="docutils literal notranslate"><span class="pre">h
 </section>
 <section id="holdout-without-cross-validation">
 <h2>Holdout without cross-validation<a class="headerlink" href="#holdout-without-cross-validation" title="Link to this heading">¶</a></h2>
-<p>For a quick check without N full trainings, the Python API supports a plain holdout
-(<code class="docutils literal notranslate"><span class="pre">holdout_processes</span></code> on <code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig</span></code>). It has no config-file equivalent:
-API-only. <code class="docutils literal notranslate"><span class="pre">losses.csv</span></code> then labels each process <code class="docutils literal notranslate"><span class="pre">train</span></code> or <code class="docutils literal notranslate"><span class="pre">holdout</span></code>.</p>
+<p>For a quick check without N full trainings, set <code class="docutils literal notranslate"><span class="pre">train.holdout_processes</span></code> in a
+<code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">train</span></code> config, or <code class="docutils literal notranslate"><span class="pre">holdout_processes</span></code> on the Python API’s
+<code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig</span></code>. See <a class="reference internal" href="train.html#hold-out-processes-in-ordinary-training"><span class="std std-ref">ordinary training holdouts</span></a>
+for split selection and augmentation-group exclusion. Final <code class="docutils literal notranslate"><span class="pre">losses.csv</span></code> from
+the CLI labels each process <code class="docutils literal notranslate"><span class="pre">train</span></code> or <code class="docutils literal notranslate"><span class="pre">holdout</span></code>.</p>
 </section>
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>

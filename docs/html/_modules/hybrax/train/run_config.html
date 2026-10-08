@@ -504,6 +504,11 @@
 <span class="sd">    for reaction modules with a nonzero latent state: training raises before</span>
 <span class="sd">    it starts without it, because a latent state changes what the model</span>
 <span class="sd">    *is*, not just its size.</span>
+
+<span class="sd">    ``holdout_processes`` is for ordinary train runs. These processes use the</span>
+<span class="sd">    training loss module at checkpoint boundaries. Default training excludes</span>
+<span class="sd">    their parent groups; explicit overlapping training selections raise.</span>
+<span class="sd">    LOO defines holdouts through folds and rejects this setting.</span>
 <span class="sd">    """</span>
 
     <span class="n">epochs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
@@ -515,7 +520,16 @@
     <span class="n">shuffle</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
     <span class="n">batch_seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">devices</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"max"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
-    <span class="n">allow_stateful_models</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span></div>
+    <span class="n">allow_stateful_models</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="c1"># Ordinary train only; LOO defines holdouts through its folds.</span>
+    <span class="n">holdout_processes</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">"holdout_processes"</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_unique_holdouts</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">value</span><span class="p">))</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"train.holdout_processes must be unique"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">value</span></div>
 
 
 
@@ -560,6 +574,14 @@
 <span class="sd">    ``bundle_prepared`` (default ``True``) includes prepared data so every</span>
 <span class="sd">    checkpoint is self-contained; disable it to reduce repeated disk use.</span>
 
+<span class="sd">    ``keep_best=None`` keeps all checkpoints. Zero keeps latest only and</span>
+<span class="sd">    requires ``select_by`` to be omitted. Positive N keeps best N plus latest,</span>
+<span class="sd">    ranked by ``select_by``: holdout loss, last-batch training loss, or epoch</span>
+<span class="sd">    mean training loss. Epoch mean requires boundaries at epoch ends. Lower</span>
+<span class="sd">    wins; ties keep older checkpoints; nonfinite scores cannot enter best N.</span>
+<span class="sd">    ``retention.json`` lists best checkpoints. Retention requires a fresh</span>
+<span class="sd">    checkpoint directory and does not reduce checkpoint write frequency.</span>
+
 <span class="sd">    Checkpointing re-exports predictions and re-writes the bundled data, so</span>
 <span class="sd">    on a fast run it can dominate the wall clock — set it coarse enough</span>
 <span class="sd">    that it is not the bottleneck.</span>
@@ -567,6 +589,25 @@
 
     <span class="n">every</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
     <span class="n">bundle_prepared</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">keep_best</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">select_by</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"holdout_loss"</span><span class="p">,</span> <span class="s2">"train_loss"</span><span class="p">,</span> <span class="s2">"epoch_mean_loss"</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_validate_retention</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Allow three retention policies and their matching metric settings.</span>
+
+<span class="sd">        ``keep_best=None`` keeps all checkpoints; omit ``select_by``.</span>
+<span class="sd">        ``keep_best=0`` keeps latest only; omit ``select_by``.</span>
+<span class="sd">        ``keep_best&gt;0`` keeps best N plus latest; require ``select_by``.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">keep_best</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">select_by</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"checkpoint.select_by requires checkpoint.keep_best"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">keep_best</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">keep_best</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">select_by</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"checkpoint.keep_best &gt; 0 requires select_by"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">keep_best</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">select_by</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"checkpoint.keep_best=0 needs no select_by; omit it"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span>
 
     <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">"every"</span><span class="p">)</span>
     <span class="nd">@classmethod</span>
@@ -1001,6 +1042,10 @@
     <span class="n">base_dir</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
     <span class="n">view</span> <span class="o">=</span> <span class="n">_command_view</span><span class="p">(</span><span class="n">raw</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="n">command</span><span class="p">)</span>
     <span class="n">config</span> <span class="o">=</span> <span class="n">RunConfig</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">view</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">command</span> <span class="o">==</span> <span class="s2">"loo"</span> <span class="ow">and</span> <span class="n">config</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">holdout_processes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"train.holdout_processes is train-only; LOO folds define holdouts"</span>
+        <span class="p">)</span>
     <span class="n">_validate_required_sections</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="n">command</span><span class="p">)</span>
     <span class="n">config</span> <span class="o">=</span> <span class="n">_resolve_config_paths</span><span class="p">(</span>
         <span class="n">config</span><span class="p">,</span>

@@ -54,7 +54,8 @@ files it produced.
 ## A Cheap First Check: `holdout_processes`
 
 Before committing to N full trainings, hold out one process inside a single run. This
-is Python-API-only (see [Cross-Validation](../train/loo.md#holdout-without-cross-validation)):
+uses the Python API below. The CLI also supports `train.holdout_processes` in a
+train config (see [Cross-Validation](../train/loo.md#holdout-without-cross-validation)):
 
 ```{code-cell} ipython3
 :tags: [remove-input]

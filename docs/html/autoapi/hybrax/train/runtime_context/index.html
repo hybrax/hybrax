@@ -426,6 +426,9 @@ training-parent hooks.</p>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.runtime_context.select_parent_collection" title="hybrax.train.runtime_context.select_parent_collection"><code class="xref py py-obj docutils literal notranslate"><span class="pre">select_parent_collection</span></code></a>(collection, parent_names)</p></td>
 <td><p>Copy a collection and retain the requested parents in canonical order.</p></td>
 </tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.runtime_context.training_selection_excluding_holdout" title="hybrax.train.runtime_context.training_selection_excluding_holdout"><code class="xref py py-obj docutils literal notranslate"><span class="pre">training_selection_excluding_holdout</span></code></a>(process_order, ...)</p></td>
+<td><p>Exclude whole holdout parent groups before scaling or training.</p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -821,6 +824,27 @@ non-equivalent <code class="docutils literal notranslate"><span class="pre">reac
 </dl>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.runtime_context.training_selection_excluding_holdout">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.runtime_context.</span></span><span class="sig-name descname"><span class="pre">training_selection_excluding_holdout</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">process_order</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">augmentation_parents</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">requested</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">holdout</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/runtime_context.html#training_selection_excluding_holdout"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.runtime_context.training_selection_excluding_holdout" title="Link to this definition">¶</a></dt>
+<dd><p>Exclude whole holdout parent groups before scaling or training.</p>
+<p>An explicit training selection may not overlap a held-out parent or any
+of its children. With no selection, train on all remaining groups.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>process_order</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>]</em>)</p></li>
+<li><p><strong>augmentation_parents</strong> (<em>tuple</em><em>[</em><em>str</em><em> | </em><em>None</em><em>, </em><em>...</em><em>]</em>)</p></li>
+<li><p><strong>requested</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>holdout</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>]</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>tuple[str, …]</p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py data">
 <dt class="sig sig-object py" id="hybrax.train.runtime_context.RawTrace">
 <span class="sig-prename descclassname"><span class="pre">hybrax.train.runtime_context.</span></span><span class="sig-name descname"><span class="pre">RawTrace</span></span><a class="headerlink" href="#hybrax.train.runtime_context.RawTrace" title="Link to this definition">¶</a></dt>
@@ -940,6 +964,7 @@ non-equivalent <code class="docutils literal notranslate"><span class="pre">reac
 <li><a class="reference internal" href="#hybrax.train.runtime_context.original_parent_processes"><code class="docutils literal notranslate"><span class="pre">original_parent_processes()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.runtime_context.rhs_ode_from_training_parents"><code class="docutils literal notranslate"><span class="pre">rhs_ode_from_training_parents()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.runtime_context.select_parent_collection"><code class="docutils literal notranslate"><span class="pre">select_parent_collection()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.runtime_context.training_selection_excluding_holdout"><code class="docutils literal notranslate"><span class="pre">training_selection_excluding_holdout()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.runtime_context.RawTrace"><code class="docutils literal notranslate"><span class="pre">RawTrace</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.runtime_context.SPLINE_SCALE_SAMPLE_COUNT"><code class="docutils literal notranslate"><span class="pre">SPLINE_SCALE_SAMPLE_COUNT</span></code></a></li>
 </ul>

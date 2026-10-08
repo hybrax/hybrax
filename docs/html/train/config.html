@@ -443,7 +443,7 @@ pipeline if you want to.</p>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">train</span></code></p></td>
 <td><p>train, loo</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">epochs</span></code>, <code class="docutils literal notranslate"><span class="pre">seed</span></code>, <code class="docutils literal notranslate"><span class="pre">optimizer</span></code>, <code class="docutils literal notranslate"><span class="pre">learning_rate</span></code>, <code class="docutils literal notranslate"><span class="pre">grad_clip_norm</span></code>, <code class="docutils literal notranslate"><span class="pre">batch_size</span></code>, <code class="docutils literal notranslate"><span class="pre">shuffle</span></code>, <code class="docutils literal notranslate"><span class="pre">devices</span></code>, <code class="docutils literal notranslate"><span class="pre">allow_stateful_models</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">epochs</span></code>, <code class="docutils literal notranslate"><span class="pre">seed</span></code>, <code class="docutils literal notranslate"><span class="pre">optimizer</span></code>, <code class="docutils literal notranslate"><span class="pre">learning_rate</span></code>, <code class="docutils literal notranslate"><span class="pre">grad_clip_norm</span></code>, <code class="docutils literal notranslate"><span class="pre">batch_size</span></code>, <code class="docutils literal notranslate"><span class="pre">shuffle</span></code>, <code class="docutils literal notranslate"><span class="pre">devices</span></code>, <code class="docutils literal notranslate"><span class="pre">allow_stateful_models</span></code>; <code class="docutils literal notranslate"><span class="pre">holdout_processes</span></code> for train only</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">solver</span></code></p></td>
 <td><p>train, forward, loo</p></td>
@@ -451,7 +451,7 @@ pipeline if you want to.</p>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">checkpoint</span></code></p></td>
 <td><p>train, loo</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">every</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">every</span></code>, <code class="docutils literal notranslate"><span class="pre">bundle_prepared</span></code>, <code class="docutils literal notranslate"><span class="pre">keep_best</span></code>, <code class="docutils literal notranslate"><span class="pre">select_by</span></code></p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">output</span></code></p></td>
 <td><p>all</p></td>
@@ -483,6 +483,9 @@ pipeline if you want to.</p>
 <p>Exact fields, types and defaults are in the
 <a class="reference internal" href="../autoapi/hybrax/train/run_config/index.html"><span class="doc std std-doc">API reference</span></a>: not repeated here, because they
 change and this page would be wrong first.</p>
+<p>See <a class="reference internal" href="train.html#checkpoints-and-retention"><span class="std std-ref">Checkpoints and retention</span></a> for the
+retention policies and <a class="reference internal" href="train.html#hold-out-processes-in-ordinary-training"><span class="std std-ref">ordinary training holdouts</span></a>
+for how <code class="docutils literal notranslate"><span class="pre">train.holdout_processes</span></code> interacts with <code class="docutils literal notranslate"><span class="pre">data.processes</span></code>.</p>
 </section>
 <section id="persistent-jax-compilation-cache">
 <h2>Persistent JAX compilation cache<a class="headerlink" href="#persistent-jax-compilation-cache" title="Link to this heading">¶</a></h2>

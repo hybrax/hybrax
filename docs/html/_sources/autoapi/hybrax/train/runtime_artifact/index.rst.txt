@@ -171,7 +171,12 @@ Module Contents
 
 .. py:function:: load_runtime_artifact(path, *, fold_id)
 
-   Load one fold; unselected fold scale files are never opened or checksummed.
+   Load one fold, verifying checksums before reusing producer validation.
+
+   The flow-sign check is skipped when the manifest records that the writer
+   ran the current version of it on the current content. An outdated or stale
+   record requires a fresh check. Unselected fold scale files are never opened
+   or checksummed.
 
 
 .. py:function:: read_runtime_artifact_metadata(path)
@@ -185,6 +190,6 @@ Module Contents
 
 
 .. py:data:: FORMAT_VERSION
-   :value: 4
+   :value: 5
 
 

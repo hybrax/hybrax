@@ -236,6 +236,18 @@ Module Contents
 
 
 
+   .. py:attribute:: checkpoint_keep_best
+      :type:  int | None
+      :value: None
+
+
+
+   .. py:attribute:: checkpoint_select_by
+      :type:  str | None
+      :value: None
+
+
+
    .. py:attribute:: epochs
       :type:  int
       :value: 5

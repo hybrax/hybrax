@@ -405,6 +405,10 @@ to physical (RAW) units only where the chemistry needs them.</p>
 <strong>Signature:</strong> <code class="docutils literal notranslate"><span class="pre">(runtime_data,</span> <span class="pre">target_names,</span> <span class="pre">config)</span> <span class="pre">-&gt;</span> <span class="pre">EstimatedScales</span></code>
 <strong>Default:</strong> none, and that is the problem below.
 <strong>Type-checked:</strong> returning something other than <code class="docutils literal notranslate"><span class="pre">EstimatedScales</span></code> raises <code class="docutils literal notranslate"><span class="pre">TypeError</span></code>.</p>
+<p>The hook sees only the original parents represented by the training selection.
+With <code class="docutils literal notranslate"><span class="pre">train.holdout_processes</span></code>, held-out parents and their augmentation groups
+are excluded before scale estimation. Holdout evaluation uses these same
+training scales. See <a class="reference internal" href="train.html#hold-out-processes-in-ordinary-training"><span class="std std-ref">ordinary training holdouts</span></a>.</p>
 <div class="danger admonition">
 <p class="admonition-title">No hook means every scale is 1.0</p>
 <p>Omitting <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code> does not raise, does not warn, and does not disable

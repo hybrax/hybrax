@@ -35,6 +35,11 @@ which means one number per axis handles both states and rates, and the `scale_*`
 **Default:** none, and that is the problem below.
 **Type-checked:** returning something other than `EstimatedScales` raises `TypeError`.
 
+The hook sees only the original parents represented by the training selection.
+With `train.holdout_processes`, held-out parents and their augmentation groups
+are excluded before scale estimation. Holdout evaluation uses these same
+training scales. See [ordinary training holdouts](train.md#hold-out-processes-in-ordinary-training).
+
 :::{admonition} No hook means every scale is 1.0
 :class: danger
 

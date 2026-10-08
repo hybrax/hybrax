@@ -52,6 +52,11 @@ test process names. `train` (optional) pins the exact training set; omitted, it 
 every process not in `test`. See [Cross-validation, worked](../gallery/loo.md) for a
 full run of this.
 
+Do not set `train.holdout_processes` in a LOO config: the folds define their own
+holdouts. [Checkpoint retention](train.md#checkpoints-and-retention) applies
+independently to each fold. Selecting a best checkpoint by `holdout_loss` uses
+the fold's test data; reported LOO results still use the final model.
+
 ## What it produces
 
 ```
@@ -119,9 +124,11 @@ augmentation, use `hybrax.train`'s LOO rather than rolling your own splits.
 
 ## Holdout without cross-validation
 
-For a quick check without N full trainings, the Python API supports a plain holdout
-(`holdout_processes` on `TrainHarnessConfig`). It has no config-file equivalent: 
-API-only. `losses.csv` then labels each process `train` or `holdout`.
+For a quick check without N full trainings, set `train.holdout_processes` in a
+`hybrax train` config, or `holdout_processes` on the Python API's
+`TrainHarnessConfig`. See [ordinary training holdouts](train.md#hold-out-processes-in-ordinary-training)
+for split selection and augmentation-group exclusion. Final `losses.csv` from
+the CLI labels each process `train` or `holdout`.
 
 ## Gotchas
 

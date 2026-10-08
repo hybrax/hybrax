@@ -67,6 +67,10 @@ Module Contents
    - ``return_fail_time=False`` (forward/export) returns ``states`` with those rows set
      to ``inf``, so a failed forward is detectable and never reads back a stale value.
 
+   Reactor-volume depletion is a fatal error, not a solver failure represented by
+   ``fail_time``. That guarantee requires Equinox runtime errors to remain enabled;
+   setting ``EQX_ON_ERROR=off`` deliberately disables it.
+
    ``max_steps`` (from ``--solver-max-steps``) is the **budget for the whole
    solve**: it
    bounds each segment's inner solve and the running sum across segments, so exceeding

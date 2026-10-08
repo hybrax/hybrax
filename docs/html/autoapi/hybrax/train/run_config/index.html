@@ -564,6 +564,13 @@ run. <code class="docutils literal notranslate"><span class="pre">0</span></code
 the end of training is always written regardless. Must be finite.</p>
 <p><code class="docutils literal notranslate"><span class="pre">bundle_prepared</span></code> (default <code class="docutils literal notranslate"><span class="pre">True</span></code>) includes prepared data so every
 checkpoint is self-contained; disable it to reduce repeated disk use.</p>
+<p><code class="docutils literal notranslate"><span class="pre">keep_best=None</span></code> keeps all checkpoints. Zero keeps latest only and
+requires <code class="docutils literal notranslate"><span class="pre">select_by</span></code> to be omitted. Positive N keeps best N plus latest,
+ranked by <code class="docutils literal notranslate"><span class="pre">select_by</span></code>: holdout loss, last-batch training loss, or epoch
+mean training loss. Epoch mean requires boundaries at epoch ends. Lower
+wins; ties keep older checkpoints; nonfinite scores cannot enter best N.
+<code class="docutils literal notranslate"><span class="pre">retention.json</span></code> lists best checkpoints. Retention requires a fresh
+checkpoint directory and does not reduce checkpoint write frequency.</p>
 <p>Checkpointing re-exports predictions and re-writes the bundled data, so
 on a fast run it can dominate the wall clock — set it coarse enough
 that it is not the bottleneck.</p>
@@ -580,6 +587,16 @@ that it is not the bottleneck.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.run_config.CheckpointConfig.every">
 <span class="sig-name descname"><span class="pre">every</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.CheckpointConfig.every" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.run_config.CheckpointConfig.keep_best">
+<span class="sig-name descname"><span class="pre">keep_best</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.CheckpointConfig.keep_best" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.run_config.CheckpointConfig.select_by">
+<span class="sig-name descname"><span class="pre">select_by</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'holdout_loss'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'train_loss'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'epoch_mean_loss'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.CheckpointConfig.select_by" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -1151,6 +1168,10 @@ it. <code class="docutils literal notranslate"><span class="pre">allow_stateful_
 for reaction modules with a nonzero latent state: training raises before
 it starts without it, because a latent state changes what the model
 <em>is</em>, not just its size.</p>
+<p><code class="docutils literal notranslate"><span class="pre">holdout_processes</span></code> is for ordinary train runs. These processes use the
+training loss module at checkpoint boundaries. Default training excludes
+their parent groups; explicit overlapping training selections raise.
+LOO defines holdouts through folds and rejects this setting.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>data</strong> (<em>Any</em>)</p>
@@ -1184,6 +1205,11 @@ it starts without it, because a latent state changes what the model
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.run_config.TrainConfig.grad_clip_norm">
 <span class="sig-name descname"><span class="pre">grad_clip_norm</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.TrainConfig.grad_clip_norm" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.run_config.TrainConfig.holdout_processes">
+<span class="sig-name descname"><span class="pre">holdout_processes</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.TrainConfig.holdout_processes" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -1425,6 +1451,8 @@ run. No-op if <code class="docutils literal notranslate"><span class="pre">custo
 <li><a class="reference internal" href="#hybrax.train.run_config.CheckpointConfig"><code class="docutils literal notranslate"><span class="pre">CheckpointConfig</span></code></a><ul>
 <li><a class="reference internal" href="#hybrax.train.run_config.CheckpointConfig.bundle_prepared"><code class="docutils literal notranslate"><span class="pre">CheckpointConfig.bundle_prepared</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.CheckpointConfig.every"><code class="docutils literal notranslate"><span class="pre">CheckpointConfig.every</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.run_config.CheckpointConfig.keep_best"><code class="docutils literal notranslate"><span class="pre">CheckpointConfig.keep_best</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.run_config.CheckpointConfig.select_by"><code class="docutils literal notranslate"><span class="pre">CheckpointConfig.select_by</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#hybrax.train.run_config.ConfigBase"><code class="docutils literal notranslate"><span class="pre">ConfigBase</span></code></a><ul>
@@ -1528,6 +1556,7 @@ run. No-op if <code class="docutils literal notranslate"><span class="pre">custo
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.devices"><code class="docutils literal notranslate"><span class="pre">TrainConfig.devices</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.epochs"><code class="docutils literal notranslate"><span class="pre">TrainConfig.epochs</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.grad_clip_norm"><code class="docutils literal notranslate"><span class="pre">TrainConfig.grad_clip_norm</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.holdout_processes"><code class="docutils literal notranslate"><span class="pre">TrainConfig.holdout_processes</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.learning_rate"><code class="docutils literal notranslate"><span class="pre">TrainConfig.learning_rate</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.optimizer"><code class="docutils literal notranslate"><span class="pre">TrainConfig.optimizer</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.seed"><code class="docutils literal notranslate"><span class="pre">TrainConfig.seed</span></code></a></li>

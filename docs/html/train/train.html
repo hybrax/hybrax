@@ -509,16 +509,98 @@ devices than you have cores is capped, with a warning to stderr.</p>
 machines, get OOM-killed. Run one at a time, or shard within one run using <code class="docutils literal notranslate"><span class="pre">devices</span></code>.</p>
 </div>
 </section>
-<section id="checkpoints-and-resuming">
-<h2>Checkpoints and resuming<a class="headerlink" href="#checkpoints-and-resuming" title="Link to this heading">¶</a></h2>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"checkpoint"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"every"</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<section id="checkpoints-and-retention">
+<h2>Checkpoints and retention<a class="headerlink" href="#checkpoints-and-retention" title="Link to this heading">¶</a></h2>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"holdout_processes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"Br7"</span><span class="p">]</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"checkpoint"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"every"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"keep_best"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"select_by"</span><span class="p">:</span><span class="w"> </span><span class="s2">"holdout_loss"</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
 </pre></div>
 </div>
-<p>Each checkpoint directory is <strong>self-contained</strong>: parameters, optimizer state, config,
-<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, and the prepared data. You can point <code class="docutils literal notranslate"><span class="pre">forward</span></code> at a checkpoint exactly as
-at a run directory to get that step’s predictions or plots; checkpoints themselves
-carry neither, by design (see <a class="reference internal" href="forward.html"><span class="std std-doc">Forward</span></a>).</p>
+<p><code class="docutils literal notranslate"><span class="pre">every</span></code> is measured in epochs and controls both checkpoint writes and holdout
+checks. Omit it or use <code class="docutils literal notranslate"><span class="pre">null</span></code> for an automatic cadence of at least five epochs
+and at most 20 checkpoints. Use <code class="docutils literal notranslate"><span class="pre">0</span></code> to disable periodic writes. The final step
+always writes a checkpoint, even when it is also a periodic boundary.</p>
+<p>Each checkpoint directory is self-contained: parameters, optimizer state,
+config, <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, and prepared data. Set <code class="docutils literal notranslate"><span class="pre">bundle_prepared:</span> <span class="pre">false</span></code> to omit
+prepared data from checkpoints. Checkpoints also contain measurement-grid
+holdout predictions when original holdout processes are available. Use <code class="docutils literal notranslate"><span class="pre">forward</span></code>
+for additional predictions or plots.</p>
+<section id="limit-disk-use">
+<h3>Limit disk use<a class="headerlink" href="#limit-disk-use" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">keep_best</span></code> controls retention:</p>
+<ul class="simple">
+<li><p>Omitted or <code class="docutils literal notranslate"><span class="pre">null</span></code>: retain every checkpoint, the default. Omit <code class="docutils literal notranslate"><span class="pre">select_by</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">0</span></code>: retain latest only. Omit <code class="docutils literal notranslate"><span class="pre">select_by</span></code>; no ranking metric is needed.</p></li>
+<li><p>Positive N: retain the best N scored checkpoints plus latest. Set <code class="docutils literal notranslate"><span class="pre">select_by</span></code>.
+When latest is already among the best N, it is stored only once.</p></li>
+</ul>
+<p>For example, <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">&quot;every&quot;:</span> <span class="pre">10,</span> <span class="pre">&quot;keep_best&quot;:</span> <span class="pre">0</span> <span class="pre">}</span></code> replaces the previous checkpoint
+at every boundary. With <code class="docutils literal notranslate"><span class="pre">keep_best:</span> <span class="pre">3</span></code>, at most four <code class="docutils literal notranslate"><span class="pre">step_*</span></code> directories remain
+once pruning completes. The new checkpoint is fully written and <code class="docutils literal notranslate"><span class="pre">latest</span></code> updated
+before old checkpoints are deleted, so allow space for one temporary extra
+checkpoint. On filesystems without symlinks, <code class="docutils literal notranslate"><span class="pre">latest</span></code> is a separate copy and uses
+another checkpoint’s worth of space.</p>
+<p>Every boundary still writes a full checkpoint. Retention limits stored disk
+space, not serialization or export work. Loss history retains scores for pruned
+steps. <code class="docutils literal notranslate"><span class="pre">checkpoints/retention.json</span></code> lists surviving best checkpoints in ascending
+score order and identifies latest. Each checkpoint’s <code class="docutils literal notranslate"><span class="pre">train_state.json</span></code> records
+its selection metric and score. Equal scores retain the older checkpoint.
+Nonfinite scores produce a warning and cannot enter the best N, but their
+checkpoint remains while it is latest.</p>
+<p><code class="docutils literal notranslate"><span class="pre">latest</span></code> always identifies the newest checkpoint. The completed run’s <code class="docutils literal notranslate"><span class="pre">model/</span></code>
+and default loading from the run directory use the final model, even if another
+checkpoint scores better. To load a best checkpoint, use its directory from
+<code class="docutils literal notranslate"><span class="pre">retention.json</span></code>; an explicit path to a pruned checkpoint no longer exists.</p>
+<p>With retention enabled, an output directory containing old <code class="docutils literal notranslate"><span class="pre">step_*</span></code> checkpoints
+is rejected before training. Choose a fresh output directory to preserve the
+previous attempt, or pass <code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> to clear it and start fresh. This also
+applies to failed runs; restarting training does not resume old optimizer state
+or combine checkpoint rankings. An incomplete output directory with no
+checkpoints can be reused.</p>
+</section>
+<section id="choose-a-selection-metric">
+<h3>Choose a selection metric<a class="headerlink" href="#choose-a-selection-metric" title="Link to this heading">¶</a></h3>
+<p>All supported metrics minimize loss and reuse existing results. They add no
+extra prediction passes over training data:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">holdout_loss</span></code>: evaluates the updated model saved in the checkpoint, using
+the same loss module as training. Requires holdout processes.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">train_loss</span></code>: the last batch’s logged loss before its optimizer update.
+It lags the saved parameters by one update and can be noisy with minibatches.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">epoch_mean_loss</span></code>: averages logged batch losses over the epoch as parameters
+change. Every checkpoint boundary must land at an epoch end. A fractional
+<code class="docutils literal notranslate"><span class="pre">every</span></code> that produces a mid-epoch boundary is rejected; no stale score is used.</p></li>
+</ul>
+<p>Other metric names are rejected. Custom selection hooks are not supported.</p>
+</section>
+<section id="hold-out-processes-in-ordinary-training">
+<h3>Hold out processes in ordinary training<a class="headerlink" href="#hold-out-processes-in-ordinary-training" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">train.holdout_processes</span></code> selects processes from the prepared data for evaluation
+at checkpoint boundaries. If <code class="docutils literal notranslate"><span class="pre">data.processes</span></code> is omitted, training uses all
+remaining processes, excluding each holdout’s entire augmentation group, its
+parent and children. An explicit <code class="docutils literal notranslate"><span class="pre">data.processes</span></code> selection that overlaps those
+groups raises an error. Holdout groups are excluded before estimating scales
+and constructing modules from training parents.</p>
+<p>Holdout names must exist in the prepared dataset and be unique; the holdout list
+must not be empty. Only the named holdouts are evaluated, even though their whole
+augmentation groups are excluded from training.</p>
+<p>For the example above, you can explicitly set
+<code class="docutils literal notranslate"><span class="pre">data.processes</span></code> to <code class="docutils literal notranslate"><span class="pre">[&quot;Br1&quot;,</span> <span class="pre">&quot;Br2&quot;,</span> <span class="pre">&quot;Br3&quot;,</span> <span class="pre">&quot;Br4&quot;,</span> <span class="pre">&quot;Br9&quot;]</span></code> and leave Br7 in the
+prepared dataset. Final results include training and holdout losses for the
+final model. The saved config records the resolved training selection so loading
+rebuilds scales and modules from the same training parents. No additional custom
+scoring hook is needed.</p>
+<p><code class="docutils literal notranslate"><span class="pre">train.holdout_processes</span></code> is for <code class="docutils literal notranslate"><span class="pre">train</span></code> only. LOO folds define their own holdouts
+and reject this setting. Retention works separately within each fold. Using
+<code class="docutils literal notranslate"><span class="pre">holdout_loss</span></code> to select a fold’s best checkpoint uses that fold’s test data;
+LOO’s reported results continue to use the final model.</p>
 <p>See <a class="reference internal" href="save_load_predict.html"><span class="std std-doc">The Python API</span></a>.</p>
+</section>
 </section>
 <section id="reading-the-output">
 <h2>Reading the output<a class="headerlink" href="#reading-the-output" title="Link to this heading">¶</a></h2>
@@ -556,8 +638,9 @@ concentration plot and obvious in the rate one.</p>
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> is required</strong> to reuse a run directory, and deletes everything already
-there, regardless of what put it there, before writing fresh output.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> is required</strong> to reuse a completed run directory, or an
+incomplete one containing checkpoints when retention is enabled. It deletes
+the previous output before starting fresh.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">--epochs</span></code> overrides the config</strong>, which is what you want while iterating.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">batch_size</span></code> greater than the process count</strong> raises rather than clamping.</p></li>
 <li><p><strong>Stateful modules need <code class="docutils literal notranslate"><span class="pre">train.allow_stateful_models:</span> <span class="pre">true</span></code>.</strong></p></li>
@@ -639,7 +722,12 @@ sixty times slower: a debugging tool, not an option.</p></li>
 <li><a class="reference internal" href="#hook-build-learning-rate">Hook: <code class="docutils literal notranslate"><span class="pre">build_learning_rate</span></code></a></li>
 <li><a class="reference internal" href="#hook-build-optimizer">Hook: <code class="docutils literal notranslate"><span class="pre">build_optimizer</span></code></a></li>
 <li><a class="reference internal" href="#running-on-more-than-one-core">Running on more than one core</a></li>
-<li><a class="reference internal" href="#checkpoints-and-resuming">Checkpoints and resuming</a></li>
+<li><a class="reference internal" href="#checkpoints-and-retention">Checkpoints and retention</a><ul>
+<li><a class="reference internal" href="#limit-disk-use">Limit disk use</a></li>
+<li><a class="reference internal" href="#choose-a-selection-metric">Choose a selection metric</a></li>
+<li><a class="reference internal" href="#hold-out-processes-in-ordinary-training">Hold out processes in ordinary training</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#reading-the-output">Reading the output</a></li>
 <li><a class="reference internal" href="#gotchas">Gotchas</a></li>
 <li><a class="reference internal" href="#see-also">See also</a></li>

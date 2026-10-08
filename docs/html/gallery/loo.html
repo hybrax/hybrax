@@ -386,11 +386,12 @@ files it produced.</p>
 <section id="a-cheap-first-check-holdout-processes">
 <h2>A Cheap First Check: <code class="docutils literal notranslate"><span class="pre">holdout_processes</span></code><a class="headerlink" href="#a-cheap-first-check-holdout-processes" title="Link to this heading">¶</a></h2>
 <p>Before committing to N full trainings, hold out one process inside a single run. This
-is Python-API-only (see <a class="reference internal" href="../train/loo.html#holdout-without-cross-validation"><span class="std std-ref">Cross-Validation</span></a>):</p>
+uses the Python API below. The CLI also supports <code class="docutils literal notranslate"><span class="pre">train.holdout_processes</span></code> in a
+train config (see <a class="reference internal" href="../train/loo.html#holdout-without-cross-validation"><span class="std std-ref">Cross-Validation</span></a>):</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>final train mean_loss   = 0.0408
-final holdout (run_3)   = 0.0467  (label: holdout)
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>final train mean_loss   = 0.0367
+final holdout (run_3)   = 0.0490  (label: holdout)
 </pre></div>
 </div>
 </div>

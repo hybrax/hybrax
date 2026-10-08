@@ -411,21 +411,6 @@
 <span class="c1"># ---------------------------------------------------------------------------</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_require_reactor_volume_above_threshold</span><span class="p">(</span>
-    <span class="n">volume</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
-    <span class="o">*</span><span class="p">,</span>
-    <span class="n">context</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
-    <span class="n">V_min</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">=</span> <span class="n">_MIN_REACTOR_VOLUME</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Fail when reactor volume reaches its minimum valid value."""</span>
-    <span class="n">volume_arr</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">volume</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">eqx</span><span class="o">.</span><span class="n">error_if</span><span class="p">(</span>
-        <span class="n">volume_arr</span><span class="p">,</span>
-        <span class="n">jnp</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">volume_arr</span> <span class="o">&lt;=</span> <span class="n">V_min</span><span class="p">),</span>
-        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">context</span><span class="si">}</span><span class="s2"> reached minimum reactor volume."</span><span class="p">,</span>
-    <span class="p">)</span>
-
-
 <span class="k">def</span><span class="w"> </span><span class="nf">_timeseries_to_ppoly</span><span class="p">(</span><span class="n">series</span><span class="p">:</span> <span class="n">TimeSeries</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PPoly</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Return a hybrax.format PPoly for a TimeSeries carrier.</span>
 
@@ -507,7 +492,25 @@
 <span class="sd">      of retention: retention changes what leaves with the flow, not how</span>
 <span class="sd">      much volume the flow removes.</span>
 <span class="sd">    """</span>
-    <span class="n">V</span> <span class="o">=</span> <span class="n">_require_reactor_volume_above_threshold</span><span class="p">(</span><span class="n">V</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="s2">"ODE state"</span><span class="p">,</span> <span class="n">V_min</span><span class="o">=</span><span class="n">V_min</span><span class="p">)</span>
+    <span class="c1"># Clamp only the divisor. The vector field is evaluated once per Runge-Kutta</span>
+    <span class="c1"># stage, including stages of TRIAL steps the step-size controller is about to</span>
+    <span class="c1"># reject, so a non-positive `V` here is usually numerical scratch rather than a</span>
+    <span class="c1"># physical state; erroring on it aborted otherwise-valid solves.</span>
+    <span class="c1">#</span>
+    <span class="c1"># What the clamp does depends on whether anything is being fed. With an inflow,</span>
+    <span class="c1"># `dilution`/`addition` divide by `V_safe`, so a trial step that undershoots</span>
+    <span class="c1"># produces a huge derivative, the controller sees a large error estimate and</span>
+    <span class="c1"># rejects the step -- the mechanism that is supposed to handle this. With only an</span>
+    <span class="c1"># unretained outflow (sigma=0), `total_in` and `retained_out_per_rmc` are both</span>
+    <span class="c1"># zero, so `dilution` vanishes and the transport terms do not depend on `V` at</span>
+    <span class="c1"># all: there is nothing to reject and the solve integrates straight through zero</span>
+    <span class="c1"># into negative volume.</span>
+    <span class="c1">#</span>
+    <span class="c1"># Detecting that belongs on ACCEPTED states, not here. `hybrax.train.physical_solve`</span>
+    <span class="c1"># checks the initial state and every post-sample state, but not yet the solver's</span>
+    <span class="c1"># accepted output states, so depletion driven purely by a continuous outflow</span>
+    <span class="c1"># mid-segment currently goes unreported.</span>
+    <span class="n">V_safe</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">V</span><span class="p">,</span> <span class="n">V_min</span><span class="p">)</span>
 
     <span class="n">total_in</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">u_controlled_Inflows</span><span class="p">)</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">f_modeled_Inflows</span><span class="p">)</span>  <span class="c1"># &gt;= 0</span>
     <span class="n">total_out</span> <span class="o">=</span> <span class="o">-</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">u_controlled_Outflows</span><span class="p">)</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">f_modeled_Outflows</span><span class="p">))</span>  <span class="c1"># &gt;= 0</span>
@@ -517,19 +520,19 @@
         <span class="n">retention_controlled_Outflows</span> <span class="o">*</span> <span class="p">(</span><span class="o">-</span><span class="n">u_controlled_Outflows</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span>
     <span class="p">)</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">retention_modeled_Outflows</span> <span class="o">*</span> <span class="p">(</span><span class="o">-</span><span class="n">f_modeled_Outflows</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 
-    <span class="n">dilution</span> <span class="o">=</span> <span class="o">-</span><span class="p">(</span><span class="n">total_in</span> <span class="o">-</span> <span class="n">retained_out_per_rmc</span><span class="p">)</span> <span class="o">*</span> <span class="n">c_RMCs</span> <span class="o">/</span> <span class="n">V</span>
+    <span class="n">dilution</span> <span class="o">=</span> <span class="o">-</span><span class="p">(</span><span class="n">total_in</span> <span class="o">-</span> <span class="n">retained_out_per_rmc</span><span class="p">)</span> <span class="o">*</span> <span class="n">c_RMCs</span> <span class="o">/</span> <span class="n">V_safe</span>
 
     <span class="n">addition</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_RMCs</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">Cin_controlled_Inflows</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
         <span class="n">addition</span> <span class="o">=</span> <span class="p">(</span>
             <span class="n">addition</span>
             <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">u_controlled_Inflows</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">Cin_controlled_Inflows</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-            <span class="o">/</span> <span class="n">V</span>
+            <span class="o">/</span> <span class="n">V_safe</span>
         <span class="p">)</span>
     <span class="k">if</span> <span class="n">Cin_modeled_Inflows</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
         <span class="n">addition</span> <span class="o">=</span> <span class="p">(</span>
             <span class="n">addition</span>
-            <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">f_modeled_Inflows</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">Cin_modeled_Inflows</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">/</span> <span class="n">V</span>
+            <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">f_modeled_Inflows</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">Cin_modeled_Inflows</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">/</span> <span class="n">V_safe</span>
         <span class="p">)</span>
 
     <span class="k">return</span> <span class="n">dilution</span> <span class="o">+</span> <span class="n">addition</span><span class="p">,</span> <span class="n">dV</span>
