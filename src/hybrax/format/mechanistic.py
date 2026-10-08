@@ -179,10 +179,8 @@ def _lambdify_with_array_arg(expr, ordered_names: Tuple[str, ...]) -> Callable:
     """Return ``f(args)`` that evaluates *expr* with the symbol values
     supplied as a flat 1-D array indexed by *ordered_names*.
 
-    Uses a small Python wrapper around :func:`sympy.lambdify` so each call
-    site passes a single array (whose contents we build by concatenation)
-    rather than unpacking it positionally: `*array` does not work under
-    ``jax.jit`` when the array is traced.
+    Adapts the flat array to :func:`sympy.lambdify`'s positional arguments.
+    Unpacking works under ``jax.jit`` because the array length is static.
     """
     import sympy
 
@@ -191,7 +189,7 @@ def _lambdify_with_array_arg(expr, ordered_names: Tuple[str, ...]) -> Callable:
     n = len(ordered_names)
 
     def fn(args):
-        return fn_raw(*[args[i] for i in range(n)])
+        return fn_raw(*args[:n])
 
     return fn
 
