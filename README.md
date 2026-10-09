@@ -8,6 +8,9 @@ package. `hybrax.format` provides the data model, validation, serialization,
 and mechanistic right-hand side. `hybrax.train` provides preparation,
 augmentation, training, prediction, and leave-one-out cross-validation.
 
+Read the [documentation](https://hybrax.readthedocs.io) for tutorials, gallery
+examples, and API reference.
+
 ## Motivation
 
 Bioprocess modeling research lacks standardized data formats, making it
