@@ -41,6 +41,7 @@ from hybrax.train.diffrax_callbacks import (
     StopConditionCallback,
     diffeqsolve_with_callbacks,
 )
+from .constants import INITIAL_STEP_FRACTION
 from .wrapper import HybridOdeWrapper
 
 # Boundary headroom for the failure cutoff. ``fail_time`` is the START of the first
@@ -301,7 +302,9 @@ def solve_physical_states(
     # the adaptive controller adjusts immediately), so a genuinely short run keeps its
     # usual ``span * 1e-3`` untouched.
     span = t1 - t0
-    dt0 = jnp.where(span > 0, span * 1e-3, jnp.asarray(_DEGENERATE_DT0, dtype))
+    dt0 = jnp.where(
+        span > 0, span * INITIAL_STEP_FRACTION, jnp.asarray(_DEGENERATE_DT0, dtype)
+    )
 
     sol = diffeqsolve_with_callbacks(
         term,
