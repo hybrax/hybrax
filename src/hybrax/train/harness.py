@@ -49,6 +49,8 @@ from hybrax.format.mechanistic import RhsOde
 from hybrax.format.serialization import load_process_collection
 
 from .checkpointing import CheckpointWriter
+from .constants import DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE
+from .preflight import check_continuous_flow_integration
 from .defaults import (
     DefaultLossModule,
     _default_scale_kwargs,
@@ -334,6 +336,7 @@ class TrainHarnessConfig:
     solver_rtol: float = 1e-5
     solver_atol: float = 1e-7
     solver_use_jump_ts: bool = True
+    flow_integral_relative_tolerance: float = DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE
     allow_stateful_models: bool = False
     # Logging / telemetry options (additive; all optional).
     log_process_losses: bool = False
@@ -1329,6 +1332,21 @@ def train_collection(
         raise ValueError("solver_rtol must be positive")
     if cfg.solver_atol <= 0.0:
         raise ValueError("solver_atol must be positive")
+    if (
+        not math.isfinite(cfg.flow_integral_relative_tolerance)
+        or cfg.flow_integral_relative_tolerance <= 0.0
+    ):
+        raise ValueError("flow_integral_relative_tolerance must be finite and positive")
+
+    check_continuous_flow_integration(
+        store,
+        selected_processes,
+        max_steps=int(cfg.solver_max_steps),
+        rtol=float(cfg.solver_rtol),
+        atol=float(cfg.solver_atol),
+        use_jump_ts=bool(cfg.solver_use_jump_ts),
+        flow_integral_relative_tolerance=cfg.flow_integral_relative_tolerance,
+    )
 
     warmup_batch = store.gather_batch(batch_index_stream[0])
 
@@ -2495,6 +2513,7 @@ def train_harness_config_from_run_config(
         solver_rtol=cfg.solver.rtol,
         solver_atol=cfg.solver.atol,
         solver_use_jump_ts=cfg.solver.jump_ts,
+        flow_integral_relative_tolerance=cfg.train.flow_integral_relative_tolerance,
         log_decimals=cfg.logging.decimals,
         metrics_csv=str(Path(run_dir) / "metrics.csv"),
         checkpoint_dir=Path(run_dir) / "checkpoints",

@@ -20,6 +20,18 @@ training concern. The other three are substantial enough to need their own page 
 [The Reaction Module](reaction_module.md), [The Loss Module](loss_module.md),
 [Scaling](scaling.md).
 
+Before training warmup, Hybrax checks each selected process's prescribed continuous
+inflows and outflows independently. A scalar Tsit5 solve integrates each runtime
+flow rate over the measurement span, using the configured solver tolerances, step
+budget, and jump times. Its result must match the cumulative endpoint difference
+within `train.flow_integral_relative_tolerance * abs(expected_increment)`.
+The default relative tolerance is `1e-3` (0.1%), independent of solver tolerances;
+a zero expected increment requires an exactly zero integral. A mismatch or
+scalar solver failure stops training with the process and flow names. This check
+excludes modeled flows and discrete events.
+Passing does not certify the coupled model's integration accuracy, because that
+solve takes different adaptive steps.
+
 ## What one step does
 
 For each process in the batch:
@@ -60,9 +72,10 @@ right, a real value (1 to 10) is usually what stabilises a stiff run. Check
 `grad_norm_curve.png` to pick it: clip somewhere around the bulk of the distribution, not
 below it.
 
-**`solver.max_steps`** is the first thing to raise when solves start failing. Failures are
-not fatal (points after the bail are masked out of the loss) but a run where most
-samples bail is fitting almost nothing. If raising it does not help, the problem is
+**`solver.max_steps`** is the first thing to raise when solves start failing. During
+full-model solves, failures are not fatal (points after the bail are masked out of
+the loss) but a run where most samples bail is fitting almost nothing.
+If raising it does not help, the problem is
 usually stiffness caused by bad scaling, not the solver.
 
 **`batch_size`** must not exceed the number of selected processes. It is not clamped;

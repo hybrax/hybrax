@@ -22,6 +22,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from hybrax.format.json_io import load_json
 from hybrax.train.utils import load_custom_module
 
+from .constants import DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE
+
 _FROZEN = ConfigDict(extra="forbid", frozen=True)
 _ALLOWED_TOP_LEVEL = {
     "data",
@@ -133,6 +135,10 @@ class TrainConfig(ConfigBase):
     training loss module at checkpoint boundaries. Default training excludes
     their parent groups; explicit overlapping training selections raise.
     LOO defines holdouts through folds and rejects this setting.
+
+    ``flow_integral_relative_tolerance`` (default ``1e-3``) bounds the
+    preflight's relative error in each prescribed continuous-flow integral.
+    It is independent of the solver's adaptive-step tolerances.
     """
 
     epochs: int = Field(5, gt=0)
@@ -145,6 +151,9 @@ class TrainConfig(ConfigBase):
     batch_seed: int | None = None
     devices: int | Literal["max"] = 1
     allow_stateful_models: bool = False
+    flow_integral_relative_tolerance: float = Field(
+        DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE, gt=0, allow_inf_nan=False
+    )
     # Ordinary train only; LOO defines holdouts through its folds.
     holdout_processes: tuple[str, ...] | None = Field(None, min_length=1)
 

@@ -444,6 +444,25 @@ def test_retention_and_holdout_config_mapping(tmp_path):
         load_loo_config(path)
 
 
+def test_flow_integral_tolerance_config_mapping_and_roundtrip(tmp_path):
+    default = RunConfig()
+    assert default.train.flow_integral_relative_tolerance == 1e-3
+    default_harness = train_harness_config_from_run_config(default, run_dir=tmp_path)
+    assert default_harness.flow_integral_relative_tolerance == 1e-3
+    cfg = RunConfig.model_validate(
+        {"train": {"flow_integral_relative_tolerance": 2e-4}}
+    )
+    restored = RunConfig.model_validate_json(cfg.model_dump_json())
+    harness = train_harness_config_from_run_config(restored, run_dir=tmp_path)
+    assert harness.flow_integral_relative_tolerance == 2e-4
+
+
+@pytest.mark.parametrize("value", [0.0, -1.0, float("nan"), float("inf")])
+def test_flow_integral_tolerance_must_be_finite_and_positive(value):
+    with pytest.raises(ValidationError):
+        RunConfig.model_validate({"train": {"flow_integral_relative_tolerance": value}})
+
+
 @pytest.mark.parametrize("holdouts", [[], ["Br7", "Br7"]])
 def test_train_holdouts_must_be_nonempty_and_unique(holdouts):
     with pytest.raises(ValidationError):
