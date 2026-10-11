@@ -17,7 +17,10 @@ from hybrax.format.dataclasses import (
     TimeSeries,
 )
 from hybrax.format.mechanistic import extract_discrete_events, get_process_ordering
-from hybrax.format.time_series.spline_ops import rebase_to_breaks
+from hybrax.format.time_series.spline_ops import (
+    piece_rate_candidates,
+    rebase_to_breaks,
+)
 
 
 @dataclass
@@ -236,26 +239,12 @@ def _validate_cumulative_direction(
     if values.breaks is None:
         slopes = np.diff(_as_numpy(values.values)) / np.diff(_as_numpy(values.times))
     else:
-        breaks = _as_numpy(values.breaks)
-        coeffs = _as_numpy(values.coeffs)
-        rates: list[float] = []
-        for index, (left, right) in enumerate(
-            zip(breaks[:-1], breaks[1:], strict=True)
-        ):
-            clipped_left = max(float(left), float(process.time_axis.start))
-            clipped_right = min(float(right), float(process.time_axis.end))
-            if clipped_left > clipped_right:
-                continue
-            rate_coeffs = np.polynomial.polynomial.polyder(coeffs[index])
-            candidates = [clipped_left - left, clipped_right - left]
-            acceleration_coeffs = np.polynomial.polynomial.polyder(rate_coeffs)
-            for root in np.polynomial.polynomial.polyroots(acceleration_coeffs):
-                if np.isreal(root):
-                    root = float(np.real(root))
-                    if candidates[0] <= root <= candidates[1]:
-                        candidates.append(root)
-            rates.extend(np.polynomial.polynomial.polyval(candidates, rate_coeffs))
-        slopes = np.asarray(rates)
+        slopes = piece_rate_candidates(
+            _as_numpy(values.breaks),
+            _as_numpy(values.coeffs),
+            float(process.time_axis.start),
+            float(process.time_axis.end),
+        )
 
     direction = 1.0 if isinstance(volume_change, Inflow) else -1.0
     if np.any(direction * slopes < 0.0):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from typing import Any
 
 import jax
@@ -153,6 +154,35 @@ def derivative_coeffs(coeffs: jnp.ndarray, order: int = 1) -> jnp.ndarray:
         d = out[:, 3]
         out = np.stack([b, 2.0 * c, 3.0 * d, np.zeros_like(a)], axis=1)
     return jnp.asarray(out, dtype=jnp.float64)
+
+
+def piece_rate_candidates(
+    breaks: Any, coeffs: Any, lower: float, upper: float
+) -> np.ndarray:
+    """Return first-derivative values where its extrema over [lower, upper] occur.
+
+    For each piece overlapping the interval, the rate is evaluated at the clipped
+    piece ends and at real interior roots of its second derivative. The minimum
+    and maximum of the result are the exact extrema of the rate.
+    """
+    breaks = np.asarray(breaks, dtype=np.float64)
+    coeffs = np.asarray(coeffs, dtype=np.float64)
+    rates: list[float] = []
+    for index, (left, right) in enumerate(itertools.pairwise(breaks)):
+        clipped_left = max(float(left), float(lower))
+        clipped_right = min(float(right), float(upper))
+        if clipped_left > clipped_right:
+            continue
+        rate_coeffs = np.polynomial.polynomial.polyder(coeffs[index])
+        candidates = [clipped_left - left, clipped_right - left]
+        acceleration_coeffs = np.polynomial.polynomial.polyder(rate_coeffs)
+        for root in np.polynomial.polynomial.polyroots(acceleration_coeffs):
+            if np.isreal(root):
+                root = float(np.real(root))
+                if candidates[0] <= root <= candidates[1]:
+                    candidates.append(root)
+        rates.extend(np.polynomial.polynomial.polyval(candidates, rate_coeffs))
+    return np.asarray(rates, dtype=np.float64)
 
 
 def integrate_definite(

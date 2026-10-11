@@ -48,6 +48,7 @@ from .dataclasses import (
     StaticVariable,
     TimeSeries,
 )
+from .monotone_spline import fit_monotone_timeseries_spline  # noqa: F401
 from .time_series import PPoly, spline_ops
 
 

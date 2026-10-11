@@ -34,6 +34,7 @@ dependencies = [
     "pandas>=3.0.5,<3.1",
     "equinox>=0.13.8,<0.14",
     "scipy>=1.15.0",
+    "clarabel>=0.11",
     "diffrax>=0.7.2,<0.8",
     "sympy>=1.14.0,<1.15",
     "ijson>=3.5.1",

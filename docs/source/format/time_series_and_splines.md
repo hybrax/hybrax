@@ -64,6 +64,52 @@ print("spline at t=3:", float(fitted.evaluate(3.0)))
  (a noisy pump trace, an online pH) smoothing is usually what you want, because you are
 going to differentiate the result and noise differentiates badly.
 
+### Monotone fits for cumulative signals
+
+A cumulative signal, such as the mass a scale reports as having left a feed bottle, can
+only move in one direction. Its derivative is the rate the ODE sees, so a fit that wiggles
+backwards would feed a negative rate into the model. `fit_monotone_timeseries_spline`
+fits a smooth cubic whose derivative never changes sign. Instead of a smoothing
+parameter you give an error budget in the units of the values, and it places knots where
+the data need them:
+
+```{code-cell} ipython3
+from hybrax.format.splines import fit_monotone_timeseries_spline
+
+t = np.linspace(0.0, 10.0, 601)
+rng = np.random.default_rng(1)
+# A pump that doses in small pulses, starting at t=2 and speeding up at t=6.
+rate = np.where(t < 2.0, 0.0, np.where(t < 6.0, 0.02, 0.05))
+pulses = rng.random(t.size) < 0.4
+increments = np.r_[0.0, np.where(pulses[1:], rate[1:] * np.diff(t) / 0.4, 0.0)]
+cumulative = hxf.TimeSeries(times=t, values=np.cumsum(increments))
+
+feed = fit_monotone_timeseries_spline(cumulative, atol=3e-3)
+info = feed.metadata["monotone_fit"]
+print("RMS error:", round(info["rms_error"], 5), "| max error:", round(info["max_error"], 5))
+print("interior knots:", info["interior_knots"], "| direction:", info["direction"])
+rates = np.asarray(feed.deriv().evaluate_many(np.array([1.0, 4.0, 8.0])))
+print("fitted rate at t=1, 4, 8:", rates.round(3), "| true: [0, 0.02, 0.05]")
+```
+
+`atol` bounds the root-mean-square error at the samples. Both endpoints are kept exactly,
+so the derivative integrates to the measured net change and the cumulative error never
+drifts. Among the curves that meet the budget, the fit returns the one with the least
+curvature, so it usually uses all of the budget. The error at individual samples can be
+larger than `atol`: a short pump pause or a reading that dips below the previous one is
+smoothed over rather than followed. Decreasing series work the same way.
+
+Choose `atol` from the scale of the whole process, for example a small fraction of the
+total feed or reactor volume, and at least as large as the noise of the measurement. A
+budget below the noise makes the fit follow the noise, which needs a knot for nearly
+every sample and gives a jagged rate. The fit stops at `max_knots` (by default a tenth of
+the samples, at least 16) and raises an error instead.
+
+Between two samples the fit only knows that the curve rises from one reading to the
+next, not when within that interval the pump actually delivered. A large step between
+two adjacent readings therefore becomes a smooth rise across that interval and its
+neighbours.
+
 :::{admonition} Why power-basis polynomials
 :class: note
 Splines are stored as piecewise cubics in power basis: `c₀h³ + c₁h² + c₂h + c₃` with
@@ -88,6 +134,8 @@ accepts them via `boundaries=`.
 - **`TimeSeries` arithmetic exists** (`ts_a - ts_b`) with exact and approximate paths
   depending on whether the operands share breaks. Useful, but read the API reference
   before relying on the approximate path.
+- **Monotone fits ignore segment boundaries.** `fit_monotone_timeseries_spline` fits one
+  continuous curve and rejects series with jumps; fit each continuous stretch separately.
 
 ## See also
 
