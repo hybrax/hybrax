@@ -84,7 +84,7 @@ pulses = rng.random(t.size) < 0.4
 increments = np.r_[0.0, np.where(pulses[1:], rate[1:] * np.diff(t) / 0.4, 0.0)]
 cumulative = hxf.TimeSeries(times=t, values=np.cumsum(increments))
 
-feed = fit_monotone_timeseries_spline(cumulative, atol=3e-3)
+feed = fit_monotone_timeseries_spline(cumulative, rms_tol=3e-3, increasing=True)
 info = feed.metadata["monotone_fit"]
 print("RMS error:", round(info["rms_error"], 5), "| max error:", round(info["max_error"], 5))
 print("interior knots:", info["interior_knots"], "| direction:", info["direction"])
@@ -92,18 +92,31 @@ rates = np.asarray(feed.deriv().evaluate_many(np.array([1.0, 4.0, 8.0])))
 print("fitted rate at t=1, 4, 8:", rates.round(3), "| true: [0, 0.02, 0.05]")
 ```
 
-`atol` bounds the root-mean-square error at the samples. Both endpoints are kept exactly,
+`rms_tol` bounds the root-mean-square error at the samples. Both endpoints are kept exactly,
 so the derivative integrates to the measured net change and the cumulative error never
-drifts. Among the curves that meet the budget, the fit returns the one with the least
-curvature, so it usually uses all of the budget. The error at individual samples can be
-larger than `atol`: a short pump pause or a reading that dips below the previous one is
-smoothed over rather than followed. Decreasing series work the same way.
+drifts. For the chosen knots, the fit numerically minimizes curvature among curves with
+ordered B-spline coefficients that meet the budget, so it usually uses all of the budget.
+The error at individual samples can be larger than `rms_tol`: a short pump pause or a
+reading that dips below the previous one is smoothed over rather than followed. Every
+sample counts equally, so densely logged stretches weigh more towards `rms_tol`. Use
+`increasing=False` for decreasing series; the endpoints must agree with
+the requested direction. Equal endpoints give a constant fit for either direction if it
+meets the budget. Flat stretches get a tiny nonzero rate.
 
-Choose `atol` from the scale of the whole process, for example a small fraction of the
-total feed or reactor volume, and at least as large as the noise of the measurement. A
-budget below the noise makes the fit follow the noise, which needs a knot for nearly
-every sample and gives a jagged rate. The fit stops at `max_knots` (by default a tenth of
-the samples, at least 16) and raises an error instead.
+Larger `rms_tol` gives a smoother curve and rate; it is the smoothing knob. Choose it
+from the scale of the whole process, for example a small fraction of the total feed or
+reactor volume, and at least about 1.5 times the measurement noise standard deviation.
+At about the noise standard deviation, the fit is unstable: it can switch between
+few knots, the cap and an error. A budget below the noise can need a knot for nearly
+every sample and give a jagged rate, as can data that are not monotone enough to fit
+within the budget. The fit stops at `max_knots` (by default a tenth of the samples, at
+least 16) and raises an error.
+
+The budget, monotonicity, continuity and endpoints are checked on the stored curve: the
+fit either meets them or raises an error. Smoothness is not checked. With strongly
+clustered samples, such as bursts of fast logging, the smoothing can fail or return a
+curve rougher than necessary. Thinning redundant burst readings helps, but keep enough
+readings to resolve short additions; the budget then covers the remaining samples.
 
 Between two samples the fit only knows that the curve rises from one reading to the
 next, not when within that interval the pump actually delivered. A large step between
@@ -136,6 +149,8 @@ accepts them via `boundaries=`.
   before relying on the approximate path.
 - **Monotone fits ignore segment boundaries.** `fit_monotone_timeseries_spline` fits one
   continuous curve and rejects series with jumps; fit each continuous stretch separately.
+  Pass time since the start of the process, not absolute timestamps: times more than 1000
+  durations from zero are rejected.
 
 ## See also
 

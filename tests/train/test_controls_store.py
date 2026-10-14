@@ -271,13 +271,13 @@ def test_select_control_sources_rejects_spline_with_interior_rate_reversal(
 
 @pytest.mark.parametrize("flow_type, direction", [(Inflow, 1.0), (Outflow, -1.0)])
 def test_monotone_spline_fit_is_accepted_as_cumulative_flow(flow_type, direction):
-    # Pump-like data: flat stretches and a narrow ramp, which a zero increment
-    # lower bound would leave with roundoff-level reversed rates.
+    # Pump-like data with flat stretches, a narrow ramp and steps.
     times = np.linspace(0.0, 1.0, 201)
     raw = direction * (np.clip((times - 0.3) / 0.01, 0.0, 1.0) + np.floor(times * 4))
     fitted = fit_monotone_timeseries_spline(
         TimeSeries(times=jnp.asarray(times), values=jnp.asarray(raw)),
-        atol=5e-3,
+        rms_tol=5e-3,
+        increasing=direction > 0,
         max_knots=100,
     )
     collection = _make_two_process_collection()
