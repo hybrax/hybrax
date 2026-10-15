@@ -2,6 +2,7 @@
 
 import json
 import tempfile
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -203,6 +204,19 @@ def test_knots_concentrate_at_local_features():
     assert near_ramp >= (len(breaks) - 2) / 2
 
 
+def test_narrow_ramp_uses_available_midpoint_before_refinement_failure():
+    center, width = 0.9, 2e-6
+    times = np.unique(
+        np.r_[np.linspace(0, 1, 41), np.linspace(center - width, center + width, 21)]
+    )
+    values = 0.1 * times + 0.9 * np.clip((times - center) / width + 0.5, 0, 1)
+    fitted = fit_monotone_timeseries_spline(
+        _ts(times, values), rms_tol=1e-3, increasing=True, max_knots=128
+    )
+    _assert_contract(fitted, times, values, 1e-3)
+    assert fitted.metadata["monotone_fit"]["interior_knots"] <= 128
+
+
 def test_unit_rescaling_preserves_accuracy():
     values = 4.0 * RAMP + 0.3 * T
     base = fit_monotone_timeseries_spline(_ts(T, values), rms_tol=1e-3, increasing=True)
@@ -297,31 +311,102 @@ def test_invalid_input_is_rejected(series, kwargs, match):
 
 
 def test_budget_below_noise_hits_default_knot_cap():
-    # 241 samples give a default cap of 24 interior knots.
+    # These noisy samples are still monotone: the precheck cannot reject them,
+    # but the minimum default cap still limits the spline's ability to fit them.
     noisy = T + 0.01 * RNG.standard_normal(len(T))
     noisy[[0, -1]] = T[[0, -1]]
-    with pytest.raises(
-        RuntimeError, match=r"max_knots=24 .*noise level.*not be monotone"
-    ):
+    with pytest.raises(RuntimeError, match=r"max_knots=64;.*rms_tol=0.0001"):
         fit_monotone_timeseries_spline(_ts(T, noisy), rms_tol=1e-4, increasing=True)
 
 
-def test_short_series_default_cap_allows_a_sharp_step():
+def test_short_series_sharp_step_meets_budget():
     times = np.arange(7.0)
     values = np.array([0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0])
     fitted = fit_monotone_timeseries_spline(
         _ts(times, values), rms_tol=1e-3, increasing=True
     )
-    assert 7 < fitted.metadata["monotone_fit"]["interior_knots"] <= 16
+    _assert_contract(fitted, times, values, 1e-3)
+
+
+def test_event_dense_feed_meets_budget_with_default_cap():
+    # Regular sampling plus a burst around the feed restart.
+    times = np.unique(np.r_[np.linspace(0, 24, 145), np.linspace(11.8, 12.3, 121)])
+    values = 10 * np.minimum(times, 4) + 5 * np.clip(times - 12, 0, 5)
+    fitted = fit_monotone_timeseries_spline(
+        _ts(times, values), rms_tol=0.065, increasing=True
+    )
+    _assert_contract(fitted, times, values, 0.065)
+
+
+def test_pilot_iteration_limit_does_not_fail_a_valid_fit_under_warning_errors():
+    times = np.array(
+        [0.0, 0.04097352393619469, 0.2697867137638703, 0.6369616873214543, 1.0]
+    )
+    values = 1 / (1 + np.exp(-(times - 0.5) / 0.01))
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        fitted = fit_monotone_timeseries_spline(
+            _ts(times, values), rms_tol=1e-3, increasing=True
+        )
     _assert_contract(fitted, times, values, 1e-3)
 
 
 def test_explicit_knot_cap_is_exact():
     values = np.floor(T * 4.0) / 4.0  # many steps between adjacent samples
-    with pytest.raises(RuntimeError, match=r"max_knots=5 with 5 interior knots"):
+    with pytest.raises(RuntimeError, match=r"max_knots=5;") as error:
         fit_monotone_timeseries_spline(
             _ts(T, values), rms_tol=1e-4, max_knots=5, increasing=True
         )
+    message = str(error.value)
+    assert "Increase max_knots" in message
+    assert "increase rms_tol" in message
+    assert "physically acceptable" in message
+    assert "1.5 times" in message
+    assert "standard deviation" in message
+    assert "largest RMS deviation" in message
+    assert "closest monotone sequence" not in message
+    assert "interior knots" not in message
+
+
+@pytest.mark.parametrize("increasing", [True, False])
+@pytest.mark.parametrize("scale", [1.0, 10.0])
+def test_precheck_rejects_only_proven_monotonicity_conflict(
+    monkeypatch, increasing, scale
+):
+    times = np.arange(4.0)
+    values = scale * np.array([0.0, 0.8, 0.2, 1.0])
+    if not increasing:
+        values = 2 * scale - values
+
+    # Pooling the two reversed readings gives [0, .5, .5, 1], with RMS
+    # sqrt((.3**2 + .3**2) / 4). This lower bound exceeds .1 but not .22.
+    def unexpected_fit(*args, **kwargs):
+        pytest.fail("An impossible budget must reject before fitting")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(monotone_spline, "_solve_conic", unexpected_fit)
+        patch.setattr(monotone_spline, "_pilot_guide", unexpected_fit)
+        with pytest.raises(RuntimeError) as error:
+            fit_monotone_timeseries_spline(
+                _ts(times, values),
+                rms_tol=0.1 * scale,
+                increasing=increasing,
+                max_knots=0,
+            )
+    message = str(error.value)
+    assert f"closest monotone sequence has RMS error {0.212132 * scale:.3g}" in message
+    assert "Increasing max_knots cannot resolve this" in message
+    assert "check the data and requested direction" in message
+
+    with pytest.raises(RuntimeError) as error:
+        fit_monotone_timeseries_spline(
+            _ts(times, values),
+            rms_tol=0.22 * scale,
+            increasing=increasing,
+            max_knots=0,
+        )
+    assert "closest monotone sequence" not in str(error.value)
+    assert "Increase max_knots" in str(error.value)
 
 
 def test_accepts_budget_when_refinement_margin_is_out_of_reach(monkeypatch):
@@ -347,7 +432,9 @@ def test_solver_failure_is_reported(monkeypatch):
 
 def test_smoothing_failure_is_reported(monkeypatch):
     monkeypatch.setattr(monotone_spline, "_smoothest", lambda *args: None)
-    with pytest.raises(RuntimeError, match="smoothing problem did not solve.*clustered samples"):
+    with pytest.raises(
+        RuntimeError, match="smoothing problem did not solve.*clustered samples"
+    ):
         fit_monotone_timeseries_spline(
             _ts(T, 5.0 * RAMP), rms_tol=5e-3, increasing=True
         )
@@ -694,18 +781,35 @@ def test_refinement_measures_the_projected_least_rms_curve(monkeypatch):
     assert fitted.metadata["monotone_fit"]["interior_knots"] == 0
 
 
-def test_left_continuous_output_is_checked_as_stored():
+@pytest.mark.parametrize("rms_tol", [3.7e-4, 3.8e-4])
+def test_left_continuous_output_is_checked_as_stored(rms_tol):
     # At a large value offset, the two pieces at a break differ by roundoff. The
     # check must use the side the returned series evaluates with.
     values = 1e11 + 3.7 * RAMP
     series = _ts(T, values, continuity_side="left")
-    with pytest.raises(RuntimeError, match="exceeds rms_tol"):
-        fit_monotone_timeseries_spline(series, rms_tol=3.7e-4, increasing=True)
-    fitted = fit_monotone_timeseries_spline(series, rms_tol=3.8e-4, increasing=True)
+    fitted = fit_monotone_timeseries_spline(series, rms_tol=rms_tol, increasing=True)
     evaluated = np.asarray(fitted.evaluate_many(fitted.times))
     rms = np.sqrt(np.mean((evaluated - values) ** 2))
-    assert rms <= 3.8e-4
+    assert rms <= rms_tol
     assert fitted.metadata["monotone_fit"]["rms_error"] == pytest.approx(rms, rel=1e-9)
+
+
+def test_stored_rms_check_uses_requested_continuity_side():
+    # A tiny value mismatch is within the continuity tolerance but larger than
+    # the RMS budget. At the break only left evaluation reproduces the sample.
+    breaks = np.array([0.0, 0.5, 1.0])
+    coeffs = np.array([[0.0, 1.0, 0.0, 0.0], [0.5 + 1e-10, 1.0, 0.0, 0.0]])
+    values = np.array([0.0, 0.5, 1.0 + 1e-10])
+    assert (
+        monotone_spline._check_stored(
+            breaks, coeffs, breaks, values, 1e-11, 1.0, "left"
+        )
+        is None
+    )
+    problem = monotone_spline._check_stored(
+        breaks, coeffs, breaks, values, 1e-11, 1.0, "right"
+    )
+    assert problem is not None and "exceeds rms_tol" in problem
 
 
 def test_nan_endpoint_tolerance_fails():

@@ -109,8 +109,33 @@ reactor volume, and at least about 1.5 times the measurement noise standard devi
 At about the noise standard deviation, the fit is unstable: it can switch between
 few knots, the cap and an error. A budget below the noise can need a knot for nearly
 every sample and give a jagged rate, as can data that are not monotone enough to fit
-within the budget. The fit stops at `max_knots` (by default a tenth of the samples, at
-least 16) and raises an error.
+within the budget. The public `max_knots` keyword limits interior knots, by default
+to a tenth of the samples, but at least 64. If refinement exhausts that cap, increase
+`max_knots` or increase `rms_tol` if a larger RMS deviation is physically acceptable.
+Do not exceed the largest RMS deviation acceptable for your application; RMS is
+not a maximum pointwise error. Before fitting, a fast isotonic-regression check rejects
+data if even the closest monotone sequence exceeds `rms_tol`. In that case, increasing
+`max_knots` cannot help; check the data and requested direction. Passing this check
+does not guarantee that a smooth spline can meet the budget within the knot cap.
+
+When refinement is needed, an unconstrained pilot spline guides each new knot's
+location using variation in its second derivative. Intervals are still selected by
+the monotone fit's residual errors. The pilot uses `max_knots` as its interior-knot
+target and requests the same RMS tolerance. If that layout cannot meet the pilot
+budget, its least-squares approximation still supplies the guide. The pilot's
+coefficients are not used in the final spline. Only the returned monotone curve
+must meet the requested error budget.
+
+Pilot cost grows with the sample count and `max_knots`. For large, noisy series,
+a tolerance near or below the noise level can make pilot construction expensive,
+even when the final fit rejects the data. A knot cap limits the pilot's size,
+but does not provide a fixed runtime bound.
+
+A fit still running after 20 seconds emits one `INFO` message through the
+`hybrax.format.monotone_spline` logger, with its sample count, resolved `max_knots`,
+and `rms_tol`. The message suggests ways to reduce work; it does not stop the fit.
+The background timer is best-effort and can be delayed while native code holds
+Python's GIL. Configure application logging to display INFO messages.
 
 The budget, monotonicity, continuity and endpoints are checked on the stored curve: the
 fit either meets them or raises an error. Smoothness is not checked. With strongly

@@ -7,7 +7,9 @@ curve monotone in the direction of `D` (a sufficient, not necessary, condition).
 
 Knots are chosen by refinement: for the current knots, a second-order cone
 program finds the smallest achievable RMS error, and new knots go where the
-squared residuals of that fit concentrate. Once the budget is met, a QP
+squared residuals of that fit concentrate. An unconstrained pilot guides each
+insertion using its curvature variation, with a knot target set by max_knots.
+Once the budget is met, a QP
 minimizes the integrated squared second derivative among curves with ordered
 B-spline coefficients within the budget. This minimization is numerical: with
 strongly clustered samples the result can be rougher than necessary. All
@@ -18,16 +20,23 @@ that its tolerance stays relative to it.
 
 from __future__ import annotations
 
+import warnings
+from threading import Timer
 from typing import Any
 
 import clarabel
 import jax.numpy as jnp
 import numpy as np
 from scipy import sparse
-from scipy.interpolate import BSpline
+from scipy.interpolate import BSpline, generate_knots, make_lsq_spline, make_splrep
 from scipy.interpolate import PPoly as SciPyPPoly
+from scipy.optimize import isotonic_regression
 
+from ._logging import get_logger
 from .time_series import TimeSeries, spline_ops
+
+_logger = get_logger(__name__)
+_SLOW_FIT_SECONDS = 20.0
 
 # Refinement stops once the smallest achievable RMS error is below this fraction
 # of the budget, which leaves the smoothing QP room inside the full budget.
@@ -43,8 +52,9 @@ _INCREMENT_FLOOR = 1e-9
 _BATCH_FRACTION = 0.1
 # Minimum gap between a new knot and its interval ends in normalized time.
 _MIN_KNOT_GAP = 1e-7
-# Minimum default cap, so short series can still resolve sharp features.
-_MIN_DEFAULT_KNOTS = 16
+# Minimum default cap, so short series can resolve sharp features even with
+# safeguarded splits that need several refinements to reach a narrow event.
+_MIN_DEFAULT_KNOTS = 64
 # Default cap is the sample count divided by this, with the minimum above.
 _DEFAULT_KNOT_DIVISOR = 10
 # Use half the remaining RMS slack when it is smaller than the QP margin.
@@ -53,8 +63,13 @@ _QP_SLACK_DIVISOR = 2.0
 _ROUNDOFF_FACTOR = 64
 # Allow endpoint drift from a few ulps in the pinned final time.
 _ENDPOINT_TIME_ULPS = 4
-# Use the interval midpoint when at most this many interior samples are present.
-_MIDPOINT_SAMPLE_THRESHOLD = 2
+# Keep each new knot this fraction of its interval away from either end, so
+# a split's two child intervals differ in width by at most a factor of three.
+_SPLIT_GUARD = 0.25
+# Cubic pilots need at least four observations.
+_MIN_PILOT_SAMPLES = 4
+# Use the midpoint without guide mass when at most two interior samples remain.
+_MEDIAN_SAMPLE_THRESHOLD = 2
 # Adjacent pieces may disagree by this fraction of the net change. Rounding of the
 # stored physical breakpoints causes small mismatches when times have an offset;
 # below this level they are irrelevant.
@@ -62,6 +77,11 @@ _CONTINUITY_RTOL = 1e-9
 # Times may be at most this many durations away from zero. Larger offsets (e.g.
 # epoch timestamps) make breakpoint rounding visible; subtract the start time.
 _MAX_TIME_OFFSET_RATIO = 1000
+_RMS_TOL_GUIDANCE = (
+    "As a rule of thumb, choose rms_tol of at least 1.5 times the "
+    "expected measurement-noise standard deviation, without exceeding the "
+    "largest RMS deviation acceptable for your application."
+)
 
 
 def fit_monotone_timeseries_spline(
@@ -85,6 +105,10 @@ def fit_monotone_timeseries_spline(
     it meets the budget.
 
     Knots are added where the residuals concentrate until the budget can be met.
+    An unconstrained pilot guides their locations throughout refinement. It uses
+    the same RMS target and max_knots as its interior-knot target, but can miss
+    that RMS target when its layout is too small. It only proposes locations;
+    the returned monotone curve must meet the requested budget.
     For the chosen knots, the smoothing step numerically minimizes the integrated
     squared second derivative among curves with ordered B-spline coefficients
     within the budget, so the fit generally uses most of the budget and smooths
@@ -112,7 +136,7 @@ def fit_monotone_timeseries_spline(
         rms_tol: RMS error budget, `> 0`.
         increasing: Whether the curve must increase or decrease.
         max_knots: Maximum number of interior knots. Defaults to a tenth of the
-            number of samples, but at least 16.
+            number of samples, but at least 64. Also sets the pilot knot target.
 
     Returns:
         A new TimeSeries with the same samples and continuity side, holding the
@@ -124,9 +148,9 @@ def fit_monotone_timeseries_spline(
         ValueError: For invalid input, or if the endpoints are equal and the
             constant curve misses the budget, or the endpoints contradict
             `increasing`.
-        RuntimeError: If refinement reaches `max_knots` or cannot place further
-            knots before the budget can be met (usually because `rms_tol` is below
-            the noise level or the data are not monotone enough), or if a solve or
+        RuntimeError: If the closest monotone sequence exceeds the RMS budget,
+            if refinement reaches `max_knots` or cannot place further
+            knots before the budget can be met, or if a solve or
             final check fails.
     """
     times = np.asarray(ts.times, dtype=np.float64)
@@ -164,9 +188,17 @@ def fit_monotone_timeseries_spline(
         coeffs = np.array([[y0, 0.0, 0.0, 0.0]])
         info |= {"interior_knots": 0, "refinements": 0}
     else:
-        breaks, coeffs, fit_info = _fit_nonconstant(
-            times, values, rms_tol, max_knots, ts.continuity_side
+        timer = Timer(
+            _SLOW_FIT_SECONDS, _log_slow_fit, args=(len(times), rms_tol, max_knots)
         )
+        timer.daemon = True
+        timer.start()
+        try:
+            breaks, coeffs, fit_info = _fit_nonconstant(
+                times, values, rms_tol, max_knots, ts.continuity_side
+            )
+        finally:
+            timer.cancel()
         info |= fit_info
 
     residuals = _evaluate(breaks, coeffs, times, ts.continuity_side) - values
@@ -181,6 +213,24 @@ def fit_monotone_timeseries_spline(
         coeffs=jnp.asarray(coeffs, dtype=jnp.float64),
         segment_start_piece_idx=jnp.array([0], dtype=jnp.int32),
         metadata={"monotone_fit": info},
+    )
+
+
+def _log_slow_fit(samples: int, rms_tol: float, max_knots: int) -> None:
+    """Emit one progress notice; elapsed time alone does not diagnose conditioning."""
+    _logger.info(
+        "Monotone spline fit for %d samples is still running after %.0f seconds "
+        "(rms_tol=%g, max_knots=%d). Tight tolerances, many samples, or clustered "
+        "sampling can make fitting slow. To reduce work, increase rms_tol to allow "
+        "a larger RMS error if physically acceptable, or reduce max_knots to limit "
+        "refinement (the fit may then fail to meet rms_tol). For clustered data, "
+        "consider removing redundant samples while preserving short events; the "
+        "RMS budget then applies to the retained samples. Tightening rms_tol "
+        "usually increases fitting time. The current fit continues.",
+        samples,
+        _SLOW_FIT_SECONDS,
+        rms_tol,
+        max_knots,
     )
 
 
@@ -219,6 +269,20 @@ def _fit_nonconstant(
     z = (values - y0) / net
     budget = rms_tol / abs(net)  # Normalized RMS budget.
 
+    # A lower bound for any monotone curve, without spline or endpoint
+    # constraints. Reject impossible budgets before any spline solve or pilot.
+    monotone_rms = float(np.sqrt(np.mean((isotonic_regression(z).x - z) ** 2)))
+    if monotone_rms > budget:
+        raise RuntimeError(
+            f"Monotone fit cannot meet rms_tol={rms_tol:.3g}. "
+            "Even without spline constraints, the closest monotone sequence "
+            f"has RMS error {monotone_rms * abs(net):.3g}, above rms_tol. "
+            "Increasing max_knots cannot resolve this; check the data and "
+            "requested direction, or increase rms_tol if a larger RMS "
+            "deviation is physically acceptable. " + _RMS_TOL_GUIDANCE
+        )
+
+    guide = None
     interior = np.empty(0)
     refinements = 0
     while True:
@@ -240,21 +304,36 @@ def _fit_nonconstant(
         if rms <= _ACCEPT_FRACTION:
             break
         limit = max_knots - len(interior)
-        new = _choose_knots(x, residual, interior, limit) if limit > 0 else []
+        if limit > 0:
+            if guide is None:
+                guide = _pilot_guide(x, z, budget, max_knots)
+            new = _choose_knots(x, residual, interior, limit, guide)
+        else:
+            new = []
         if not new:
             if rms <= 1.0:
                 break  # The margin is out of reach but the budget is met.
             reason = (
                 f"reached max_knots={max_knots}"
                 if limit <= 0
-                else "cannot place further knots"
+                else f"cannot place further knots with {len(interior)} interior knots"
             )
+            if limit <= 0:
+                guidance = (
+                    "Increase max_knots to allow more refinement, or increase "
+                    "rms_tol if a larger RMS deviation is physically acceptable. "
+                )
+            else:
+                guidance = (
+                    "Refinement cannot resolve finer features at the minimum knot "
+                    "spacing. Increase rms_tol if a larger RMS deviation is "
+                    "physically acceptable. "
+                )
             raise RuntimeError(
-                f"Monotone fit {reason} with {len(interior)} interior knots; its RMS "
+                f"Monotone fit {reason}; its RMS "
                 f"error {rms * rms_tol:.3g} still exceeds rms_tol={rms_tol:.3g}. "
-                "A budget below the noise level of the data needs a knot for "
-                "nearly every sample; the data may also not be monotone enough "
-                "to fit."
+                + guidance
+                + _RMS_TOL_GUIDANCE
             )
         interior = np.sort(np.r_[interior, new])
 
@@ -382,14 +461,84 @@ def _project(c: np.ndarray) -> np.ndarray:
     return projected
 
 
-def _choose_knots(
-    x: np.ndarray, residual: np.ndarray, interior: np.ndarray, limit: int
-) -> list[float]:
-    """Pick new knots in the intervals with the largest sum of squared residuals.
+def _fit_pilot(x: np.ndarray, z: np.ndarray, budget: float, max_knots: int) -> BSpline:
+    """Fit a smoothing guide, or its best LSQ approximation at the knot target.
 
-    A new knot goes at the median sample of its interval, or at the midpoint
-    when the interval holds two or fewer samples.
+    A bounded layout may not meet the requested pilot RMS. In that case use
+    its least-RMS curve rather than asking the smoothing solver to satisfy an
+    infeasible constraint. The final monotone fit retains its separate budget.
+    SciPy's nest targets the full knot vector, including eight endpoint repeats.
     """
+    weights = np.full_like(x, 1.0 / budget)
+    nest = min(max_knots + 8, len(x) + 4)
+    knots = list(generate_knots(x, z, w=weights, s=float(len(x)), nest=nest))[-1]
+    pilot = make_lsq_spline(x, z, knots, w=weights)
+    if np.linalg.norm((pilot(x) - z) / budget) > np.sqrt(len(x)):
+        return pilot
+    # The pilot may be approximate; its smoothing iteration limit must not
+    # reject an otherwise valid final fit, including under warnings-as-errors.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"error\. the maximal number of iterations maxit",
+            category=RuntimeWarning,
+            module=r"scipy\.interpolate\._fitpack_repro",
+        )
+        return make_splrep(x, z, w=weights, s=float(len(x)), t=knots)
+
+
+def _pilot_guide(
+    x: np.ndarray, z: np.ndarray, budget: float, max_knots: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return pilot breakpoints and curvature-variation density per interval.
+
+    The second derivative of a cubic is piecewise linear. Its total variation
+    on an interval is exactly the integral of the absolute third derivative.
+    Thus each pilot interval has constant density abs(pilot'''). The smoothing
+    condition sum((residual / budget)**2) <= n expresses the sample RMS budget.
+    """
+    if len(x) < _MIN_PILOT_SAMPLES:
+        return np.array([0.0, 1.0]), np.zeros(1)
+    pilot = _fit_pilot(x, z, budget, max_knots)
+    edges = np.unique(pilot.t)
+    midpoints = (edges[:-1] + edges[1:]) / 2.0
+    density = np.abs(pilot.derivative(3)(midpoints))
+    if not np.all(np.isfinite(density)):
+        raise RuntimeError("Unconstrained pilot has nonfinite curvature variation.")
+    return edges, density
+
+
+def _guide_location(
+    a: float, b: float, guide: tuple[np.ndarray, np.ndarray]
+) -> float | None:
+    """Bisect the integral of curvature variation within the chosen interval.
+
+    Intersect the pilot cells with [a, b] before accumulating their masses, so
+    features outside this interval cannot attract its knot. Return None when
+    the pilot's curvature is constant throughout the interval.
+    """
+    edges, density = guide
+    lo = np.maximum(edges[:-1], a)
+    hi = np.minimum(edges[1:], b)
+    mass = np.maximum(hi - lo, 0.0) * density
+    cumulative = np.cumsum(mass)
+    total = cumulative[-1]
+    if total == 0.0:
+        return None
+    half = total / 2.0
+    index = int(np.searchsorted(cumulative, half))
+    before = cumulative[index - 1] if index else 0.0
+    return float(lo[index] + (half - before) / density[index])
+
+
+def _choose_knots(
+    x: np.ndarray,
+    residual: np.ndarray,
+    interior: np.ndarray,
+    limit: int,
+    guide: tuple[np.ndarray, np.ndarray],
+) -> list[float]:
+    """Score intervals by sample RMS error, then use the pilot for locations."""
     edges = np.r_[0.0, interior, 1.0]
     n_intervals = len(edges) - 1
     index = np.clip(np.searchsorted(edges, x, side="right") - 1, 0, n_intervals - 1)
@@ -399,17 +548,22 @@ def _choose_knots(
         if len(new) == limit or score[index] < _BATCH_FRACTION * score.max():
             break
         a, b = edges[index], edges[index + 1]
-        inside = x[(x > a) & (x < b)]
-        candidates = (
-            [float(np.median(inside))]
-            if len(inside) > _MIDPOINT_SAMPLE_THRESHOLD
-            else []
-        )
-        candidates.append((a + b) / 2.0)
-        for knot in candidates:
-            if min(knot - a, b - knot) > _MIN_KNOT_GAP:
-                new.append(knot)
-                break
+        knot = _guide_location(a, b, guide)
+        if knot is None:
+            inside = x[(x > a) & (x < b)]
+            knot = (
+                float(np.median(inside))
+                if len(inside) > _MEDIAN_SAMPLE_THRESHOLD
+                else (a + b) / 2.0
+            )
+        guard = _SPLIT_GUARD * (b - a)
+        knot = float(np.clip(knot, a + guard, b - guard))
+        # On narrow intervals the clipped proposal can miss the minimum gap
+        # while the midpoint still fits. Try it before abandoning the interval.
+        if min(knot - a, b - knot) <= _MIN_KNOT_GAP:
+            knot = (a + b) / 2.0
+        if min(knot - a, b - knot) > _MIN_KNOT_GAP:
+            new.append(knot)
     return new
 
 
