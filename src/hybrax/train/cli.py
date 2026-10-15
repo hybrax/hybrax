@@ -27,6 +27,8 @@ from .harness import (
     prepare_training,
     train_collection,
     train_harness_config_from_run_config,
+    validate_initial_checkpoint,
+    with_initial_parameters,
 )
 from .loo import (
     _dispatch_producer,
@@ -54,6 +56,9 @@ from .runtime_artifact import FORMAT_VERSION
 from .runtime_context import original_parent_processes
 from .serialization import (
     content_hash,
+    file_hash,
+    read_initial_checkpoint,
+    read_json,
     read_run_config_json,
     resolve_forward_model_path,
     resolve_run_dir,
@@ -132,6 +137,11 @@ def _build_parser() -> argparse.ArgumentParser:
             "Delete everything already in --output-dir, regardless of what put "
             "it there, before writing fresh output."
         ),
+    )
+    train_parser.add_argument(
+        "--init-from",
+        default=None,
+        help="Start a new phase from checkpoint weights with fresh optimizer state.",
     )
     train_parser.add_argument(
         "--epochs",
@@ -449,6 +459,10 @@ def _handle_train(args: argparse.Namespace) -> int:
         raise ValueError("train command requires a data config section")
     run_dir = Path(cfg.output.dir)
     config_json = run_dir / "config.json"
+    if args.init_from is not None:
+        params_path, source_config, source_document = read_initial_checkpoint(
+            args.init_from, output_dir=run_dir
+        )
 
     # Re-run guard: block only on a completed run unless --overwrite.
     if config_json.is_file():
@@ -473,6 +487,35 @@ def _handle_train(args: argparse.Namespace) -> int:
             return 1
 
     collection = load_process_collection(cfg.data.prepared)
+    prepared_hash = content_hash(collection)
+    config = train_harness_config_from_run_config(cfg, run_dir=run_dir)
+    prepared = None
+    initial_checkpoint = None
+    if args.init_from is not None:
+        # Validate and load before --overwrite or any output writes.
+        prepared = prepare_training(
+            collection,
+            config=config,
+            custom_module=loaded.custom_module,
+            run_config=cfg,
+        )
+        validate_initial_checkpoint(
+            prepared, source_config, source_document, prepared_hash
+        )
+        prepared = with_initial_parameters(prepared, params_path)
+        state_path = params_path.parent / "train_state.json"
+        source_step = (
+            read_json(state_path)["step"]
+            if state_path.is_file()
+            else source_document["updates_completed"]
+        )
+        initial_checkpoint = {
+            "path": str(params_path.parent),
+            "step": source_step,
+            "params_hash": file_hash(params_path),
+            "prepared_hash": prepared_hash,
+            "optimizer_state": "fresh",
+        }
 
     if args.overwrite:
         _clear_output_dir_for_overwrite(
@@ -497,7 +540,7 @@ def _handle_train(args: argparse.Namespace) -> int:
         "inputs": {
             "prepared_input": {
                 "path": str(cfg.data.prepared),
-                "content_hash": content_hash(collection),
+                "content_hash": prepared_hash,
             },
             "custom_py": {
                 "bundled": bundled_custom,
@@ -507,19 +550,24 @@ def _handle_train(args: argparse.Namespace) -> int:
                     else None
                 ),
             },
+            **(
+                {"init_checkpoint": initial_checkpoint}
+                if initial_checkpoint is not None
+                else {}
+            ),
         },
         "environment": _environment_versions(),
     }
     write_json(config_json, document)
 
-    config = train_harness_config_from_run_config(cfg, run_dir=run_dir)
     try:
-        prepared = prepare_training(
-            collection,
-            config=config,
-            custom_module=loaded.custom_module,
-            run_config=cfg,
-        )
+        if prepared is None:
+            prepared = prepare_training(
+                collection,
+                config=config,
+                custom_module=loaded.custom_module,
+                run_config=cfg,
+            )
         del collection
         if cfg.train.holdout_processes is not None and cfg.data.processes is None:
             # Reloading must rebuild static scales/modules from the same split.

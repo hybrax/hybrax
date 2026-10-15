@@ -565,6 +565,27 @@ def resolve_model_path(path: str | Path) -> tuple[Path, Path]:
     )
 
 
+def read_initial_checkpoint(
+    path: str | Path, *, output_dir: str | Path | None = None
+) -> tuple[Path, RunConfig, dict[str, Any]]:
+    """Resolve starting weights and metadata without reconstructing the model.
+
+    Reject an output directory containing the source weights before a new phase
+    can overwrite them. Resolve symlinks so ``latest`` pins a concrete checkpoint.
+    """
+    source_dir, params_path = resolve_model_path(path)
+    params_path = params_path.resolve()
+    if output_dir is not None and params_path.is_relative_to(
+        Path(output_dir).resolve()
+    ):
+        raise ValueError(
+            f"initial checkpoint {params_path} is inside output directory "
+            f"{output_dir}; use a separate output directory"
+        )
+    config, document = read_run_config_json(source_dir / "config.json")
+    return params_path, config, document
+
+
 def model_load(path: str | Path) -> tuple[HybridOdeWrapper, RunConfig]:
     """Load a trained model and the run config it was trained under.
 

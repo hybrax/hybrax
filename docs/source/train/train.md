@@ -4,7 +4,7 @@
 > core.
 
 ```bash
-hybrax train --config train-config.json [--overwrite] [--epochs N]
+hybrax train --config train-config.json [--overwrite] [--epochs N] [--init-from PATH]
 ```
 
 ## Setup, in order
@@ -223,6 +223,45 @@ previous attempt, or pass `--overwrite` to clear it and start fresh. This also
 applies to failed runs; restarting training does not resume old optimizer state
 or combine checkpoint rankings. An incomplete output directory with no
 checkpoints can be reused.
+
+### Start a new phase from checkpoint weights
+
+Use a new phase config and a separate output directory:
+
+```bash
+hybrax train --config phase2.json \
+  --init-from run/checkpoints/step_00500 \
+  --output-dir run_phase2
+```
+
+`--init-from` accepts a checkpoint directory, a completed run directory, or its
+`params.eqx` file. The phase loads both reaction-module and trainable loss-module
+parameters. It uses normal phase preparation and optimizer initialization;
+saved `opt_state.eqx` is not loaded. Default Adam moments and schedule counters
+start at zero. A custom optimizer hook remains responsible for its own `init`.
+
+`train.epochs` means additional epochs. The phase LR hook receives the additional
+update budget, and phase-local steps also restart step-dependent custom losses.
+Choose a new base LR or edit only the LR hook to change the schedule.
+
+Keep the same prepared data, targets, target source, and ordered training
+selection. These inputs are checked against source metadata. Keep model,
+scaling, and loss definitions and their model-affecting settings unchanged;
+parameter shape checks cannot verify arbitrary Python-code equivalence. Source
+holdout runs without a recorded resolved training selection are rejected.
+
+The new run records its source under `inputs.init_checkpoint`. Metrics,
+checkpoint numbering, and retention belong to the new phase. Output directories
+containing source weights are rejected before writes, including `--overwrite`.
+Prepared data is read once; there is no second source-model reconstruction.
+
+For Python callers, pass `init_from` to `train_from_collection()` or
+`train_from_prepared_json()`. The collection API keeps its ordinary return and
+output behavior. Its `checkpoint_dir` must not contain source weights.
+
+Remove manual checkpoint-loading hooks before adopting this path. In particular,
+a custom optimizer `init` that deserializes `opt_state.eqx` still restores old
+optimizer state. Use normal fresh initialization for the new phase.
 
 ### Choose a selection metric
 

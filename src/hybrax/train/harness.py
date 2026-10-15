@@ -85,6 +85,12 @@ from .runtime_context import (
     original_parent_processes,
     training_selection_excluding_holdout,
 )
+from .serialization import (
+    _recorded_prepared_content_hash,
+    content_hash,
+    load_trained_wrapper,
+    read_initial_checkpoint,
+)
 from .utils import (
     get_hook,
     load_custom_module,
@@ -2274,6 +2280,59 @@ class PreparedTraining:
     prediction_parent_process_names: tuple[str, ...] = ()
 
 
+def validate_initial_checkpoint(
+    prepared: PreparedTraining,
+    source_config: RunConfig,
+    source_document: dict[str, Any],
+    prepared_content_hash: str,
+) -> None:
+    """Require the source's data, targets, and ordered training selection.
+
+    Model/scaling/loss definitions remain the caller's compatibility contract;
+    this check catches accidentally changing their data inputs.
+    """
+    if _recorded_prepared_content_hash(source_document) != prepared_content_hash:
+        raise ValueError(
+            "initial checkpoint prepared data differs from phase data "
+            "or was not recorded"
+        )
+    data = source_config.data
+    if data is None:
+        raise ValueError("initial checkpoint records no training data config")
+    if source_config.train.holdout_processes and data.processes is None:
+        raise ValueError("initial checkpoint lacks its resolved training selection")
+    if (
+        data.targets != prepared.config.target_variable_order
+        or data.target_source != prepared.config.target_source
+    ):
+        raise ValueError("initial checkpoint targets differ from phase targets")
+    source_processes = data.processes or tuple(prepared.store.process_order)
+    if source_processes != prepared.config.process_names:
+        raise ValueError("initial checkpoint training selection differs from phase")
+
+
+def with_initial_parameters(
+    prepared: PreparedTraining, params_path: str | Path
+) -> PreparedTraining:
+    """Load reaction and loss parameters, retaining the phase's frozen context.
+
+    The phase optimizer is unchanged; execution calls its normal ``init`` on the
+    loaded parameters. Default optimizer state and schedule counters start fresh.
+    """
+    template = _build_template_wrapper(
+        prepared.store,
+        reaction_module=prepared.reaction_module,
+        selected_processes=prepared.config.process_names,
+        loss_module=prepared.loss_module,
+    )
+    loaded = load_trained_wrapper(params_path, template=template)
+    return dataclasses.replace(
+        prepared,
+        reaction_module=loaded.reaction_module,
+        loss_module=loaded.loss_module,
+    )
+
+
 _TRAIN_HOOK_NAMES = (
     "estimate_all_scales",
     "build_reaction_module",
@@ -2466,8 +2525,19 @@ def train_from_collection(
     runtime_config: dict[str, Any] | None = None,
     run_config: RunConfig | None = None,
     custom_module: Any | None = None,
+    init_from: str | Path | None = None,
 ) -> TrainHarnessResult:
-    """Prepare and train; external collection references remain caller-owned."""
+    """Prepare and train; external collection references remain caller-owned.
+
+    ``init_from`` initializes a new phase from a checkpoint's parameters, with
+    additional epochs and normal fresh optimizer initialization. Keep the
+    source's data, selection, model/scaling/loss definitions and their inputs.
+    Custom optimizer hooks must themselves initialize fresh state.
+    """
+    if init_from is not None:
+        params_path, source_config, source_document = read_initial_checkpoint(
+            init_from, output_dir=config.checkpoint_dir if config is not None else None
+        )
     prepared = prepare_training(
         collection,
         config=config,
@@ -2476,6 +2546,11 @@ def train_from_collection(
         run_config=run_config,
         custom_module=custom_module,
     )
+    if init_from is not None:
+        validate_initial_checkpoint(
+            prepared, source_config, source_document, content_hash(collection)
+        )
+        prepared = with_initial_parameters(prepared, params_path)
     del collection
     return train_collection(
         prepared.store,
@@ -2533,6 +2608,7 @@ def train_from_prepared_json(
     config: TrainHarnessConfig | None = None,
     custom_py: str | Path | None = None,
     runtime_config: dict[str, Any] | None = None,
+    init_from: str | Path | None = None,
 ) -> TrainHarnessResult:
     """Load a prepared JSON and train from it.
 
@@ -2547,4 +2623,5 @@ def train_from_prepared_json(
         config=config,
         custom_py=custom_py,
         runtime_config=runtime_config,
+        init_from=init_from,
     )
