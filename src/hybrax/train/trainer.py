@@ -1,7 +1,7 @@
 """The JIT-compiled per-sample solve and per-batch loss/gradient step.
 
 ``build_batched_loss_fn`` builds the function ``harness.py`` JIT-compiles for
-every train step: it vmaps a single sample's ODE solve plus loss module
+every train step: it maps a single sample's ODE solve plus loss module
 evaluation (``evaluate_sample_with_loss_module``) across a batch, and
 ``evaluate_one_sample_loss`` provides the equivalent single-sample path used
 outside training (holdout evaluation, dense exports).
@@ -543,9 +543,10 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
 
     The returned fn receives RAW measurements (``batch.y_measured`` /
     ``batch.y0_measured``); it pre-scales them via the module's ``SCALE_state``,
-    then vmaps :func:`evaluate_sample_with_loss_module` over the batch. The loss
+    then maps :func:`evaluate_sample_with_loss_module` over the batch. The loss
     module is read off the wrapper, so swapping it (or its trainable params)
-    flows through without rebuilding this closure.
+    flows through without rebuilding this closure. Optional ``microbatch_size``
+    limits execution width without changing the process mean.
     """
 
     def _batched_loss_fn(
@@ -560,6 +561,7 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
         solver_atol: float,
         step: int | jax.Array | None = None,
         prediction_grid_n: int | None = None,
+        microbatch_size: int | None = None,
     ) -> tuple:
         batch_t_meas = clamp_padded_time_rows(batch.t_measured, batch.n_measured)
 
@@ -625,33 +627,7 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
                 result.fail_time,
             )
 
-        (
-            per_sample_total,
-            per_sample_per_target,
-            prediction_t,
-            prediction_save_outputs,
-            prediction_valid,
-            measurement_save_outputs,
-            measurement_prediction_valid,
-            per_sample_fail_time,
-        ) = jax.vmap(
-            _sample_loss,
-            # when `jump_ts_rows` is `None` we also have to pass `None` to vmap so that
-            # it's not iterated over
-            in_axes=(
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                None if jump_ts_rows is None else 0,
-            ),
-        )(
+        sample_args = (
             jnp.arange(batch.process_indices.shape[0], dtype=jnp.int32),
             batch_t_meas,
             SCL_y_measured,
@@ -664,6 +640,44 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
             batch.retention_modeled_Outflows,
             jump_ts_rows,
         )
+        if microbatch_size is None or microbatch_size >= batch.process_indices.shape[0]:
+            outputs = jax.vmap(_sample_loss)(*sample_args)
+        else:
+            n_groups, remainder = divmod(
+                batch.process_indices.shape[0], microbatch_size
+            )
+            full_size = n_groups * microbatch_size
+            grouped_args = jtu.tree_map(
+                lambda x: x[:full_size].reshape(
+                    (n_groups, microbatch_size) + x.shape[1:]
+                ),
+                sample_args,
+            )
+            outputs = jax.lax.map(
+                lambda rows: jax.vmap(_sample_loss)(*rows), grouped_args
+            )
+            # lax.map(batch_size=...) uses an inferred reshape dimension that
+            # fails for zero-width solve outputs. Keep the row count explicit.
+            outputs = jtu.tree_map(
+                lambda x: x.reshape((full_size,) + x.shape[2:]), outputs
+            )
+            if remainder:
+                tail = jax.vmap(_sample_loss)(
+                    *jtu.tree_map(lambda x: x[full_size:], sample_args)
+                )
+                outputs = jtu.tree_map(
+                    lambda full, last: jnp.concatenate((full, last)), outputs, tail
+                )
+        (
+            per_sample_total,
+            per_sample_per_target,
+            prediction_t,
+            prediction_save_outputs,
+            prediction_valid,
+            measurement_save_outputs,
+            measurement_prediction_valid,
+            per_sample_fail_time,
+        ) = outputs
         mean_total = jnp.mean(per_sample_total)
         # 2nd element is PER-SAMPLE per-target (one row per process), matching the
         # forward harvest path (compute_dense_exports); the vmap training step

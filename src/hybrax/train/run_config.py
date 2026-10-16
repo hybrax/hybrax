@@ -119,7 +119,11 @@ class TrainConfig(ConfigBase):
     raw, pre-optimizer gradient by global norm before every update — check
     ``grad_norm_curve.png``, which plots the pre-clip norm, to pick a real
     value once scales are right. ``batch_size`` (default ``None``) is how
-    many processes make up one batch; ``None`` means full-batch. ``shuffle``
+    many processes contribute to one optimizer update; ``None`` means full-batch.
+    ``microbatch_size`` optionally limits how many process solves execute
+    together, while preserving that batch mean and one optimizer update. It
+    requires ``devices=1`` and one actual JAX device. A width at least as
+    large as the batch uses unsplit execution. ``shuffle``
     (default ``True``) reshuffles the process order every epoch;
     ``batch_seed`` (optional) seeds that shuffling independently of ``seed``.
     ``devices`` (default ``1``) is how many CPU devices to shard the batch
@@ -147,6 +151,7 @@ class TrainConfig(ConfigBase):
     learning_rate: float = Field(1e-3, gt=0)
     grad_clip_norm: float = Field(1000.0, ge=0)
     batch_size: int | None = Field(None, gt=0)
+    microbatch_size: int | None = Field(None, gt=0)
     shuffle: bool = True
     batch_seed: int | None = None
     devices: int | Literal["max"] = 1
@@ -156,6 +161,12 @@ class TrainConfig(ConfigBase):
     )
     # Ordinary train only; LOO defines holdouts through its folds.
     holdout_processes: tuple[str, ...] | None = Field(None, min_length=1)
+
+    @model_validator(mode="after")
+    def _microbatch_requires_one_device(self):
+        if self.microbatch_size is not None and self.devices != 1:
+            raise ValueError("microbatching requires train.devices=1")
+        return self
 
     @field_validator("holdout_processes")
     @classmethod

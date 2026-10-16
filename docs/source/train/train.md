@@ -41,9 +41,10 @@ For each process in the batch:
 2. Save states and rates at the measurement times (and on a dense grid, if the loss module
    asked for one).
 3. Hand those to the loss module; take the **mean** of its named losses.
-4. Differentiate the whole thing (solver steps, event jumps, spline evaluations) with
-   respect to the trainable parameters.
-5. Clip the **raw** gradient by global norm, then apply the optimizer.
+
+Then average those process losses, differentiate with respect to the trainable
+parameters, clip the **raw batch gradient** by global norm, and apply the optimizer
+once. This includes gradients through solver steps, event jumps, and spline evaluations.
 
 One solve per sample serves both the reaction module (which runs *inside* it) and the
 loss module (which reads its saved outputs *after*). Adding dense save points costs extra
@@ -80,6 +81,25 @@ usually stiffness caused by bad scaling, not the solver.
 
 **`batch_size`** must not exceed the number of selected processes. It is not clamped;
 you get a `ValueError`.
+
+**`microbatch_size`** optionally limits how many process solves execute together.
+It preserves the logical batch, its process mean, and one optimizer update:
+
+```json
+{ "train": { "batch_size": null, "microbatch_size": 1, "devices": 1 } }
+```
+
+For twelve processes, this evaluates twelve one-process groups at unchanged
+parameters, then applies one update. Setting `batch_size=1` instead applies twelve
+updates per epoch. Omit `microbatch_size` to keep full-width execution. A width at
+least as large as the logical batch also uses full width.
+
+Microbatching requires `train.devices=1` and one actual local JAX device.
+Environment overrides do not bypass the configured restriction. Check
+`HYBRAX_TRAIN_DEVICES` and `XLA_FLAGS` if `devices=1` still raises.
+Smaller groups can improve throughput, but can also lose parallelism.
+Numerical results can change with execution width. Compare losses, gradients, and
+short training trajectories on your workload before choosing a width.
 
 ## Hook: `build_learning_rate`
 

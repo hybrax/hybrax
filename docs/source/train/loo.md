@@ -100,6 +100,16 @@ commands alongside each other oversubscribes the machine and, on constrained sys
 gets processes OOM-killed.
 :::
 
+To use [microbatching](train.md#the-knobs-that-matter), set one device per fold:
+
+```json
+{ "train": { "microbatch_size": 1 }, "loo": { "devices_per_fold": 1 } }
+```
+
+Microbatching preserves each fold's logical batch and optimizer update count.
+Larger execution widths are capped by that fold's batch size. A resolved device
+count greater than one raises before any folds are dispatched.
+
 ## Resuming
 
 ```bash

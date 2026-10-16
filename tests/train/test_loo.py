@@ -1135,6 +1135,33 @@ def test_run_loo_cv_uses_configured_devices_per_fold(monkeypatch, tmp_path):
     assert result.devices_per_fold == 2
 
 
+@pytest.mark.parametrize("devices", [1, 2])
+def test_microbatch_loo_requires_one_device_before_dispatch(
+    monkeypatch, tmp_path, devices
+):
+    monkeypatch.setattr(loo_mod.os, "cpu_count", lambda: 16)
+    metadata = _runtime_metadata(_three_parent_collection())
+    _patch_runtime_metadata(monkeypatch, tmp_path, metadata)
+    seen = _patch_dispatch(monkeypatch)
+    cfg = RunConfig(
+        data=DataConfig(prepared=Path("prepared.json")),
+        train=TrainConfig(microbatch_size=3),
+        loo=LooConfig(devices_per_fold=devices),
+    )
+    if devices == 1:
+        result = run_loo_cv(
+            cfg=cfg, config_path=tmp_path / "loo-config.json", output_dir=tmp_path
+        )
+        assert result.devices_per_fold == 1
+        assert seen["devices"] == 1
+    else:
+        with pytest.raises(ValueError, match="loo.devices_per_fold=1"):
+            run_loo_cv(
+                cfg=cfg, config_path=tmp_path / "loo-config.json", output_dir=tmp_path
+            )
+        assert not seen
+
+
 def test_run_loo_cv_resume_requires_identity_bound_completion(monkeypatch, tmp_path):
     metadata = _runtime_metadata(_three_parent_collection())
     _patch_runtime_metadata(monkeypatch, tmp_path, metadata)

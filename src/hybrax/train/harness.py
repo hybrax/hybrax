@@ -332,6 +332,7 @@ class TrainHarnessConfig:
     target_source: str = TARGET_SOURCE_AUTO
     epochs: int = 5
     batch_size: int | None = None
+    microbatch_size: int | None = None
     shuffle_batches: bool = True
     batch_seed: int | None = None
     optimizer_name: str = "adam"
@@ -532,6 +533,14 @@ def _validate_batching_config(
         raise ValueError("grad_clip_norm must be non-negative")
     if str(config.optimizer_name) not in {"adam", "sgd"}:
         raise ValueError("optimizer_name must be one of {'adam', 'sgd'}")
+    if config.microbatch_size is not None:
+        if config.microbatch_size <= 0:
+            raise ValueError("microbatch_size must be positive")
+        if jax.local_device_count() > 1:
+            raise ValueError(
+                "microbatching requires one local JAX device; set train.devices=1 "
+                "and check HYBRAX_TRAIN_DEVICES and XLA_FLAGS"
+            )
     effective_batch_size = _resolve_effective_batch_size(
         config.batch_size,
         selected_process_count=selected_process_count,
@@ -1429,6 +1438,7 @@ def train_collection(
                     solver_rtol=float(cfg.solver_rtol),
                     solver_atol=float(cfg.solver_atol),
                     step=step,
+                    microbatch_size=cfg.microbatch_size,
                 )
                 per_target = jnp.mean(per_sample_per_target, axis=0)
                 total_loss, per_target, per_sample = _validate_batched_loss_outputs(
@@ -2578,6 +2588,7 @@ def train_harness_config_from_run_config(
         target_source=data.target_source if data is not None else TARGET_SOURCE_AUTO,
         epochs=cfg.train.epochs,
         batch_size=cfg.train.batch_size,
+        microbatch_size=cfg.train.microbatch_size,
         shuffle_batches=cfg.train.shuffle,
         batch_seed=cfg.train.batch_seed,
         optimizer_name=cfg.train.optimizer,

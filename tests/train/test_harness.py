@@ -1032,6 +1032,14 @@ def test_harness_phase1_batching_validation_checks_basics():
         )
 
 
+@pytest.mark.parametrize("width", [0, -1])
+def test_harness_rejects_nonpositive_microbatch_size(width):
+    with pytest.raises(ValueError, match="microbatch_size must be positive"):
+        _validate_batching_config(
+            TrainHarnessConfig(microbatch_size=width), selected_process_count=2
+        )
+
+
 def test_harness_batch_stream_preserves_order_and_drops_each_epoch_tail():
     stream = _build_batch_index_stream(
         selected_process_indices=jnp.asarray([5, 7, 9, 11, 13], dtype=jnp.int32),

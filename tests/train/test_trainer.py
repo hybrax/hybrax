@@ -676,11 +676,31 @@ def _run_batched(wrapper, batch, batch_controls, batched_cin, batched_cin_modele
     )
 
 
-def test_jitted_batched_loss_uses_dynamic_local_controls_and_global_cin(monkeypatch):
+@pytest.mark.parametrize("width", [None, 1, 2, 3, 4, 5, 6])
+def test_jitted_batched_loss_uses_dynamic_local_controls_and_global_cin(
+    monkeypatch, width
+):
     wrapper, reversed_batch, _controls, _cin, cin_modeled = _build_batched_setup(
-        batch_process_names=("p2", "p1")
+        batch_process_names=("p2", "p1", "p2", "p1", "p2")
     )
-    _, forward_batch, *_ = _build_batched_setup(batch_process_names=("p1", "p2"))
+    _, forward_batch, *_ = _build_batched_setup(
+        batch_process_names=("p1", "p2", "p1", "p2", "p1")
+    )
+    # Distinct rows expose group-order errors and copying a row into the tail.
+    forward_batch = eqx.tree_at(
+        lambda b: b.controls.sample_event_volumes,
+        forward_batch,
+        forward_batch.controls.sample_event_volumes.at[:, 0].set(
+            jnp.asarray([0.1, 0.2, 0.3, 0.4, 0.5])
+        ),
+    )
+    reversed_batch = eqx.tree_at(
+        lambda b: b.controls.sample_event_volumes,
+        reversed_batch,
+        reversed_batch.controls.sample_event_volumes.at[:, 0].set(
+            jnp.asarray([0.2, 0.1, 0.4, 0.3, 0.6])
+        ),
+    )
     cin = jnp.asarray([[[10.0]], [[20.0]]])
 
     def _fake_evaluate(sample_wrapper, **_kwargs):
@@ -688,18 +708,19 @@ def test_jitted_batched_loss_uses_dynamic_local_controls_and_global_cin(monkeypa
             sample_wrapper.controls.sample_event_volumes[0]
             + sample_wrapper.rhs_ode.Cin_controlled_Inflows.reshape(-1)[0]
         )
+        loss = (sample_wrapper.reaction_module.model.weight[0, 0] * signal) ** 2
         return type(
             "Result",
             (),
             {
-                "total_loss": signal,
-                "per_target_loss": jnp.asarray([signal]),
+                "total_loss": loss,
+                "per_target_loss": jnp.asarray([loss]),
                 "prediction_t": None,
                 "prediction_save_outputs": None,
                 "prediction_valid": None,
                 "measurement_save_outputs": None,
                 "measurement_prediction_valid": jnp.ones(1, dtype=bool),
-                "fail_time": jnp.asarray(jnp.inf),
+                "fail_time": jnp.where(signal > 15, 1.0, jnp.inf),
             },
         )()
 
@@ -708,9 +729,11 @@ def test_jitted_batched_loss_uses_dynamic_local_controls_and_global_cin(monkeypa
     )
     loss_fn = eqx.filter_jit(build_batched_loss_fn())
 
-    def run(batch):
+    params, static = partition_trainable(wrapper)
+
+    def run(params, batch):
         return loss_fn(
-            wrapper,
+            eqx.combine(params, static),
             batch,
             cin,
             cin_modeled,
@@ -718,10 +741,27 @@ def test_jitted_batched_loss_uses_dynamic_local_controls_and_global_cin(monkeypa
             max_solver_steps=1,
             solver_rtol=1e-5,
             solver_atol=1e-7,
-        )[2]
+            microbatch_size=width,
+        )
 
-    np.testing.assert_allclose(run(forward_batch), jnp.asarray([10.1, 20.2]))
-    np.testing.assert_allclose(run(reversed_batch), jnp.asarray([20.2, 10.1]))
+    theta = params.reaction_module.model.weight[0, 0]
+    for batch, signals in (
+        (forward_batch, np.asarray([10.1, 20.2, 10.3, 20.4, 10.5])),
+        (reversed_batch, np.asarray([20.2, 10.1, 20.4, 10.3, 20.6])),
+    ):
+        outputs = run(params, batch)
+        _, grads = eqx.filter_value_and_grad(lambda p, b=batch: run(p, b)[0])(params)
+        expected = np.asarray(theta) ** 2 * signals**2
+        np.testing.assert_allclose(outputs[0], expected.mean(), rtol=1e-10)
+        np.testing.assert_allclose(outputs[2], expected, rtol=1e-10)
+        np.testing.assert_allclose(outputs[1][:, 0], expected, rtol=1e-10)
+        np.testing.assert_array_equal(outputs[-1], np.where(signals > 15, 1, np.inf))
+        np.testing.assert_allclose(
+            grads.reaction_module.model.weight,
+            [[2 * float(theta) * np.mean(signals**2)]],
+            rtol=1e-10,
+        )
+        np.testing.assert_array_equal(grads.reaction_module.model.bias, 0)
 
 
 def test_batched_loss_fn_surfaces_per_sample_fail_time():

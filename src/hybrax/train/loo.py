@@ -1134,6 +1134,8 @@ def run_loo_cv(
         devices_per_fold=loo_cfg.devices_per_fold,
         max_devices_per_fold=min(_eff_batch(fold) for fold in folds),
     )
+    if cfg.train.microbatch_size is not None and devices > 1:
+        raise ValueError("microbatching requires loo.devices_per_fold=1")
     if loo_cfg.parallel_folds > n_folds:
         logger.info(
             "LOO: parallel_folds=%d exceeds the %d resolved fold(s); clamped to %d.",

@@ -61,7 +61,7 @@ pipeline if you want to.
 |---|---|---|
 | `prepare` | prepare | `raw_input`, validation strictness, required controls, `augmentation` |
 | `data` | train, loo | `prepared`, `processes`, `targets`, `target_source` |
-| `train` | train, loo | `epochs`, `seed`, `optimizer`, `learning_rate`, `grad_clip_norm`, `batch_size`, `shuffle`, `devices`, `allow_stateful_models`, `flow_integral_relative_tolerance`; `holdout_processes` for train only |
+| `train` | train, loo | `epochs`, `seed`, `optimizer`, `learning_rate`, `grad_clip_norm`, `batch_size`, `microbatch_size`, `shuffle`, `devices`, `allow_stateful_models`, `flow_integral_relative_tolerance`; `holdout_processes` for train only |
 | `solver` | train, forward, loo | `max_steps`, `rtol`, `atol` |
 | `checkpoint` | train, loo | `every`, `bundle_prepared`, `keep_best`, `select_by` |
 | `output` | all | `dir`, plotting |

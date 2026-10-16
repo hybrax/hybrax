@@ -295,6 +295,7 @@ def test_train_typed_fields_resolve_from_config(tmp_path: Path) -> None:
                 "learning_rate": 0.02,
                 "grad_clip_norm": 3.0,
                 "batch_size": 4,
+                "microbatch_size": 2,
                 "shuffle": False,
                 "batch_seed": 99,
                 "allow_stateful_models": True,
@@ -322,6 +323,10 @@ def test_train_typed_fields_resolve_from_config(tmp_path: Path) -> None:
     assert config.train.learning_rate == 0.02
     assert config.train.grad_clip_norm == 3.0
     assert config.train.batch_size == 4
+    assert config.train.microbatch_size == 2
+    harness = train_harness_config_from_run_config(config, run_dir=tmp_path)
+    assert harness.microbatch_size == 2
+    assert RunConfig.model_validate_json(config.model_dump_json()).train == config.train
     assert config.train.shuffle is False
     assert config.train.batch_seed == 99
     assert config.train.allow_stateful_models is True
@@ -329,6 +334,26 @@ def test_train_typed_fields_resolve_from_config(tmp_path: Path) -> None:
     assert config.solver.rtol == 1e-4
     assert config.solver.atol == 1e-6
     assert config.solver.jump_ts is False
+
+
+@pytest.mark.parametrize("devices", [1, 2, "max"])
+@pytest.mark.parametrize("width", [None, 1])
+def test_microbatch_requires_configured_single_device(monkeypatch, devices, width):
+    monkeypatch.setenv("HYBRAX_TRAIN_DEVICES", "1")
+    config = {"train": {"devices": devices, "microbatch_size": width}}
+    if width is not None and devices != 1:
+        with pytest.raises(ValidationError, match="train.devices=1"):
+            RunConfig.model_validate(config)
+    else:
+        train = RunConfig.model_validate(config).train
+        assert train.devices == devices
+        assert train.microbatch_size == width
+
+
+@pytest.mark.parametrize("width", [0, -1])
+def test_microbatch_size_must_be_positive(width):
+    with pytest.raises(ValidationError, match="microbatch_size"):
+        RunConfig.model_validate({"train": {"microbatch_size": width}})
 
 
 @pytest.mark.parametrize(
