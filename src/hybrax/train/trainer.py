@@ -11,11 +11,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 
+from .constants import DEFAULT_SOLVER
 from .controls_store import BatchControls
 from .model_api import LossInputs
 from .physical_solve import within_fail_time
@@ -79,6 +81,7 @@ def _solve_measurement_save_outputs_on_grid(
     max_steps: int,
     rtol: float,
     atol: float,
+    solver: diffrax.AbstractSolver = DEFAULT_SOLVER,
     jump_ts: jax.Array | None,
     n_linspace: int | None = None,
 ) -> tuple[SaveOutputs, jax.Array]:
@@ -111,6 +114,7 @@ def _solve_measurement_save_outputs_on_grid(
         max_steps=max_steps,
         rtol=float(rtol),
         atol=float(atol),
+        solver=solver,
         jump_ts=jump_ts,
         n_linspace=n_linspace,
         return_fail_time=True,
@@ -125,6 +129,7 @@ def simulate_measurement_states(
     max_steps: int = 100_000,
     rtol: float = 1e-5,
     atol: float = 1e-7,
+    solver: diffrax.AbstractSolver = DEFAULT_SOLVER,
 ) -> jax.Array:
     """RAW physical state trajectories at the active measurement timestamps.
 
@@ -168,6 +173,7 @@ def simulate_measurement_states(
         max_steps=max_steps,
         rtol=rtol,
         atol=atol,
+        solver=solver,
         # Bare measurement grid — no linspace spliced in — so the output window needs
         # only the per-gap measurement count. Saying so beats letting the solver bound
         # it from the grid length, and per-segment save cost scales with the window.
@@ -257,6 +263,7 @@ def evaluate_sample_with_loss_module(
     max_solver_steps: int,
     solver_rtol: float,
     solver_atol: float,
+    ode_solver: diffrax.AbstractSolver = DEFAULT_SOLVER,
     step: int | jax.Array | None = None,
     prediction_grid_n: int | None = None,
 ) -> SingleSampleResult:
@@ -318,6 +325,7 @@ def evaluate_sample_with_loss_module(
             max_steps=max_solver_steps,
             rtol=solver_rtol,
             atol=solver_atol,
+            solver=ode_solver,
             jump_ts=jump_ts,
         )
         meas_views = _views_from_save_outputs(save_outputs)
@@ -360,6 +368,7 @@ def evaluate_sample_with_loss_module(
             max_steps=max_solver_steps,
             rtol=solver_rtol,
             atol=solver_atol,
+            solver=ode_solver,
             jump_ts=jump_ts,
             # Exactly the two linspace blocks spliced in just above, so the solver can
             # size its per-segment output window tightly instead of bounding the whole
@@ -500,6 +509,7 @@ def evaluate_one_sample_loss(
     max_solver_steps: int,
     solver_rtol: float,
     solver_atol: float,
+    ode_solver: diffrax.AbstractSolver = DEFAULT_SOLVER,
     step: int | jax.Array | None = None,
 ):
     """One process -> ``(total_loss, per_target_loss, fail_time)``. Shared by the
@@ -533,6 +543,7 @@ def evaluate_one_sample_loss(
         max_solver_steps=max_solver_steps,
         solver_rtol=solver_rtol,
         solver_atol=solver_atol,
+        ode_solver=ode_solver,
         step=step,
     )
     return result.total_loss, result.per_target_loss, result.fail_time
@@ -559,6 +570,7 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
         max_solver_steps: int,
         solver_rtol: float,
         solver_atol: float,
+        ode_solver: diffrax.AbstractSolver = DEFAULT_SOLVER,
         step: int | jax.Array | None = None,
         prediction_grid_n: int | None = None,
         microbatch_size: int | None = None,
@@ -613,6 +625,7 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
                 max_solver_steps=max_solver_steps,
                 solver_rtol=solver_rtol,
                 solver_atol=solver_atol,
+                ode_solver=ode_solver,
                 step=step,
                 prediction_grid_n=prediction_grid_n,
             )

@@ -9,14 +9,15 @@ hybrax train --config train-config.json [--overwrite] [--epochs N] [--init-from 
 
 ## Setup, in order
 
-Before the first step, training resolves five hooks from `custom.py`:
+Before the first step, training resolves six hooks from `custom.py`:
 `build_learning_rate` → `build_optimizer` → `estimate_all_scales` →
-`build_reaction_module` → `build_loss_module`. Two more, `transform_process_collection`
+`build_reaction_module` → `build_loss_module`, plus `build_solver`.
+Two more, `transform_process_collection`
 and `augment_state_values`, already ran during `prepare`. See
 [Customization](hooks_cheatsheet.md) for the full table, with every signature.
 
-This page covers `build_learning_rate` and `build_optimizer` below: they are purely a
-training concern. The other three are substantial enough to need their own page each:
+This page covers `build_learning_rate`, `build_optimizer`, and `build_solver`.
+The other three training hooks have their own pages:
 [The Reaction Module](reaction_module.md), [The Loss Module](loss_module.md),
 [Scaling](scaling.md).
 
@@ -100,6 +101,25 @@ Environment overrides do not bypass the configured restriction. Check
 Smaller groups can improve throughput, but can also lose parallelism.
 Numerical results can change with execution width. Compare losses, gradients, and
 short training trajectories on your workload before choosing a width.
+
+## Hook: `build_solver`
+
+Hybrax uses `diffrax.Tsit5()` by default. To select another solver, return a
+Diffrax solver instance from `custom.py`:
+
+```python
+import diffrax
+
+def build_solver(config):
+    return diffrax.Kvaerno5()
+```
+
+The hook receives the resolved run config and may read `config.custom` for
+solver constructor options. Training, checkpoint evaluation, and prediction
+use this solver. Saved-model prediction rebuilds it from the bundled `custom.py`.
+Tolerances, `max_steps`, and `jump_ts` remain in the JSON `solver` section.
+Choose a solver compatible with Hybrax's single ODE term and adaptive PID
+controller. The independent feed-integration preflight continues to use Tsit5.
 
 ## Hook: `build_learning_rate`
 

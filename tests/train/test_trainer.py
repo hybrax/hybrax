@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -337,6 +338,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         max_steps,
         rtol,
         atol,
+        solver,
         jump_ts,
     ):
         captured["wrapper"] = wrapper_arg
@@ -346,6 +348,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         captured["max_steps"] = max_steps
         captured["rtol"] = rtol
         captured["atol"] = atol
+        captured["solver"] = solver
         captured["jump_ts"] = jump_ts
         n_rows = t_eval.shape[0]
         states = jnp.repeat(RAW_y0[None, :], repeats=n_rows, axis=0)
@@ -375,6 +378,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         _fake_solve_measurement_save_outputs_on_grid,
     )
 
+    solver = diffrax.Kvaerno3(root_find_max_steps=7)
     total_loss, _ = _measurement_loss(
         wrapper,
         t_measured=process_data.t_measured,
@@ -386,6 +390,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
         max_solver_steps=321_000,
         solver_rtol=1e-4,
         solver_atol=1e-6,
+        ode_solver=solver,
     )
 
     assert jnp.isfinite(total_loss)
@@ -393,6 +398,7 @@ def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeyp
     assert captured["max_steps"] == 321_000
     assert captured["rtol"] == pytest.approx(1e-4)
     assert captured["atol"] == pytest.approx(1e-6)
+    assert captured["solver"] is solver
     assert captured["jump_ts"] is None
 
 
@@ -1500,3 +1506,54 @@ def test_simulate_measurement_states_uses_the_simulated_processs_own_Cin():
     biomass_hi = from_hi_template[-1, 0]
     biomass_lo = lo_states[-1, 0]
     assert abs(biomass_hi - biomass_lo) / abs(biomass_lo) > 0.01
+
+
+class _StiffRelaxationModule(RateModule):
+    """Relax rapidly to a trainable equilibrium concentration."""
+
+    equilibrium: jax.Array = trainable_field()
+
+    def __init__(self, **scale_kwargs):
+        super().__init__(**scale_kwargs)
+        self.equilibrium = jnp.asarray(0.5)
+
+    def __call__(self, t, inputs):
+        del t
+        concentration = self.unscale_modeled_RMCs(inputs.SCL_modeled_RMCs)[0]
+        return ReactionOutputs(
+            SCL_modeled_ReactionOde_rates=jnp.asarray(
+                [-10000.0 * (concentration - self.equilibrium)]
+            ),
+            SCL_modeled_Inflows_rates=jnp.zeros(0),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
+        )
+
+
+def test_implicit_solver_preserves_stiff_equilibrium_gradient():
+    wrapper, process_data = _build_wrapper_and_process(_StiffRelaxationModule)
+
+    times = process_data.active_t_measured
+
+    @jax.jit
+    @jax.value_and_grad
+    def final_concentration(equilibrium):
+        candidate = eqx.tree_at(
+            lambda w: w.reaction_module.equilibrium, wrapper, equilibrium
+        )
+        states = solve_physical_states(
+            candidate,
+            t_eval=times,
+            n_measured=process_data.n_measured,
+            RAW_y0=process_data.y0_measured,
+            solver=diffrax.Kvaerno5(),
+            max_steps=512,
+            rtol=1e-7,
+            atol=1e-9,
+        )
+        return states[-1, 0]
+
+    value, gradient = final_concentration(jnp.asarray(0.5))
+    # C' = -10000*C*(C-theta). At t=1 the transient is negligible,
+    # leaving the equilibrium theta and its unit derivative.
+    assert float(value) == pytest.approx(0.5, abs=1e-7)
+    assert float(gradient) == pytest.approx(1.0, abs=1e-6)

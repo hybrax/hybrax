@@ -37,6 +37,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -49,7 +50,10 @@ from hybrax.format.mechanistic import RhsOde
 from hybrax.format.serialization import load_process_collection
 
 from .checkpointing import CheckpointWriter
-from .constants import DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE
+from .constants import (
+    DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE,
+    DEFAULT_SOLVER,
+)
 from .preflight import check_continuous_flow_integration
 from .defaults import (
     DefaultLossModule,
@@ -124,6 +128,7 @@ def _iter_batched_loss_outputs(
     solver_max_steps: int,
     solver_rtol: float,
     solver_atol: float,
+    ode_solver: diffrax.AbstractSolver = DEFAULT_SOLVER,
     solver_use_jump_ts: bool,
     step: jax.Array | None = None,
     prediction_grid_n: int | None = None,
@@ -162,6 +167,7 @@ def _iter_batched_loss_outputs(
             max_solver_steps=int(solver_max_steps),
             solver_rtol=float(solver_rtol),
             solver_atol=float(solver_atol),
+            ode_solver=ode_solver,
             step=step,
             prediction_grid_n=prediction_grid_n,
         )
@@ -177,6 +183,7 @@ def compute_dense_exports(
     solver_max_steps: int,
     solver_rtol: float,
     solver_atol: float,
+    ode_solver: diffrax.AbstractSolver = DEFAULT_SOLVER,
     solver_use_jump_ts: bool,
     prediction_grid_n: int = 200,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, DenseProcessExport]]:
@@ -198,6 +205,7 @@ def compute_dense_exports(
         solver_max_steps=solver_max_steps,
         solver_rtol=solver_rtol,
         solver_atol=solver_atol,
+        ode_solver=ode_solver,
         solver_use_jump_ts=solver_use_jump_ts,
         prediction_grid_n=int(prediction_grid_n),
     ):
@@ -317,6 +325,7 @@ def model_predict(
         solver_max_steps=int(config.solver.max_steps),
         solver_rtol=float(config.solver.rtol),
         solver_atol=float(config.solver.atol),
+        ode_solver=build_solver_for_run(load_custom_module(config.custom_py), config),
         solver_use_jump_ts=bool(config.solver.jump_ts),
         prediction_grid_n=int(grid_n),
     )
@@ -342,6 +351,7 @@ class TrainHarnessConfig:
     solver_max_steps: int = 2048
     solver_rtol: float = 1e-5
     solver_atol: float = 1e-7
+    ode_solver: diffrax.AbstractSolver = DEFAULT_SOLVER
     solver_use_jump_ts: bool = True
     flow_integral_relative_tolerance: float = DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE
     allow_stateful_models: bool = False
@@ -438,6 +448,20 @@ def summarize_train_step_input_signature(*values: object) -> tuple[object, ...]:
         signature.append(("scalar", type(leaf).__name__, repr(leaf)))
         continue
     return tuple(signature)
+
+
+def build_solver_for_run(
+    custom_module: Any,
+    config: Any,
+    *,
+    default: diffrax.AbstractSolver = DEFAULT_SOLVER,
+) -> diffrax.AbstractSolver:
+    """Build one solver instance for training or saved-model prediction."""
+    hook = get_hook(custom_module, "build_solver", None)
+    solver = default if hook is None else hook(config)
+    if not isinstance(solver, diffrax.AbstractSolver):
+        raise TypeError("build_solver must return a diffrax.AbstractSolver instance")
+    return solver
 
 
 def _build_optimizer(
@@ -954,6 +978,7 @@ class ForwardConfig:
     solver_max_steps: int = 4096
     solver_rtol: float = 1e-5
     solver_atol: float = 1e-7
+    ode_solver: diffrax.AbstractSolver = DEFAULT_SOLVER
     solver_use_jump_ts: bool = True
 
 
@@ -1052,6 +1077,12 @@ def forward_from_collection(
         custom_module=custom_module,
         custom_py=custom_py,
         training_process_names=training_process_names,
+    )
+    cfg = dataclasses.replace(
+        cfg,
+        ode_solver=build_solver_for_run(
+            rebuilt.custom_module, rebuilt.config, default=cfg.ode_solver
+        ),
     )
 
     recorded_targets = (
@@ -1173,6 +1204,7 @@ def evaluate_trained_wrapper(
             solver_max_steps=int(config.solver_max_steps),
             solver_rtol=float(config.solver_rtol),
             solver_atol=float(config.solver_atol),
+            ode_solver=config.ode_solver,
             solver_use_jump_ts=config.solver_use_jump_ts,
             prediction_grid_n=int(prediction_grid_n),
         )
@@ -1192,6 +1224,7 @@ def evaluate_trained_wrapper(
             solver_max_steps=int(config.solver_max_steps),
             solver_rtol=float(config.solver_rtol),
             solver_atol=float(config.solver_atol),
+            ode_solver=config.ode_solver,
             solver_use_jump_ts=config.solver_use_jump_ts,
         ):
             _, per_target, total, *_ = outputs
@@ -1437,6 +1470,7 @@ def train_collection(
                     max_solver_steps=int(cfg.solver_max_steps),
                     solver_rtol=float(cfg.solver_rtol),
                     solver_atol=float(cfg.solver_atol),
+                    ode_solver=cfg.ode_solver,
                     step=step,
                     microbatch_size=cfg.microbatch_size,
                 )
@@ -1573,6 +1607,7 @@ def train_collection(
                         max_solver_steps=max_steps,
                         solver_rtol=rtol,
                         solver_atol=atol,
+                        ode_solver=cfg.ode_solver,
                         step=step,
                     )
 
@@ -1805,6 +1840,7 @@ def train_collection(
                         max_solver_steps=max_steps,
                         solver_rtol=rtol,
                         solver_atol=atol,
+                        ode_solver=cfg.ode_solver,
                         step=step,
                     )
 
@@ -2042,6 +2078,7 @@ def train_collection(
             solver_max_steps=int(cfg.solver_max_steps),
             solver_rtol=float(cfg.solver_rtol),
             solver_atol=float(cfg.solver_atol),
+            ode_solver=cfg.ode_solver,
             solver_use_jump_ts=bool(cfg.solver_use_jump_ts),
             step=jnp.asarray(step, dtype=jnp.int32),
         ):
@@ -2349,6 +2386,7 @@ _TRAIN_HOOK_NAMES = (
     "build_learning_rate",
     "build_optimizer",
     "build_loss_module",
+    "build_solver",
 )
 
 
@@ -2387,6 +2425,9 @@ def _prepare_training_from_selected_parents(
         )
     train_cfg = dataclasses.replace(
         config,
+        ode_solver=build_solver_for_run(
+            custom_module, custom_cfg, default=config.ode_solver
+        ),
         process_names=selected_processes,
         holdout_prediction_processes=holdout_prediction_processes,
     )

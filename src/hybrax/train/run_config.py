@@ -179,6 +179,9 @@ class TrainConfig(ConfigBase):
 class SolverConfig(ConfigBase):
     """diffrax ODE solver settings for every forward and backward solve.
 
+    The ``build_solver(config)`` hook selects the Diffrax solver; the default
+    is Tsit5. The choice also applies to checkpoint evaluation and prediction.
+
     ``max_steps`` (default 2048) is the step budget for the whole solve — the
     first knob to raise when solves start bailing out (a bail is not fatal;
     points after it are just masked out of the loss, but a run where most

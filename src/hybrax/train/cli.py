@@ -606,6 +606,7 @@ def _handle_train(args: argparse.Namespace) -> int:
                 solver_max_steps=prepared.config.solver_max_steps,
                 solver_rtol=prepared.config.solver_rtol,
                 solver_atol=prepared.config.solver_atol,
+                ode_solver=prepared.config.ode_solver,
                 solver_use_jump_ts=prepared.config.solver_use_jump_ts,
             ),
             target_names=tuple(prepared.loss_module.loss_names),

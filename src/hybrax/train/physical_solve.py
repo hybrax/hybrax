@@ -41,7 +41,7 @@ from hybrax.train.diffrax_callbacks import (
     StopConditionCallback,
     diffeqsolve_with_callbacks,
 )
-from .constants import INITIAL_STEP_FRACTION
+from .constants import DEFAULT_SOLVER, INITIAL_STEP_FRACTION
 from .wrapper import HybridOdeWrapper
 
 # Boundary headroom for the failure cutoff. ``fail_time`` is the START of the first
@@ -120,6 +120,7 @@ def solve_physical_states(
     max_steps: int,
     rtol: float,
     atol: float,
+    solver: diffrax.AbstractSolver = DEFAULT_SOLVER,
     jump_ts: jax.Array | None = None,
     n_linspace: int | None = None,
     return_fail_time: bool = False,
@@ -308,7 +309,7 @@ def solve_physical_states(
 
     sol = diffeqsolve_with_callbacks(
         term,
-        diffrax.Tsit5(),
+        solver,
         t0=t0,
         t1=t1,
         dt0=dt0,

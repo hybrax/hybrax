@@ -52,8 +52,9 @@ from hybrax.format.serialization import (
 
 from .constants import METADATA_NAMESPACE
 from .model_api import UserLossModule, RateModule, partition_trainable
-from .run_config import RunConfig
+from .run_config import RunConfig, reresolve_custom
 from .training_data import TARGET_SOURCE_AUTO, TrainingDataStore
+from .utils import load_custom_module
 from .wrapper import HybridOdeWrapper
 
 logger = logging.getLogger(__name__)
@@ -389,8 +390,6 @@ def reconstruct_training(
         _build_runtime_modules,
         _build_template_wrapper,
     )
-    from .run_config import reresolve_custom
-    from .utils import load_custom_module
 
     run_dir = Path(run_dir)
     if config is None or document is None:
@@ -408,6 +407,13 @@ def reconstruct_training(
             custom_module = load_custom_module(custom_py)
         elif bundled_custom.is_file():
             custom_module = load_custom_module(bundled_custom)
+    # Public model_predict rebuilds the solver hook from the returned config.
+    # Prefer the bundled module so moving a run does not depend on its source tree.
+    bundled_custom = run_dir / "custom.py"
+    if custom_py is not None or bundled_custom.is_file():
+        config = config.model_copy(
+            update={"custom_py": Path(custom_py) if custom_py else bundled_custom}
+        )
     # config.custom comes back from config.json as a raw dict; re-wrap it in the
     # typed object the hooks expect (mirrors a fresh run's get_custom_config).
     config = reresolve_custom(config, custom_module)
@@ -607,7 +613,10 @@ def model_load(path: str | Path) -> tuple[HybridOdeWrapper, RunConfig]:
     run_dir, params_path = resolve_model_path(path)
     config, document = read_run_config_json(run_dir / "config.json")
     rebuilt = reconstruct_training(run_dir, config, document)
-    return load_trained_wrapper(params_path, template=rebuilt.template_wrapper), config
+    return (
+        load_trained_wrapper(params_path, template=rebuilt.template_wrapper),
+        rebuilt.config,
+    )
 
 
 def model_reload(
@@ -633,6 +642,11 @@ def model_reload(
     """
     run_dir, params_path = resolve_model_path(path)
     config, _document = read_run_config_json(run_dir / "config.json")
+
+    bundled_custom = run_dir / "custom.py"
+    if bundled_custom.is_file():
+        config = config.model_copy(update={"custom_py": bundled_custom})
+    config = reresolve_custom(config, load_custom_module(config.custom_py))
     logger.warning(
         "model_reload(%s): refreshing trainable leaves only. The static half "
         "(SCALE_*, controls, Cin, rhs_ode) is kept from the wrapper you passed in "

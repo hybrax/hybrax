@@ -1,5 +1,6 @@
 """Reduced OptFed kinetics for direct concentration-trajectory fitting."""
 
+import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
@@ -231,6 +232,12 @@ def build_reaction_module(
         i_supply_limited=controls.index("supply_limited_uptake"),
         **scale_kwargs,
     )
+
+
+def build_solver(config):
+    """Use an implicit solver for the stiff glycerol balance near depletion."""
+    del config
+    return diffrax.Kvaerno5()
 
 
 def build_learning_rate(config, train_cfg, total_updates):

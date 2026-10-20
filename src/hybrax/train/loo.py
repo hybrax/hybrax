@@ -967,6 +967,7 @@ def train_prepared_fold(prepared: PreparedFold) -> TrainedFold:
             "max_steps": int(harness_cfg.solver_max_steps),
             "rtol": float(harness_cfg.solver_rtol),
             "atol": float(harness_cfg.solver_atol),
+            "class": type(harness_cfg.ode_solver).__name__,
             "use_jump_ts": bool(harness_cfg.solver_use_jump_ts),
         },
         "training": {
@@ -1015,6 +1016,7 @@ def execute_trained_fold(trained: TrainedFold) -> FoldResult:
             solver_max_steps=config.solver_max_steps,
             solver_rtol=config.solver_rtol,
             solver_atol=config.solver_atol,
+            ode_solver=config.ode_solver,
             solver_use_jump_ts=config.solver_use_jump_ts,
         ),
         target_names=trained.target_names,

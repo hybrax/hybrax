@@ -5,6 +5,9 @@ product concentrations. Temperature and carbon feed are controlled inputs.
 Substrate-limited processes use feed-implied uptake. The remaining processes
 use kinetic uptake. One latent state tracks accumulated generations.
 
+The `build_solver` hook in `custom.py` selects Kvaerno5 for training and
+prediction.
+
 From the repository root:
 
 ```bash

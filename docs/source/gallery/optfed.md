@@ -245,6 +245,15 @@ its concentrations are larger than product concentrations.
 :dedent: 8
 ```
 
+The `build_solver` hook in `custom.py` selects Kvaerno5 for training and
+evaluation:
+
+```{literalinclude} ../../../examples/gallery_optfed/custom.py
+:language: python
+:start-at: def build_solver(config):
+:end-before: def build_learning_rate(
+```
+
 Use Adam for 500 epochs, with gradient clipping configured at `0.05` and a
 warmup followed by cosine learning-rate decay, supplied by the
 `build_learning_rate` hook in `custom.py`. The default loss compares

@@ -71,6 +71,9 @@ pipeline if you want to.
 | `loo` | loo | `per_fold_holdout_sets`, `parallel_folds`, `devices_per_fold` |
 | `models` | forward | list of run or checkpoint directories |
 
+The [`build_solver`](train.md#hook-build_solver) hook selects the solver instance;
+the `solver` section controls its integration tolerances and step budget.
+
 Exact fields, types and defaults are in the
 [API reference](../autoapi/hybrax/train/run_config/index): not repeated here, because they
 change and this page would be wrong first.
