@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import diffrax
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
 import pytest
 from hybrax.format.dataclasses import (
     BioProcess,
@@ -1510,3 +1512,199 @@ def test_wrapper_supports_modeled_pv():
     assert jnp.allclose(biomass, 1.0, atol=1e-4)
     assert jnp.allclose(volume, 1.0, atol=1e-4)
     assert jnp.allclose(ratio, 0.5 * t_eval, atol=1e-3)
+
+
+class ControlInputsEchoModule(ConstantReactionModule):
+    """Expose reaction time and all five control inputs as latent derivatives."""
+
+    def __call__(self, t, inputs):
+        return ReactionOutputs(
+            SCL_modeled_ReactionOde_rates=jnp.zeros(1),
+            SCL_modeled_Inflows_rates=jnp.zeros(0),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
+            SCL_latent_derivative=jnp.concatenate(
+                [
+                    jnp.atleast_1d(t),
+                    inputs.SCL_controlled_Inflows_cumulative,
+                    inputs.SCL_controlled_Inflows_rates,
+                    inputs.SCL_controlled_Outflows_cumulative,
+                    inputs.SCL_controlled_Outflows_rates,
+                    inputs.SCL_controlled_PVs,
+                ]
+            ),
+        )
+
+
+def test_physical_rhs_control_time_preserves_reaction_time_and_holds_rates():
+    process = _make_single_species_process()
+    process.volume.volume_changes["feed_A"].values = TimeSeries(
+        breaks=[0.0, 2.0],
+        coeffs=[[0.0, 0.1, 0.05, 0.0]],
+        segment_start_piece_idx=[0],
+    )
+    process.volume.volume_changes["harvest"] = Outflow(
+        name="harvest",
+        unit="L",
+        is_controlled=True,
+        is_continuous=True,
+        values=TimeSeries(
+            breaks=[0.0, 2.0],
+            coeffs=[[0.0, -0.02, -0.01, 0.0]],
+            segment_start_piece_idx=[0],
+        ),
+    )
+    process.process_variables["temperature"] = ProcessVariable(
+        "temperature",
+        "K",
+        True,
+        TimeSeries(
+            breaks=[0.0, 2.0],
+            coeffs=[[300.0, 2.0, 0.0, 0.0]],
+            segment_start_piece_idx=[0],
+        ),
+    )
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process})
+    ).get_controls("p1")
+    wrapper = _build_wrapper(
+        process,
+        controls,
+        ControlInputsEchoModule(jnp.zeros(1), jnp.zeros(0), SCALE_latent=jnp.ones(6)),
+    )
+    state = jnp.asarray([1.0, 1.0, *([0.0] * 6)])
+    # Independent polynomial values/rates, with nonzero endpoint flow rates.
+    for raw_t, control_t in [(1.5, 0.5), (3.0, 2.0), (-1.0, 0.0)]:
+        derivative = wrapper.physical_rhs(raw_t, state, control_time=control_t)
+        expected = [
+            raw_t,
+            0.1 * control_t + 0.05 * control_t**2,
+            0.1 + 0.1 * control_t,
+            -0.02 * control_t - 0.01 * control_t**2,
+            -0.02 - 0.02 * control_t,
+            300.0 + 2.0 * control_t,
+        ]
+        np.testing.assert_allclose(derivative[-6:], expected, rtol=1e-12)
+        np.testing.assert_allclose(derivative[1], expected[2] + expected[4], rtol=1e-12)
+    np.testing.assert_allclose(
+        wrapper.physical_rhs(1.0, state)[-6:],
+        [1.0, 0.15, 0.2, -0.03, -0.04, 302.0],
+        rtol=1e-12,
+    )
+
+
+class TimeControlReactionModule(ConstantReactionModule):
+    """Parameter-dependent biology, optionally recording numerical stage inputs."""
+
+    coefficient: jax.Array
+    record: object = eqx.field(static=True)
+
+    def __init__(self, coefficient=0.1, record=None):
+        super().__init__(jnp.zeros(1), jnp.zeros(0))
+        self.coefficient = jnp.asarray(coefficient)
+        self.record = record
+
+    def __call__(self, t, inputs):
+        if self.record is not None:
+            jax.debug.callback(
+                self.record, t, inputs.SCL_controlled_PVs[0], inputs.SCL_modeled_V
+            )
+        return ReactionOutputs(
+            SCL_modeled_ReactionOde_rates=(
+                self.coefficient * inputs.SCL_controlled_PVs
+            ),
+            SCL_modeled_Inflows_rates=jnp.zeros(0),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
+        )
+
+
+def _control_time_wrapper(*, tail_curvature=0.0, sample=False, record=None):
+    """Direct spline with identical value and slope at the tail boundary, t=4."""
+    process = _make_single_species_process()
+    process.time_axis = TimeAxis(unit="h", start=0.0, end=6.0, time_reference="start")
+    del process.volume.volume_changes["feed_A"]
+    if not sample:
+        del process.volume.volume_changes["sample_1"]
+    else:
+        process.volume.volume_changes["sample_1"].values = TimeSeries(
+            times=[2.0], values=[-0.1]
+        )
+    process.process_variables["u"] = ProcessVariable(
+        "u",
+        "-",
+        True,
+        TimeSeries(
+            breaks=[0.0, 4.0, 6.0],
+            coeffs=[[0.0, 1.0, 0.0, 0.0], [4.0, 1.0, tail_curvature, 0.0]],
+            segment_start_piece_idx=[0],
+        ),
+    )
+    controls = ControlsStore.from_collection(
+        BioProcessCollection(processes={"p1": process})
+    ).get_controls("p1")
+    return _build_wrapper(process, controls, TimeControlReactionModule(record=record))
+
+
+def _solve_control_time(wrapper, times, length):
+    from hybrax.train.physical_solve import solve_physical_states
+
+    return solve_physical_states(
+        wrapper,
+        t_eval=times,
+        n_measured=length,
+        RAW_y0=jnp.asarray([1.0, 1.0]),
+        solver=diffrax.Kvaerno5(),
+        max_steps=256,
+        rtol=1e-4,
+        atol=1e-6,
+    )
+
+
+def test_kvaerno5_control_tail_invariance():
+    wrappers = [_control_time_wrapper(tail_curvature=c) for c in [0.0, 100.0]]
+
+    def endpoint(coefficient, wrapper):
+        wrapper = eqx.tree_at(
+            lambda w: w.reaction_module.coefficient, wrapper, coefficient
+        )
+        return _solve_control_time(wrapper, jnp.asarray([1.0, 4.0]), 2)[-1, 0]
+
+    results = [
+        jax.value_and_grad(endpoint)(jnp.asarray(0.1), wrapper) for wrapper in wrappers
+    ]
+    assert np.all(np.isfinite(results))
+    np.testing.assert_allclose(results[0], results[1], rtol=1e-12, atol=1e-12)
+    # Nontrivial sensitivity: changing the biological coefficient changes biomass.
+    assert abs(float(results[0][1])) > 1.0
+
+
+def test_kvaerno5_control_time_tracing_and_segment_overshoot():
+    observations = []
+
+    def record(t, control, volume):
+        observations.append((float(t), float(control), float(volume)))
+
+    wrapper = _control_time_wrapper(sample=True, record=record)
+    times = jnp.asarray([[1.0, 3.0, 0.0], [1.5, 4.0, 4.5], [2.5, 0.0, 0.0]])
+    lengths = jnp.asarray([2, 3, 1])
+    batched = eqx.filter_jit(
+        jax.vmap(lambda ts, n: _solve_control_time(wrapper, ts, n))
+    )
+    states = batched(times, lengths)
+    jax.block_until_ready(states)
+    jax.effects_barrier()
+    assert np.all(np.isfinite(states))
+    # Before the sample V=1. A stage past t=2 still belongs to that segment.
+    overshoots = [
+        (t, u) for t, u, v in observations if 2.0 < t < 2.4 and abs(v - 1.0) < 1e-12
+    ]
+    assert overshoots, "Kvaerno5 must evaluate past the interior sample boundary"
+    np.testing.assert_allclose(
+        [u for t, u in overshoots],
+        [t for t, u in overshoots],
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    for ts, n, actual in zip(times, lengths, states):
+        individual = _solve_control_time(wrapper, ts, n)
+        np.testing.assert_allclose(actual, individual, rtol=1e-7, atol=1e-9)
+    np.testing.assert_array_equal(states[2], np.tile([1.0, 1.0], (3, 1)))

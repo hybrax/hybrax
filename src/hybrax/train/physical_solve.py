@@ -281,8 +281,16 @@ def solve_physical_states(
     # RAW derivative is rescaled via ``scale_derivative`` (offset-free: under an
     # affine scaler ``d((RAW-b)/s)/dt = (dRAW/dt)/s``, so the offset must NOT be
     # subtracted here — the value ``/`` path would subtract it).
+    # Some solvers have stage nodes past the step end (Kvaerno5: c = 1.23,
+    # Kvaerno4: c = 1.15), so the last step queries the RHS after t1, where
+    # controls would extrapolate their last spline piece. Hold controls at
+    # their t0/t1 values (see `physical_rhs`); reaction time stays raw. Clip to
+    # the whole-solve bounds, not callback segment bounds: within the window,
+    # stages crossing a segment end must still see the real controls.
     term = diffrax.ODETerm(
-        lambda t, yy, a: SCALE.scale_derivative(wrapper.physical_rhs(t, yy * SCALE))
+        lambda t, yy, a: SCALE.scale_derivative(
+            wrapper.physical_rhs(t, yy * SCALE, control_time=jnp.clip(t, t0, t1))
+        )
     )
 
     # A stop condition checks the initial state and accepted solver steps, but not

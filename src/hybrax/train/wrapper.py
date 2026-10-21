@@ -329,10 +329,25 @@ class HybridOdeWrapper(eqx.Module):
     # O(C) and the reverse-mode adjoint is well-conditioned. (Replaces the earlier
     # pseudobatch state, whose unbounded accumulator corrupted the gradient.)
 
-    def physical_rhs(self, t: float | jax.Array, y_phys: jax.Array) -> jax.Array:
+    def physical_rhs(
+        self,
+        t: float | jax.Array,
+        y_phys: jax.Array,
+        *,
+        control_time: float | jax.Array | None = None,
+    ) -> jax.Array:
         """Return the derivative of the physical and latent state vector.
 
         Continuous part only — discrete boluses/samples are handled as jumps.
+
+        `control_time`, if given, is the time used to evaluate the controls
+        (controlled inflows/outflows and PVs) instead of `t`. The reaction module
+        still sees `t`. `solve_physical_states` passes `t` clipped to the solve
+        window: some implicit solvers (e.g. Kvaerno4/5) evaluate stages past
+        the step end, so in the final step the RHS can be queried after t1.
+        Control splines would extrapolate their last cubic there, and those
+        values leak into the accepted state at t1 and its gradients. Clipping
+        holds the controls (values and rates) at their t0/t1 values instead.
         """
         module = self.reaction_module
         n_RMCs = len(self.modeled_RMC_names)
@@ -342,6 +357,7 @@ class HybridOdeWrapper(eqx.Module):
         n_phys = n_RMCs + n_PVs + 1 + n_Inflows + n_Outflows
         dtype = y_phys.dtype
         t_arr = jnp.asarray(t, dtype=dtype)
+        control_t = t_arr if control_time is None else jnp.asarray(control_time, dtype)
 
         RAW_phys = y_phys[:n_phys]
         RAW_RMCs = RAW_phys[:n_RMCs]
@@ -358,18 +374,18 @@ class HybridOdeWrapper(eqx.Module):
         RAW_RMC_rhs = jnp.maximum(RAW_RMCs, 0.0)
 
         RAW_controlled_Inflows_cumulative = (
-            self.controls.eval_controlled_Inflows_cumulative(t_arr, y_phys)
+            self.controls.eval_controlled_Inflows_cumulative(control_t, y_phys)
         )
         RAW_controlled_Inflows_rates = self.controls.eval_controlled_Inflows_rates(
-            t_arr, y_phys
+            control_t, y_phys
         )
         RAW_controlled_Outflows_cumulative = (
-            self.controls.eval_controlled_Outflows_cumulative(t_arr, y_phys)
+            self.controls.eval_controlled_Outflows_cumulative(control_t, y_phys)
         )
         RAW_controlled_Outflows_rates = self.controls.eval_controlled_Outflows_rates(
-            t_arr, y_phys
+            control_t, y_phys
         )
-        RAW_controlled_PVs = self.controls.eval_controlled_PVs(t_arr, y_phys)
+        RAW_controlled_PVs = self.controls.eval_controlled_PVs(control_t, y_phys)
         RAW_controlled_Inflows_Cin = self.rhs_ode.Cin_controlled_Inflows
         RAW_modeled_Inflows_Cin = self.rhs_ode.Cin_modeled_Inflows
 
