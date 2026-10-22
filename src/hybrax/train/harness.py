@@ -146,7 +146,8 @@ def _iter_batched_loss_outputs(
         raise ValueError(f"duplicate process names: {duplicates}")
     store.validate_control_support(process_names)
 
-    batch_size = _EVALUATION_BATCH_SIZE
+    # Small sets (e.g. a single holdout) skip padding to the full batch size.
+    batch_size = min(_EVALUATION_BATCH_SIZE, len(process_names))
     for start in range(0, len(process_names), batch_size):
         valid_names = process_names[start : start + batch_size]
         indices = [store.process_order.index(name) for name in valid_names]

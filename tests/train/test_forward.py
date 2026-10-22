@@ -1384,15 +1384,16 @@ def test_dense_exports_batch_and_exclude_padded_tail(monkeypatch, process_count)
         solver_use_jump_ts=False,
     )
 
-    assert [len(indices) for indices in seen_indices] == [32] * (
+    batch_size = min(32, process_count)
+    assert [len(indices) for indices in seen_indices] == [batch_size] * (
         (process_count + 31) // 32
     )
     for batch_index, indices in enumerate(seen_indices):
-        start = batch_index * 32
-        valid = min(32, process_count - start)
+        start = batch_index * batch_size
+        valid = min(batch_size, process_count - start)
         np.testing.assert_array_equal(indices[:valid], np.arange(start, start + valid))
         np.testing.assert_array_equal(
-            indices[valid:], np.full(32 - valid, process_count - 1)
+            indices[valid:], np.full(batch_size - valid, process_count - 1)
         )
     np.testing.assert_array_equal(totals, np.arange(process_count))
     np.testing.assert_array_equal(per_target[:, 0], np.arange(process_count))
