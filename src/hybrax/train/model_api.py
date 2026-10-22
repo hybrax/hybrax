@@ -759,6 +759,31 @@ class RateModule(eqx.Module):
         """State scaler used by the ODE solver, incl. trailing latent state."""
         return _compose_scalers(*self._state_scalers, self.SCALE_latent)
 
+    def input_features(self, t: jax.Array, inputs: ReactionInputs) -> jax.Array:
+        """Return the default scaled physical and control features for an ANN.
+
+        Time and latent state are excluded. Override to select or add features;
+        the built-in ANN modules require a one-dimensional array matching their
+        input_size. Their constructors infer only the default width and do not
+        call this method, so overrides may use fields set after super().__init__.
+        Custom forward methods may use this helper or assemble their own inputs.
+        """
+        del t
+        return jnp.concatenate(
+            [
+                inputs.SCL_modeled_RMCs,
+                inputs.SCL_modeled_PVs,
+                jnp.atleast_1d(inputs.SCL_modeled_V),
+                inputs.SCL_modeled_Inflows_cumulative,
+                inputs.SCL_modeled_Outflows_cumulative,
+                inputs.SCL_controlled_Inflows_cumulative,
+                inputs.SCL_controlled_Inflows_rates,
+                inputs.SCL_controlled_Outflows_cumulative,
+                inputs.SCL_controlled_Outflows_rates,
+                inputs.SCL_controlled_PVs,
+            ]
+        )
+
     def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs:
         """Override. Inputs in SCL space; return rates in SCL space.
 

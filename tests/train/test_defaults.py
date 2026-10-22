@@ -37,7 +37,7 @@ def test_shallow_default_reaction_module_uses_tanh_and_glorot():
     glorot_init = jax.nn.initializers.glorot_uniform(in_axis=1, out_axis=0)
 
     assert module.model.depth == 2
-    assert module.model.width_size == 8
+    assert module.model.width_size == 12
     assert module.model.activation is jax.nn.tanh
     for layer, layer_key in zip(module.model.layers[:-1], layer_keys[:-1]):
         expected = glorot_init(layer_key, layer.weight.shape, layer.weight.dtype)
@@ -104,16 +104,16 @@ def test_default_reaction_module_pins_depth_threshold_and_computed_width():
     shallow = _reaction_module(key=jax.random.key(5), depth=3, n_in=5, n_out=2)
     deep = _reaction_module(key=jax.random.key(6), depth=4, n_in=5, n_out=2)
 
-    assert shallow.model.width_size == 10
+    assert shallow.model.width_size == 18
     assert shallow.model.activation is jax.nn.tanh
-    assert deep.model.width_size == 10
+    assert deep.model.width_size == 18
     assert deep.model.activation is jax.nn.silu
 
 
 def test_default_reaction_module_allows_empty_rate_head():
     module = _reaction_module(key=jax.random.key(9), n_out=0)
 
-    assert module.model.layers[-1].weight.shape == (0, 8)
+    assert module.model.layers[-1].weight.shape == (0, 12)
     assert module.model.layers[-1].bias.shape == (0,)
 
 

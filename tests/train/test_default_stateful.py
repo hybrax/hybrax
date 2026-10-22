@@ -10,9 +10,10 @@ from stateful_helpers import TrainableH0DefaultStateful, default_stateful_scale_
 from hybrax.train.defaults import (
     DefaultGruReactionModule,
     DefaultLstmReactionModule,
+    DefaultReactionModule,
     DefaultStatefulReactionModule,
 )
-from hybrax.train.model_api import ReactionInputs, partition_trainable
+from hybrax.train.model_api import ReactionInputs, frozen_field, partition_trainable
 
 _SCALE_KWARGS = default_stateful_scale_kwargs(
     n_controlled_inflows=0, n_controlled_outflows=0
@@ -112,7 +113,7 @@ def test_default_stateful_module_uses_gru_cell_as_latent_derivative():
     assert jnp.allclose(
         outputs.SCL_latent_derivative, module.gru_cell(cell_input, h) - h
     )
-    readout = jnp.concatenate([h, inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs])
+    readout = jnp.concatenate([h, cell_input])
     assert jnp.allclose(
         outputs.SCL_modeled_ReactionOde_rates,
         module.rate_head(readout),
@@ -214,7 +215,7 @@ def test_default_lstm_latent_layout_output_semantics_and_initialization():
     assert jnp.allclose(
         outputs.SCL_latent_derivative, jnp.concatenate([h_new - h, c_new - c])
     )
-    readout = jnp.concatenate([h, inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs])
+    readout = jnp.concatenate([h, cell_input])
     assert jnp.allclose(
         outputs.SCL_modeled_ReactionOde_rates,
         module.rate_head(readout),
@@ -286,12 +287,8 @@ def test_default_stateful_mixed_axes_size_recurrent_input(
         expected_derivative = jnp.concatenate([h_new - h, c_new - c])
     assert jnp.allclose(outputs.SCL_latent_derivative, expected_derivative)
 
-    current_readout = jnp.concatenate(
-        [h, inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs]
-    )
-    updated_readout = jnp.concatenate(
-        [h_new, inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs]
-    )
+    current_readout = jnp.concatenate([h, expected_cell_input])
+    updated_readout = jnp.concatenate([h_new, expected_cell_input])
     assert not jnp.allclose(
         module.rate_head(current_readout), module.rate_head(updated_readout)
     )
@@ -368,7 +365,7 @@ def test_default_stateful_empty_rate_head_skips_glorot(monkeypatch):
         },
     )
 
-    assert module.rate_head.weight.shape == (0, 4)
+    assert module.rate_head.weight.shape == (0, 5)
     assert module.rate_head.bias.shape == (0,)
     assert module.rate_head.weight.size == 0
     assert module.rate_head.bias.size == 0
@@ -502,3 +499,126 @@ def test_stateful_module_can_override_trainable_initial_latent():
     assert jnp.array_equal(module.initial_latent(jnp.ones(2)), module.h0)
     assert trainable.h0 is not None
     assert static.h0 is None
+
+
+_ANN_CLASSES = [
+    (DefaultReactionModule, {"width_size": 4}, 0),
+    (DefaultGruReactionModule, {"n_latent": 2}, 2),
+    (DefaultLstmReactionModule, {"hidden_width": 2}, 4),
+]
+
+
+@pytest.mark.parametrize(("module_class", "kwargs", "latent_size"), _ANN_CLASSES)
+def test_default_ann_features_share_all_physical_and_control_axes(
+    module_class, kwargs, latent_size
+):
+    dimensions = {
+        "n_rmcs": 2,
+        "n_modeled_pvs": 1,
+        "n_modeled_inflows": 1,
+        "n_modeled_outflows": 1,
+        "n_controlled_inflows": 1,
+        "n_controlled_outflows": 1,
+        "n_controlled_pvs": 1,
+    }
+    module = module_class(
+        key=jax.random.key(14),
+        **kwargs,
+        **default_stateful_scale_kwargs(**dimensions),
+    )
+    inputs = _inputs(jnp.zeros(latent_size), **dimensions, distinct=True)
+    # Explicit axis markers pin the order independently of the shared helper.
+    expected = jnp.array(
+        [1.0, 2.0, 11.0, 21.0, 31.0, 41.0, 51.0, 61.0, 71.0, 81.0, 91.0]
+    )
+    np.testing.assert_array_equal(module.input_features(7.0, inputs), expected)
+    outputs = module(7.0, inputs)
+    if latent_size == 0:
+        assert module.model.in_size == 11
+        np.testing.assert_allclose(
+            outputs.SCL_modeled_ReactionOde_rates, module.model(expected)
+        )
+    else:
+        assert module.rate_head.in_features == 13
+        np.testing.assert_allclose(
+            outputs.SCL_modeled_ReactionOde_rates,
+            module.rate_head(jnp.concatenate([jnp.zeros(2), expected])),
+        )
+
+
+@pytest.mark.parametrize(("module_class", "kwargs", "latent_size"), _ANN_CLASSES)
+def test_custom_ann_features_feed_network_and_readout_with_gradients(
+    module_class, kwargs, latent_size
+):
+    calls = []
+
+    class SelectedFeatures(module_class):
+        time_scale: jax.Array = frozen_field()
+
+        def __init__(self, **kwargs):
+            super().__init__(input_size=2, **kwargs)
+            # The base constructor must not evaluate input_features yet.
+            self.time_scale = jnp.asarray(3.0)
+
+        def input_features(self, t, inputs):
+            calls.append(1)
+            return jnp.array([inputs.SCL_modeled_RMCs[0], t / self.time_scale])
+
+    module = SelectedFeatures(key=jax.random.key(15), **kwargs, **_flow_scale_kwargs())
+    inputs = _inputs(
+        jnp.arange(latent_size, dtype=jnp.float64) / 10,
+        n_modeled_inflows=1,
+        n_modeled_outflows=1,
+    )
+    outputs = eqx.filter_jit(module)(6.0, inputs)
+    assert len(calls) == 1
+    expected = jnp.array([1.0, 2.0])
+    if latent_size == 0:
+        np.testing.assert_allclose(
+            outputs.SCL_modeled_ReactionOde_rates, module.model(expected)
+        )
+    else:
+        h = inputs.SCL_latent[:2]
+        readout = jnp.concatenate([h, expected])
+        np.testing.assert_allclose(
+            outputs.SCL_modeled_ReactionOde_rates, module.rate_head(readout)
+        )
+        np.testing.assert_allclose(
+            outputs.SCL_modeled_Inflows_rates,
+            jax.nn.softplus(module.inflow_head(readout)),
+        )
+        np.testing.assert_allclose(
+            outputs.SCL_modeled_Outflows_rates,
+            -jax.nn.softplus(module.outflow_head(readout)),
+        )
+        if latent_size == 2:
+            derivative = module.gru_cell(expected, h) - h
+        else:
+            c = inputs.SCL_latent[2:]
+            h_new, c_new = module.lstm_cell(expected, (h, c))
+            derivative = jnp.concatenate([h_new - h, c_new - c])
+        np.testing.assert_allclose(outputs.SCL_latent_derivative, derivative)
+        latent_gradient = jax.jacfwd(lambda t: module(t, inputs).SCL_latent_derivative)(
+            6.0
+        )
+        assert jnp.linalg.norm(latent_gradient) > 1e-8
+    rate_gradient = jax.grad(
+        lambda t: module(t, inputs).SCL_modeled_ReactionOde_rates.sum()
+    )(6.0)
+    assert jnp.abs(rate_gradient) > 1e-8
+
+
+@pytest.mark.parametrize(("module_class", "kwargs", "latent_size"), _ANN_CLASSES)
+@pytest.mark.parametrize("shape", [(1,), (1, 2)])
+def test_custom_ann_features_report_mismatched_shape(
+    module_class, kwargs, latent_size, shape
+):
+    class WrongFeatures(module_class):
+        def input_features(self, t, inputs):
+            return jnp.ones(shape)
+
+    module = WrongFeatures(
+        key=jax.random.key(0), input_size=2, **kwargs, **_SCALE_KWARGS
+    )
+    with pytest.raises(ValueError, match="input_features must return shape"):
+        eqx.filter_jit(module)(0.0, _inputs(jnp.zeros(latent_size)))

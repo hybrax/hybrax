@@ -177,6 +177,54 @@ both. See [Freezing parameters](../gallery/freezing.md) for a full worked exampl
 when the loss needs an internal quantity the model computed anyway (a latent, an
 intermediate flux) rather than recomputing it.
 
+## Customize built-in ANN inputs
+
+`DefaultReactionModule`, `DefaultGruReactionModule`, and
+`DefaultLstmReactionModule` inherit `RateModule.input_features`. Its default
+features are scaled modeled RMCs, modeled PVs, volume, cumulative modeled
+inflows and outflows, cumulative controlled inflows and their rates, cumulative
+controlled outflows and their rates, and controlled PVs. Time and latent state are excluded.
+
+Each constructor accepts optional keyword-only `input_size`. Omit it to infer
+the default feature count from the scale axes. To change features without
+rewriting the forward pass, override `input_features(t, inputs)` and set
+`input_size` to the returned vector's length. For example, select 25 RMCs, volume, and time:
+
+```python
+import jax
+import jax.numpy as jnp
+
+import hybrax.train as hxt
+
+class TimeLstm(hxt.DefaultLstmReactionModule):
+    def input_features(self, t, inputs):
+        return jnp.concatenate([
+            inputs.SCL_modeled_RMCs,
+            jnp.atleast_1d(inputs.SCL_modeled_V),
+            jnp.atleast_1d(t / 240.0),
+        ])
+
+# In build_reaction_module, with this dataset's resolved scale_kwargs:
+module = TimeLstm(
+    key=jax.random.key(seed), hidden_width=4, input_size=27, **scale_kwargs,
+)
+```
+
+The method must return a one-dimensional array. Constructors do not call it, so
+it can use attributes initialized after `super().__init__`. The FFNN consumes
+these features directly. GRU and LSTM cells consume them with their separate
+hidden state; their output heads consume the current hidden state concatenated
+with the same features. LSTM cell state is not passed directly to the heads.
+
+The framework applies your configured scaling before this method runs. If you
+add time, choose its scaling here. Without an `estimate_all_scales` hook, unit
+scales leave values unchanged, so choose suitable scales for volume and
+cumulative flows as well as concentrations.
+
+The expanded FFNN inputs and recurrent readouts change parameter shapes and
+training results. Load older checkpoints with their matching implementation;
+retrain to evaluate the revised architecture.
+
 ## Stateful (latent-ODE) modules
 
 A module with `n_latent > 0` adds its own integrated latent state. That is a genuinely

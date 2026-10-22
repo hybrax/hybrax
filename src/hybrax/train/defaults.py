@@ -65,13 +65,23 @@ class DefaultGruReactionModule(RateModule):
     inflow_head: eqx.nn.Linear | None = trainable_field()
     outflow_head: eqx.nn.Linear | None = trainable_field()
 
-    def __init__(self, *, key: jax.Array, n_latent: SupportsIndex, **scale_kwargs):
+    def __init__(
+        self,
+        *,
+        key: jax.Array,
+        n_latent: SupportsIndex,
+        input_size: SupportsIndex | None = None,
+        **scale_kwargs,
+    ):
         """Build the GRU cell and output heads, sized from ``scale_kwargs``.
 
         Args:
             key: PRNG key for weight initialization.
             n_latent: Latent state width; sizes ``SCALE_latent`` and the GRU's
                 hidden state. Must be positive.
+            input_size: ANN input width, or ``None`` for the default physical
+                and control features. Set this when an input_features override
+                changes the feature count.
             **scale_kwargs: Forwarded to :class:`RateModule.__init__`;
                 must not include ``SCALE_latent`` (sized here from
                 ``n_latent``).
@@ -97,7 +107,13 @@ class DefaultGruReactionModule(RateModule):
         rate_key, rate_init_key = jax.random.split(key_rate)
         inflow_key, inflow_init_key = jax.random.split(key_inflow)
         outflow_key, outflow_init_key = jax.random.split(key_outflow)
-        n_input = _stateful_input_size(self)
+        n_input = (
+            _default_input_size(self)
+            if input_size is None
+            else _positive_width(
+                input_size, name="input_size", module_name=type(self).__name__
+            )
+        )
         self.gru_cell = eqx.nn.GRUCell(
             input_size=n_input,
             hidden_size=self.n_latent,
@@ -130,7 +146,7 @@ class DefaultGruReactionModule(RateModule):
                 jnp.zeros_like(self.gru_cell.bias_n),
             ),
         )
-        n_readout = self.n_latent + self.n_modeled_RMCs + self.n_modeled_PVs
+        n_readout = self.n_latent + n_input
         self.rate_head = _calibrated_rate_head(
             n_readout,
             self.n_modeled_ReactionOde_rates,
@@ -152,11 +168,11 @@ class DefaultGruReactionModule(RateModule):
 
     def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs:
         """One GRU step from ``inputs`` to SCL rates plus the latent derivative."""
-        del t
         h = inputs.SCL_latent
-        cell_input = _stateful_cell_input(inputs)
+        cell_input = self.input_features(t, inputs)
+        _check_input_features(cell_input, self.gru_cell.input_size)
         dh_dt = self.gru_cell(cell_input, h) - h
-        return _stateful_outputs(self, h, inputs, dh_dt)
+        return _stateful_outputs(self, h, cell_input, dh_dt)
 
 
 # Kept for existing custom modules; use DefaultGruReactionModule for new code.
@@ -176,13 +192,23 @@ class DefaultLstmReactionModule(RateModule):
     inflow_head: eqx.nn.Linear | None = trainable_field()
     outflow_head: eqx.nn.Linear | None = trainable_field()
 
-    def __init__(self, *, key: jax.Array, hidden_width: SupportsIndex, **scale_kwargs):
+    def __init__(
+        self,
+        *,
+        key: jax.Array,
+        hidden_width: SupportsIndex,
+        input_size: SupportsIndex | None = None,
+        **scale_kwargs,
+    ):
         """Build an LSTM with a paired hidden and cell state.
 
         Args:
             key: PRNG key for weight initialization.
             hidden_width: LSTM hidden width. The integrated latent has twice
                 this width because it includes both hidden and cell states.
+            input_size: ANN input width, or ``None`` for the default physical
+                and control features. Set this when an input_features override
+                changes the feature count.
             **scale_kwargs: Forwarded to :class:`RateModule.__init__`;
                 must not include ``SCALE_latent``.
         """
@@ -205,7 +231,13 @@ class DefaultLstmReactionModule(RateModule):
         rate_key, rate_init_key = jax.random.split(key_rate)
         inflow_key, inflow_init_key = jax.random.split(key_inflow)
         outflow_key, outflow_init_key = jax.random.split(key_outflow)
-        n_input = _stateful_input_size(self)
+        n_input = (
+            _default_input_size(self)
+            if input_size is None
+            else _positive_width(
+                input_size, name="input_size", module_name=type(self).__name__
+            )
+        )
         self.lstm_cell = eqx.nn.LSTMCell(
             input_size=n_input, hidden_size=hidden_width, key=lstm_key
         )
@@ -231,7 +263,7 @@ class DefaultLstmReactionModule(RateModule):
             self.lstm_cell,
             (weight_ih, weight_hh, jnp.zeros_like(self.lstm_cell.bias)),
         )
-        n_readout = hidden_width + self.n_modeled_RMCs + self.n_modeled_PVs
+        n_readout = hidden_width + n_input
         self.rate_head = _calibrated_rate_head(
             n_readout,
             self.n_modeled_ReactionOde_rates,
@@ -258,12 +290,12 @@ class DefaultLstmReactionModule(RateModule):
 
     def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs:
         """One LSTM step as a continuous-time latent derivative."""
-        del t
         h, c = jnp.split(inputs.SCL_latent, 2)
-        cell_input = _stateful_cell_input(inputs)
+        cell_input = self.input_features(t, inputs)
+        _check_input_features(cell_input, self.lstm_cell.input_size)
         h_new, c_new = self.lstm_cell(cell_input, (h, c))
         latent_derivative = jnp.concatenate([h_new - h, c_new - c])
-        return _stateful_outputs(self, h, inputs, latent_derivative)
+        return _stateful_outputs(self, h, cell_input, latent_derivative)
 
 
 def _positive_width(value: SupportsIndex, *, name: str, module_name: str) -> int:
@@ -281,8 +313,8 @@ def _positive_width(value: SupportsIndex, *, name: str, module_name: str) -> int
     return width
 
 
-def _stateful_input_size(module: RateModule) -> int:
-    """Number of physical and control features consumed by a recurrent cell."""
+def _default_input_size(module: RateModule) -> int:
+    """Number of physical and control features consumed by the built-in ANNs."""
     return (
         module.n_modeled_RMCs
         + module.n_modeled_PVs
@@ -295,22 +327,12 @@ def _stateful_input_size(module: RateModule) -> int:
     )
 
 
-def _stateful_cell_input(inputs: ReactionInputs) -> jax.Array:
-    """Physical and control features shared by the built-in recurrent cells."""
-    return jnp.concatenate(
-        [
-            inputs.SCL_modeled_RMCs,
-            inputs.SCL_modeled_PVs,
-            jnp.atleast_1d(inputs.SCL_modeled_V),
-            inputs.SCL_modeled_Inflows_cumulative,
-            inputs.SCL_modeled_Outflows_cumulative,
-            inputs.SCL_controlled_Inflows_cumulative,
-            inputs.SCL_controlled_Inflows_rates,
-            inputs.SCL_controlled_Outflows_cumulative,
-            inputs.SCL_controlled_Outflows_rates,
-            inputs.SCL_controlled_PVs,
-        ]
-    )
+def _check_input_features(features: jax.Array, input_size: int) -> None:
+    """Catch a custom feature selection that disagrees with the ANN dimensions."""
+    if features.shape != (input_size,):
+        raise ValueError(
+            f"input_features must return shape ({input_size},), got {features.shape}"
+        )
 
 
 class _RecurrentReadout(Protocol):
@@ -324,11 +346,11 @@ class _RecurrentReadout(Protocol):
 def _stateful_outputs(
     module: _RecurrentReadout,
     h: jax.Array,
-    inputs: ReactionInputs,
+    features: jax.Array,
     latent_derivative: jax.Array,
 ) -> ReactionOutputs:
-    """Evaluate shared recurrent readout heads."""
-    readout = jnp.concatenate([h, inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs])
+    """Evaluate heads from the current hidden state and selected ANN features."""
+    readout = jnp.concatenate([h, features])
     bio_rates = jnp.asarray(module.rate_head(readout), dtype=h.dtype)
     if module.inflow_head is None:
         inflow_rates = jnp.zeros((0,), dtype=h.dtype)
@@ -392,9 +414,9 @@ def _calibrated_flow_head(
 class DefaultReactionModule(RateModule):
     """Minimal default reaction model for harness runs.
 
-    Predicts ``SCL_modeled_ReactionOde_rates`` (which includes any ``r_<pv>``
-    PV rates) from the SCL species + modeled-PV slices. Ignores controls; emits
-    zero-valued modeled Inflow and Outflow rates. Uses tanh/Glorot for shallow
+    Predicts ``SCL_modeled_ReactionOde_rates`` (including ``r_<pv>`` PV rates)
+    from scaled physical and control features. Emits zero-valued modeled
+    Inflow and Outflow rates. Uses tanh/Glorot for shallow
     networks and SiLU/He for deeper networks. The rate head starts near zero.
     """
 
@@ -406,6 +428,7 @@ class DefaultReactionModule(RateModule):
         key: jax.Array,
         depth: int = 2,
         width_size: int | None = None,
+        input_size: SupportsIndex | None = None,
         **scale_kwargs,
     ):
         """Build the MLP, sized from the module's modeled-state/rate counts.
@@ -416,13 +439,22 @@ class DefaultReactionModule(RateModule):
                 ``<= 3`` uses tanh/Glorot, deeper uses SiLU/He.
             width_size: Hidden layer width, or ``None`` to derive it from the
                 input/output sizes.
+            input_size: ANN input width, or ``None`` for the default physical
+                and control features. Set this when an input_features override
+                changes the feature count.
             **scale_kwargs: Forwarded to :class:`RateModule.__init__`.
 
         Raises:
             ValueError: If ``depth < 0`` or the resolved ``width_size <= 0``.
         """
         super().__init__(**scale_kwargs)
-        n_in = self.n_modeled_RMCs + self.n_modeled_PVs
+        n_in = (
+            _default_input_size(self)
+            if input_size is None
+            else _positive_width(
+                input_size, name="input_size", module_name=type(self).__name__
+            )
+        )
         n_out = self.n_modeled_ReactionOde_rates
         if depth < 0:
             raise ValueError("depth must be non-negative")
@@ -464,12 +496,10 @@ class DefaultReactionModule(RateModule):
         self.model = eqx.tree_at(lambda mlp: mlp.layers, self.model, tuple(layers))
 
     def __call__(self, t: jax.Array, inputs: ReactionInputs) -> ReactionOutputs:
-        """MLP forward pass from SCL species/PVs to SCL biological-ode rates."""
-        del t
+        """MLP forward pass from selected features to scaled reaction rates."""
         dtype = inputs.SCL_modeled_RMCs.dtype
-        SCL_features = jnp.concatenate(
-            [inputs.SCL_modeled_RMCs, inputs.SCL_modeled_PVs]
-        )
+        SCL_features = self.input_features(t, inputs)
+        _check_input_features(SCL_features, self.model.in_size)
         SCL_modeled_ReactionOde_rates = jnp.asarray(
             self.model(SCL_features), dtype=dtype
         )

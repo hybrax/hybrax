@@ -6,8 +6,8 @@ state, integrated as extra ODE dimensions alongside the physical ones, so the
 rates can depend on the process's recent history too.
 
 Use ``DefaultLstmReactionModule`` for this standard LSTM. Implement a custom
-stateful reaction module only when a different recurrent architecture or input
-layout is required.
+stateful reaction module when a different recurrent architecture is required.
+Override input_features and set input_size to customize the ANN inputs.
 """
 
 import jax

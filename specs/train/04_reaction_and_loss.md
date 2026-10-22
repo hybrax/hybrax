@@ -144,9 +144,9 @@ The output fields are:
 
 ### `DefaultReactionModule`
 
-An `eqx.nn.MLP` over `[SCL_modeled_RMCs | SCL_modeled_PVs]` →
-`SCL_modeled_ReactionOde_rates` (includes any `r_<pv>` PV rates). It ignores
-controls and emits zero-valued modeled Inflow and Outflow rates. Defaults use
+An `eqx.nn.MLP` over `input_features(t, inputs)` →
+`SCL_modeled_ReactionOde_rates` (includes any `r_<pv>` PV rates). It emits
+zero-valued modeled Inflow and Outflow rates. Defaults use
 two hidden layers with width `max(8, 2 * max(n_inputs, n_outputs))`; pass
 `depth` and
 `width_size` to override them. Networks through three hidden layers use tanh with
@@ -187,6 +187,38 @@ per-gate Glorot input kernels, orthogonal recurrent kernels, and zero internal
 biases. This deliberately leaves the forget gate near 0.5 at zero input rather
 than applying the discrete-LSTM convention of a +1 forget bias; the
 continuous-time derivative already expresses relaxation toward the cell target.
+
+### Shared ANN feature selection
+
+All three built-in modules accept optional keyword-only `input_size`. When it is
+omitted, the module infers the width from its scale axes. The default
+`input_features(t, inputs)` inherited from `RateModule` returns a scaled vector
+in this order:
+
+1. Modeled RMCs and modeled PVs.
+2. Total reactor volume.
+3. Cumulative modeled Inflows and Outflows.
+4. Cumulative controlled Inflows and their rates.
+5. Cumulative controlled Outflows and their rates.
+6. Controlled PVs.
+
+Time and latent state are excluded. Override `input_features` to select or add
+features, and supply `input_size` if the width changes. Return a one-dimensional
+array with that width. Constructors do not call the override, so it may use fields
+initialized after `super().__init__`.
+
+Each forward call computes features once. Recurrent cells receive the features
+and their separate hidden/cell state; every recurrent output head receives
+`[current hidden | features]`. The FFNN receives features directly. Output widths
+remain tied to the physical model's rate and flow axes.
+
+Without `estimate_all_scales`, default scales are one. Volume and cumulative
+flows then retain physical magnitudes; choose suitable scales to keep ANN inputs
+in a useful numerical range. This applies to all three architectures.
+
+This changes FFNN input and recurrent-head parameter shapes relative to earlier
+versions. Existing checkpoints require their matching implementation. Refit
+models before reporting results for the revised architectures.
 
 ### Field tagging
 

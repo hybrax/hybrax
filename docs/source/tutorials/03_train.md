@@ -126,7 +126,7 @@ Everything not named in that config is a default, and each one is replaceable:
 
 | Default | What it is | Replace it with |
 |---|---|---|
-| reaction module | A 2-layer MLP over the modeled state | [`build_reaction_module`](../train/reaction_module.md) |
+| reaction module | A 2-layer MLP over scaled state and controls | [`build_reaction_module`](../train/reaction_module.md) |
 | loss module | Per-target mean squared error | [`build_loss_module`](../train/loss_module.md) |
 | scales | **All ones: i.e. no scaling** | [`estimate_all_scales`](../train/scaling.md) |
 | optimizer | Adam, lr 1e-3, gradient clipping at norm 1000 | [`build_optimizer`](../train/train.md) |

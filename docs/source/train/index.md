@@ -112,7 +112,7 @@ You can train with no `custom.py` at all. These are what you get:
 
 | Piece | Default | Good enough for |
 |---|---|---|
-| Reaction module | 2-layer MLP over the modeled state | a first look |
+| Reaction module | 2-layer MLP over scaled state and controls | a first look |
 | Loss module | per-target mean squared error | a first look |
 | **Scales** | **all ones: no scaling** | small, well-behaved datasets only |
 | Optimizer | Adam, lr 1e-3, gradient clipping at norm 1000 | most things |
