@@ -38,13 +38,11 @@ cp "$OUT_DATA/demo_batch/raw/offline.csv" "$EXAMPLES/tutorial_01_your_first_data
 sync_example demo_batch gallery_dense_loss data.json
 sync_example demo_batch gallery_mechanistic_rates data.json ground_truth.json
 sync_example demo_batch gallery_freezing data.json
-sync_example demo_batch gallery_gaussian_process data.json
 sync_example demo_batch gallery_kan data.json
 sync_example demo_batch gallery_stateful data.json
 sync_example demo_batch gallery_loo data.json
 sync_example demo_fedbatch gallery_fed_batch data.json
 sync_example demo_fedbatch gallery_augmentation data.json
-sync_example demo_products gallery_knowledge_transfer data.json
 sync_example demo_ecoli_fba gallery_fba_hyb data.json
 sync_example demo_ecoli_blend gallery_pls_dfba data.json
 sync_example demo_glutamine_decay gallery_glutamine_decay data.json ground_truth.json

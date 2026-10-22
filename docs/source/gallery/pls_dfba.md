@@ -102,8 +102,7 @@ under a different `media_blend_fraction` in `[0, 1]`: higher fractions push more
 carbon toward succinate (the deliberate product here) at a modest cost to growth,
 the same real trade-off Negahban et al. 2026 optimize for with three real media.
 `ReactionInputs` has no "which recipe produced this run" field, by design; a
-constant-valued controlled process variable does the job instead, the same mechanism
-[Knowledge Transfer](knowledge_transfer.md) uses for product identity.
+constant-valued controlled process variable does the job instead.
 [The data generator](../_data/generate.py)'s `build_demo_ecoli_blend()` attaches it
 directly, once, when it builds each process:
 
@@ -116,8 +115,7 @@ directly, once, when it builds each process:
 ```
 
 `media_blend_fraction` ships as a `StaticVariable`-valued controlled process variable
-in `data.json` itself, the same pattern [Knowledge Transfer](knowledge_transfer.md)
-uses for `is_new_product`.
+in `data.json` itself.
 
 ## The PLS Component
 
@@ -197,8 +195,6 @@ executed run is at `./source/_data/out/runs/gallery_pls_dfba/`.
 
 - [FBA-Hyb](fba_hyb.md): the surrogate and the base reaction-module shape this
   builds on.
-- [Knowledge Transfer](knowledge_transfer.md): the same controlled-PV-as-recipe
-  trick, for product identity instead of a continuous blend fraction.
 - [The Reaction Module](../train/reaction_module.md): `auxiliary`, and everything
   else a `RateModule` can return.
 

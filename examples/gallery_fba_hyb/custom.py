@@ -7,8 +7,8 @@ Guillen-Gosalbez's FBA-Hyb, bioRxiv:10.64898/2026.04.22.720062v1, see
 01_generate_fba_data.py and 02_fit_surrogate.py) converts these into
 biomass/glucose/acetate specific rates. n_S (succinate weight) is fixed at 0:
 this page has no deliberate product, only real E. coli overflow metabolism
-(growth vs. maintenance vs. acetate secretion). See knowledge_transfer.md's
-sibling page, pls_dfba.md, for a product-forming, media-blend-aware version.
+(growth vs. maintenance vs. acetate secretion). See pls_dfba.md for a
+product-forming, media-blend-aware version.
 """
 
 import equinox as eqx

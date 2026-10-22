@@ -113,8 +113,6 @@ Custom Losses <gallery/dense_loss>
 Stateful Models <gallery/stateful>
 Glutamine Degradation <gallery/glutamine_decay>
 Cross-Validation <gallery/loo>
-Gaussian Processes <gallery/gaussian_process>
-Knowledge Transfer <gallery/knowledge_transfer>
 FBA-Hyb <gallery/fba_hyb>
 PLS-dFBA <gallery/pls_dfba>
 KAN Models <gallery/kan>

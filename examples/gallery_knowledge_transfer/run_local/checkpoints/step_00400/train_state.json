@@ -1,7 +1,0 @@
-{
-  "step": 400,
-  "samples_seen": 800,
-  "mean_loss": 0.001127812098723909,
-  "holdout_loss": null,
-  "timestamp": "2026-08-27T15:19:24+0200"
-}
