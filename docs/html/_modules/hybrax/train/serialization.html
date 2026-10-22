@@ -261,8 +261,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">KAN Models</a></li>
@@ -285,6 +283,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
@@ -321,6 +320,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -420,8 +420,9 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">METADATA_NAMESPACE</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.model_api</span><span class="w"> </span><span class="kn">import</span> <span class="n">UserLossModule</span><span class="p">,</span> <span class="n">RateModule</span><span class="p">,</span> <span class="n">partition_trainable</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.run_config</span><span class="w"> </span><span class="kn">import</span> <span class="n">RunConfig</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.run_config</span><span class="w"> </span><span class="kn">import</span> <span class="n">RunConfig</span><span class="p">,</span> <span class="n">reresolve_custom</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.training_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">TARGET_SOURCE_AUTO</span><span class="p">,</span> <span class="n">TrainingDataStore</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_custom_module</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.wrapper</span><span class="w"> </span><span class="kn">import</span> <span class="n">HybridOdeWrapper</span>
 
 <span class="n">logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
@@ -801,8 +802,6 @@
         <span class="n">_build_runtime_modules</span><span class="p">,</span>
         <span class="n">_build_template_wrapper</span><span class="p">,</span>
     <span class="p">)</span>
-    <span class="kn">from</span><span class="w"> </span><span class="nn">.run_config</span><span class="w"> </span><span class="kn">import</span> <span class="n">reresolve_custom</span>
-    <span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_custom_module</span>
 
     <span class="n">run_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">run_dir</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">config</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">document</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -820,6 +819,13 @@
             <span class="n">custom_module</span> <span class="o">=</span> <span class="n">load_custom_module</span><span class="p">(</span><span class="n">custom_py</span><span class="p">)</span>
         <span class="k">elif</span> <span class="n">bundled_custom</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
             <span class="n">custom_module</span> <span class="o">=</span> <span class="n">load_custom_module</span><span class="p">(</span><span class="n">bundled_custom</span><span class="p">)</span>
+    <span class="c1"># Public model_predict rebuilds the solver hook from the returned config.</span>
+    <span class="c1"># Prefer the bundled module so moving a run does not depend on its source tree.</span>
+    <span class="n">bundled_custom</span> <span class="o">=</span> <span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"custom.py"</span>
+    <span class="k">if</span> <span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">bundled_custom</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
+        <span class="n">config</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span>
+            <span class="n">update</span><span class="o">=</span><span class="p">{</span><span class="s2">"custom_py"</span><span class="p">:</span> <span class="n">Path</span><span class="p">(</span><span class="n">custom_py</span><span class="p">)</span> <span class="k">if</span> <span class="n">custom_py</span> <span class="k">else</span> <span class="n">bundled_custom</span><span class="p">}</span>
+        <span class="p">)</span>
     <span class="c1"># config.custom comes back from config.json as a raw dict; re-wrap it in the</span>
     <span class="c1"># typed object the hooks expect (mirrors a fresh run's get_custom_config).</span>
     <span class="n">config</span> <span class="o">=</span> <span class="n">reresolve_custom</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">custom_module</span><span class="p">)</span>
@@ -987,6 +993,30 @@
 
 
 
+<div class="viewcode-block" id="read_initial_checkpoint">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/serialization/index.html#hybrax.train.serialization.read_initial_checkpoint">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">read_initial_checkpoint</span><span class="p">(</span>
+    <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Path</span><span class="p">,</span> <span class="n">RunConfig</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""Resolve starting weights and metadata without reconstructing the model.</span>
+
+<span class="sd">    Reject an output directory containing the source weights before a new phase</span>
+<span class="sd">    can overwrite them. Resolve symlinks so ``latest`` pins a concrete checkpoint.</span>
+<span class="sd">    """</span>
+    <span class="n">source_dir</span><span class="p">,</span> <span class="n">params_path</span> <span class="o">=</span> <span class="n">resolve_model_path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">params_path</span> <span class="o">=</span> <span class="n">params_path</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">output_dir</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">params_path</span><span class="o">.</span><span class="n">is_relative_to</span><span class="p">(</span>
+        <span class="n">Path</span><span class="p">(</span><span class="n">output_dir</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
+    <span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"initial checkpoint </span><span class="si">{</span><span class="n">params_path</span><span class="si">}</span><span class="s2"> is inside output directory "</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">output_dir</span><span class="si">}</span><span class="s2">; use a separate output directory"</span>
+        <span class="p">)</span>
+    <span class="n">config</span><span class="p">,</span> <span class="n">document</span> <span class="o">=</span> <span class="n">read_run_config_json</span><span class="p">(</span><span class="n">source_dir</span> <span class="o">/</span> <span class="s2">"config.json"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">params_path</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">document</span></div>
+
+
+
 <div class="viewcode-block" id="model_load">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/serialization/index.html#hybrax.train.serialization.model_load">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">model_load</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">HybridOdeWrapper</span><span class="p">,</span> <span class="n">RunConfig</span><span class="p">]:</span>
@@ -1010,7 +1040,10 @@
     <span class="n">run_dir</span><span class="p">,</span> <span class="n">params_path</span> <span class="o">=</span> <span class="n">resolve_model_path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
     <span class="n">config</span><span class="p">,</span> <span class="n">document</span> <span class="o">=</span> <span class="n">read_run_config_json</span><span class="p">(</span><span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"config.json"</span><span class="p">)</span>
     <span class="n">rebuilt</span> <span class="o">=</span> <span class="n">reconstruct_training</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">document</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">load_trained_wrapper</span><span class="p">(</span><span class="n">params_path</span><span class="p">,</span> <span class="n">template</span><span class="o">=</span><span class="n">rebuilt</span><span class="o">.</span><span class="n">template_wrapper</span><span class="p">),</span> <span class="n">config</span></div>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">load_trained_wrapper</span><span class="p">(</span><span class="n">params_path</span><span class="p">,</span> <span class="n">template</span><span class="o">=</span><span class="n">rebuilt</span><span class="o">.</span><span class="n">template_wrapper</span><span class="p">),</span>
+        <span class="n">rebuilt</span><span class="o">.</span><span class="n">config</span><span class="p">,</span>
+    <span class="p">)</span></div>
 
 
 
@@ -1039,6 +1072,11 @@
 <span class="sd">    """</span>
     <span class="n">run_dir</span><span class="p">,</span> <span class="n">params_path</span> <span class="o">=</span> <span class="n">resolve_model_path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
     <span class="n">config</span><span class="p">,</span> <span class="n">_document</span> <span class="o">=</span> <span class="n">read_run_config_json</span><span class="p">(</span><span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"config.json"</span><span class="p">)</span>
+
+    <span class="n">bundled_custom</span> <span class="o">=</span> <span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"custom.py"</span>
+    <span class="k">if</span> <span class="n">bundled_custom</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
+        <span class="n">config</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="p">{</span><span class="s2">"custom_py"</span><span class="p">:</span> <span class="n">bundled_custom</span><span class="p">})</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">reresolve_custom</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">load_custom_module</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">custom_py</span><span class="p">))</span>
     <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
         <span class="s2">"model_reload(</span><span class="si">%s</span><span class="s2">): refreshing trainable leaves only. The static half "</span>
         <span class="s2">"(SCALE_*, controls, Cin, rhs_ode) is kept from the wrapper you passed in "</span>

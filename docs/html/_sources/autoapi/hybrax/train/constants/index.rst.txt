@@ -14,11 +14,24 @@ Attributes
 
 .. autoapisummary::
 
+   hybrax.train.constants.DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE
+   hybrax.train.constants.DEFAULT_SOLVER
+   hybrax.train.constants.INITIAL_STEP_FRACTION
    hybrax.train.constants.METADATA_NAMESPACE
 
 
 Module Contents
 ---------------
+
+.. py:data:: DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE
+   :value: 0.001
+
+
+.. py:data:: DEFAULT_SOLVER
+
+.. py:data:: INITIAL_STEP_FRACTION
+   :value: 0.001
+
 
 .. py:data:: METADATA_NAMESPACE
    :value: 'hybrax.train'

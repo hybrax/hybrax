@@ -670,6 +670,9 @@ Module Contents
 
    diffrax ODE solver settings for every forward and backward solve.
 
+   The ``build_solver(config)`` hook selects the Diffrax solver; the default
+   is Tsit5. The choice also applies to checkpoint evaluation and prediction.
+
    ``max_steps`` (default 2048) is the step budget for the whole solve — the
    first knob to raise when solves start bailing out (a bail is not fatal;
    points after it are just masked out of the loss, but a run where most
@@ -728,7 +731,11 @@ Module Contents
    raw, pre-optimizer gradient by global norm before every update — check
    ``grad_norm_curve.png``, which plots the pre-clip norm, to pick a real
    value once scales are right. ``batch_size`` (default ``None``) is how
-   many processes make up one batch; ``None`` means full-batch. ``shuffle``
+   many processes contribute to one optimizer update; ``None`` means full-batch.
+   ``microbatch_size`` optionally limits how many process solves execute
+   together, while preserving that batch mean and one optimizer update. It
+   requires ``devices=1`` and one actual JAX device. A width at least as
+   large as the batch uses unsplit execution. ``shuffle``
    (default ``True``) reshuffles the process order every epoch;
    ``batch_seed`` (optional) seeds that shuffling independently of ``seed``.
    ``devices`` (default ``1``) is how many CPU devices to shard the batch
@@ -744,6 +751,10 @@ Module Contents
    training loss module at checkpoint boundaries. Default training excludes
    their parent groups; explicit overlapping training selections raise.
    LOO defines holdouts through folds and rejects this setting.
+
+   ``flow_integral_relative_tolerance`` (default ``1e-3``) bounds the
+   preflight's relative error in each prescribed continuous-flow integral.
+   It is independent of the solver's adaptive-step tolerances.
 
 
    .. py:attribute:: allow_stateful_models
@@ -776,6 +787,12 @@ Module Contents
 
 
 
+   .. py:attribute:: flow_integral_relative_tolerance
+      :type:  float
+      :value: None
+
+
+
    .. py:attribute:: grad_clip_norm
       :type:  float
       :value: None
@@ -790,6 +807,12 @@ Module Contents
 
    .. py:attribute:: learning_rate
       :type:  float
+      :value: None
+
+
+
+   .. py:attribute:: microbatch_size
+      :type:  int | None
       :value: None
 
 

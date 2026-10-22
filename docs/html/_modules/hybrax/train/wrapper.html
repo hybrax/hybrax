@@ -261,8 +261,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">KAN Models</a></li>
@@ -285,6 +283,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
@@ -321,6 +320,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -710,10 +710,25 @@
 
 <div class="viewcode-block" id="HybridOdeWrapper.physical_rhs">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper.physical_rhs">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">physical_rhs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">y_phys</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">physical_rhs</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">t</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+        <span class="n">y_phys</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">control_time</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Return the derivative of the physical and latent state vector.</span>
 
 <span class="sd">        Continuous part only — discrete boluses/samples are handled as jumps.</span>
+
+<span class="sd">        `control_time`, if given, is the time used to evaluate the controls</span>
+<span class="sd">        (controlled inflows/outflows and PVs) instead of `t`. The reaction module</span>
+<span class="sd">        still sees `t`. `solve_physical_states` passes `t` clipped to the solve</span>
+<span class="sd">        window: some implicit solvers (e.g. Kvaerno4/5) evaluate stages past</span>
+<span class="sd">        the step end, so in the final step the RHS can be queried after t1.</span>
+<span class="sd">        Control splines would extrapolate their last cubic there, and those</span>
+<span class="sd">        values leak into the accepted state at t1 and its gradients. Clipping</span>
+<span class="sd">        holds the controls (values and rates) at their t0/t1 values instead.</span>
 <span class="sd">        """</span>
         <span class="n">module</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">reaction_module</span>
         <span class="n">n_RMCs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">modeled_RMC_names</span><span class="p">)</span>
@@ -723,6 +738,7 @@
         <span class="n">n_phys</span> <span class="o">=</span> <span class="n">n_RMCs</span> <span class="o">+</span> <span class="n">n_PVs</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">n_Inflows</span> <span class="o">+</span> <span class="n">n_Outflows</span>
         <span class="n">dtype</span> <span class="o">=</span> <span class="n">y_phys</span><span class="o">.</span><span class="n">dtype</span>
         <span class="n">t_arr</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="n">control_t</span> <span class="o">=</span> <span class="n">t_arr</span> <span class="k">if</span> <span class="n">control_time</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">control_time</span><span class="p">,</span> <span class="n">dtype</span><span class="p">)</span>
 
         <span class="n">RAW_phys</span> <span class="o">=</span> <span class="n">y_phys</span><span class="p">[:</span><span class="n">n_phys</span><span class="p">]</span>
         <span class="n">RAW_RMCs</span> <span class="o">=</span> <span class="n">RAW_phys</span><span class="p">[:</span><span class="n">n_RMCs</span><span class="p">]</span>
@@ -739,18 +755,18 @@
         <span class="n">RAW_RMC_rhs</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">RAW_RMCs</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
 
         <span class="n">RAW_controlled_Inflows_cumulative</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_Inflows_cumulative</span><span class="p">(</span><span class="n">t_arr</span><span class="p">,</span> <span class="n">y_phys</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_Inflows_cumulative</span><span class="p">(</span><span class="n">control_t</span><span class="p">,</span> <span class="n">y_phys</span><span class="p">)</span>
         <span class="p">)</span>
         <span class="n">RAW_controlled_Inflows_rates</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_Inflows_rates</span><span class="p">(</span>
-            <span class="n">t_arr</span><span class="p">,</span> <span class="n">y_phys</span>
+            <span class="n">control_t</span><span class="p">,</span> <span class="n">y_phys</span>
         <span class="p">)</span>
         <span class="n">RAW_controlled_Outflows_cumulative</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_Outflows_cumulative</span><span class="p">(</span><span class="n">t_arr</span><span class="p">,</span> <span class="n">y_phys</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_Outflows_cumulative</span><span class="p">(</span><span class="n">control_t</span><span class="p">,</span> <span class="n">y_phys</span><span class="p">)</span>
         <span class="p">)</span>
         <span class="n">RAW_controlled_Outflows_rates</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_Outflows_rates</span><span class="p">(</span>
-            <span class="n">t_arr</span><span class="p">,</span> <span class="n">y_phys</span>
+            <span class="n">control_t</span><span class="p">,</span> <span class="n">y_phys</span>
         <span class="p">)</span>
-        <span class="n">RAW_controlled_PVs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_PVs</span><span class="p">(</span><span class="n">t_arr</span><span class="p">,</span> <span class="n">y_phys</span><span class="p">)</span>
+        <span class="n">RAW_controlled_PVs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_PVs</span><span class="p">(</span><span class="n">control_t</span><span class="p">,</span> <span class="n">y_phys</span><span class="p">)</span>
         <span class="n">RAW_controlled_Inflows_Cin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span>
         <span class="n">RAW_modeled_Inflows_Cin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span>
 

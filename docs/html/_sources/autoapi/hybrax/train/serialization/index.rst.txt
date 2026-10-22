@@ -59,6 +59,7 @@ Functions
    hybrax.train.serialization.load_trained_wrapper
    hybrax.train.serialization.model_load
    hybrax.train.serialization.model_reload
+   hybrax.train.serialization.read_initial_checkpoint
    hybrax.train.serialization.read_json
    hybrax.train.serialization.read_run_config_json
    hybrax.train.serialization.reconstruct_training
@@ -202,6 +203,14 @@ Module Contents
       into a different scaled space and every prediction is silently wrong — no
       exception, no NaN. Only use this to move between checkpoints of the **same**
       run. When in doubt, pay for :func:`model_load`.
+
+
+.. py:function:: read_initial_checkpoint(path, *, output_dir = None)
+
+   Resolve starting weights and metadata without reconstructing the model.
+
+   Reject an output directory containing the source weights before a new phase
+   can overwrite them. Resolve symlinks so ``latest`` pins a concrete checkpoint.
 
 
 .. py:function:: read_json(path)

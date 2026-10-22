@@ -261,8 +261,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">KAN Models</a></li>
@@ -285,6 +283,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
@@ -321,6 +320,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -409,6 +409,7 @@
     <span class="n">StopConditionCallback</span><span class="p">,</span>
     <span class="n">diffeqsolve_with_callbacks</span><span class="p">,</span>
 <span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">DEFAULT_SOLVER</span><span class="p">,</span> <span class="n">INITIAL_STEP_FRACTION</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.wrapper</span><span class="w"> </span><span class="kn">import</span> <span class="n">HybridOdeWrapper</span>
 
 <span class="c1"># Boundary headroom for the failure cutoff. ``fail_time`` is the START of the first</span>
@@ -492,6 +493,7 @@
     <span class="n">max_steps</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">rtol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
     <span class="n">atol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">solver</span><span class="p">:</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">AbstractSolver</span> <span class="o">=</span> <span class="n">DEFAULT_SOLVER</span><span class="p">,</span>
     <span class="n">jump_ts</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">n_linspace</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">return_fail_time</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
@@ -652,8 +654,16 @@
     <span class="c1"># RAW derivative is rescaled via ``scale_derivative`` (offset-free: under an</span>
     <span class="c1"># affine scaler ``d((RAW-b)/s)/dt = (dRAW/dt)/s``, so the offset must NOT be</span>
     <span class="c1"># subtracted here — the value ``/`` path would subtract it).</span>
+    <span class="c1"># Some solvers have stage nodes past the step end (Kvaerno5: c = 1.23,</span>
+    <span class="c1"># Kvaerno4: c = 1.15), so the last step queries the RHS after t1, where</span>
+    <span class="c1"># controls would extrapolate their last spline piece. Hold controls at</span>
+    <span class="c1"># their t0/t1 values (see `physical_rhs`); reaction time stays raw. Clip to</span>
+    <span class="c1"># the whole-solve bounds, not callback segment bounds: within the window,</span>
+    <span class="c1"># stages crossing a segment end must still see the real controls.</span>
     <span class="n">term</span> <span class="o">=</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">ODETerm</span><span class="p">(</span>
-        <span class="k">lambda</span> <span class="n">t</span><span class="p">,</span> <span class="n">yy</span><span class="p">,</span> <span class="n">a</span><span class="p">:</span> <span class="n">SCALE</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span><span class="n">wrapper</span><span class="o">.</span><span class="n">physical_rhs</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">yy</span> <span class="o">*</span> <span class="n">SCALE</span><span class="p">))</span>
+        <span class="k">lambda</span> <span class="n">t</span><span class="p">,</span> <span class="n">yy</span><span class="p">,</span> <span class="n">a</span><span class="p">:</span> <span class="n">SCALE</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span>
+            <span class="n">wrapper</span><span class="o">.</span><span class="n">physical_rhs</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">yy</span> <span class="o">*</span> <span class="n">SCALE</span><span class="p">,</span> <span class="n">control_time</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">t0</span><span class="p">,</span> <span class="n">t1</span><span class="p">))</span>
+        <span class="p">)</span>
     <span class="p">)</span>
 
     <span class="c1"># A stop condition checks the initial state and accepted solver steps, but not</span>
@@ -674,11 +684,13 @@
     <span class="c1"># the adaptive controller adjusts immediately), so a genuinely short run keeps its</span>
     <span class="c1"># usual ``span * 1e-3`` untouched.</span>
     <span class="n">span</span> <span class="o">=</span> <span class="n">t1</span> <span class="o">-</span> <span class="n">t0</span>
-    <span class="n">dt0</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">span</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="n">span</span> <span class="o">*</span> <span class="mf">1e-3</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">_DEGENERATE_DT0</span><span class="p">,</span> <span class="n">dtype</span><span class="p">))</span>
+    <span class="n">dt0</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
+        <span class="n">span</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">,</span> <span class="n">span</span> <span class="o">*</span> <span class="n">INITIAL_STEP_FRACTION</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">_DEGENERATE_DT0</span><span class="p">,</span> <span class="n">dtype</span><span class="p">)</span>
+    <span class="p">)</span>
 
     <span class="n">sol</span> <span class="o">=</span> <span class="n">diffeqsolve_with_callbacks</span><span class="p">(</span>
         <span class="n">term</span><span class="p">,</span>
-        <span class="n">diffrax</span><span class="o">.</span><span class="n">Tsit5</span><span class="p">(),</span>
+        <span class="n">solver</span><span class="p">,</span>
         <span class="n">t0</span><span class="o">=</span><span class="n">t0</span><span class="p">,</span>
         <span class="n">t1</span><span class="o">=</span><span class="n">t1</span><span class="p">,</span>
         <span class="n">dt0</span><span class="o">=</span><span class="n">dt0</span><span class="p">,</span>

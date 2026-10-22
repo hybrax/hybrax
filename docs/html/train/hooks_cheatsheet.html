@@ -262,8 +262,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/kan.html">KAN Models</a></li>
@@ -286,6 +284,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
@@ -322,6 +321,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -394,8 +394,8 @@ effect, check that line before anything else. This is the single most common cau
 custom module isn’t doing anything”.</p>
 </div>
 </section>
-<section id="the-seven-hooks">
-<h2>The seven hooks<a class="headerlink" href="#the-seven-hooks" title="Link to this heading">¶</a></h2>
+<section id="the-eight-hooks">
+<h2>The eight hooks<a class="headerlink" href="#the-eight-hooks" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
@@ -441,6 +441,11 @@ custom module isn’t doing anything”.</p>
 <td><p><code class="docutils literal notranslate"><span class="pre">optax.GradientTransformation</span></code></p></td>
 <td><p>clip + adam/sgd</p></td>
 </tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="train.html#hook-build-solver"><span class="std std-ref"><code class="docutils literal notranslate"><span class="pre">build_solver</span></code></span></a></p></td>
+<td><p>train and prediction setup</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">diffrax.AbstractSolver</span></code> instance</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">diffrax.Tsit5()</span></code></p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -448,7 +453,8 @@ custom module isn’t doing anything”.</p>
 <code class="docutils literal notranslate"><span class="pre">build_reaction_module</span></code> → <code class="docutils literal notranslate"><span class="pre">build_loss_module</span></code>.</p>
 <p>That ordering is why scales arrive at the reaction module as <code class="docutils literal notranslate"><span class="pre">**scale_kwargs</span></code>: they
 already exist by the time it is built.</p>
-<p><strong>Type-checked:</strong> <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code>, <code class="docutils literal notranslate"><span class="pre">build_reaction_module</span></code> and <code class="docutils literal notranslate"><span class="pre">build_loss_module</span></code>
+<p><strong>Type-checked:</strong> <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code>, <code class="docutils literal notranslate"><span class="pre">build_reaction_module</span></code>, <code class="docutils literal notranslate"><span class="pre">build_loss_module</span></code>
+and <code class="docutils literal notranslate"><span class="pre">build_solver</span></code>
 raise <code class="docutils literal notranslate"><span class="pre">TypeError</span></code> if they return the wrong type. The other four do not.</p>
 </section>
 <section id="signatures">
@@ -482,6 +488,9 @@ raise <code class="docutils literal notranslate"><span class="pre">TypeError</sp
 
 <span class="k">def</span><span class="w"> </span><span class="nf">build_optimizer</span><span class="p">(</span><span class="n">custom_cfg</span><span class="p">,</span> <span class="n">train_cfg</span><span class="p">):</span> <span class="o">...</span>
     <span class="c1"># -&gt; optax.GradientTransformation</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">build_solver</span><span class="p">(</span><span class="n">config</span><span class="p">):</span> <span class="o">...</span>
+    <span class="c1"># -&gt; diffrax.AbstractSolver instance, also rebuilt for saved-model prediction</span>
 </pre></div>
 </div>
 </section>
@@ -618,7 +627,7 @@ silent. Two very different failure modes.</p></li>
             <ul>
 <li><a class="reference internal" href="#">Customization</a><ul>
 <li><a class="reference internal" href="#how-discovery-works">How discovery works</a></li>
-<li><a class="reference internal" href="#the-seven-hooks">The seven hooks</a></li>
+<li><a class="reference internal" href="#the-eight-hooks">The eight hooks</a></li>
 <li><a class="reference internal" href="#signatures">Signatures</a></li>
 <li><a class="reference internal" href="#three-things-that-are-not-get-hook-hooks">Three things that are not <code class="docutils literal notranslate"><span class="pre">get_hook</span></code> hooks</a></li>
 <li><a class="reference internal" href="#a-minimal-complete-custom-py">A minimal complete <code class="docutils literal notranslate"><span class="pre">custom.py</span></code></a></li>

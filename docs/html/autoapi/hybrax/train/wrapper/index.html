@@ -262,8 +262,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/kan.html">KAN Models</a></li>
@@ -286,6 +284,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/splines/index.html">hybrax.format.splines</a></li>
@@ -322,6 +321,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -503,14 +503,23 @@ stateful latent observable is not emitted via
 
 <dl class="py method">
 <dt class="sig sig-object py" id="hybrax.train.wrapper.HybridOdeWrapper.physical_rhs">
-<span class="sig-name descname"><span class="pre">physical_rhs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y_phys</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/wrapper.html#HybridOdeWrapper.physical_rhs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.wrapper.HybridOdeWrapper.physical_rhs" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">physical_rhs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y_phys</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">control_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/wrapper.html#HybridOdeWrapper.physical_rhs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.wrapper.HybridOdeWrapper.physical_rhs" title="Link to this definition">¶</a></dt>
 <dd><p>Return the derivative of the physical and latent state vector.</p>
 <p>Continuous part only — discrete boluses/samples are handled as jumps.</p>
+<p><cite>control_time</cite>, if given, is the time used to evaluate the controls
+(controlled inflows/outflows and PVs) instead of <cite>t</cite>. The reaction module
+still sees <cite>t</cite>. <cite>solve_physical_states</cite> passes <cite>t</cite> clipped to the solve
+window: some implicit solvers (e.g. Kvaerno4/5) evaluate stages past
+the step end, so in the final step the RHS can be queried after t1.
+Control splines would extrapolate their last cubic there, and those
+values leak into the accepted state at t1 and its gradients. Clipping
+holds the controls (values and rates) at their t0/t1 values instead.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>t</strong> (<em>float</em><em> | </em><em>jax.Array</em>)</p></li>
 <li><p><strong>y_phys</strong> (<em>jax.Array</em>)</p></li>
+<li><p><strong>control_time</strong> (<em>float</em><em> | </em><em>jax.Array</em><em> | </em><em>None</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>

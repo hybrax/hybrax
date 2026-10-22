@@ -19,6 +19,7 @@ Submodules
    /autoapi/hybrax/format/inspect/index
    /autoapi/hybrax/format/json_io/index
    /autoapi/hybrax/format/mechanistic/index
+   /autoapi/hybrax/format/monotone_spline/index
    /autoapi/hybrax/format/serialization/index
    /autoapi/hybrax/format/simulation/index
    /autoapi/hybrax/format/splines/index

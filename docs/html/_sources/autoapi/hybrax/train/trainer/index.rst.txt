@@ -8,7 +8,7 @@ hybrax.train.trainer
    The JIT-compiled per-sample solve and per-batch loss/gradient step.
 
    ``build_batched_loss_fn`` builds the function ``harness.py`` JIT-compiles for
-   every train step: it vmaps a single sample's ODE solve plus loss module
+   every train step: it maps a single sample's ODE solve plus loss module
    evaluation (``evaluate_sample_with_loss_module``) across a batch, and
    ``evaluate_one_sample_loss`` provides the equivalent single-sample path used
    outside training (holdout evaluation, dense exports).
@@ -102,9 +102,10 @@ Module Contents
 
    The returned fn receives RAW measurements (``batch.y_measured`` /
    ``batch.y0_measured``); it pre-scales them via the module's ``SCALE_state``,
-   then vmaps :func:`evaluate_sample_with_loss_module` over the batch. The loss
+   then maps :func:`evaluate_sample_with_loss_module` over the batch. The loss
    module is read off the wrapper, so swapping it (or its trainable params)
-   flows through without rebuilding this closure.
+   flows through without rebuilding this closure. Optional ``microbatch_size``
+   limits execution width without changing the process mean.
 
 
 .. py:function:: clamp_padded_time_rows(times, lengths)
@@ -112,7 +113,7 @@ Module Contents
    Right-clamp padded rows to avoid NaNs in padded tails.
 
 
-.. py:function:: evaluate_one_sample_loss(wrapper, batch_controls, row_idx, t_measured, SCL_target_measured, mask_measured, n_measured, RAW_y0_measured, cin, cin_modeled, retention, retention_modeled, jump_ts, *, max_solver_steps, solver_rtol, solver_atol, step = None)
+.. py:function:: evaluate_one_sample_loss(wrapper, batch_controls, row_idx, t_measured, SCL_target_measured, mask_measured, n_measured, RAW_y0_measured, cin, cin_modeled, retention, retention_modeled, jump_ts, *, max_solver_steps, solver_rtol, solver_atol, ode_solver = DEFAULT_SOLVER, step = None)
 
    One process -> ``(total_loss, per_target_loss, fail_time)``. Shared by the
    vmap batched loss and the device-sharded (pmap) step. ``fail_time`` is ``+inf``
@@ -120,7 +121,7 @@ Module Contents
    the callbacks solve (``physical_solve.solve_physical_states``) integrates it.
 
 
-.. py:function:: evaluate_sample_with_loss_module(wrapper, *, t_measured, SCL_target_measured, mask_measured, n_measured, RAW_y0_measured, jump_ts, max_solver_steps, solver_rtol, solver_atol, step = None, prediction_grid_n = None)
+.. py:function:: evaluate_sample_with_loss_module(wrapper, *, t_measured, SCL_target_measured, mask_measured, n_measured, RAW_y0_measured, jump_ts, max_solver_steps, solver_rtol, solver_atol, ode_solver = DEFAULT_SOLVER, step = None, prediction_grid_n = None)
 
    Solve once, build ``LossInputs``, and evaluate ``wrapper.loss_module``.
 
@@ -136,7 +137,7 @@ Module Contents
    wrapper). ``RAW_y0_measured`` is the full physical initial state.
 
 
-.. py:function:: simulate_measurement_states(wrapper, process_data, *, max_steps = 100000, rtol = 1e-05, atol = 1e-07)
+.. py:function:: simulate_measurement_states(wrapper, process_data, *, max_steps = 100000, rtol = 1e-05, atol = 1e-07, solver = DEFAULT_SOLVER)
 
    RAW physical state trajectories at the active measurement timestamps.
 

@@ -262,8 +262,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/kan.html">KAN Models</a></li>
@@ -286,6 +284,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/splines/index.html">hybrax.format.splines</a></li>
@@ -322,6 +321,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -416,7 +416,7 @@ steps on the measurement grid to 208 / 426 once a 200-point export grid was requ
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
 <dl class="py function">
 <dt class="sig sig-object py" id="hybrax.train.physical_solve.solve_physical_states">
-<span class="sig-prename descclassname"><span class="pre">hybrax.train.physical_solve.</span></span><span class="sig-name descname"><span class="pre">solve_physical_states</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">wrapper</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">t_eval</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_measured</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">RAW_y0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rtol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">jump_ts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_linspace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_fail_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/physical_solve.html#solve_physical_states"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.physical_solve.solve_physical_states" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.physical_solve.</span></span><span class="sig-name descname"><span class="pre">solve_physical_states</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">wrapper</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">t_eval</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_measured</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">RAW_y0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rtol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">atol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">solver</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">DEFAULT_SOLVER</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">jump_ts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_linspace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">return_fail_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/physical_solve.html#solve_physical_states"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.physical_solve.solve_physical_states" title="Link to this definition">¶</a></dt>
 <dd><p>RAW physical states at each (padded) measurement time, <code class="docutils literal notranslate"><span class="pre">[max_n_meas,</span> <span class="pre">n_state]</span></code>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">n_linspace</span></code> is how many of <code class="docutils literal notranslate"><span class="pre">t_eval</span></code>’s points come from evenly-spaced blocks
 spliced in by <code class="xref py py-func docutils literal notranslate"><span class="pre">dense.build_union_time_grid()</span></code> (<code class="docutils literal notranslate"><span class="pre">dense_grid_n</span></code> +
@@ -457,6 +457,7 @@ moves just because a denser output grid was requested.</p>
 <li><p><strong>max_steps</strong> (<em>int</em>)</p></li>
 <li><p><strong>rtol</strong> (<em>float</em>)</p></li>
 <li><p><strong>atol</strong> (<em>float</em>)</p></li>
+<li><p><strong>solver</strong> (<em>diffrax.AbstractSolver</em>)</p></li>
 <li><p><strong>jump_ts</strong> (<em>jax.Array</em><em> | </em><em>None</em>)</p></li>
 <li><p><strong>n_linspace</strong> (<em>int</em><em> | </em><em>None</em>)</p></li>
 <li><p><strong>return_fail_time</strong> (<em>bool</em>)</p></li>

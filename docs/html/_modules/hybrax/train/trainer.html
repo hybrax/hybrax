@@ -261,8 +261,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">KAN Models</a></li>
@@ -285,6 +283,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
@@ -321,6 +320,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -369,7 +369,7 @@
 <span></span><span class="sd">"""The JIT-compiled per-sample solve and per-batch loss/gradient step.</span>
 
 <span class="sd">``build_batched_loss_fn`` builds the function ``harness.py`` JIT-compiles for</span>
-<span class="sd">every train step: it vmaps a single sample's ODE solve plus loss module</span>
+<span class="sd">every train step: it maps a single sample's ODE solve plus loss module</span>
 <span class="sd">evaluation (``evaluate_sample_with_loss_module``) across a batch, and</span>
 <span class="sd">``evaluate_one_sample_loss`` provides the equivalent single-sample path used</span>
 <span class="sd">outside training (holdout evaluation, dense exports).</span>
@@ -379,11 +379,13 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">diffrax</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.tree_util</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jtu</span>
 
+<span class="kn">from</span><span class="w"> </span><span class="nn">.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">DEFAULT_SOLVER</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.controls_store</span><span class="w"> </span><span class="kn">import</span> <span class="n">BatchControls</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.model_api</span><span class="w"> </span><span class="kn">import</span> <span class="n">LossInputs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.physical_solve</span><span class="w"> </span><span class="kn">import</span> <span class="n">within_fail_time</span>
@@ -453,6 +455,7 @@
     <span class="n">max_steps</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">rtol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
     <span class="n">atol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">solver</span><span class="p">:</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">AbstractSolver</span> <span class="o">=</span> <span class="n">DEFAULT_SOLVER</span><span class="p">,</span>
     <span class="n">jump_ts</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">n_linspace</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">SaveOutputs</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">]:</span>
@@ -485,6 +488,7 @@
         <span class="n">max_steps</span><span class="o">=</span><span class="n">max_steps</span><span class="p">,</span>
         <span class="n">rtol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">rtol</span><span class="p">),</span>
         <span class="n">atol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">atol</span><span class="p">),</span>
+        <span class="n">solver</span><span class="o">=</span><span class="n">solver</span><span class="p">,</span>
         <span class="n">jump_ts</span><span class="o">=</span><span class="n">jump_ts</span><span class="p">,</span>
         <span class="n">n_linspace</span><span class="o">=</span><span class="n">n_linspace</span><span class="p">,</span>
         <span class="n">return_fail_time</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
@@ -501,6 +505,7 @@
     <span class="n">max_steps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100_000</span><span class="p">,</span>
     <span class="n">rtol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-5</span><span class="p">,</span>
     <span class="n">atol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-7</span><span class="p">,</span>
+    <span class="n">solver</span><span class="p">:</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">AbstractSolver</span> <span class="o">=</span> <span class="n">DEFAULT_SOLVER</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""RAW physical state trajectories at the active measurement timestamps.</span>
 
@@ -544,6 +549,7 @@
         <span class="n">max_steps</span><span class="o">=</span><span class="n">max_steps</span><span class="p">,</span>
         <span class="n">rtol</span><span class="o">=</span><span class="n">rtol</span><span class="p">,</span>
         <span class="n">atol</span><span class="o">=</span><span class="n">atol</span><span class="p">,</span>
+        <span class="n">solver</span><span class="o">=</span><span class="n">solver</span><span class="p">,</span>
         <span class="c1"># Bare measurement grid — no linspace spliced in — so the output window needs</span>
         <span class="c1"># only the per-gap measurement count. Saying so beats letting the solver bound</span>
         <span class="c1"># it from the grid length, and per-segment save cost scales with the window.</span>
@@ -636,6 +642,7 @@
     <span class="n">max_solver_steps</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">solver_rtol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
     <span class="n">solver_atol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">ode_solver</span><span class="p">:</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">AbstractSolver</span> <span class="o">=</span> <span class="n">DEFAULT_SOLVER</span><span class="p">,</span>
     <span class="n">step</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">prediction_grid_n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SingleSampleResult</span><span class="p">:</span>
@@ -697,6 +704,7 @@
             <span class="n">max_steps</span><span class="o">=</span><span class="n">max_solver_steps</span><span class="p">,</span>
             <span class="n">rtol</span><span class="o">=</span><span class="n">solver_rtol</span><span class="p">,</span>
             <span class="n">atol</span><span class="o">=</span><span class="n">solver_atol</span><span class="p">,</span>
+            <span class="n">solver</span><span class="o">=</span><span class="n">ode_solver</span><span class="p">,</span>
             <span class="n">jump_ts</span><span class="o">=</span><span class="n">jump_ts</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="n">meas_views</span> <span class="o">=</span> <span class="n">_views_from_save_outputs</span><span class="p">(</span><span class="n">save_outputs</span><span class="p">)</span>
@@ -739,6 +747,7 @@
             <span class="n">max_steps</span><span class="o">=</span><span class="n">max_solver_steps</span><span class="p">,</span>
             <span class="n">rtol</span><span class="o">=</span><span class="n">solver_rtol</span><span class="p">,</span>
             <span class="n">atol</span><span class="o">=</span><span class="n">solver_atol</span><span class="p">,</span>
+            <span class="n">solver</span><span class="o">=</span><span class="n">ode_solver</span><span class="p">,</span>
             <span class="n">jump_ts</span><span class="o">=</span><span class="n">jump_ts</span><span class="p">,</span>
             <span class="c1"># Exactly the two linspace blocks spliced in just above, so the solver can</span>
             <span class="c1"># size its per-segment output window tightly instead of bounding the whole</span>
@@ -882,6 +891,7 @@
     <span class="n">max_solver_steps</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">solver_rtol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
     <span class="n">solver_atol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">ode_solver</span><span class="p">:</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">AbstractSolver</span> <span class="o">=</span> <span class="n">DEFAULT_SOLVER</span><span class="p">,</span>
     <span class="n">step</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">):</span>
 <span class="w">    </span><span class="sd">"""One process -&gt; ``(total_loss, per_target_loss, fail_time)``. Shared by the</span>
@@ -915,6 +925,7 @@
         <span class="n">max_solver_steps</span><span class="o">=</span><span class="n">max_solver_steps</span><span class="p">,</span>
         <span class="n">solver_rtol</span><span class="o">=</span><span class="n">solver_rtol</span><span class="p">,</span>
         <span class="n">solver_atol</span><span class="o">=</span><span class="n">solver_atol</span><span class="p">,</span>
+        <span class="n">ode_solver</span><span class="o">=</span><span class="n">ode_solver</span><span class="p">,</span>
         <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">total_loss</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">per_target_loss</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">fail_time</span></div>
@@ -928,9 +939,10 @@
 
 <span class="sd">    The returned fn receives RAW measurements (``batch.y_measured`` /</span>
 <span class="sd">    ``batch.y0_measured``); it pre-scales them via the module's ``SCALE_state``,</span>
-<span class="sd">    then vmaps :func:`evaluate_sample_with_loss_module` over the batch. The loss</span>
+<span class="sd">    then maps :func:`evaluate_sample_with_loss_module` over the batch. The loss</span>
 <span class="sd">    module is read off the wrapper, so swapping it (or its trainable params)</span>
-<span class="sd">    flows through without rebuilding this closure.</span>
+<span class="sd">    flows through without rebuilding this closure. Optional ``microbatch_size``</span>
+<span class="sd">    limits execution width without changing the process mean.</span>
 <span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_batched_loss_fn</span><span class="p">(</span>
@@ -943,8 +955,10 @@
         <span class="n">max_solver_steps</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
         <span class="n">solver_rtol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
         <span class="n">solver_atol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+        <span class="n">ode_solver</span><span class="p">:</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">AbstractSolver</span> <span class="o">=</span> <span class="n">DEFAULT_SOLVER</span><span class="p">,</span>
         <span class="n">step</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
         <span class="n">prediction_grid_n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">microbatch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>
         <span class="n">batch_t_meas</span> <span class="o">=</span> <span class="n">clamp_padded_time_rows</span><span class="p">(</span><span class="n">batch</span><span class="o">.</span><span class="n">t_measured</span><span class="p">,</span> <span class="n">batch</span><span class="o">.</span><span class="n">n_measured</span><span class="p">)</span>
 
@@ -996,6 +1010,7 @@
                 <span class="n">max_solver_steps</span><span class="o">=</span><span class="n">max_solver_steps</span><span class="p">,</span>
                 <span class="n">solver_rtol</span><span class="o">=</span><span class="n">solver_rtol</span><span class="p">,</span>
                 <span class="n">solver_atol</span><span class="o">=</span><span class="n">solver_atol</span><span class="p">,</span>
+                <span class="n">ode_solver</span><span class="o">=</span><span class="n">ode_solver</span><span class="p">,</span>
                 <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
                 <span class="n">prediction_grid_n</span><span class="o">=</span><span class="n">prediction_grid_n</span><span class="p">,</span>
             <span class="p">)</span>
@@ -1010,33 +1025,7 @@
                 <span class="n">result</span><span class="o">.</span><span class="n">fail_time</span><span class="p">,</span>
             <span class="p">)</span>
 
-        <span class="p">(</span>
-            <span class="n">per_sample_total</span><span class="p">,</span>
-            <span class="n">per_sample_per_target</span><span class="p">,</span>
-            <span class="n">prediction_t</span><span class="p">,</span>
-            <span class="n">prediction_save_outputs</span><span class="p">,</span>
-            <span class="n">prediction_valid</span><span class="p">,</span>
-            <span class="n">measurement_save_outputs</span><span class="p">,</span>
-            <span class="n">measurement_prediction_valid</span><span class="p">,</span>
-            <span class="n">per_sample_fail_time</span><span class="p">,</span>
-        <span class="p">)</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span>
-            <span class="n">_sample_loss</span><span class="p">,</span>
-            <span class="c1"># when `jump_ts_rows` is `None` we also have to pass `None` to vmap so that</span>
-            <span class="c1"># it's not iterated over</span>
-            <span class="n">in_axes</span><span class="o">=</span><span class="p">(</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="kc">None</span> <span class="k">if</span> <span class="n">jump_ts_rows</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">0</span><span class="p">,</span>
-            <span class="p">),</span>
-        <span class="p">)(</span>
+        <span class="n">sample_args</span> <span class="o">=</span> <span class="p">(</span>
             <span class="n">jnp</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">batch</span><span class="o">.</span><span class="n">process_indices</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span>
             <span class="n">batch_t_meas</span><span class="p">,</span>
             <span class="n">SCL_y_measured</span><span class="p">,</span>
@@ -1049,6 +1038,44 @@
             <span class="n">batch</span><span class="o">.</span><span class="n">retention_modeled_Outflows</span><span class="p">,</span>
             <span class="n">jump_ts_rows</span><span class="p">,</span>
         <span class="p">)</span>
+        <span class="k">if</span> <span class="n">microbatch_size</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">microbatch_size</span> <span class="o">&gt;=</span> <span class="n">batch</span><span class="o">.</span><span class="n">process_indices</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+            <span class="n">outputs</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">_sample_loss</span><span class="p">)(</span><span class="o">*</span><span class="n">sample_args</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">n_groups</span><span class="p">,</span> <span class="n">remainder</span> <span class="o">=</span> <span class="nb">divmod</span><span class="p">(</span>
+                <span class="n">batch</span><span class="o">.</span><span class="n">process_indices</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">microbatch_size</span>
+            <span class="p">)</span>
+            <span class="n">full_size</span> <span class="o">=</span> <span class="n">n_groups</span> <span class="o">*</span> <span class="n">microbatch_size</span>
+            <span class="n">grouped_args</span> <span class="o">=</span> <span class="n">jtu</span><span class="o">.</span><span class="n">tree_map</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[:</span><span class="n">full_size</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span>
+                    <span class="p">(</span><span class="n">n_groups</span><span class="p">,</span> <span class="n">microbatch_size</span><span class="p">)</span> <span class="o">+</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+                <span class="p">),</span>
+                <span class="n">sample_args</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">outputs</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">lax</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">rows</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">_sample_loss</span><span class="p">)(</span><span class="o">*</span><span class="n">rows</span><span class="p">),</span> <span class="n">grouped_args</span>
+            <span class="p">)</span>
+            <span class="c1"># lax.map(batch_size=...) uses an inferred reshape dimension that</span>
+            <span class="c1"># fails for zero-width solve outputs. Keep the row count explicit.</span>
+            <span class="n">outputs</span> <span class="o">=</span> <span class="n">jtu</span><span class="o">.</span><span class="n">tree_map</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">((</span><span class="n">full_size</span><span class="p">,)</span> <span class="o">+</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">:]),</span> <span class="n">outputs</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">remainder</span><span class="p">:</span>
+                <span class="n">tail</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">_sample_loss</span><span class="p">)(</span>
+                    <span class="o">*</span><span class="n">jtu</span><span class="o">.</span><span class="n">tree_map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="n">full_size</span><span class="p">:],</span> <span class="n">sample_args</span><span class="p">)</span>
+                <span class="p">)</span>
+                <span class="n">outputs</span> <span class="o">=</span> <span class="n">jtu</span><span class="o">.</span><span class="n">tree_map</span><span class="p">(</span>
+                    <span class="k">lambda</span> <span class="n">full</span><span class="p">,</span> <span class="n">last</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">((</span><span class="n">full</span><span class="p">,</span> <span class="n">last</span><span class="p">)),</span> <span class="n">outputs</span><span class="p">,</span> <span class="n">tail</span>
+                <span class="p">)</span>
+        <span class="p">(</span>
+            <span class="n">per_sample_total</span><span class="p">,</span>
+            <span class="n">per_sample_per_target</span><span class="p">,</span>
+            <span class="n">prediction_t</span><span class="p">,</span>
+            <span class="n">prediction_save_outputs</span><span class="p">,</span>
+            <span class="n">prediction_valid</span><span class="p">,</span>
+            <span class="n">measurement_save_outputs</span><span class="p">,</span>
+            <span class="n">measurement_prediction_valid</span><span class="p">,</span>
+            <span class="n">per_sample_fail_time</span><span class="p">,</span>
+        <span class="p">)</span> <span class="o">=</span> <span class="n">outputs</span>
         <span class="n">mean_total</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">per_sample_total</span><span class="p">)</span>
         <span class="c1"># 2nd element is PER-SAMPLE per-target (one row per process), matching the</span>
         <span class="c1"># forward harvest path (compute_dense_exports); the vmap training step</span>

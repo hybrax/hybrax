@@ -260,8 +260,6 @@
 <li class="toctree-l1"><a class="reference internal" href="gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="gallery/kan.html">KAN Models</a></li>
@@ -284,6 +282,7 @@
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
@@ -320,6 +319,7 @@
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -605,6 +605,8 @@
 </li>
         <li><a href="autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.build_rhs_ode">build_rhs_ode() (in module hybrax.format.mechanistic)</a>
 </li>
+        <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.build_solver_for_run">build_solver_for_run() (in module hybrax.train.harness)</a>
+</li>
         <li><a href="autoapi/hybrax/train/controls/index.html#hybrax.train.controls.build_spline_payload">build_spline_payload() (in module hybrax.train.controls)</a>
 </li>
         <li><a href="autoapi/hybrax/format/splines/index.html#hybrax.format.splines.build_splines">build_splines() (in module hybrax.format.splines)</a>
@@ -634,6 +636,8 @@
         <li><a href="autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.canonical_training_parents">canonical_training_parents() (in module hybrax.train.runtime_context)</a>
 </li>
         <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection.case_id">case_id (hybrax.format.dataclasses.BioProcessCollection attribute)</a>
+</li>
+        <li><a href="autoapi/hybrax/train/preflight/index.html#hybrax.train.preflight.check_continuous_flow_integration">check_continuous_flow_integration() (in module hybrax.train.preflight)</a>
 </li>
         <li><a href="autoapi/hybrax/train/checkpointing/index.html#hybrax.train.checkpointing.CheckpointWriter.check_retention_directory">check_retention_directory() (hybrax.train.checkpointing.CheckpointWriter static method)</a>
 </li>
@@ -847,11 +851,15 @@
 </li>
         <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.default_build_reaction_module">default_build_reaction_module() (in module hybrax.train.defaults)</a>
 </li>
+        <li><a href="autoapi/hybrax/train/constants/index.html#hybrax.train.constants.DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE">DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE (in module hybrax.train.constants)</a>
+</li>
         <li><a href="autoapi/hybrax/format/serialization/index.html#hybrax.format.serialization.DEFAULT_JSON_FILENAME">DEFAULT_JSON_FILENAME (in module hybrax.format.serialization)</a>
 </li>
         <li><a href="autoapi/hybrax/format/serialization/index.html#hybrax.format.serialization.DEFAULT_JSON_GZ_FILENAME">DEFAULT_JSON_GZ_FILENAME (in module hybrax.format.serialization)</a>
 </li>
         <li><a href="autoapi/hybrax/train/loo_metrics/index.html#hybrax.train.loo_metrics.DEFAULT_METRICS">DEFAULT_METRICS (in module hybrax.train.loo_metrics)</a>
+</li>
+        <li><a href="autoapi/hybrax/train/constants/index.html#hybrax.train.constants.DEFAULT_SOLVER">DEFAULT_SOLVER (in module hybrax.train.constants)</a>
 </li>
         <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.default_transform_process_collection">default_transform_process_collection() (in module hybrax.train.defaults)</a>
 </li>
@@ -899,10 +907,10 @@
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_SCL_modeled_Inflows_rates">dense_SCL_modeled_Inflows_rates (hybrax.train.model_api.LossInputs attribute)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_SCL_modeled_Outflows_rates">dense_SCL_modeled_Outflows_rates (hybrax.train.model_api.LossInputs attribute)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_SCL_modeled_Outflows_rates">dense_SCL_modeled_Outflows_rates (hybrax.train.model_api.LossInputs attribute)</a>
+</li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_SCL_modeled_ReactionOde_rates">dense_SCL_modeled_ReactionOde_rates (hybrax.train.model_api.LossInputs attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_SCL_states">dense_SCL_states (hybrax.train.model_api.LossInputs attribute)</a>
@@ -1129,8 +1137,16 @@
 </li>
         <li><a href="autoapi/hybrax/train/logging/index.html#hybrax.train.logging.RunLogger.finalize">finalize() (hybrax.train.logging.RunLogger method)</a>
 </li>
+        <li><a href="autoapi/hybrax/format/monotone_spline/index.html#hybrax.format.monotone_spline.fit_monotone_timeseries_spline">fit_monotone_timeseries_spline() (in module hybrax.format.monotone_spline)</a>
+</li>
         <li><a href="autoapi/hybrax/format/splines/index.html#hybrax.format.splines.fit_timeseries_spline">fit_timeseries_spline() (in module hybrax.format.splines)</a>
 </li>
+        <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessConfig.flow_integral_relative_tolerance">flow_integral_relative_tolerance (hybrax.train.harness.TrainHarnessConfig attribute)</a>
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.TrainConfig.flow_integral_relative_tolerance">(hybrax.train.run_config.TrainConfig attribute)</a>
+</li>
+        </ul></li>
         <li><a href="autoapi/hybrax/train/loo/index.html#hybrax.train.loo.Fold">Fold (class in hybrax.train.loo)</a>
 </li>
         <li><a href="autoapi/hybrax/train/loo/index.html#hybrax.train.loo.FoldResult.fold">fold (hybrax.train.loo.FoldResult attribute)</a>
@@ -1346,6 +1362,13 @@
 
         <ul>
           <li><a href="autoapi/hybrax/format/mechanistic/index.html#module-hybrax.format.mechanistic">module</a>
+</li>
+        </ul></li>
+        <li>
+    hybrax.format.monotone_spline
+
+        <ul>
+          <li><a href="autoapi/hybrax/format/monotone_spline/index.html#module-hybrax.format.monotone_spline">module</a>
 </li>
         </ul></li>
         <li>
@@ -1575,6 +1598,13 @@
 </li>
         </ul></li>
         <li>
+    hybrax.train.preflight
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/preflight/index.html#module-hybrax.train.preflight">module</a>
+</li>
+        </ul></li>
+        <li>
     hybrax.train.prepare
 
         <ul>
@@ -1682,10 +1712,12 @@
 </li>
         <li><a href="autoapi/hybrax/train/wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper.initial_physical_state_from_raw">initial_physical_state_from_raw() (hybrax.train.wrapper.HybridOdeWrapper method)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.AugmentationConfig.initial_value_source">initial_value_source (hybrax.train.run_config.AugmentationConfig attribute)</a>
+        <li><a href="autoapi/hybrax/train/constants/index.html#hybrax.train.constants.INITIAL_STEP_FRACTION">INITIAL_STEP_FRACTION (in module hybrax.train.constants)</a>
 </li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.AugmentationConfig.initial_value_source">initial_value_source (hybrax.train.run_config.AugmentationConfig attribute)</a>
+</li>
         <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.Volume.initial_volume">initial_volume (hybrax.format.dataclasses.Volume attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.RuntimeDataContext.initial_volume">initial_volume() (hybrax.train.runtime_context.RuntimeDataContext method)</a>
@@ -1970,6 +2002,12 @@
 </li>
         <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessConfig.metrics_jsonl">metrics_jsonl (hybrax.train.harness.TrainHarnessConfig attribute)</a>
 </li>
+        <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessConfig.microbatch_size">microbatch_size (hybrax.train.harness.TrainHarnessConfig attribute)</a>
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.TrainConfig.microbatch_size">(hybrax.train.run_config.TrainConfig attribute)</a>
+</li>
+        </ul></li>
         <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.AugmentationConfig.min_spacing_fraction">min_spacing_fraction (hybrax.train.run_config.AugmentationConfig attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.BatchControls.min_V">min_V (hybrax.train.controls_store.BatchControls attribute)</a>
@@ -2036,6 +2074,8 @@
 </li>
           <li><a href="autoapi/hybrax/format/mechanistic/index.html#module-hybrax.format.mechanistic">hybrax.format.mechanistic</a>
 </li>
+          <li><a href="autoapi/hybrax/format/monotone_spline/index.html#module-hybrax.format.monotone_spline">hybrax.format.monotone_spline</a>
+</li>
           <li><a href="autoapi/hybrax/format/serialization/index.html#module-hybrax.format.serialization">hybrax.format.serialization</a>
 </li>
           <li><a href="autoapi/hybrax/format/simulation/index.html#module-hybrax.format.simulation">hybrax.format.simulation</a>
@@ -2099,6 +2139,8 @@
           <li><a href="autoapi/hybrax/train/physical_solve/index.html#module-hybrax.train.physical_solve">hybrax.train.physical_solve</a>
 </li>
           <li><a href="autoapi/hybrax/train/postprocessing/index.html#module-hybrax.train.postprocessing">hybrax.train.postprocessing</a>
+</li>
+          <li><a href="autoapi/hybrax/train/preflight/index.html#module-hybrax.train.preflight">hybrax.train.preflight</a>
 </li>
           <li><a href="autoapi/hybrax/train/prepare/index.html#module-hybrax.train.prepare">hybrax.train.prepare</a>
 </li>
@@ -2357,6 +2399,12 @@
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.observe">observe() (hybrax.train.model_api.RateModule method)</a>
 </li>
+        <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.ForwardConfig.ode_solver">ode_solver (hybrax.train.harness.ForwardConfig attribute)</a>
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessConfig.ode_solver">(hybrax.train.harness.TrainHarnessConfig attribute)</a>
+</li>
+        </ul></li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.AffineScaler.offset">offset (hybrax.train.model_api.AffineScaler attribute)</a>
 
         <ul>
@@ -2373,10 +2421,10 @@
 </li>
         <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection.organism">organism (hybrax.format.dataclasses.BioProcessCollection attribute)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.original_parent_processes">original_parent_processes() (in module hybrax.train.runtime_context)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.original_parent_processes">original_parent_processes() (in module hybrax.train.runtime_context)</a>
+</li>
         <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.Outflow">Outflow (class in hybrax.format.dataclasses)</a>
 </li>
         <li><a href="autoapi/hybrax/train/defaults/index.html#hybrax.train.defaults.DefaultGruReactionModule.outflow_head">outflow_head (hybrax.train.defaults.DefaultGruReactionModule attribute)</a>
@@ -2448,6 +2496,8 @@
         <li><a href="autoapi/hybrax/train/wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper.physical_save_outputs">physical_save_outputs() (hybrax.train.wrapper.HybridOdeWrapper method)</a>
 </li>
         <li><a href="autoapi/hybrax/format/time_series/spline_ops/index.html#hybrax.format.time_series.spline_ops.piece_index">piece_index() (in module hybrax.format.time_series.spline_ops)</a>
+</li>
+        <li><a href="autoapi/hybrax/format/time_series/spline_ops/index.html#hybrax.format.time_series.spline_ops.piece_rate_candidates">piece_rate_candidates() (in module hybrax.format.time_series.spline_ops)</a>
 </li>
         <li><a href="autoapi/hybrax/format/inspect/index.html#hybrax.format.inspect.plot_collection">plot_collection() (in module hybrax.format.inspect)</a>
 </li>
@@ -2720,6 +2770,8 @@
         <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.ReactorMedium">ReactorMedium (class in hybrax.format.dataclasses)</a>
 </li>
         <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.ReactorMediumComponent">ReactorMediumComponent (class in hybrax.format.dataclasses)</a>
+</li>
+        <li><a href="autoapi/hybrax/train/serialization/index.html#hybrax.train.serialization.read_initial_checkpoint">read_initial_checkpoint() (in module hybrax.train.serialization)</a>
 </li>
         <li><a href="autoapi/hybrax/train/serialization/index.html#hybrax.train.serialization.read_json">read_json() (in module hybrax.train.serialization)</a>
 </li>
@@ -3597,6 +3649,8 @@
 </li>
         <li><a href="autoapi/hybrax/train/validate/index.html#hybrax.train.validate.validate_for_training">validate_for_training() (in module hybrax.train.validate)</a>
 </li>
+        <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.validate_initial_checkpoint">validate_initial_checkpoint() (in module hybrax.train.harness)</a>
+</li>
         <li><a href="autoapi/hybrax/format/validate/index.html#hybrax.format.validate.validate_initial_state_alignment">validate_initial_state_alignment() (in module hybrax.format.validate)</a>
 </li>
         <li><a href="autoapi/hybrax/format/validate/index.html#hybrax.format.validate.validate_measurement_sampling_alignment">validate_measurement_sampling_alignment() (in module hybrax.format.validate)</a>
@@ -3662,6 +3716,8 @@
   <table style="width: 100%" class="indextable genindextable"><tr>
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/bounds_loss/index.html#hybrax.train.bounds_loss.BoundsViolationLossModule.weight">weight (hybrax.train.bounds_loss.BoundsViolationLossModule attribute)</a>
+</li>
+        <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.with_initial_parameters">with_initial_parameters() (in module hybrax.train.harness)</a>
 </li>
         <li><a href="autoapi/hybrax/train/physical_solve/index.html#hybrax.train.physical_solve.within_fail_time">within_fail_time() (in module hybrax.train.physical_solve)</a>
 </li>

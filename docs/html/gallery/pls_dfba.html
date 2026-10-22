@@ -262,8 +262,6 @@
 <li class="toctree-l1"><a class="reference internal" href="stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="kan.html">KAN Models</a></li>
@@ -286,6 +284,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
@@ -322,6 +321,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -402,8 +402,7 @@ under a different <code class="docutils literal notranslate"><span class="pre">m
 carbon toward succinate (the deliberate product here) at a modest cost to growth,
 the same real trade-off Negahban et al. 2026 optimize for with three real media.
 <code class="docutils literal notranslate"><span class="pre">ReactionInputs</span></code> has no “which recipe produced this run” field, by design; a
-constant-valued controlled process variable does the job instead, the same mechanism
-<a class="reference internal" href="knowledge_transfer.html"><span class="std std-doc">Knowledge Transfer</span></a> uses for product identity.
+constant-valued controlled process variable does the job instead.
 <a class="reference download internal" download="" href="../_downloads/0d8a528685aba25cca4f8af1bdd7c58b/generate.py"><span class="xref download myst">The data generator</span></a>’s <code class="docutils literal notranslate"><span class="pre">build_demo_ecoli_blend()</span></code> attaches it
 directly, once, when it builds each process:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">1</span><span class="n">processes</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">process_variables</span><span class="p">[</span><span class="s2">"media_blend_fraction"</span><span class="p">]</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">ProcessVariable</span><span class="p">(</span>
@@ -417,8 +416,7 @@ directly, once, when it builds each process:</p>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">media_blend_fraction</span></code> ships as a <code class="docutils literal notranslate"><span class="pre">StaticVariable</span></code>-valued controlled process variable
-in <code class="docutils literal notranslate"><span class="pre">data.json</span></code> itself, the same pattern <a class="reference internal" href="knowledge_transfer.html"><span class="std std-doc">Knowledge Transfer</span></a>
-uses for <code class="docutils literal notranslate"><span class="pre">is_new_product</span></code>.</p>
+in <code class="docutils literal notranslate"><span class="pre">data.json</span></code> itself.</p>
 </section>
 <section id="the-pls-component">
 <h2>The PLS Component<a class="headerlink" href="#the-pls-component" title="Link to this heading">¶</a></h2>
@@ -558,8 +556,6 @@ executed run is at <code class="docutils literal notranslate"><span class="pre">
 <ul class="simple">
 <li><p><a class="reference internal" href="fba_hyb.html"><span class="std std-doc">FBA-Hyb</span></a>: the surrogate and the base reaction-module shape this
 builds on.</p></li>
-<li><p><a class="reference internal" href="knowledge_transfer.html"><span class="std std-doc">Knowledge Transfer</span></a>: the same controlled-PV-as-recipe
-trick, for product identity instead of a continuous blend fraction.</p></li>
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: <code class="docutils literal notranslate"><span class="pre">auxiliary</span></code>, and everything
 else a <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> can return.</p></li>
 </ul>

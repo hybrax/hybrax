@@ -21,7 +21,7 @@ effect, check that line before anything else. This is the single most common cau
 custom module isn't doing anything".
 :::
 
-## The seven hooks
+## The eight hooks
 
 | Hook | Stage | Returns | If omitted |
 |---|---|---|---|
@@ -32,6 +32,7 @@ custom module isn't doing anything".
 | [`build_loss_module`](loss_module.md#the-hook) | train setup | `UserLossModule` | `DefaultLossModule` (per-target MSE) |
 | [`build_learning_rate`](train.md#hook-build_learning_rate) | train setup | `float` or `optax.Schedule` | constant `train.learning_rate` |
 | [`build_optimizer`](train.md#hook-build_optimizer) | train setup | `optax.GradientTransformation` | clip + adam/sgd |
+| [`build_solver`](train.md#hook-build_solver) | train and prediction setup | `diffrax.AbstractSolver` instance | `diffrax.Tsit5()` |
 
 **Setup order:** `build_learning_rate` → `build_optimizer` → `estimate_all_scales` →
 `build_reaction_module` → `build_loss_module`.
@@ -39,7 +40,8 @@ custom module isn't doing anything".
 That ordering is why scales arrive at the reaction module as `**scale_kwargs`: they
 already exist by the time it is built.
 
-**Type-checked:** `estimate_all_scales`, `build_reaction_module` and `build_loss_module`
+**Type-checked:** `estimate_all_scales`, `build_reaction_module`, `build_loss_module`
+and `build_solver`
 raise `TypeError` if they return the wrong type. The other four do not.
 
 ## Signatures
@@ -74,6 +76,9 @@ def build_learning_rate(custom_cfg, train_cfg, total_updates): ...
 
 def build_optimizer(custom_cfg, train_cfg): ...
     # -> optax.GradientTransformation
+
+def build_solver(config): ...
+    # -> diffrax.AbstractSolver instance, also rebuilt for saved-model prediction
 ```
 
 ## Three things that are not `get_hook` hooks

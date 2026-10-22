@@ -46,7 +46,7 @@ Functions
 Module Contents
 ---------------
 
-.. py:function:: solve_physical_states(wrapper, *, t_eval, n_measured, RAW_y0, max_steps, rtol, atol, jump_ts = None, n_linspace = None, return_fail_time = False)
+.. py:function:: solve_physical_states(wrapper, *, t_eval, n_measured, RAW_y0, max_steps, rtol, atol, solver = DEFAULT_SOLVER, jump_ts = None, n_linspace = None, return_fail_time = False)
 
    RAW physical states at each (padded) measurement time, ``[max_n_meas, n_state]``.
 

@@ -262,8 +262,6 @@
 <li class="toctree-l1"><a class="reference internal" href="stateful.html">Stateful Models</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="kan.html">KAN Models</a></li>
@@ -286,6 +284,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
@@ -322,6 +321,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -558,7 +558,7 @@ carry whatever unit bridges it. See <a class="reference internal" href="../forma
 half-life would leave almost no visible trace over a 10-15 h batch window; this
 page’s 120 h duration exists specifically so the effect is separable from noise,
 the same lesson discussed in
-<a class="reference internal" href="optfed.html#compare-fitting-objectives"><span class="std std-ref">OptFed’s comparison of fitting objectives</span></a>
+<a class="reference internal" href="optfed.html#compare-with-optfed"><span class="std std-ref">OptFed’s comparison with the original fit</span></a>
 for a different rate.</p></li>
 <li><p><strong>This page’s unusual rate shape (one rate feeding two derivatives) needs no custom
 reaction module at all, technically.</strong> <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s default reaction module sizes

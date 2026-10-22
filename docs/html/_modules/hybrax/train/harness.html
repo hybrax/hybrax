@@ -261,8 +261,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">KAN Models</a></li>
@@ -285,6 +283,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
@@ -321,6 +320,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -405,6 +405,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">diffrax</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
@@ -417,6 +418,11 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_process_collection</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">.checkpointing</span><span class="w"> </span><span class="kn">import</span> <span class="n">CheckpointWriter</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.constants</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE</span><span class="p">,</span>
+    <span class="n">DEFAULT_SOLVER</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.preflight</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_continuous_flow_integration</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.defaults</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">DefaultLossModule</span><span class="p">,</span>
     <span class="n">_default_scale_kwargs</span><span class="p">,</span>
@@ -451,6 +457,12 @@
     <span class="n">original_parent_processes</span><span class="p">,</span>
     <span class="n">training_selection_excluding_holdout</span><span class="p">,</span>
 <span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">_recorded_prepared_content_hash</span><span class="p">,</span>
+    <span class="n">content_hash</span><span class="p">,</span>
+    <span class="n">load_trained_wrapper</span><span class="p">,</span>
+    <span class="n">read_initial_checkpoint</span><span class="p">,</span>
+<span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">get_hook</span><span class="p">,</span>
     <span class="n">load_custom_module</span><span class="p">,</span>
@@ -484,6 +496,7 @@
     <span class="n">solver_max_steps</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">solver_rtol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
     <span class="n">solver_atol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">ode_solver</span><span class="p">:</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">AbstractSolver</span> <span class="o">=</span> <span class="n">DEFAULT_SOLVER</span><span class="p">,</span>
     <span class="n">solver_use_jump_ts</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
     <span class="n">step</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">prediction_grid_n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -522,6 +535,7 @@
             <span class="n">max_solver_steps</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">solver_max_steps</span><span class="p">),</span>
             <span class="n">solver_rtol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">solver_rtol</span><span class="p">),</span>
             <span class="n">solver_atol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">solver_atol</span><span class="p">),</span>
+            <span class="n">ode_solver</span><span class="o">=</span><span class="n">ode_solver</span><span class="p">,</span>
             <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
             <span class="n">prediction_grid_n</span><span class="o">=</span><span class="n">prediction_grid_n</span><span class="p">,</span>
         <span class="p">)</span>
@@ -539,6 +553,7 @@
     <span class="n">solver_max_steps</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">solver_rtol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
     <span class="n">solver_atol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">ode_solver</span><span class="p">:</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">AbstractSolver</span> <span class="o">=</span> <span class="n">DEFAULT_SOLVER</span><span class="p">,</span>
     <span class="n">solver_use_jump_ts</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
     <span class="n">prediction_grid_n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">DenseProcessExport</span><span class="p">]]:</span>
@@ -560,6 +575,7 @@
         <span class="n">solver_max_steps</span><span class="o">=</span><span class="n">solver_max_steps</span><span class="p">,</span>
         <span class="n">solver_rtol</span><span class="o">=</span><span class="n">solver_rtol</span><span class="p">,</span>
         <span class="n">solver_atol</span><span class="o">=</span><span class="n">solver_atol</span><span class="p">,</span>
+        <span class="n">ode_solver</span><span class="o">=</span><span class="n">ode_solver</span><span class="p">,</span>
         <span class="n">solver_use_jump_ts</span><span class="o">=</span><span class="n">solver_use_jump_ts</span><span class="p">,</span>
         <span class="n">prediction_grid_n</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">prediction_grid_n</span><span class="p">),</span>
     <span class="p">):</span>
@@ -682,6 +698,7 @@
         <span class="n">solver_max_steps</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">max_steps</span><span class="p">),</span>
         <span class="n">solver_rtol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">rtol</span><span class="p">),</span>
         <span class="n">solver_atol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">atol</span><span class="p">),</span>
+        <span class="n">ode_solver</span><span class="o">=</span><span class="n">build_solver_for_run</span><span class="p">(</span><span class="n">load_custom_module</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">custom_py</span><span class="p">),</span> <span class="n">config</span><span class="p">),</span>
         <span class="n">solver_use_jump_ts</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">jump_ts</span><span class="p">),</span>
         <span class="n">prediction_grid_n</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">grid_n</span><span class="p">),</span>
     <span class="p">)</span>
@@ -700,6 +717,7 @@
     <span class="n">target_source</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="n">TARGET_SOURCE_AUTO</span>
     <span class="n">epochs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span>
     <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">microbatch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">shuffle_batches</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
     <span class="n">batch_seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">optimizer_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"adam"</span>
@@ -709,7 +727,9 @@
     <span class="n">solver_max_steps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2048</span>
     <span class="n">solver_rtol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-5</span>
     <span class="n">solver_atol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-7</span>
+    <span class="n">ode_solver</span><span class="p">:</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">AbstractSolver</span> <span class="o">=</span> <span class="n">DEFAULT_SOLVER</span>
     <span class="n">solver_use_jump_ts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">flow_integral_relative_tolerance</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE</span>
     <span class="n">allow_stateful_models</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
     <span class="c1"># Logging / telemetry options (additive; all optional).</span>
     <span class="n">log_process_losses</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
@@ -813,6 +833,23 @@
 
 
 
+<div class="viewcode-block" id="build_solver_for_run">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/harness/index.html#hybrax.train.harness.build_solver_for_run">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_solver_for_run</span><span class="p">(</span>
+    <span class="n">custom_module</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">default</span><span class="p">:</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">AbstractSolver</span> <span class="o">=</span> <span class="n">DEFAULT_SOLVER</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">AbstractSolver</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Build one solver instance for training or saved-model prediction."""</span>
+    <span class="n">hook</span> <span class="o">=</span> <span class="n">get_hook</span><span class="p">(</span><span class="n">custom_module</span><span class="p">,</span> <span class="s2">"build_solver"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="n">solver</span> <span class="o">=</span> <span class="n">default</span> <span class="k">if</span> <span class="n">hook</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">hook</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">solver</span><span class="p">,</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">AbstractSolver</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"build_solver must return a diffrax.AbstractSolver instance"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">solver</span></div>
+
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">_build_optimizer</span><span class="p">(</span>
     <span class="n">optimizer_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
     <span class="n">learning_rate</span><span class="p">,</span>
@@ -909,6 +946,14 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"grad_clip_norm must be non-negative"</span><span class="p">)</span>
     <span class="k">if</span> <span class="nb">str</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">optimizer_name</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">"adam"</span><span class="p">,</span> <span class="s2">"sgd"</span><span class="p">}:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"optimizer_name must be one of {'adam', 'sgd'}"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">microbatch_size</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">microbatch_size</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"microbatch_size must be positive"</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">jax</span><span class="o">.</span><span class="n">local_device_count</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"microbatching requires one local JAX device; set train.devices=1 "</span>
+                <span class="s2">"and check HYBRAX_TRAIN_DEVICES and XLA_FLAGS"</span>
+            <span class="p">)</span>
     <span class="n">effective_batch_size</span> <span class="o">=</span> <span class="n">_resolve_effective_batch_size</span><span class="p">(</span>
         <span class="n">config</span><span class="o">.</span><span class="n">batch_size</span><span class="p">,</span>
         <span class="n">selected_process_count</span><span class="o">=</span><span class="n">selected_process_count</span><span class="p">,</span>
@@ -1327,6 +1372,7 @@
     <span class="n">solver_max_steps</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">4096</span>
     <span class="n">solver_rtol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-5</span>
     <span class="n">solver_atol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-7</span>
+    <span class="n">ode_solver</span><span class="p">:</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">AbstractSolver</span> <span class="o">=</span> <span class="n">DEFAULT_SOLVER</span>
     <span class="n">solver_use_jump_ts</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span></div>
 
 
@@ -1431,6 +1477,12 @@
         <span class="n">custom_module</span><span class="o">=</span><span class="n">custom_module</span><span class="p">,</span>
         <span class="n">custom_py</span><span class="o">=</span><span class="n">custom_py</span><span class="p">,</span>
         <span class="n">training_process_names</span><span class="o">=</span><span class="n">training_process_names</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">cfg</span> <span class="o">=</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
+        <span class="n">cfg</span><span class="p">,</span>
+        <span class="n">ode_solver</span><span class="o">=</span><span class="n">build_solver_for_run</span><span class="p">(</span>
+            <span class="n">rebuilt</span><span class="o">.</span><span class="n">custom_module</span><span class="p">,</span> <span class="n">rebuilt</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">ode_solver</span>
+        <span class="p">),</span>
     <span class="p">)</span>
 
     <span class="n">recorded_targets</span> <span class="o">=</span> <span class="p">(</span>
@@ -1555,6 +1607,7 @@
             <span class="n">solver_max_steps</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">solver_max_steps</span><span class="p">),</span>
             <span class="n">solver_rtol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">solver_rtol</span><span class="p">),</span>
             <span class="n">solver_atol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">solver_atol</span><span class="p">),</span>
+            <span class="n">ode_solver</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">ode_solver</span><span class="p">,</span>
             <span class="n">solver_use_jump_ts</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">solver_use_jump_ts</span><span class="p">,</span>
             <span class="n">prediction_grid_n</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">prediction_grid_n</span><span class="p">),</span>
         <span class="p">)</span>
@@ -1574,6 +1627,7 @@
             <span class="n">solver_max_steps</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">solver_max_steps</span><span class="p">),</span>
             <span class="n">solver_rtol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">solver_rtol</span><span class="p">),</span>
             <span class="n">solver_atol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">solver_atol</span><span class="p">),</span>
+            <span class="n">ode_solver</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">ode_solver</span><span class="p">,</span>
             <span class="n">solver_use_jump_ts</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">solver_use_jump_ts</span><span class="p">,</span>
         <span class="p">):</span>
             <span class="n">_</span><span class="p">,</span> <span class="n">per_target</span><span class="p">,</span> <span class="n">total</span><span class="p">,</span> <span class="o">*</span><span class="n">_</span> <span class="o">=</span> <span class="n">outputs</span>
@@ -1732,6 +1786,21 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"solver_rtol must be positive"</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">solver_atol</span> <span class="o">&lt;=</span> <span class="mf">0.0</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"solver_atol must be positive"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">(</span>
+        <span class="ow">not</span> <span class="n">math</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">flow_integral_relative_tolerance</span><span class="p">)</span>
+        <span class="ow">or</span> <span class="n">cfg</span><span class="o">.</span><span class="n">flow_integral_relative_tolerance</span> <span class="o">&lt;=</span> <span class="mf">0.0</span>
+    <span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"flow_integral_relative_tolerance must be finite and positive"</span><span class="p">)</span>
+
+    <span class="n">check_continuous_flow_integration</span><span class="p">(</span>
+        <span class="n">store</span><span class="p">,</span>
+        <span class="n">selected_processes</span><span class="p">,</span>
+        <span class="n">max_steps</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_max_steps</span><span class="p">),</span>
+        <span class="n">rtol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_rtol</span><span class="p">),</span>
+        <span class="n">atol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_atol</span><span class="p">),</span>
+        <span class="n">use_jump_ts</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_use_jump_ts</span><span class="p">),</span>
+        <span class="n">flow_integral_relative_tolerance</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">flow_integral_relative_tolerance</span><span class="p">,</span>
+    <span class="p">)</span>
 
     <span class="n">warmup_batch</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">gather_batch</span><span class="p">(</span><span class="n">batch_index_stream</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 
@@ -1807,7 +1876,9 @@
                     <span class="n">max_solver_steps</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_max_steps</span><span class="p">),</span>
                     <span class="n">solver_rtol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_rtol</span><span class="p">),</span>
                     <span class="n">solver_atol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_atol</span><span class="p">),</span>
+                    <span class="n">ode_solver</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">ode_solver</span><span class="p">,</span>
                     <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
+                    <span class="n">microbatch_size</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">microbatch_size</span><span class="p">,</span>
                 <span class="p">)</span>
                 <span class="n">per_target</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">per_sample_per_target</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
                 <span class="n">total_loss</span><span class="p">,</span> <span class="n">per_target</span><span class="p">,</span> <span class="n">per_sample</span> <span class="o">=</span> <span class="n">_validate_batched_loss_outputs</span><span class="p">(</span>
@@ -1942,6 +2013,7 @@
                         <span class="n">max_solver_steps</span><span class="o">=</span><span class="n">max_steps</span><span class="p">,</span>
                         <span class="n">solver_rtol</span><span class="o">=</span><span class="n">rtol</span><span class="p">,</span>
                         <span class="n">solver_atol</span><span class="o">=</span><span class="n">atol</span><span class="p">,</span>
+                        <span class="n">ode_solver</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">ode_solver</span><span class="p">,</span>
                         <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
                     <span class="p">)</span>
 
@@ -2174,6 +2246,7 @@
                         <span class="n">max_solver_steps</span><span class="o">=</span><span class="n">max_steps</span><span class="p">,</span>
                         <span class="n">solver_rtol</span><span class="o">=</span><span class="n">rtol</span><span class="p">,</span>
                         <span class="n">solver_atol</span><span class="o">=</span><span class="n">atol</span><span class="p">,</span>
+                        <span class="n">ode_solver</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">ode_solver</span><span class="p">,</span>
                         <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
                     <span class="p">)</span>
 
@@ -2411,6 +2484,7 @@
             <span class="n">solver_max_steps</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_max_steps</span><span class="p">),</span>
             <span class="n">solver_rtol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_rtol</span><span class="p">),</span>
             <span class="n">solver_atol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_atol</span><span class="p">),</span>
+            <span class="n">ode_solver</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">ode_solver</span><span class="p">,</span>
             <span class="n">solver_use_jump_ts</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_use_jump_ts</span><span class="p">),</span>
             <span class="n">step</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">step</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span>
         <span class="p">):</span>
@@ -2663,12 +2737,72 @@
 
 
 
+<div class="viewcode-block" id="validate_initial_checkpoint">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/harness/index.html#hybrax.train.harness.validate_initial_checkpoint">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_initial_checkpoint</span><span class="p">(</span>
+    <span class="n">prepared</span><span class="p">:</span> <span class="n">PreparedTraining</span><span class="p">,</span>
+    <span class="n">source_config</span><span class="p">:</span> <span class="n">RunConfig</span><span class="p">,</span>
+    <span class="n">source_document</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+    <span class="n">prepared_content_hash</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Require the source's data, targets, and ordered training selection.</span>
+
+<span class="sd">    Model/scaling/loss definitions remain the caller's compatibility contract;</span>
+<span class="sd">    this check catches accidentally changing their data inputs.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">_recorded_prepared_content_hash</span><span class="p">(</span><span class="n">source_document</span><span class="p">)</span> <span class="o">!=</span> <span class="n">prepared_content_hash</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"initial checkpoint prepared data differs from phase data "</span>
+            <span class="s2">"or was not recorded"</span>
+        <span class="p">)</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">source_config</span><span class="o">.</span><span class="n">data</span>
+    <span class="k">if</span> <span class="n">data</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"initial checkpoint records no training data config"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">source_config</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">holdout_processes</span> <span class="ow">and</span> <span class="n">data</span><span class="o">.</span><span class="n">processes</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"initial checkpoint lacks its resolved training selection"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">(</span>
+        <span class="n">data</span><span class="o">.</span><span class="n">targets</span> <span class="o">!=</span> <span class="n">prepared</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">target_variable_order</span>
+        <span class="ow">or</span> <span class="n">data</span><span class="o">.</span><span class="n">target_source</span> <span class="o">!=</span> <span class="n">prepared</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">target_source</span>
+    <span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"initial checkpoint targets differ from phase targets"</span><span class="p">)</span>
+    <span class="n">source_processes</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">processes</span> <span class="ow">or</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">prepared</span><span class="o">.</span><span class="n">store</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">source_processes</span> <span class="o">!=</span> <span class="n">prepared</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">process_names</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"initial checkpoint training selection differs from phase"</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="with_initial_parameters">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/harness/index.html#hybrax.train.harness.with_initial_parameters">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">with_initial_parameters</span><span class="p">(</span>
+    <span class="n">prepared</span><span class="p">:</span> <span class="n">PreparedTraining</span><span class="p">,</span> <span class="n">params_path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PreparedTraining</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Load reaction and loss parameters, retaining the phase's frozen context.</span>
+
+<span class="sd">    The phase optimizer is unchanged; execution calls its normal ``init`` on the</span>
+<span class="sd">    loaded parameters. Default optimizer state and schedule counters start fresh.</span>
+<span class="sd">    """</span>
+    <span class="n">template</span> <span class="o">=</span> <span class="n">_build_template_wrapper</span><span class="p">(</span>
+        <span class="n">prepared</span><span class="o">.</span><span class="n">store</span><span class="p">,</span>
+        <span class="n">reaction_module</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">reaction_module</span><span class="p">,</span>
+        <span class="n">selected_processes</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">process_names</span><span class="p">,</span>
+        <span class="n">loss_module</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">loss_module</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">loaded</span> <span class="o">=</span> <span class="n">load_trained_wrapper</span><span class="p">(</span><span class="n">params_path</span><span class="p">,</span> <span class="n">template</span><span class="o">=</span><span class="n">template</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
+        <span class="n">prepared</span><span class="p">,</span>
+        <span class="n">reaction_module</span><span class="o">=</span><span class="n">loaded</span><span class="o">.</span><span class="n">reaction_module</span><span class="p">,</span>
+        <span class="n">loss_module</span><span class="o">=</span><span class="n">loaded</span><span class="o">.</span><span class="n">loss_module</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+
 <span class="n">_TRAIN_HOOK_NAMES</span> <span class="o">=</span> <span class="p">(</span>
     <span class="s2">"estimate_all_scales"</span><span class="p">,</span>
     <span class="s2">"build_reaction_module"</span><span class="p">,</span>
     <span class="s2">"build_learning_rate"</span><span class="p">,</span>
     <span class="s2">"build_optimizer"</span><span class="p">,</span>
     <span class="s2">"build_loss_module"</span><span class="p">,</span>
+    <span class="s2">"build_solver"</span><span class="p">,</span>
 <span class="p">)</span>
 
 
@@ -2707,6 +2841,9 @@
         <span class="p">)</span>
     <span class="n">train_cfg</span> <span class="o">=</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
         <span class="n">config</span><span class="p">,</span>
+        <span class="n">ode_solver</span><span class="o">=</span><span class="n">build_solver_for_run</span><span class="p">(</span>
+            <span class="n">custom_module</span><span class="p">,</span> <span class="n">custom_cfg</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">ode_solver</span>
+        <span class="p">),</span>
         <span class="n">process_names</span><span class="o">=</span><span class="n">selected_processes</span><span class="p">,</span>
         <span class="n">holdout_prediction_processes</span><span class="o">=</span><span class="n">holdout_prediction_processes</span><span class="p">,</span>
     <span class="p">)</span>
@@ -2863,8 +3000,19 @@
     <span class="n">runtime_config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">run_config</span><span class="p">:</span> <span class="n">RunConfig</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">custom_module</span><span class="p">:</span> <span class="n">Any</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">init_from</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrainHarnessResult</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Prepare and train; external collection references remain caller-owned."""</span>
+<span class="w">    </span><span class="sd">"""Prepare and train; external collection references remain caller-owned.</span>
+
+<span class="sd">    ``init_from`` initializes a new phase from a checkpoint's parameters, with</span>
+<span class="sd">    additional epochs and normal fresh optimizer initialization. Keep the</span>
+<span class="sd">    source's data, selection, model/scaling/loss definitions and their inputs.</span>
+<span class="sd">    Custom optimizer hooks must themselves initialize fresh state.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="n">init_from</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">params_path</span><span class="p">,</span> <span class="n">source_config</span><span class="p">,</span> <span class="n">source_document</span> <span class="o">=</span> <span class="n">read_initial_checkpoint</span><span class="p">(</span>
+            <span class="n">init_from</span><span class="p">,</span> <span class="n">output_dir</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">checkpoint_dir</span> <span class="k">if</span> <span class="n">config</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">)</span>
     <span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_training</span><span class="p">(</span>
         <span class="n">collection</span><span class="p">,</span>
         <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">,</span>
@@ -2873,6 +3021,11 @@
         <span class="n">run_config</span><span class="o">=</span><span class="n">run_config</span><span class="p">,</span>
         <span class="n">custom_module</span><span class="o">=</span><span class="n">custom_module</span><span class="p">,</span>
     <span class="p">)</span>
+    <span class="k">if</span> <span class="n">init_from</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">validate_initial_checkpoint</span><span class="p">(</span>
+            <span class="n">prepared</span><span class="p">,</span> <span class="n">source_config</span><span class="p">,</span> <span class="n">source_document</span><span class="p">,</span> <span class="n">content_hash</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">prepared</span> <span class="o">=</span> <span class="n">with_initial_parameters</span><span class="p">(</span><span class="n">prepared</span><span class="p">,</span> <span class="n">params_path</span><span class="p">)</span>
     <span class="k">del</span> <span class="n">collection</span>
     <span class="k">return</span> <span class="n">train_collection</span><span class="p">(</span>
         <span class="n">prepared</span><span class="o">.</span><span class="n">store</span><span class="p">,</span>
@@ -2903,6 +3056,7 @@
         <span class="n">target_source</span><span class="o">=</span><span class="n">data</span><span class="o">.</span><span class="n">target_source</span> <span class="k">if</span> <span class="n">data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">TARGET_SOURCE_AUTO</span><span class="p">,</span>
         <span class="n">epochs</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">epochs</span><span class="p">,</span>
         <span class="n">batch_size</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">batch_size</span><span class="p">,</span>
+        <span class="n">microbatch_size</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">microbatch_size</span><span class="p">,</span>
         <span class="n">shuffle_batches</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">shuffle</span><span class="p">,</span>
         <span class="n">batch_seed</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">batch_seed</span><span class="p">,</span>
         <span class="n">optimizer_name</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">optimizer</span><span class="p">,</span>
@@ -2913,6 +3067,7 @@
         <span class="n">solver_rtol</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">rtol</span><span class="p">,</span>
         <span class="n">solver_atol</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">atol</span><span class="p">,</span>
         <span class="n">solver_use_jump_ts</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">jump_ts</span><span class="p">,</span>
+        <span class="n">flow_integral_relative_tolerance</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">flow_integral_relative_tolerance</span><span class="p">,</span>
         <span class="n">log_decimals</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">logging</span><span class="o">.</span><span class="n">decimals</span><span class="p">,</span>
         <span class="n">metrics_csv</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">run_dir</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"metrics.csv"</span><span class="p">),</span>
         <span class="n">checkpoint_dir</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="n">run_dir</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"checkpoints"</span><span class="p">,</span>
@@ -2935,6 +3090,7 @@
     <span class="n">config</span><span class="p">:</span> <span class="n">TrainHarnessConfig</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">custom_py</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">runtime_config</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">init_from</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrainHarnessResult</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Load a prepared JSON and train from it.</span>
 
@@ -2949,6 +3105,7 @@
         <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">,</span>
         <span class="n">custom_py</span><span class="o">=</span><span class="n">custom_py</span><span class="p">,</span>
         <span class="n">runtime_config</span><span class="o">=</span><span class="n">runtime_config</span><span class="p">,</span>
+        <span class="n">init_from</span><span class="o">=</span><span class="n">init_from</span><span class="p">,</span>
     <span class="p">)</span></div>
 
 </pre></div>

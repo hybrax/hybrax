@@ -262,8 +262,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/kan.html">KAN Models</a></li>
@@ -286,6 +284,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
@@ -322,6 +321,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -450,6 +450,93 @@ spline at t=3: 0.4999999999999999
 <p><code class="docutils literal notranslate"><span class="pre">smoothing_s=0.0</span></code> interpolates exactly; larger values smooth. For <strong>controlled</strong> signals
 (a noisy pump trace, an online pH) smoothing is usually what you want, because you are
 going to differentiate the result and noise differentiates badly.</p>
+</section>
+<section id="monotone-fits-for-cumulative-signals">
+<h3>Monotone fits for cumulative signals<a class="headerlink" href="#monotone-fits-for-cumulative-signals" title="Link to this heading">¶</a></h3>
+<p>A cumulative signal, such as the mass a scale reports as having left a feed bottle, can
+only move in one direction. Its derivative is the rate the ODE sees, so a fit that wiggles
+backwards would feed a negative rate into the model. <code class="docutils literal notranslate"><span class="pre">fit_monotone_timeseries_spline</span></code>
+fits a smooth cubic whose derivative never changes sign. Instead of a smoothing
+parameter you give an error budget in the units of the values, and it places knots where
+the data need them:</p>
+<div class="cell docutils container">
+<div class="cell_input docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.splines</span><span class="w"> </span><span class="kn">import</span> <span class="n">fit_monotone_timeseries_spline</span>
+
+<span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">,</span> <span class="mi">601</span><span class="p">)</span>
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="c1"># A pump that doses in small pulses, starting at t=2 and speeding up at t=6.</span>
+<span class="n">rate</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">t</span> <span class="o">&lt;</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">t</span> <span class="o">&lt;</span> <span class="mf">6.0</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">))</span>
+<span class="n">pulses</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="n">t</span><span class="o">.</span><span class="n">size</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">0.4</span>
+<span class="n">increments</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">pulses</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">rate</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">/</span> <span class="mf">0.4</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)]</span>
+<span class="n">cumulative</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">TimeSeries</span><span class="p">(</span><span class="n">times</span><span class="o">=</span><span class="n">t</span><span class="p">,</span> <span class="n">values</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">increments</span><span class="p">))</span>
+
+<span class="n">feed</span> <span class="o">=</span> <span class="n">fit_monotone_timeseries_spline</span><span class="p">(</span><span class="n">cumulative</span><span class="p">,</span> <span class="n">rms_tol</span><span class="o">=</span><span class="mf">3e-3</span><span class="p">,</span> <span class="n">increasing</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">info</span> <span class="o">=</span> <span class="n">feed</span><span class="o">.</span><span class="n">metadata</span><span class="p">[</span><span class="s2">"monotone_fit"</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"RMS error:"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">info</span><span class="p">[</span><span class="s2">"rms_error"</span><span class="p">],</span> <span class="mi">5</span><span class="p">),</span> <span class="s2">"| max error:"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">info</span><span class="p">[</span><span class="s2">"max_error"</span><span class="p">],</span> <span class="mi">5</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"interior knots:"</span><span class="p">,</span> <span class="n">info</span><span class="p">[</span><span class="s2">"interior_knots"</span><span class="p">],</span> <span class="s2">"| direction:"</span><span class="p">,</span> <span class="n">info</span><span class="p">[</span><span class="s2">"direction"</span><span class="p">])</span>
+<span class="n">rates</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">feed</span><span class="o">.</span><span class="n">deriv</span><span class="p">()</span><span class="o">.</span><span class="n">evaluate_many</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">])))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"fitted rate at t=1, 4, 8:"</span><span class="p">,</span> <span class="n">rates</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span> <span class="s2">"| true: [0, 0.02, 0.05]"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>RMS error: 0.003 | max error: 0.00869
+interior knots: 7 | direction: increasing
+fitted rate at t=1, 4, 8: [0.003 0.025 0.051] | true: [0, 0.02, 0.05]
+</pre></div>
+</div>
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">rms_tol</span></code> bounds the root-mean-square error at the samples. Both endpoints are kept exactly,
+so the derivative integrates to the measured net change and the cumulative error never
+drifts. For the chosen knots, the fit numerically minimizes curvature among curves with
+ordered B-spline coefficients that meet the budget, so it usually uses all of the budget.
+The error at individual samples can be larger than <code class="docutils literal notranslate"><span class="pre">rms_tol</span></code>: a short pump pause or a
+reading that dips below the previous one is smoothed over rather than followed. Every
+sample counts equally, so densely logged stretches weigh more towards <code class="docutils literal notranslate"><span class="pre">rms_tol</span></code>. Use
+<code class="docutils literal notranslate"><span class="pre">increasing=False</span></code> for decreasing series; the endpoints must agree with
+the requested direction. Equal endpoints give a constant fit for either direction if it
+meets the budget. Flat stretches get a tiny nonzero rate.</p>
+<p>Larger <code class="docutils literal notranslate"><span class="pre">rms_tol</span></code> gives a smoother curve and rate; it is the smoothing knob. Choose it
+from the scale of the whole process, for example a small fraction of the total feed or
+reactor volume, and at least about 1.5 times the measurement noise standard deviation.
+At about the noise standard deviation, the fit is unstable: it can switch between
+few knots, the cap and an error. A budget below the noise can need a knot for nearly
+every sample and give a jagged rate, as can data that are not monotone enough to fit
+within the budget. The public <code class="docutils literal notranslate"><span class="pre">max_knots</span></code> keyword limits interior knots, by default
+to a tenth of the samples, but at least 64. If refinement exhausts that cap, increase
+<code class="docutils literal notranslate"><span class="pre">max_knots</span></code> or increase <code class="docutils literal notranslate"><span class="pre">rms_tol</span></code> if a larger RMS deviation is physically acceptable.
+Do not exceed the largest RMS deviation acceptable for your application; RMS is
+not a maximum pointwise error. Before fitting, a fast isotonic-regression check rejects
+data if even the closest monotone sequence exceeds <code class="docutils literal notranslate"><span class="pre">rms_tol</span></code>. In that case, increasing
+<code class="docutils literal notranslate"><span class="pre">max_knots</span></code> cannot help; check the data and requested direction. Passing this check
+does not guarantee that a smooth spline can meet the budget within the knot cap.</p>
+<p>When refinement is needed, an unconstrained pilot spline guides each new knot’s
+location using variation in its second derivative. Intervals are still selected by
+the monotone fit’s residual errors. The pilot uses <code class="docutils literal notranslate"><span class="pre">max_knots</span></code> as its interior-knot
+target and requests the same RMS tolerance. If that layout cannot meet the pilot
+budget, its least-squares approximation still supplies the guide. The pilot’s
+coefficients are not used in the final spline. Only the returned monotone curve
+must meet the requested error budget.</p>
+<p>Pilot cost grows with the sample count and <code class="docutils literal notranslate"><span class="pre">max_knots</span></code>. For large, noisy series,
+a tolerance near or below the noise level can make pilot construction expensive,
+even when the final fit rejects the data. A knot cap limits the pilot’s size,
+but does not provide a fixed runtime bound.</p>
+<p>A fit still running after 20 seconds emits one <code class="docutils literal notranslate"><span class="pre">INFO</span></code> message through the
+<code class="docutils literal notranslate"><span class="pre">hybrax.format.monotone_spline</span></code> logger, with its sample count, resolved <code class="docutils literal notranslate"><span class="pre">max_knots</span></code>,
+and <code class="docutils literal notranslate"><span class="pre">rms_tol</span></code>. The message suggests ways to reduce work; it does not stop the fit.
+The background timer is best-effort and can be delayed while native code holds
+Python’s GIL. Configure application logging to display INFO messages.</p>
+<p>The budget, monotonicity, continuity and endpoints are checked on the stored curve: the
+fit either meets them or raises an error. Smoothness is not checked. With strongly
+clustered samples, such as bursts of fast logging, the smoothing can fail or return a
+curve rougher than necessary. Thinning redundant burst readings helps, but keep enough
+readings to resolve short additions; the budget then covers the remaining samples.</p>
+<p>Between two samples the fit only knows that the curve rises from one reading to the
+next, not when within that interval the pump actually delivered. A large step between
+two adjacent readings therefore becomes a smooth rise across that interval and its
+neighbours.</p>
 <div class="note admonition">
 <p class="admonition-title">Why power-basis polynomials</p>
 <p>Splines are stored as piecewise cubics in power basis: <code class="docutils literal notranslate"><span class="pre">c₀h³</span> <span class="pre">+</span> <span class="pre">c₁h²</span> <span class="pre">+</span> <span class="pre">c₂h</span> <span class="pre">+</span> <span class="pre">c₃</span></code> with
@@ -475,6 +562,10 @@ accepts them via <code class="docutils literal notranslate"><span class="pre">bo
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> arithmetic exists</strong> (<code class="docutils literal notranslate"><span class="pre">ts_a</span> <span class="pre">-</span> <span class="pre">ts_b</span></code>) with exact and approximate paths
 depending on whether the operands share breaks. Useful, but read the API reference
 before relying on the approximate path.</p></li>
+<li><p><strong>Monotone fits ignore segment boundaries.</strong> <code class="docutils literal notranslate"><span class="pre">fit_monotone_timeseries_spline</span></code> fits one
+continuous curve and rejects series with jumps; fit each continuous stretch separately.
+Pass time since the start of the process, not absolute timestamps: times more than 1000
+durations from zero are rejected.</p></li>
 </ul>
 </section>
 <section id="see-also">
@@ -547,6 +638,7 @@ built on the spline machinery above.</p></li>
 <li><a class="reference internal" href="#timeseries-holds-up-to-two-things"><code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> holds up to two things</a><ul>
 <li><a class="reference internal" href="#evaluating">Evaluating</a></li>
 <li><a class="reference internal" href="#fitting-one">Fitting one</a></li>
+<li><a class="reference internal" href="#monotone-fits-for-cumulative-signals">Monotone fits for cumulative signals</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#segmentation-at-events">Segmentation at events</a></li>

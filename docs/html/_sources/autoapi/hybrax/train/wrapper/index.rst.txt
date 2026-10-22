@@ -108,11 +108,20 @@ Module Contents
 
 
 
-   .. py:method:: physical_rhs(t, y_phys)
+   .. py:method:: physical_rhs(t, y_phys, *, control_time = None)
 
       Return the derivative of the physical and latent state vector.
 
       Continuous part only — discrete boluses/samples are handled as jumps.
+
+      `control_time`, if given, is the time used to evaluate the controls
+      (controlled inflows/outflows and PVs) instead of `t`. The reaction module
+      still sees `t`. `solve_physical_states` passes `t` clipped to the solve
+      window: some implicit solvers (e.g. Kvaerno4/5) evaluate stages past
+      the step end, so in the final step the RHS can be queried after t1.
+      Control splines would extrapolate their last cubic there, and those
+      values leak into the accepted state at t1 and its gradients. Clipping
+      holds the controls (values and rates) at their t0/t1 values instead.
 
 
 

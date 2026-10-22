@@ -60,9 +60,8 @@ right-hand side of your ODEs as JAX code you're good to go.
 
 This means that, once a dataset is `hybrax.format`, you can easily swap out one
 model for another. It doesn't matter whether it's a [mechanistic Monod
-fit](../gallery/mechanistic_rates.md), a neural ODE, a [hybrid of the
-two](../gallery/fed_batch.md) (most popular), or a [hybrid models with
-GPs](../gallery/gaussian_process.md).
+fit](../gallery/mechanistic_rates.md), a neural ODE, or a [hybrid of the
+two](../gallery/fed_batch.md) (most popular).
 
 ## What this buys you concretely
 

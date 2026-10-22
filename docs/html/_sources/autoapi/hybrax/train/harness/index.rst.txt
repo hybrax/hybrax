@@ -55,6 +55,7 @@ Functions
 .. autoapisummary::
 
    hybrax.train.harness.build_optimizer_for_run
+   hybrax.train.harness.build_solver_for_run
    hybrax.train.harness.compute_dense_exports
    hybrax.train.harness.derive_update_budget
    hybrax.train.harness.evaluate_trained_wrapper
@@ -67,6 +68,8 @@ Functions
    hybrax.train.harness.train_from_collection
    hybrax.train.harness.train_from_prepared_json
    hybrax.train.harness.train_harness_config_from_run_config
+   hybrax.train.harness.validate_initial_checkpoint
+   hybrax.train.harness.with_initial_parameters
 
 
 Module Contents
@@ -75,6 +78,10 @@ Module Contents
 .. py:class:: ForwardConfig
 
    Configuration for a forward evaluation run (no optimizer).
+
+
+   .. py:attribute:: ode_solver
+      :type:  diffrax.AbstractSolver
 
 
    .. py:attribute:: process_names
@@ -254,6 +261,12 @@ Module Contents
 
 
 
+   .. py:attribute:: flow_integral_relative_tolerance
+      :type:  float
+      :value: 0.001
+
+
+
    .. py:attribute:: grad_clip_norm
       :type:  float
       :value: 1000.0
@@ -306,6 +319,16 @@ Module Contents
       :type:  str | None
       :value: None
 
+
+
+   .. py:attribute:: microbatch_size
+      :type:  int | None
+      :value: None
+
+
+
+   .. py:attribute:: ode_solver
+      :type:  diffrax.AbstractSolver
 
 
    .. py:attribute:: optimizer_name
@@ -458,7 +481,12 @@ Module Contents
    ``train_cfg`` carries any hook-overridden learning rate.
 
 
-.. py:function:: compute_dense_exports(trained_wrapper, store, process_names, *, solver_max_steps, solver_rtol, solver_atol, solver_use_jump_ts, prediction_grid_n = 200)
+.. py:function:: build_solver_for_run(custom_module, config, *, default = DEFAULT_SOLVER)
+
+   Build one solver instance for training or saved-model prediction.
+
+
+.. py:function:: compute_dense_exports(trained_wrapper, store, process_names, *, solver_max_steps, solver_rtol, solver_atol, ode_solver = DEFAULT_SOLVER, solver_use_jump_ts, prediction_grid_n = 200)
 
    Evaluate ``process_names`` in padded JIT batches and build dense exports.
 
@@ -613,12 +641,17 @@ Module Contents
        are non-positive.
 
 
-.. py:function:: train_from_collection(collection, *, config = None, custom_py = None, runtime_config = None, run_config = None, custom_module = None)
+.. py:function:: train_from_collection(collection, *, config = None, custom_py = None, runtime_config = None, run_config = None, custom_module = None, init_from = None)
 
    Prepare and train; external collection references remain caller-owned.
 
+   ``init_from`` initializes a new phase from a checkpoint's parameters, with
+   additional epochs and normal fresh optimizer initialization. Keep the
+   source's data, selection, model/scaling/loss definitions and their inputs.
+   Custom optimizer hooks must themselves initialize fresh state.
 
-.. py:function:: train_from_prepared_json(prepared_json, *, config = None, custom_py = None, runtime_config = None)
+
+.. py:function:: train_from_prepared_json(prepared_json, *, config = None, custom_py = None, runtime_config = None, init_from = None)
 
    Load a prepared JSON and train from it.
 
@@ -634,6 +667,22 @@ Module Contents
    config, wiring the run-dir artifact paths (``metrics.csv``, ``checkpoints/``)
    and the checkpoint/output/logging sections. Shared by the CLI train and LOO
    paths.
+
+
+.. py:function:: validate_initial_checkpoint(prepared, source_config, source_document, prepared_content_hash)
+
+   Require the source's data, targets, and ordered training selection.
+
+   Model/scaling/loss definitions remain the caller's compatibility contract;
+   this check catches accidentally changing their data inputs.
+
+
+.. py:function:: with_initial_parameters(prepared, params_path)
+
+   Load reaction and loss parameters, retaining the phase's frozen context.
+
+   The phase optimizer is unchanged; execution calls its normal ``init`` on the
+   loaded parameters. Default optimizer state and schedule counters start fresh.
 
 
 .. py:data:: logger

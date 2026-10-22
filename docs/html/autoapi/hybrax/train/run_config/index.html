@@ -262,8 +262,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/kan.html">KAN Models</a></li>
@@ -286,6 +284,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/splines/index.html">hybrax.format.splines</a></li>
@@ -322,6 +321,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2 current current-page"><a class="current reference internal" href="#">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -1100,6 +1100,8 @@ validates the sections it actually uses.</p>
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.run_config.</span></span><span class="sig-name descname"><span class="pre">SolverConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">/</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">**data</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/run_config.html#SolverConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.run_config.SolverConfig" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#hybrax.train.run_config.ConfigBase" title="hybrax.train.run_config.ConfigBase"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ConfigBase</span></code></a></p>
 <p>diffrax ODE solver settings for every forward and backward solve.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">build_solver(config)</span></code> hook selects the Diffrax solver; the default
+is Tsit5. The choice also applies to checkpoint evaluation and prediction.</p>
 <p><code class="docutils literal notranslate"><span class="pre">max_steps</span></code> (default 2048) is the step budget for the whole solve — the
 first knob to raise when solves start bailing out (a bail is not fatal;
 points after it are just masked out of the loss, but a run where most
@@ -1157,7 +1159,11 @@ constant). <code class="docutils literal notranslate"><span class="pre">grad_cli
 raw, pre-optimizer gradient by global norm before every update — check
 <code class="docutils literal notranslate"><span class="pre">grad_norm_curve.png</span></code>, which plots the pre-clip norm, to pick a real
 value once scales are right. <code class="docutils literal notranslate"><span class="pre">batch_size</span></code> (default <code class="docutils literal notranslate"><span class="pre">None</span></code>) is how
-many processes make up one batch; <code class="docutils literal notranslate"><span class="pre">None</span></code> means full-batch. <code class="docutils literal notranslate"><span class="pre">shuffle</span></code>
+many processes contribute to one optimizer update; <code class="docutils literal notranslate"><span class="pre">None</span></code> means full-batch.
+<code class="docutils literal notranslate"><span class="pre">microbatch_size</span></code> optionally limits how many process solves execute
+together, while preserving that batch mean and one optimizer update. It
+requires <code class="docutils literal notranslate"><span class="pre">devices=1</span></code> and one actual JAX device. A width at least as
+large as the batch uses unsplit execution. <code class="docutils literal notranslate"><span class="pre">shuffle</span></code>
 (default <code class="docutils literal notranslate"><span class="pre">True</span></code>) reshuffles the process order every epoch;
 <code class="docutils literal notranslate"><span class="pre">batch_seed</span></code> (optional) seeds that shuffling independently of <code class="docutils literal notranslate"><span class="pre">seed</span></code>.
 <code class="docutils literal notranslate"><span class="pre">devices</span></code> (default <code class="docutils literal notranslate"><span class="pre">1</span></code>) is how many CPU devices to shard the batch
@@ -1172,6 +1178,9 @@ it starts without it, because a latent state changes what the model
 training loss module at checkpoint boundaries. Default training excludes
 their parent groups; explicit overlapping training selections raise.
 LOO defines holdouts through folds and rejects this setting.</p>
+<p><code class="docutils literal notranslate"><span class="pre">flow_integral_relative_tolerance</span></code> (default <code class="docutils literal notranslate"><span class="pre">1e-3</span></code>) bounds the
+preflight’s relative error in each prescribed continuous-flow integral.
+It is independent of the solver’s adaptive-step tolerances.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>data</strong> (<em>Any</em>)</p>
@@ -1203,6 +1212,11 @@ LOO defines holdouts through folds and rejects this setting.</p>
 <dd></dd></dl>
 
 <dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.run_config.TrainConfig.flow_integral_relative_tolerance">
+<span class="sig-name descname"><span class="pre">flow_integral_relative_tolerance</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.TrainConfig.flow_integral_relative_tolerance" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.run_config.TrainConfig.grad_clip_norm">
 <span class="sig-name descname"><span class="pre">grad_clip_norm</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.TrainConfig.grad_clip_norm" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -1215,6 +1229,11 @@ LOO defines holdouts through folds and rejects this setting.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.run_config.TrainConfig.learning_rate">
 <span class="sig-name descname"><span class="pre">learning_rate</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.TrainConfig.learning_rate" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.run_config.TrainConfig.microbatch_size">
+<span class="sig-name descname"><span class="pre">microbatch_size</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.TrainConfig.microbatch_size" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -1555,9 +1574,11 @@ run. No-op if <code class="docutils literal notranslate"><span class="pre">custo
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.batch_size"><code class="docutils literal notranslate"><span class="pre">TrainConfig.batch_size</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.devices"><code class="docutils literal notranslate"><span class="pre">TrainConfig.devices</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.epochs"><code class="docutils literal notranslate"><span class="pre">TrainConfig.epochs</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.flow_integral_relative_tolerance"><code class="docutils literal notranslate"><span class="pre">TrainConfig.flow_integral_relative_tolerance</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.grad_clip_norm"><code class="docutils literal notranslate"><span class="pre">TrainConfig.grad_clip_norm</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.holdout_processes"><code class="docutils literal notranslate"><span class="pre">TrainConfig.holdout_processes</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.learning_rate"><code class="docutils literal notranslate"><span class="pre">TrainConfig.learning_rate</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.microbatch_size"><code class="docutils literal notranslate"><span class="pre">TrainConfig.microbatch_size</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.optimizer"><code class="docutils literal notranslate"><span class="pre">TrainConfig.optimizer</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.seed"><code class="docutils literal notranslate"><span class="pre">TrainConfig.seed</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.shuffle"><code class="docutils literal notranslate"><span class="pre">TrainConfig.shuffle</span></code></a></li>

@@ -261,8 +261,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">KAN Models</a></li>
@@ -285,6 +283,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
@@ -321,6 +320,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -395,6 +395,8 @@
     <span class="n">prepare_training</span><span class="p">,</span>
     <span class="n">train_collection</span><span class="p">,</span>
     <span class="n">train_harness_config_from_run_config</span><span class="p">,</span>
+    <span class="n">validate_initial_checkpoint</span><span class="p">,</span>
+    <span class="n">with_initial_parameters</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.loo</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">_dispatch_producer</span><span class="p">,</span>
@@ -422,6 +424,9 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">.runtime_context</span><span class="w"> </span><span class="kn">import</span> <span class="n">original_parent_processes</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">content_hash</span><span class="p">,</span>
+    <span class="n">file_hash</span><span class="p">,</span>
+    <span class="n">read_initial_checkpoint</span><span class="p">,</span>
+    <span class="n">read_json</span><span class="p">,</span>
     <span class="n">read_run_config_json</span><span class="p">,</span>
     <span class="n">resolve_forward_model_path</span><span class="p">,</span>
     <span class="n">resolve_run_dir</span><span class="p">,</span>
@@ -500,6 +505,11 @@
             <span class="s2">"Delete everything already in --output-dir, regardless of what put "</span>
             <span class="s2">"it there, before writing fresh output."</span>
         <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">train_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"--init-from"</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">"Start a new phase from checkpoint weights with fresh optimizer state."</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="n">train_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
         <span class="s2">"--epochs"</span><span class="p">,</span>
@@ -817,6 +827,10 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"train command requires a data config section"</span><span class="p">)</span>
     <span class="n">run_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">dir</span><span class="p">)</span>
     <span class="n">config_json</span> <span class="o">=</span> <span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"config.json"</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">init_from</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">params_path</span><span class="p">,</span> <span class="n">source_config</span><span class="p">,</span> <span class="n">source_document</span> <span class="o">=</span> <span class="n">read_initial_checkpoint</span><span class="p">(</span>
+            <span class="n">args</span><span class="o">.</span><span class="n">init_from</span><span class="p">,</span> <span class="n">output_dir</span><span class="o">=</span><span class="n">run_dir</span>
+        <span class="p">)</span>
 
     <span class="c1"># Re-run guard: block only on a completed run unless --overwrite.</span>
     <span class="k">if</span> <span class="n">config_json</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
@@ -841,6 +855,35 @@
             <span class="k">return</span> <span class="mi">1</span>
 
     <span class="n">collection</span> <span class="o">=</span> <span class="n">load_process_collection</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">prepared</span><span class="p">)</span>
+    <span class="n">prepared_hash</span> <span class="o">=</span> <span class="n">content_hash</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">train_harness_config_from_run_config</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">run_dir</span><span class="o">=</span><span class="n">run_dir</span><span class="p">)</span>
+    <span class="n">prepared</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">initial_checkpoint</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">init_from</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Validate and load before --overwrite or any output writes.</span>
+        <span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_training</span><span class="p">(</span>
+            <span class="n">collection</span><span class="p">,</span>
+            <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">,</span>
+            <span class="n">custom_module</span><span class="o">=</span><span class="n">loaded</span><span class="o">.</span><span class="n">custom_module</span><span class="p">,</span>
+            <span class="n">run_config</span><span class="o">=</span><span class="n">cfg</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">validate_initial_checkpoint</span><span class="p">(</span>
+            <span class="n">prepared</span><span class="p">,</span> <span class="n">source_config</span><span class="p">,</span> <span class="n">source_document</span><span class="p">,</span> <span class="n">prepared_hash</span>
+        <span class="p">)</span>
+        <span class="n">prepared</span> <span class="o">=</span> <span class="n">with_initial_parameters</span><span class="p">(</span><span class="n">prepared</span><span class="p">,</span> <span class="n">params_path</span><span class="p">)</span>
+        <span class="n">state_path</span> <span class="o">=</span> <span class="n">params_path</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">"train_state.json"</span>
+        <span class="n">source_step</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">read_json</span><span class="p">(</span><span class="n">state_path</span><span class="p">)[</span><span class="s2">"step"</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">state_path</span><span class="o">.</span><span class="n">is_file</span><span class="p">()</span>
+            <span class="k">else</span> <span class="n">source_document</span><span class="p">[</span><span class="s2">"updates_completed"</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">initial_checkpoint</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">"path"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">params_path</span><span class="o">.</span><span class="n">parent</span><span class="p">),</span>
+            <span class="s2">"step"</span><span class="p">:</span> <span class="n">source_step</span><span class="p">,</span>
+            <span class="s2">"params_hash"</span><span class="p">:</span> <span class="n">file_hash</span><span class="p">(</span><span class="n">params_path</span><span class="p">),</span>
+            <span class="s2">"prepared_hash"</span><span class="p">:</span> <span class="n">prepared_hash</span><span class="p">,</span>
+            <span class="s2">"optimizer_state"</span><span class="p">:</span> <span class="s2">"fresh"</span><span class="p">,</span>
+        <span class="p">}</span>
 
     <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">overwrite</span><span class="p">:</span>
         <span class="n">_clear_output_dir_for_overwrite</span><span class="p">(</span>
@@ -865,7 +908,7 @@
         <span class="s2">"inputs"</span><span class="p">:</span> <span class="p">{</span>
             <span class="s2">"prepared_input"</span><span class="p">:</span> <span class="p">{</span>
                 <span class="s2">"path"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">prepared</span><span class="p">),</span>
-                <span class="s2">"content_hash"</span><span class="p">:</span> <span class="n">content_hash</span><span class="p">(</span><span class="n">collection</span><span class="p">),</span>
+                <span class="s2">"content_hash"</span><span class="p">:</span> <span class="n">prepared_hash</span><span class="p">,</span>
             <span class="p">},</span>
             <span class="s2">"custom_py"</span><span class="p">:</span> <span class="p">{</span>
                 <span class="s2">"bundled"</span><span class="p">:</span> <span class="n">bundled_custom</span><span class="p">,</span>
@@ -875,19 +918,24 @@
                     <span class="k">else</span> <span class="kc">None</span>
                 <span class="p">),</span>
             <span class="p">},</span>
+            <span class="o">**</span><span class="p">(</span>
+                <span class="p">{</span><span class="s2">"init_checkpoint"</span><span class="p">:</span> <span class="n">initial_checkpoint</span><span class="p">}</span>
+                <span class="k">if</span> <span class="n">initial_checkpoint</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+                <span class="k">else</span> <span class="p">{}</span>
+            <span class="p">),</span>
         <span class="p">},</span>
         <span class="s2">"environment"</span><span class="p">:</span> <span class="n">_environment_versions</span><span class="p">(),</span>
     <span class="p">}</span>
     <span class="n">write_json</span><span class="p">(</span><span class="n">config_json</span><span class="p">,</span> <span class="n">document</span><span class="p">)</span>
 
-    <span class="n">config</span> <span class="o">=</span> <span class="n">train_harness_config_from_run_config</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">run_dir</span><span class="o">=</span><span class="n">run_dir</span><span class="p">)</span>
     <span class="k">try</span><span class="p">:</span>
-        <span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_training</span><span class="p">(</span>
-            <span class="n">collection</span><span class="p">,</span>
-            <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">,</span>
-            <span class="n">custom_module</span><span class="o">=</span><span class="n">loaded</span><span class="o">.</span><span class="n">custom_module</span><span class="p">,</span>
-            <span class="n">run_config</span><span class="o">=</span><span class="n">cfg</span><span class="p">,</span>
-        <span class="p">)</span>
+        <span class="k">if</span> <span class="n">prepared</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_training</span><span class="p">(</span>
+                <span class="n">collection</span><span class="p">,</span>
+                <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">,</span>
+                <span class="n">custom_module</span><span class="o">=</span><span class="n">loaded</span><span class="o">.</span><span class="n">custom_module</span><span class="p">,</span>
+                <span class="n">run_config</span><span class="o">=</span><span class="n">cfg</span><span class="p">,</span>
+            <span class="p">)</span>
         <span class="k">del</span> <span class="n">collection</span>
         <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">holdout_processes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">cfg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">processes</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="c1"># Reloading must rebuild static scales/modules from the same split.</span>
@@ -926,6 +974,7 @@
                 <span class="n">solver_max_steps</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">solver_max_steps</span><span class="p">,</span>
                 <span class="n">solver_rtol</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">solver_rtol</span><span class="p">,</span>
                 <span class="n">solver_atol</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">solver_atol</span><span class="p">,</span>
+                <span class="n">ode_solver</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">ode_solver</span><span class="p">,</span>
                 <span class="n">solver_use_jump_ts</span><span class="o">=</span><span class="n">prepared</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">solver_use_jump_ts</span><span class="p">,</span>
             <span class="p">),</span>
             <span class="n">target_names</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">prepared</span><span class="o">.</span><span class="n">loss_module</span><span class="o">.</span><span class="n">loss_names</span><span class="p">),</span>

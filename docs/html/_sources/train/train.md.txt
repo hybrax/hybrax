@@ -4,21 +4,34 @@
 > core.
 
 ```bash
-hybrax train --config train-config.json [--overwrite] [--epochs N]
+hybrax train --config train-config.json [--overwrite] [--epochs N] [--init-from PATH]
 ```
 
 ## Setup, in order
 
-Before the first step, training resolves five hooks from `custom.py`:
+Before the first step, training resolves six hooks from `custom.py`:
 `build_learning_rate` → `build_optimizer` → `estimate_all_scales` →
-`build_reaction_module` → `build_loss_module`. Two more, `transform_process_collection`
+`build_reaction_module` → `build_loss_module`, plus `build_solver`.
+Two more, `transform_process_collection`
 and `augment_state_values`, already ran during `prepare`. See
 [Customization](hooks_cheatsheet.md) for the full table, with every signature.
 
-This page covers `build_learning_rate` and `build_optimizer` below: they are purely a
-training concern. The other three are substantial enough to need their own page each:
+This page covers `build_learning_rate`, `build_optimizer`, and `build_solver`.
+The other three training hooks have their own pages:
 [The Reaction Module](reaction_module.md), [The Loss Module](loss_module.md),
 [Scaling](scaling.md).
+
+Before training warmup, Hybrax checks each selected process's prescribed continuous
+inflows and outflows independently. A scalar Tsit5 solve integrates each runtime
+flow rate over the measurement span, using the configured solver tolerances, step
+budget, and jump times. Its result must match the cumulative endpoint difference
+within `train.flow_integral_relative_tolerance * abs(expected_increment)`.
+The default relative tolerance is `1e-3` (0.1%), independent of solver tolerances;
+a zero expected increment requires an exactly zero integral. A mismatch or
+scalar solver failure stops training with the process and flow names. This check
+excludes modeled flows and discrete events.
+Passing does not certify the coupled model's integration accuracy, because that
+solve takes different adaptive steps.
 
 ## What one step does
 
@@ -29,9 +42,10 @@ For each process in the batch:
 2. Save states and rates at the measurement times (and on a dense grid, if the loss module
    asked for one).
 3. Hand those to the loss module; take the **mean** of its named losses.
-4. Differentiate the whole thing (solver steps, event jumps, spline evaluations) with
-   respect to the trainable parameters.
-5. Clip the **raw** gradient by global norm, then apply the optimizer.
+
+Then average those process losses, differentiate with respect to the trainable
+parameters, clip the **raw batch gradient** by global norm, and apply the optimizer
+once. This includes gradients through solver steps, event jumps, and spline evaluations.
 
 One solve per sample serves both the reaction module (which runs *inside* it) and the
 loss module (which reads its saved outputs *after*). Adding dense save points costs extra
@@ -60,13 +74,52 @@ right, a real value (1 to 10) is usually what stabilises a stiff run. Check
 `grad_norm_curve.png` to pick it: clip somewhere around the bulk of the distribution, not
 below it.
 
-**`solver.max_steps`** is the first thing to raise when solves start failing. Failures are
-not fatal (points after the bail are masked out of the loss) but a run where most
-samples bail is fitting almost nothing. If raising it does not help, the problem is
+**`solver.max_steps`** is the first thing to raise when solves start failing. During
+full-model solves, failures are not fatal (points after the bail are masked out of
+the loss) but a run where most samples bail is fitting almost nothing.
+If raising it does not help, the problem is
 usually stiffness caused by bad scaling, not the solver.
 
 **`batch_size`** must not exceed the number of selected processes. It is not clamped;
 you get a `ValueError`.
+
+**`microbatch_size`** optionally limits how many process solves execute together.
+It preserves the logical batch, its process mean, and one optimizer update:
+
+```json
+{ "train": { "batch_size": null, "microbatch_size": 1, "devices": 1 } }
+```
+
+For twelve processes, this evaluates twelve one-process groups at unchanged
+parameters, then applies one update. Setting `batch_size=1` instead applies twelve
+updates per epoch. Omit `microbatch_size` to keep full-width execution. A width at
+least as large as the logical batch also uses full width.
+
+Microbatching requires `train.devices=1` and one actual local JAX device.
+Environment overrides do not bypass the configured restriction. Check
+`HYBRAX_TRAIN_DEVICES` and `XLA_FLAGS` if `devices=1` still raises.
+Smaller groups can improve throughput, but can also lose parallelism.
+Numerical results can change with execution width. Compare losses, gradients, and
+short training trajectories on your workload before choosing a width.
+
+## Hook: `build_solver`
+
+Hybrax uses `diffrax.Tsit5()` by default. To select another solver, return a
+Diffrax solver instance from `custom.py`:
+
+```python
+import diffrax
+
+def build_solver(config):
+    return diffrax.Kvaerno5()
+```
+
+The hook receives the resolved run config and may read `config.custom` for
+solver constructor options. Training, checkpoint evaluation, and prediction
+use this solver. Saved-model prediction rebuilds it from the bundled `custom.py`.
+Tolerances, `max_steps`, and `jump_ts` remain in the JSON `solver` section.
+Choose a solver compatible with Hybrax's single ODE term and adaptive PID
+controller. The independent feed-integration preflight continues to use Tsit5.
 
 ## Hook: `build_learning_rate`
 
@@ -210,6 +263,45 @@ previous attempt, or pass `--overwrite` to clear it and start fresh. This also
 applies to failed runs; restarting training does not resume old optimizer state
 or combine checkpoint rankings. An incomplete output directory with no
 checkpoints can be reused.
+
+### Start a new phase from checkpoint weights
+
+Use a new phase config and a separate output directory:
+
+```bash
+hybrax train --config phase2.json \
+  --init-from run/checkpoints/step_00500 \
+  --output-dir run_phase2
+```
+
+`--init-from` accepts a checkpoint directory, a completed run directory, or its
+`params.eqx` file. The phase loads both reaction-module and trainable loss-module
+parameters. It uses normal phase preparation and optimizer initialization;
+saved `opt_state.eqx` is not loaded. Default Adam moments and schedule counters
+start at zero. A custom optimizer hook remains responsible for its own `init`.
+
+`train.epochs` means additional epochs. The phase LR hook receives the additional
+update budget, and phase-local steps also restart step-dependent custom losses.
+Choose a new base LR or edit only the LR hook to change the schedule.
+
+Keep the same prepared data, targets, target source, and ordered training
+selection. These inputs are checked against source metadata. Keep model,
+scaling, and loss definitions and their model-affecting settings unchanged;
+parameter shape checks cannot verify arbitrary Python-code equivalence. Source
+holdout runs without a recorded resolved training selection are rejected.
+
+The new run records its source under `inputs.init_checkpoint`. Metrics,
+checkpoint numbering, and retention belong to the new phase. Output directories
+containing source weights are rejected before writes, including `--overwrite`.
+Prepared data is read once; there is no second source-model reconstruction.
+
+For Python callers, pass `init_from` to `train_from_collection()` or
+`train_from_prepared_json()`. The collection API keeps its ordinary return and
+output behavior. Its `checkpoint_dir` must not contain source weights.
+
+Remove manual checkpoint-loading hooks before adopting this path. In particular,
+a custom optimizer `init` that deserializes `opt_state.eqx` still restores old
+optimizer state. Use normal fresh initialization for the new phase.
 
 ### Choose a selection metric
 

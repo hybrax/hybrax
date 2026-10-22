@@ -262,8 +262,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/kan.html">KAN Models</a></li>
@@ -286,6 +284,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/splines/index.html">hybrax.format.splines</a></li>
@@ -322,6 +321,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -449,37 +449,40 @@ swaps trainable leaves.</p></li>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.model_reload" title="hybrax.train.serialization.model_reload"><code class="xref py py-obj docutils literal notranslate"><span class="pre">model_reload</span></code></a>(path, trained_wrapper)</p></td>
 <td><p>Refresh <strong>only</strong> the trainable leaves from <code class="docutils literal notranslate"><span class="pre">path</span></code> into an existing wrapper.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.read_json" title="hybrax.train.serialization.read_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">read_json</span></code></a>(path)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.read_initial_checkpoint" title="hybrax.train.serialization.read_initial_checkpoint"><code class="xref py py-obj docutils literal notranslate"><span class="pre">read_initial_checkpoint</span></code></a>(path, *[, output_dir])</p></td>
+<td><p>Resolve starting weights and metadata without reconstructing the model.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.read_json" title="hybrax.train.serialization.read_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">read_json</span></code></a>(path)</p></td>
 <td><p>Read and parse a JSON file; see <code class="docutils literal notranslate"><span class="pre">hybrax.format.json_io.load_json</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.read_run_config_json" title="hybrax.train.serialization.read_run_config_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">read_run_config_json</span></code></a>(path)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.read_run_config_json" title="hybrax.train.serialization.read_run_config_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">read_run_config_json</span></code></a>(path)</p></td>
 <td><p>Parse a run-dir <code class="docutils literal notranslate"><span class="pre">config.json</span></code> → (RunConfig, full document).</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.reconstruct_training" title="hybrax.train.serialization.reconstruct_training"><code class="xref py py-obj docutils literal notranslate"><span class="pre">reconstruct_training</span></code></a>(run_dir[, config, document, ...])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.reconstruct_training" title="hybrax.train.serialization.reconstruct_training"><code class="xref py py-obj docutils literal notranslate"><span class="pre">reconstruct_training</span></code></a>(run_dir[, config, document, ...])</p></td>
 <td><p>THE shared reconstruction path — model loading, forward, and ensembles.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.resolve_forward_model_path" title="hybrax.train.serialization.resolve_forward_model_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_forward_model_path</span></code></a>(path)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.resolve_forward_model_path" title="hybrax.train.serialization.resolve_forward_model_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_forward_model_path</span></code></a>(path)</p></td>
 <td><p>Resolve permissive forward weights and their owning run directory.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.resolve_model_path" title="hybrax.train.serialization.resolve_model_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_model_path</span></code></a>(path)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.resolve_model_path" title="hybrax.train.serialization.resolve_model_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_model_path</span></code></a>(path)</p></td>
 <td><p>Resolve a model reference to <code class="docutils literal notranslate"><span class="pre">(run_dir,</span> <span class="pre">params_path)</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.resolve_run_dir" title="hybrax.train.serialization.resolve_run_dir"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_run_dir</span></code></a>(path, *[, max_levels])</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.resolve_run_dir" title="hybrax.train.serialization.resolve_run_dir"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_run_dir</span></code></a>(path, *[, max_levels])</p></td>
 <td><p>Nearest directory at/above <code class="docutils literal notranslate"><span class="pre">path</span></code> that holds a <code class="docutils literal notranslate"><span class="pre">config.json</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.run_config_to_jsonable" title="hybrax.train.serialization.run_config_to_jsonable"><code class="xref py py-obj docutils literal notranslate"><span class="pre">run_config_to_jsonable</span></code></a>(config)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.run_config_to_jsonable" title="hybrax.train.serialization.run_config_to_jsonable"><code class="xref py py-obj docutils literal notranslate"><span class="pre">run_config_to_jsonable</span></code></a>(config)</p></td>
 <td><p>RunConfig → JSON-native dict (Paths → str, tuples → lists).</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.save_model" title="hybrax.train.serialization.save_model"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_model</span></code></a>(wrapper, path)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.save_model" title="hybrax.train.serialization.save_model"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_model</span></code></a>(wrapper, path)</p></td>
 <td><p>Serialise the <strong>trainable</strong> leaves of a wrapper to disk.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.save_opt_state" title="hybrax.train.serialization.save_opt_state"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_opt_state</span></code></a>(opt_state, path)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.save_opt_state" title="hybrax.train.serialization.save_opt_state"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_opt_state</span></code></a>(opt_state, path)</p></td>
 <td><p>Serialise optimizer state leaf-by-leaf.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.update_json" title="hybrax.train.serialization.update_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">update_json</span></code></a>(path, **fields)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.update_json" title="hybrax.train.serialization.update_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">update_json</span></code></a>(path, **fields)</p></td>
 <td><p>Shallow-merge fields into an existing JSON object and publish it.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.write_json" title="hybrax.train.serialization.write_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">write_json</span></code></a>(path, document, *[, indent])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.write_json" title="hybrax.train.serialization.write_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">write_json</span></code></a>(path, document, *[, indent])</p></td>
 <td><p>Atomically publish a normalized JSON document.</p></td>
 </tr>
 </tbody>
@@ -699,6 +702,25 @@ run. When in doubt, pay for <a class="reference internal" href="#hybrax.train.se
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p>tuple[<a class="reference internal" href="../wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper" title="hybrax.train.wrapper.HybridOdeWrapper">hybrax.train.wrapper.HybridOdeWrapper</a>, <a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.RunConfig" title="hybrax.train.run_config.RunConfig">hybrax.train.run_config.RunConfig</a>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.serialization.read_initial_checkpoint">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.serialization.</span></span><span class="sig-name descname"><span class="pre">read_initial_checkpoint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/serialization.html#read_initial_checkpoint"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.serialization.read_initial_checkpoint" title="Link to this definition">¶</a></dt>
+<dd><p>Resolve starting weights and metadata without reconstructing the model.</p>
+<p>Reject an output directory containing the source weights before a new phase
+can overwrite them. Resolve symlinks so <code class="docutils literal notranslate"><span class="pre">latest</span></code> pins a concrete checkpoint.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>path</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>)</p></li>
+<li><p><strong>output_dir</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><em>None</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>tuple[pathlib.Path, <a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.RunConfig" title="hybrax.train.run_config.RunConfig">hybrax.train.run_config.RunConfig</a>, dict[str, Any]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -991,6 +1013,7 @@ scales, <code class="docutils literal notranslate"><span class="pre">rhs_ode</sp
 <li><a class="reference internal" href="#hybrax.train.serialization.load_trained_wrapper"><code class="docutils literal notranslate"><span class="pre">load_trained_wrapper()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.serialization.model_load"><code class="docutils literal notranslate"><span class="pre">model_load()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.serialization.model_reload"><code class="docutils literal notranslate"><span class="pre">model_reload()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.serialization.read_initial_checkpoint"><code class="docutils literal notranslate"><span class="pre">read_initial_checkpoint()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.serialization.read_json"><code class="docutils literal notranslate"><span class="pre">read_json()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.serialization.read_run_config_json"><code class="docutils literal notranslate"><span class="pre">read_run_config_json()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.serialization.reconstruct_training"><code class="docutils literal notranslate"><span class="pre">reconstruct_training()</span></code></a></li>

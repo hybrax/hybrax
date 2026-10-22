@@ -1,0 +1,101 @@
+hybrax.format.monotone_spline
+=============================
+
+.. py:module:: hybrax.format.monotone_spline
+
+.. autoapi-nested-parse::
+
+   Adaptive monotone cubic spline fitting under a root-mean-square error budget.
+
+   The fit is a clamped cubic B-spline in normalized coordinates
+   `x = (t - t0) / T` and `z = (y - y0) / D`, where `D` is the signed net change.
+   Coefficients are anchored at 0 and 1 and strictly increasing, which makes the
+   curve monotone in the direction of `D` (a sufficient, not necessary, condition).
+
+   Knots are chosen by refinement: for the current knots, a second-order cone
+   program finds the smallest achievable RMS error, and new knots go where the
+   squared residuals of that fit concentrate. An unconstrained pilot guides each
+   insertion using its curvature variation, with a knot target set by max_knots.
+   Once the budget is met, a QP
+   minimizes the integrated squared second derivative among curves with ordered
+   B-spline coefficients within the budget. This minimization is numerical: with
+   strongly clustered samples the result can be rougher than necessary. All
+   solves use Clarabel
+   in normalized coefficients, with the RMS constraint scaled by the budget so
+   that its tolerance stays relative to it.
+
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.format.monotone_spline.fit_monotone_timeseries_spline
+
+
+Module Contents
+---------------
+
+.. py:function:: fit_monotone_timeseries_spline(ts, *, rms_tol, increasing, max_knots = None)
+
+   Fit a smooth monotone C2 cubic spline with automatically chosen knots.
+
+   The root-mean-square error at the samples is at most `rms_tol`:
+   `sqrt(mean((f(t_i) - y_i) ** 2)) <= rms_tol`, in the units of the values. Both
+   endpoints are reproduced exactly up to roundoff, so the derivative
+   integrates to the measured net change. The requested direction must agree
+   with the endpoints. For unequal endpoints, the derivative is strictly
+   positive or negative everywhere in `[t[0], t[-1]]`. Consecutive B-spline
+   coefficients differ by at least 1e-9 of the net change, so flat stretches
+   get a negligible nonzero rate, about 1e-9 of the net change per knot interval.
+   Equal endpoints give a constant curve for either direction, accepted only if
+   it meets the budget.
+
+   Knots are added where the residuals concentrate until the budget can be met.
+   An unconstrained pilot guides their locations throughout refinement. It uses
+   the same RMS target and max_knots as its interior-knot target, but can miss
+   that RMS target when its layout is too small. It only proposes locations;
+   the returned monotone curve must meet the requested budget.
+   For the chosen knots, the smoothing step numerically minimizes the integrated
+   squared second derivative among curves with ordered B-spline coefficients
+   within the budget, so the fit generally uses most of the budget and smooths
+   noise and short reversals of direction. The error at individual samples can
+   exceed `rms_tol`. Raw samples are kept unchanged.
+
+   The budget, monotonicity, continuity and endpoints are checked on the stored
+   curve: the function either returns a curve that meets them or raises.
+   Smoothness is not checked: with strongly clustered samples, such as bursts of
+   fast logging, the smoothing can fail or return a curve rougher than
+   necessary. Thinning redundant burst readings helps, but keep enough readings
+   to resolve short additions; the budget then covers the remaining samples.
+
+   Larger `rms_tol` gives a smoother curve and rate; it is the smoothing knob.
+   Choose it at least about 1.5 times the measurement noise standard deviation.
+   At about the noise standard deviation, the fit is unstable: it can switch
+   between few knots, the cap and an error. Every sample counts equally, so
+   densely logged stretches weigh more towards `rms_tol`.
+
+   :param ts: Scalar series with at least two samples and no jumps. Any existing
+              spline state is ignored and replaced. Times must lie within 1000
+              durations of zero, so pass time since start rather than absolute
+              timestamps.
+   :param rms_tol: RMS error budget, `> 0`.
+   :param increasing: Whether the curve must increase or decrease.
+   :param max_knots: Maximum number of interior knots. Defaults to a tenth of the
+                     number of samples, but at least 64. Also sets the pilot knot target.
+
+   :returns: A new TimeSeries with the same samples and continuity side, holding the
+             fitted spline. Input metadata is discarded. Fit details are stored under
+             the `"monotone_fit"` metadata key.
+
+   :raises TypeError: If `increasing` is not a bool.
+   :raises ValueError: For invalid input, or if the endpoints are equal and the
+       constant curve misses the budget, or the endpoints contradict
+       `increasing`.
+   :raises RuntimeError: If the closest monotone sequence exceeds the RMS budget,
+       if refinement reaches `max_knots` or cannot place further
+       knots before the budget can be met, or if a solve or
+       final check fails.
+
+

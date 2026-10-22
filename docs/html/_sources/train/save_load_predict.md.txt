@@ -90,8 +90,14 @@ is whether `custom.py` is needed at all: see
 
 ## Resuming training
 
-`opt_state.eqx` sits next to `params.eqx` precisely so a run can continue with the
-optimizer's momentum intact rather than restarting cold. Checkpoint frequency:
+To start a new phase from fitted weights, use `hybrax train --init-from PATH`
+with a phase config and a separate output directory. Default optimizer state and
+LR schedule counters start fresh; saved `opt_state.eqx` is not loaded. See
+[Start a new phase](train.md#start-a-new-phase-from-checkpoint-weights) for the
+CLI and Python APIs and the model/data compatibility contract.
+
+`opt_state.eqx` remains available for custom optimizer-state restoration.
+Restoring it automatically is outside the new-phase workflow. Checkpoint frequency:
 
 ```json
 { "checkpoint": { "every": 100 } }

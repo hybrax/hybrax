@@ -262,8 +262,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../../../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../../gallery/kan.html">KAN Models</a></li>
@@ -286,6 +284,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../splines/index.html">hybrax.format.splines</a></li>
@@ -322,6 +321,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../train/model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../train/preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../train/prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../train/run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -419,13 +419,16 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.time_series.spline_ops.piece_index" title="hybrax.format.time_series.spline_ops.piece_index"><code class="xref py py-obj docutils literal notranslate"><span class="pre">piece_index</span></code></a>(t, breaks, side)</p></td>
 <td><p>Return the piece index for time t with continuity-side semantics.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.time_series.spline_ops.rebase_piece" title="hybrax.format.time_series.spline_ops.rebase_piece"><code class="xref py py-obj docutils literal notranslate"><span class="pre">rebase_piece</span></code></a>(coeff_row, shift)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.time_series.spline_ops.piece_rate_candidates" title="hybrax.format.time_series.spline_ops.piece_rate_candidates"><code class="xref py py-obj docutils literal notranslate"><span class="pre">piece_rate_candidates</span></code></a>(breaks, coeffs, lower, upper)</p></td>
+<td><p>Return first-derivative values where its extrema over [lower, upper] occur.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.time_series.spline_ops.rebase_piece" title="hybrax.format.time_series.spline_ops.rebase_piece"><code class="xref py py-obj docutils literal notranslate"><span class="pre">rebase_piece</span></code></a>(coeff_row, shift)</p></td>
 <td><p>Rebase cubic coeffs [a,b,c,d] from x0 to x0+shift.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.time_series.spline_ops.rebase_to_breaks" title="hybrax.format.time_series.spline_ops.rebase_to_breaks"><code class="xref py py-obj docutils literal notranslate"><span class="pre">rebase_to_breaks</span></code></a>(breaks, coeffs, target_breaks)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.time_series.spline_ops.rebase_to_breaks" title="hybrax.format.time_series.spline_ops.rebase_to_breaks"><code class="xref py py-obj docutils literal notranslate"><span class="pre">rebase_to_breaks</span></code></a>(breaks, coeffs, target_breaks)</p></td>
 <td><p>Express spline coeffs on a refined breakpoint grid.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.time_series.spline_ops.validate_side" title="hybrax.format.time_series.spline_ops.validate_side"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_side</span></code></a>(side, *[, name])</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.time_series.spline_ops.validate_side" title="hybrax.format.time_series.spline_ops.validate_side"><code class="xref py py-obj docutils literal notranslate"><span class="pre">validate_side</span></code></a>(side, *[, name])</p></td>
 <td><p>Raise <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> unless <code class="docutils literal notranslate"><span class="pre">side</span></code> is <code class="docutils literal notranslate"><span class="pre">'left'</span></code> or <code class="docutils literal notranslate"><span class="pre">'right'</span></code>.</p></td>
 </tr>
 </tbody>
@@ -600,6 +603,28 @@ its support.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="hybrax.format.time_series.spline_ops.piece_rate_candidates">
+<span class="sig-prename descclassname"><span class="pre">hybrax.format.time_series.spline_ops.</span></span><span class="sig-name descname"><span class="pre">piece_rate_candidates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">breaks</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coeffs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lower</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">upper</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../../_modules/hybrax/format/time_series/spline_ops.html#piece_rate_candidates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.time_series.spline_ops.piece_rate_candidates" title="Link to this definition">¶</a></dt>
+<dd><p>Return first-derivative values where its extrema over [lower, upper] occur.</p>
+<p>For each piece overlapping the interval, the rate is evaluated at the clipped
+piece ends and at real interior roots of its second derivative. The minimum
+and maximum of the result are the exact extrema of the rate.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>breaks</strong> (<em>Any</em>)</p></li>
+<li><p><strong>coeffs</strong> (<em>Any</em>)</p></li>
+<li><p><strong>lower</strong> (<em>float</em>)</p></li>
+<li><p><strong>upper</strong> (<em>float</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="hybrax.format.time_series.spline_ops.rebase_piece">
 <span class="sig-prename descclassname"><span class="pre">hybrax.format.time_series.spline_ops.</span></span><span class="sig-name descname"><span class="pre">rebase_piece</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coeff_row</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shift</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../../_modules/hybrax/format/time_series/spline_ops.html#rebase_piece"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.time_series.spline_ops.rebase_piece" title="Link to this definition">¶</a></dt>
 <dd><p>Rebase cubic coeffs [a,b,c,d] from x0 to x0+shift.</p>
@@ -727,6 +752,7 @@ its support.</p>
 <li><a class="reference internal" href="#hybrax.format.time_series.spline_ops.merge_breaks"><code class="docutils literal notranslate"><span class="pre">merge_breaks()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.time_series.spline_ops.merge_segment_starts"><code class="docutils literal notranslate"><span class="pre">merge_segment_starts()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.time_series.spline_ops.piece_index"><code class="docutils literal notranslate"><span class="pre">piece_index()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.format.time_series.spline_ops.piece_rate_candidates"><code class="docutils literal notranslate"><span class="pre">piece_rate_candidates()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.time_series.spline_ops.rebase_piece"><code class="docutils literal notranslate"><span class="pre">rebase_piece()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.time_series.spline_ops.rebase_to_breaks"><code class="docutils literal notranslate"><span class="pre">rebase_to_breaks()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.time_series.spline_ops.validate_side"><code class="docutils literal notranslate"><span class="pre">validate_side()</span></code></a></li>

@@ -261,8 +261,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">KAN Models</a></li>
@@ -285,6 +283,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
@@ -321,6 +320,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -385,7 +385,10 @@
     <span class="n">TimeSeries</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.mechanistic</span><span class="w"> </span><span class="kn">import</span> <span class="n">extract_discrete_events</span><span class="p">,</span> <span class="n">get_process_ordering</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.time_series.spline_ops</span><span class="w"> </span><span class="kn">import</span> <span class="n">rebase_to_breaks</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.time_series.spline_ops</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">piece_rate_candidates</span><span class="p">,</span>
+    <span class="n">rebase_to_breaks</span><span class="p">,</span>
+<span class="p">)</span>
 
 
 <div class="viewcode-block" id="SignalSource">
@@ -610,26 +613,12 @@
     <span class="k">if</span> <span class="n">values</span><span class="o">.</span><span class="n">breaks</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">slopes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">_as_numpy</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">values</span><span class="p">))</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">_as_numpy</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">times</span><span class="p">))</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="n">breaks</span> <span class="o">=</span> <span class="n">_as_numpy</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">breaks</span><span class="p">)</span>
-        <span class="n">coeffs</span> <span class="o">=</span> <span class="n">_as_numpy</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">coeffs</span><span class="p">)</span>
-        <span class="n">rates</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">index</span><span class="p">,</span> <span class="p">(</span><span class="n">left</span><span class="p">,</span> <span class="n">right</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span>
-            <span class="nb">zip</span><span class="p">(</span><span class="n">breaks</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">breaks</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-        <span class="p">):</span>
-            <span class="n">clipped_left</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">left</span><span class="p">),</span> <span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">start</span><span class="p">))</span>
-            <span class="n">clipped_right</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">right</span><span class="p">),</span> <span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">end</span><span class="p">))</span>
-            <span class="k">if</span> <span class="n">clipped_left</span> <span class="o">&gt;</span> <span class="n">clipped_right</span><span class="p">:</span>
-                <span class="k">continue</span>
-            <span class="n">rate_coeffs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">polyder</span><span class="p">(</span><span class="n">coeffs</span><span class="p">[</span><span class="n">index</span><span class="p">])</span>
-            <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span><span class="n">clipped_left</span> <span class="o">-</span> <span class="n">left</span><span class="p">,</span> <span class="n">clipped_right</span> <span class="o">-</span> <span class="n">left</span><span class="p">]</span>
-            <span class="n">acceleration_coeffs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">polyder</span><span class="p">(</span><span class="n">rate_coeffs</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">root</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">polyroots</span><span class="p">(</span><span class="n">acceleration_coeffs</span><span class="p">):</span>
-                <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isreal</span><span class="p">(</span><span class="n">root</span><span class="p">):</span>
-                    <span class="n">root</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">real</span><span class="p">(</span><span class="n">root</span><span class="p">))</span>
-                    <span class="k">if</span> <span class="n">candidates</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">root</span> <span class="o">&lt;=</span> <span class="n">candidates</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span>
-                        <span class="n">candidates</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">root</span><span class="p">)</span>
-            <span class="n">rates</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">polynomial</span><span class="o">.</span><span class="n">polyval</span><span class="p">(</span><span class="n">candidates</span><span class="p">,</span> <span class="n">rate_coeffs</span><span class="p">))</span>
-        <span class="n">slopes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rates</span><span class="p">)</span>
+        <span class="n">slopes</span> <span class="o">=</span> <span class="n">piece_rate_candidates</span><span class="p">(</span>
+            <span class="n">_as_numpy</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">breaks</span><span class="p">),</span>
+            <span class="n">_as_numpy</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">coeffs</span><span class="p">),</span>
+            <span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">start</span><span class="p">),</span>
+            <span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">end</span><span class="p">),</span>
+        <span class="p">)</span>
 
     <span class="n">direction</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">volume_change</span><span class="p">,</span> <span class="n">Inflow</span><span class="p">)</span> <span class="k">else</span> <span class="o">-</span><span class="mf">1.0</span>
     <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">direction</span> <span class="o">*</span> <span class="n">slopes</span> <span class="o">&lt;</span> <span class="mf">0.0</span><span class="p">):</span>

@@ -1,0 +1,1061 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html">
+        <link rel="prefetch" href="../../../_static/hybrax_logo.png" as="image">
+
+    <link rel="shortcut icon" href="../../../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>hybrax.format.monotone_spline - Bioprocess Modeling with Hybrax</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/graphviz.css?v=4ae1632d" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.11b39860a7a0cbfd473a3ad8a317855267ff0bd372690045ca344a6b62be495e.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=98a1085a" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #eeffcc;
+  --color-code-foreground: black;
+  --color-brand-primary: #2563eb;
+  --color-brand-content: #2563eb;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #272822;
+  --color-code-foreground: #f8f8f2;
+  --color-brand-primary: #60a5fa;
+  --color-brand-content: #60a5fa;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">Bioprocess Modeling with Hybrax</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="../../../_static/hybrax_logo.png" alt="Logo"/>
+  </div>
+  
+  <span class="sidebar-brand-text">Hybrax Documentation</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Start here</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/why.html">Why this exists</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/install.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/concepts.html">Concepts and Vocabulary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../start/find.html">Which page do I need?</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Tutorials</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/01_your_first_dataset.html">1. Import your Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/02_look_at_it.html">2. View your Dataset</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/03_train.html">3. Train a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/04_your_first_custom_py.html">4. Custom Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../tutorials/05_predict.html">5. Predict Processes</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.format guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/data_model.html">The Data Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/load_and_save.html">Loading and saving</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/validate_and_inspect.html">Validating and inspecting</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/volume_feeds_events.html">Volume, feeds and events</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/time_series_and_splines.html">Time series and splines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/limits_and_gotchas.html">Limits and gotchas</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../format/further_reading.html">Further reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/config.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/hooks_cheatsheet.html">Customization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/prepare.html">Prepare</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/train.html">Training</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/reaction_module.html">The Reaction Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/loss_module.html">The Loss Module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/scaling.html">Scaling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/forward.html">Forward</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/loo.html">Cross-Validation (LOO)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/save_load_predict.html">The Python API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../train/further_reading.html">Further Reading</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/index.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/pseudobatch_splines.html">Pseudobatch Splines</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/augmentation.html">Augmentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/fed_batch.html">Feeds, Boluses, and Samples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/modeled_pv.html">Modeled Process Variables</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/freezing.html">Freezing Parameters</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/mechanistic_rates.html">Mechanistic Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/dense_loss.html">Custom Losses</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/stateful.html">Stateful Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/loo.html">Cross-Validation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">KAN Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed.html">OptFed mechanistic model</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../troubleshooting/errors.html">Errors</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../troubleshooting/silent_failures.html">Silent failures</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Under the hood</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../under_the_hood/design_rationale.html">Design Rationale</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributors.html">Contributors</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/hybrax/format/index.html">hybrax.format</a><input aria-label="Toggle navigation of hybrax.format" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/dataclasses/index.html">hybrax.format.dataclasses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/index.html">hybrax.format.time_series</a><input aria-label="Toggle navigation of hybrax.format.time_series" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/constants/index.html">hybrax.format.time_series.constants</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/grid_utils/index.html">hybrax.format.time_series.grid_utils</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/io/index.html">hybrax.format.time_series.io</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/ppoly/index.html">hybrax.format.time_series.ppoly</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/spline_ops/index.html">hybrax.format.time_series.spline_ops</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../autoapi/hybrax/format/time_series/timeseries/index.html">hybrax.format.time_series.timeseries</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/format/validate/index.html">hybrax.format.validate</a></li>
+</ul>
+</li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../autoapi/hybrax/train/index.html">hybrax.train</a><input aria-label="Toggle navigation of hybrax.train" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/augmentation/index.html">hybrax.train.augmentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/augmentation_plot/index.html">hybrax.train.augmentation_plot</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/bounds_loss/index.html">hybrax.train.bounds_loss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/checkpointing/index.html">hybrax.train.checkpointing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/cli/index.html">hybrax.train.cli</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/forward_plotting/index.html">hybrax.train.forward_plotting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/harness/index.html">hybrax.train.harness</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/inspect/index.html">hybrax.train.inspect</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/logging/index.html">hybrax.train.logging</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/loo/index.html">hybrax.train.loo</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/loo_metrics/index.html">hybrax.train.loo_metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/preflight/index.html">hybrax.train.preflight</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/runtime_context/index.html">hybrax.train.runtime_context</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/serialization/index.html">hybrax.train.serialization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/trainer/index.html">hybrax.train.trainer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
+</ul>
+</li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for hybrax.format.monotone_spline</h1><div class="highlight"><pre>
+<span></span><span class="sd">"""Adaptive monotone cubic spline fitting under a root-mean-square error budget.</span>
+
+<span class="sd">The fit is a clamped cubic B-spline in normalized coordinates</span>
+<span class="sd">`x = (t - t0) / T` and `z = (y - y0) / D`, where `D` is the signed net change.</span>
+<span class="sd">Coefficients are anchored at 0 and 1 and strictly increasing, which makes the</span>
+<span class="sd">curve monotone in the direction of `D` (a sufficient, not necessary, condition).</span>
+
+<span class="sd">Knots are chosen by refinement: for the current knots, a second-order cone</span>
+<span class="sd">program finds the smallest achievable RMS error, and new knots go where the</span>
+<span class="sd">squared residuals of that fit concentrate. An unconstrained pilot guides each</span>
+<span class="sd">insertion using its curvature variation, with a knot target set by max_knots.</span>
+<span class="sd">Once the budget is met, a QP</span>
+<span class="sd">minimizes the integrated squared second derivative among curves with ordered</span>
+<span class="sd">B-spline coefficients within the budget. This minimization is numerical: with</span>
+<span class="sd">strongly clustered samples the result can be rougher than necessary. All</span>
+<span class="sd">solves use Clarabel</span>
+<span class="sd">in normalized coefficients, with the RMS constraint scaled by the budget so</span>
+<span class="sd">that its tolerance stays relative to it.</span>
+<span class="sd">"""</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">threading</span><span class="w"> </span><span class="kn">import</span> <span class="n">Timer</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">clarabel</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy</span><span class="w"> </span><span class="kn">import</span> <span class="n">sparse</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.interpolate</span><span class="w"> </span><span class="kn">import</span> <span class="n">BSpline</span><span class="p">,</span> <span class="n">generate_knots</span><span class="p">,</span> <span class="n">make_lsq_spline</span><span class="p">,</span> <span class="n">make_splrep</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.interpolate</span><span class="w"> </span><span class="kn">import</span> <span class="n">PPoly</span> <span class="k">as</span> <span class="n">SciPyPPoly</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.optimize</span><span class="w"> </span><span class="kn">import</span> <span class="n">isotonic_regression</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">._logging</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_logger</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.time_series</span><span class="w"> </span><span class="kn">import</span> <span class="n">TimeSeries</span><span class="p">,</span> <span class="n">spline_ops</span>
+
+<span class="n">_logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+<span class="n">_SLOW_FIT_SECONDS</span> <span class="o">=</span> <span class="mf">20.0</span>
+
+<span class="c1"># Refinement stops once the smallest achievable RMS error is below this fraction</span>
+<span class="c1"># of the budget, which leaves the smoothing QP room inside the full budget.</span>
+<span class="n">_ACCEPT_FRACTION</span> <span class="o">=</span> <span class="mf">0.95</span>
+<span class="c1"># The smoothing budget is at most this far inside the full budget (relative).</span>
+<span class="n">_QP_MARGIN</span> <span class="o">=</span> <span class="mf">1e-3</span>
+<span class="c1"># Minimum normalized coefficient increment, applied as a solver constraint and</span>
+<span class="c1"># enforced again by `_project`. It prevents roundoff-level reversed rates on</span>
+<span class="c1"># flat stretches after power-basis conversion.</span>
+<span class="n">_INCREMENT_FLOOR</span> <span class="o">=</span> <span class="mf">1e-9</span>
+<span class="c1"># Knots are inserted in every interval whose residual score is at least this</span>
+<span class="c1"># fraction of the worst interval's score.</span>
+<span class="n">_BATCH_FRACTION</span> <span class="o">=</span> <span class="mf">0.1</span>
+<span class="c1"># Minimum gap between a new knot and its interval ends in normalized time.</span>
+<span class="n">_MIN_KNOT_GAP</span> <span class="o">=</span> <span class="mf">1e-7</span>
+<span class="c1"># Minimum default cap, so short series can resolve sharp features even with</span>
+<span class="c1"># safeguarded splits that need several refinements to reach a narrow event.</span>
+<span class="n">_MIN_DEFAULT_KNOTS</span> <span class="o">=</span> <span class="mi">64</span>
+<span class="c1"># Default cap is the sample count divided by this, with the minimum above.</span>
+<span class="n">_DEFAULT_KNOT_DIVISOR</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="c1"># Use half the remaining RMS slack when it is smaller than the QP margin.</span>
+<span class="n">_QP_SLACK_DIVISOR</span> <span class="o">=</span> <span class="mf">2.0</span>
+<span class="c1"># Roundoff allowance for endpoint and value-continuity polynomial evaluation.</span>
+<span class="n">_ROUNDOFF_FACTOR</span> <span class="o">=</span> <span class="mi">64</span>
+<span class="c1"># Allow endpoint drift from a few ulps in the pinned final time.</span>
+<span class="n">_ENDPOINT_TIME_ULPS</span> <span class="o">=</span> <span class="mi">4</span>
+<span class="c1"># Keep each new knot this fraction of its interval away from either end, so</span>
+<span class="c1"># a split's two child intervals differ in width by at most a factor of three.</span>
+<span class="n">_SPLIT_GUARD</span> <span class="o">=</span> <span class="mf">0.25</span>
+<span class="c1"># Cubic pilots need at least four observations.</span>
+<span class="n">_MIN_PILOT_SAMPLES</span> <span class="o">=</span> <span class="mi">4</span>
+<span class="c1"># Use the midpoint without guide mass when at most two interior samples remain.</span>
+<span class="n">_MEDIAN_SAMPLE_THRESHOLD</span> <span class="o">=</span> <span class="mi">2</span>
+<span class="c1"># Adjacent pieces may disagree by this fraction of the net change. Rounding of the</span>
+<span class="c1"># stored physical breakpoints causes small mismatches when times have an offset;</span>
+<span class="c1"># below this level they are irrelevant.</span>
+<span class="n">_CONTINUITY_RTOL</span> <span class="o">=</span> <span class="mf">1e-9</span>
+<span class="c1"># Times may be at most this many durations away from zero. Larger offsets (e.g.</span>
+<span class="c1"># epoch timestamps) make breakpoint rounding visible; subtract the start time.</span>
+<span class="n">_MAX_TIME_OFFSET_RATIO</span> <span class="o">=</span> <span class="mi">1000</span>
+<span class="n">_RMS_TOL_GUIDANCE</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">"As a rule of thumb, choose rms_tol of at least 1.5 times the "</span>
+    <span class="s2">"expected measurement-noise standard deviation, without exceeding the "</span>
+    <span class="s2">"largest RMS deviation acceptable for your application."</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="fit_monotone_timeseries_spline">
+<a class="viewcode-back" href="../../../autoapi/hybrax/format/monotone_spline/index.html#hybrax.format.monotone_spline.fit_monotone_timeseries_spline">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">fit_monotone_timeseries_spline</span><span class="p">(</span>
+    <span class="n">ts</span><span class="p">:</span> <span class="n">TimeSeries</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">rms_tol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">increasing</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">max_knots</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TimeSeries</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Fit a smooth monotone C2 cubic spline with automatically chosen knots.</span>
+
+<span class="sd">    The root-mean-square error at the samples is at most `rms_tol`:</span>
+<span class="sd">    `sqrt(mean((f(t_i) - y_i) ** 2)) &lt;= rms_tol`, in the units of the values. Both</span>
+<span class="sd">    endpoints are reproduced exactly up to roundoff, so the derivative</span>
+<span class="sd">    integrates to the measured net change. The requested direction must agree</span>
+<span class="sd">    with the endpoints. For unequal endpoints, the derivative is strictly</span>
+<span class="sd">    positive or negative everywhere in `[t[0], t[-1]]`. Consecutive B-spline</span>
+<span class="sd">    coefficients differ by at least 1e-9 of the net change, so flat stretches</span>
+<span class="sd">    get a negligible nonzero rate, about 1e-9 of the net change per knot interval.</span>
+<span class="sd">    Equal endpoints give a constant curve for either direction, accepted only if</span>
+<span class="sd">    it meets the budget.</span>
+
+<span class="sd">    Knots are added where the residuals concentrate until the budget can be met.</span>
+<span class="sd">    An unconstrained pilot guides their locations throughout refinement. It uses</span>
+<span class="sd">    the same RMS target and max_knots as its interior-knot target, but can miss</span>
+<span class="sd">    that RMS target when its layout is too small. It only proposes locations;</span>
+<span class="sd">    the returned monotone curve must meet the requested budget.</span>
+<span class="sd">    For the chosen knots, the smoothing step numerically minimizes the integrated</span>
+<span class="sd">    squared second derivative among curves with ordered B-spline coefficients</span>
+<span class="sd">    within the budget, so the fit generally uses most of the budget and smooths</span>
+<span class="sd">    noise and short reversals of direction. The error at individual samples can</span>
+<span class="sd">    exceed `rms_tol`. Raw samples are kept unchanged.</span>
+
+<span class="sd">    The budget, monotonicity, continuity and endpoints are checked on the stored</span>
+<span class="sd">    curve: the function either returns a curve that meets them or raises.</span>
+<span class="sd">    Smoothness is not checked: with strongly clustered samples, such as bursts of</span>
+<span class="sd">    fast logging, the smoothing can fail or return a curve rougher than</span>
+<span class="sd">    necessary. Thinning redundant burst readings helps, but keep enough readings</span>
+<span class="sd">    to resolve short additions; the budget then covers the remaining samples.</span>
+
+<span class="sd">    Larger `rms_tol` gives a smoother curve and rate; it is the smoothing knob.</span>
+<span class="sd">    Choose it at least about 1.5 times the measurement noise standard deviation.</span>
+<span class="sd">    At about the noise standard deviation, the fit is unstable: it can switch</span>
+<span class="sd">    between few knots, the cap and an error. Every sample counts equally, so</span>
+<span class="sd">    densely logged stretches weigh more towards `rms_tol`.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        ts: Scalar series with at least two samples and no jumps. Any existing</span>
+<span class="sd">            spline state is ignored and replaced. Times must lie within 1000</span>
+<span class="sd">            durations of zero, so pass time since start rather than absolute</span>
+<span class="sd">            timestamps.</span>
+<span class="sd">        rms_tol: RMS error budget, `&gt; 0`.</span>
+<span class="sd">        increasing: Whether the curve must increase or decrease.</span>
+<span class="sd">        max_knots: Maximum number of interior knots. Defaults to a tenth of the</span>
+<span class="sd">            number of samples, but at least 64. Also sets the pilot knot target.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        A new TimeSeries with the same samples and continuity side, holding the</span>
+<span class="sd">        fitted spline. Input metadata is discarded. Fit details are stored under</span>
+<span class="sd">        the `"monotone_fit"` metadata key.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        TypeError: If `increasing` is not a bool.</span>
+<span class="sd">        ValueError: For invalid input, or if the endpoints are equal and the</span>
+<span class="sd">            constant curve misses the budget, or the endpoints contradict</span>
+<span class="sd">            `increasing`.</span>
+<span class="sd">        RuntimeError: If the closest monotone sequence exceeds the RMS budget,</span>
+<span class="sd">            if refinement reaches `max_knots` or cannot place further</span>
+<span class="sd">            knots before the budget can be met, or if a solve or</span>
+<span class="sd">            final check fails.</span>
+<span class="sd">    """</span>
+    <span class="n">times</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="n">values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+    <span class="n">_validate_input</span><span class="p">(</span><span class="n">ts</span><span class="p">,</span> <span class="n">times</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">rms_tol</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">max_knots</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">max_knots</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">_MIN_DEFAULT_KNOTS</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">times</span><span class="p">)</span> <span class="o">//</span> <span class="n">_DEFAULT_KNOT_DIVISOR</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">(</span>
+        <span class="nb">isinstance</span><span class="p">(</span><span class="n">max_knots</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span>
+        <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">max_knots</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">integer</span><span class="p">))</span>
+        <span class="ow">or</span> <span class="n">max_knots</span> <span class="o">&lt;</span> <span class="mi">0</span>
+    <span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"max_knots must be a nonnegative integer."</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">increasing</span><span class="p">,</span> <span class="p">(</span><span class="nb">bool</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">bool_</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">"increasing must be a bool."</span><span class="p">)</span>
+
+    <span class="n">y0</span><span class="p">,</span> <span class="n">net</span> <span class="o">=</span> <span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">values</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">increasing</span> <span class="ow">and</span> <span class="n">net</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="ow">not</span> <span class="n">increasing</span> <span class="ow">and</span> <span class="n">net</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"Endpoint values </span><span class="si">{</span><span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2"> and </span><span class="si">{</span><span class="n">values</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2"> contradict "</span>
+            <span class="sa">f</span><span class="s2">"increasing=</span><span class="si">{</span><span class="n">increasing</span><span class="si">}</span><span class="s2">."</span>
+        <span class="p">)</span>
+    <span class="n">info</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">"rms_tol"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">rms_tol</span><span class="p">),</span>
+        <span class="s2">"direction"</span><span class="p">:</span> <span class="s2">"increasing"</span> <span class="k">if</span> <span class="n">increasing</span> <span class="k">else</span> <span class="s2">"decreasing"</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="n">net</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">:</span>
+        <span class="n">rms</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(((</span><span class="n">values</span> <span class="o">-</span> <span class="n">y0</span><span class="p">)</span> <span class="o">/</span> <span class="n">rms_tol</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)))</span>
+        <span class="k">if</span> <span class="n">rms</span> <span class="o">&gt;</span> <span class="mf">1.0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">"Endpoints are equal, so the fit is constant, but its RMS error "</span>
+                <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">rms</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">rms_tol</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2"> exceeds rms_tol=</span><span class="si">{</span><span class="n">rms_tol</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2">."</span>
+            <span class="p">)</span>
+        <span class="n">breaks</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">times</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">times</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]])</span>
+        <span class="n">coeffs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="n">y0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">]])</span>
+        <span class="n">info</span> <span class="o">|=</span> <span class="p">{</span><span class="s2">"interior_knots"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">"refinements"</span><span class="p">:</span> <span class="mi">0</span><span class="p">}</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">timer</span> <span class="o">=</span> <span class="n">Timer</span><span class="p">(</span>
+            <span class="n">_SLOW_FIT_SECONDS</span><span class="p">,</span> <span class="n">_log_slow_fit</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">times</span><span class="p">),</span> <span class="n">rms_tol</span><span class="p">,</span> <span class="n">max_knots</span><span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">timer</span><span class="o">.</span><span class="n">daemon</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">timer</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">breaks</span><span class="p">,</span> <span class="n">coeffs</span><span class="p">,</span> <span class="n">fit_info</span> <span class="o">=</span> <span class="n">_fit_nonconstant</span><span class="p">(</span>
+                <span class="n">times</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">rms_tol</span><span class="p">,</span> <span class="n">max_knots</span><span class="p">,</span> <span class="n">ts</span><span class="o">.</span><span class="n">continuity_side</span>
+            <span class="p">)</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">timer</span><span class="o">.</span><span class="n">cancel</span><span class="p">()</span>
+        <span class="n">info</span> <span class="o">|=</span> <span class="n">fit_info</span>
+
+    <span class="n">residuals</span> <span class="o">=</span> <span class="n">_evaluate</span><span class="p">(</span><span class="n">breaks</span><span class="p">,</span> <span class="n">coeffs</span><span class="p">,</span> <span class="n">times</span><span class="p">,</span> <span class="n">ts</span><span class="o">.</span><span class="n">continuity_side</span><span class="p">)</span> <span class="o">-</span> <span class="n">values</span>
+    <span class="n">info</span><span class="p">[</span><span class="s2">"rms_error"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">((</span><span class="n">residuals</span> <span class="o">/</span> <span class="n">rms_tol</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">))</span> <span class="o">*</span> <span class="n">rms_tol</span><span class="p">)</span>
+    <span class="n">info</span><span class="p">[</span><span class="s2">"max_error"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">residuals</span><span class="p">)))</span>
+    <span class="k">return</span> <span class="n">TimeSeries</span><span class="p">(</span>
+        <span class="n">times</span><span class="o">=</span><span class="n">ts</span><span class="o">.</span><span class="n">times</span><span class="p">,</span>
+        <span class="n">values</span><span class="o">=</span><span class="n">ts</span><span class="o">.</span><span class="n">values</span><span class="p">,</span>
+        <span class="n">derived</span><span class="o">=</span><span class="n">ts</span><span class="o">.</span><span class="n">derived</span><span class="p">,</span>
+        <span class="n">continuity_side</span><span class="o">=</span><span class="n">ts</span><span class="o">.</span><span class="n">continuity_side</span><span class="p">,</span>
+        <span class="n">breaks</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">breaks</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+        <span class="n">coeffs</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">coeffs</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+        <span class="n">segment_start_piece_idx</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span>
+        <span class="n">metadata</span><span class="o">=</span><span class="p">{</span><span class="s2">"monotone_fit"</span><span class="p">:</span> <span class="n">info</span><span class="p">},</span>
+    <span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_log_slow_fit</span><span class="p">(</span><span class="n">samples</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">rms_tol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">max_knots</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Emit one progress notice; elapsed time alone does not diagnose conditioning."""</span>
+    <span class="n">_logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+        <span class="s2">"Monotone spline fit for </span><span class="si">%d</span><span class="s2"> samples is still running after </span><span class="si">%.0f</span><span class="s2"> seconds "</span>
+        <span class="s2">"(rms_tol=</span><span class="si">%g</span><span class="s2">, max_knots=</span><span class="si">%d</span><span class="s2">). Tight tolerances, many samples, or clustered "</span>
+        <span class="s2">"sampling can make fitting slow. To reduce work, increase rms_tol to allow "</span>
+        <span class="s2">"a larger RMS error if physically acceptable, or reduce max_knots to limit "</span>
+        <span class="s2">"refinement (the fit may then fail to meet rms_tol). For clustered data, "</span>
+        <span class="s2">"consider removing redundant samples while preserving short events; the "</span>
+        <span class="s2">"RMS budget then applies to the retained samples. Tightening rms_tol "</span>
+        <span class="s2">"usually increases fitting time. The current fit continues."</span><span class="p">,</span>
+        <span class="n">samples</span><span class="p">,</span>
+        <span class="n">_SLOW_FIT_SECONDS</span><span class="p">,</span>
+        <span class="n">rms_tol</span><span class="p">,</span>
+        <span class="n">max_knots</span><span class="p">,</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_input</span><span class="p">(</span>
+    <span class="n">ts</span><span class="p">:</span> <span class="n">TimeSeries</span><span class="p">,</span> <span class="n">times</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">rms_tol</span><span class="p">:</span> <span class="nb">float</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">rms_tol</span><span class="p">)</span> <span class="ow">and</span> <span class="n">rms_tol</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"rms_tol must be finite and positive."</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">times</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">values</span><span class="o">.</span><span class="n">shape</span> <span class="o">!=</span> <span class="n">times</span><span class="o">.</span><span class="n">shape</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Only scalar-valued series are supported."</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">times</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"At least two samples are required."</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">times</span><span class="p">))</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">values</span><span class="p">))):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Times and values must be finite."</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">times</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Times must be strictly increasing."</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">times</span><span class="p">))</span> <span class="o">&gt;</span> <span class="n">_MAX_TIME_OFFSET_RATIO</span> <span class="o">*</span> <span class="p">(</span><span class="n">times</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">times</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"Times are too far from zero relative to the duration; subtract the "</span>
+            <span class="s2">"start time before fitting."</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">ts</span><span class="o">.</span><span class="n">jump_times</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ts</span><span class="o">.</span><span class="n">jump_times</span><span class="p">)</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"Series with jumps are not supported."</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_fit_nonconstant</span><span class="p">(</span>
+    <span class="n">times</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">values</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">rms_tol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">max_knots</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">side</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+    <span class="n">t0</span><span class="p">,</span> <span class="n">span</span> <span class="o">=</span> <span class="n">times</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">times</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">times</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">y0</span><span class="p">,</span> <span class="n">net</span> <span class="o">=</span> <span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">values</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="p">(</span><span class="n">times</span> <span class="o">-</span> <span class="n">t0</span><span class="p">)</span> <span class="o">/</span> <span class="n">span</span>
+    <span class="n">z</span> <span class="o">=</span> <span class="p">(</span><span class="n">values</span> <span class="o">-</span> <span class="n">y0</span><span class="p">)</span> <span class="o">/</span> <span class="n">net</span>
+    <span class="n">budget</span> <span class="o">=</span> <span class="n">rms_tol</span> <span class="o">/</span> <span class="nb">abs</span><span class="p">(</span><span class="n">net</span><span class="p">)</span>  <span class="c1"># Normalized RMS budget.</span>
+
+    <span class="c1"># A lower bound for any monotone curve, without spline or endpoint</span>
+    <span class="c1"># constraints. Reject impossible budgets before any spline solve or pilot.</span>
+    <span class="n">monotone_rms</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">((</span><span class="n">isotonic_regression</span><span class="p">(</span><span class="n">z</span><span class="p">)</span><span class="o">.</span><span class="n">x</span> <span class="o">-</span> <span class="n">z</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)))</span>
+    <span class="k">if</span> <span class="n">monotone_rms</span> <span class="o">&gt;</span> <span class="n">budget</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"Monotone fit cannot meet rms_tol=</span><span class="si">{</span><span class="n">rms_tol</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2">. "</span>
+            <span class="s2">"Even without spline constraints, the closest monotone sequence "</span>
+            <span class="sa">f</span><span class="s2">"has RMS error </span><span class="si">{</span><span class="n">monotone_rms</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="nb">abs</span><span class="p">(</span><span class="n">net</span><span class="p">)</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2">, above rms_tol. "</span>
+            <span class="s2">"Increasing max_knots cannot resolve this; check the data and "</span>
+            <span class="s2">"requested direction, or increase rms_tol if a larger RMS "</span>
+            <span class="s2">"deviation is physically acceptable. "</span> <span class="o">+</span> <span class="n">_RMS_TOL_GUIDANCE</span>
+        <span class="p">)</span>
+
+    <span class="n">guide</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">interior</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">refinements</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">knots</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[[</span><span class="mf">0.0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">4</span><span class="p">,</span> <span class="n">interior</span><span class="p">,</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">4</span><span class="p">]</span>
+        <span class="n">design</span> <span class="o">=</span> <span class="n">BSpline</span><span class="o">.</span><span class="n">design_matrix</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">knots</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">tocsc</span><span class="p">()</span>
+        <span class="n">c_best</span> <span class="o">=</span> <span class="n">_solve_conic</span><span class="p">(</span><span class="n">design</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">budget</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">c_best</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"Monotone fit: the solver did not converge with rms_tol=</span><span class="si">{</span><span class="n">rms_tol</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2"> "</span>
+                <span class="sa">f</span><span class="s2">"for a total change of </span><span class="si">{</span><span class="nb">abs</span><span class="p">(</span><span class="n">net</span><span class="p">)</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2">. This usually means rms_tol is "</span>
+                <span class="s2">"far below the measurement noise; use at least about 1.5 times the "</span>
+                <span class="s2">"noise standard deviation."</span>
+            <span class="p">)</span>
+        <span class="c1"># Measure an exactly feasible curve, whatever the solver accuracy.</span>
+        <span class="n">c_best</span> <span class="o">=</span> <span class="n">_project</span><span class="p">(</span><span class="n">c_best</span><span class="p">)</span>
+        <span class="n">refinements</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">residual</span> <span class="o">=</span> <span class="n">design</span> <span class="o">@</span> <span class="n">c_best</span> <span class="o">-</span> <span class="n">z</span>
+        <span class="n">rms</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">residual</span><span class="o">**</span><span class="mi">2</span><span class="p">)))</span> <span class="o">/</span> <span class="n">budget</span>
+        <span class="k">if</span> <span class="n">rms</span> <span class="o">&lt;=</span> <span class="n">_ACCEPT_FRACTION</span><span class="p">:</span>
+            <span class="k">break</span>
+        <span class="n">limit</span> <span class="o">=</span> <span class="n">max_knots</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">interior</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">limit</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">guide</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">guide</span> <span class="o">=</span> <span class="n">_pilot_guide</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">budget</span><span class="p">,</span> <span class="n">max_knots</span><span class="p">)</span>
+            <span class="n">new</span> <span class="o">=</span> <span class="n">_choose_knots</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">residual</span><span class="p">,</span> <span class="n">interior</span><span class="p">,</span> <span class="n">limit</span><span class="p">,</span> <span class="n">guide</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">new</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">new</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">rms</span> <span class="o">&lt;=</span> <span class="mf">1.0</span><span class="p">:</span>
+                <span class="k">break</span>  <span class="c1"># The margin is out of reach but the budget is met.</span>
+            <span class="n">reason</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"reached max_knots=</span><span class="si">{</span><span class="n">max_knots</span><span class="si">}</span><span class="s2">"</span>
+                <span class="k">if</span> <span class="n">limit</span> <span class="o">&lt;=</span> <span class="mi">0</span>
+                <span class="k">else</span> <span class="sa">f</span><span class="s2">"cannot place further knots with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">interior</span><span class="p">)</span><span class="si">}</span><span class="s2"> interior knots"</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">limit</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">guidance</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="s2">"Increase max_knots to allow more refinement, or increase "</span>
+                    <span class="s2">"rms_tol if a larger RMS deviation is physically acceptable. "</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">guidance</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="s2">"Refinement cannot resolve finer features at the minimum knot "</span>
+                    <span class="s2">"spacing. Increase rms_tol if a larger RMS deviation is "</span>
+                    <span class="s2">"physically acceptable. "</span>
+                <span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">"Monotone fit </span><span class="si">{</span><span class="n">reason</span><span class="si">}</span><span class="s2">; its RMS "</span>
+                <span class="sa">f</span><span class="s2">"error </span><span class="si">{</span><span class="n">rms</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">rms_tol</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2"> still exceeds rms_tol=</span><span class="si">{</span><span class="n">rms_tol</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2">. "</span>
+                <span class="o">+</span> <span class="n">guidance</span>
+                <span class="o">+</span> <span class="n">_RMS_TOL_GUIDANCE</span>
+            <span class="p">)</span>
+        <span class="n">interior</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">interior</span><span class="p">,</span> <span class="n">new</span><span class="p">])</span>
+
+    <span class="n">smoothing_budget</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="nb">min</span><span class="p">(</span><span class="n">_QP_MARGIN</span><span class="p">,</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">rms</span><span class="p">)</span> <span class="o">/</span> <span class="n">_QP_SLACK_DIVISOR</span><span class="p">)</span>
+    <span class="n">c</span> <span class="o">=</span> <span class="n">_smoothest</span><span class="p">(</span><span class="n">design</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">budget</span><span class="p">,</span> <span class="n">smoothing_budget</span><span class="p">,</span> <span class="n">knots</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">c</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+            <span class="s2">"Monotone fit: smoothing problem did not solve. This can happen with "</span>
+            <span class="s2">"strongly clustered samples; thinning redundant burst readings helps."</span>
+        <span class="p">)</span>
+    <span class="n">breaks</span><span class="p">,</span> <span class="n">coeffs</span> <span class="o">=</span> <span class="n">_to_power_basis</span><span class="p">(</span><span class="n">knots</span><span class="p">,</span> <span class="n">_project</span><span class="p">(</span><span class="n">c</span><span class="p">),</span> <span class="n">t0</span><span class="p">,</span> <span class="n">span</span><span class="p">,</span> <span class="n">y0</span><span class="p">,</span> <span class="n">net</span><span class="p">)</span>
+    <span class="n">breaks</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">times</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">problem</span> <span class="o">=</span> <span class="n">_check_stored</span><span class="p">(</span><span class="n">breaks</span><span class="p">,</span> <span class="n">coeffs</span><span class="p">,</span> <span class="n">times</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">rms_tol</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">sign</span><span class="p">(</span><span class="n">net</span><span class="p">),</span> <span class="n">side</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">problem</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">"Monotone fit failed final checks: "</span> <span class="o">+</span> <span class="n">problem</span><span class="p">)</span>
+    <span class="k">return</span> <span class="p">(</span>
+        <span class="n">breaks</span><span class="p">,</span>
+        <span class="n">coeffs</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="s2">"interior_knots"</span><span class="p">:</span> <span class="nb">len</span><span class="p">(</span><span class="n">interior</span><span class="p">),</span>
+            <span class="s2">"refinements"</span><span class="p">:</span> <span class="n">refinements</span><span class="p">,</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_solve_conic</span><span class="p">(</span>
+    <span class="n">design</span><span class="p">:</span> <span class="n">sparse</span><span class="o">.</span><span class="n">csc_matrix</span><span class="p">,</span>
+    <span class="n">z</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">budget</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">P</span><span class="p">:</span> <span class="n">sparse</span><span class="o">.</span><span class="n">csc_matrix</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">rms_bound</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Solve a monotone fitting problem in normalized coefficients `c` with Clarabel.</span>
+
+<span class="sd">    With `rms_bound=None`, minimize the RMS error (an auxiliary variable `r`</span>
+<span class="sd">    bounds the residual norm). Otherwise minimize `c'Pc/2` subject to an RMS</span>
+<span class="sd">    error of at most `rms_bound` budgets. Returns `c` or `None` on failure.</span>
+<span class="sd">    """</span>
+    <span class="n">m</span><span class="p">,</span> <span class="n">n</span> <span class="o">=</span> <span class="n">design</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">extra</span> <span class="o">=</span> <span class="mi">1</span> <span class="k">if</span> <span class="n">rms_bound</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">0</span>
+    <span class="n">zs</span> <span class="o">=</span> <span class="n">z</span> <span class="o">/</span> <span class="n">budget</span>
+    <span class="n">anchors</span> <span class="o">=</span> <span class="n">sparse</span><span class="o">.</span><span class="n">csc_matrix</span><span class="p">(</span>
+        <span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">],</span> <span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">])),</span> <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">n</span> <span class="o">+</span> <span class="n">extra</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">increments</span> <span class="o">=</span> <span class="n">sparse</span><span class="o">.</span><span class="n">diags</span><span class="p">(</span>
+        <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">),</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">n</span> <span class="o">+</span> <span class="n">extra</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="c1"># Second-order cone: (norm bound, (z - design @ c) / budget).</span>
+    <span class="n">norm_row</span> <span class="o">=</span> <span class="n">sparse</span><span class="o">.</span><span class="n">csc_matrix</span><span class="p">(</span>
+        <span class="p">([</span><span class="o">-</span><span class="mf">1.0</span><span class="p">],</span> <span class="p">([</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="n">n</span><span class="p">]))</span> <span class="k">if</span> <span class="n">extra</span> <span class="k">else</span> <span class="p">([],</span> <span class="p">([],</span> <span class="p">[])),</span> <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n</span> <span class="o">+</span> <span class="n">extra</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">residual_rows</span> <span class="o">=</span> <span class="n">sparse</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">design</span> <span class="o">/</span> <span class="n">budget</span><span class="p">,</span> <span class="n">sparse</span><span class="o">.</span><span class="n">csc_matrix</span><span class="p">((</span><span class="n">m</span><span class="p">,</span> <span class="n">extra</span><span class="p">))])</span>
+    <span class="n">A</span> <span class="o">=</span> <span class="n">sparse</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">anchors</span><span class="p">,</span> <span class="n">increments</span><span class="p">,</span> <span class="n">norm_row</span><span class="p">,</span> <span class="n">residual_rows</span><span class="p">],</span> <span class="nb">format</span><span class="o">=</span><span class="s2">"csc"</span><span class="p">)</span>
+    <span class="n">norm_bound</span> <span class="o">=</span> <span class="mf">0.0</span> <span class="k">if</span> <span class="n">rms_bound</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">rms_bound</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+    <span class="n">floor</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="n">_INCREMENT_FLOOR</span><span class="p">)</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">floor</span><span class="p">,</span> <span class="n">norm_bound</span><span class="p">,</span> <span class="n">zs</span><span class="p">]</span>
+    <span class="n">cones</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">clarabel</span><span class="o">.</span><span class="n">ZeroConeT</span><span class="p">(</span><span class="mi">2</span><span class="p">),</span>
+        <span class="n">clarabel</span><span class="o">.</span><span class="n">NonnegativeConeT</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="n">clarabel</span><span class="o">.</span><span class="n">SecondOrderConeT</span><span class="p">(</span><span class="n">m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span>
+    <span class="p">]</span>
+    <span class="n">q</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span> <span class="o">+</span> <span class="n">extra</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">rms_bound</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">q</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="n">P</span> <span class="o">=</span> <span class="n">sparse</span><span class="o">.</span><span class="n">csc_matrix</span><span class="p">((</span><span class="n">n</span> <span class="o">+</span> <span class="n">extra</span><span class="p">,</span> <span class="n">n</span> <span class="o">+</span> <span class="n">extra</span><span class="p">))</span>
+    <span class="n">settings</span> <span class="o">=</span> <span class="n">clarabel</span><span class="o">.</span><span class="n">DefaultSettings</span><span class="p">()</span>
+    <span class="n">settings</span><span class="o">.</span><span class="n">verbose</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">solution</span> <span class="o">=</span> <span class="n">clarabel</span><span class="o">.</span><span class="n">DefaultSolver</span><span class="p">(</span><span class="n">P</span><span class="p">,</span> <span class="n">q</span><span class="p">,</span> <span class="n">A</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">cones</span><span class="p">,</span> <span class="n">settings</span><span class="p">)</span><span class="o">.</span><span class="n">solve</span><span class="p">()</span>
+    <span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">solution</span><span class="o">.</span><span class="n">x</span><span class="p">)[:</span><span class="n">n</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">rms_bound</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Noise-free data put the least-RMS optimum at or next to the tip of the</span>
+        <span class="c1"># cone, where Clarabel may stop short of full convergence. Any finite</span>
+        <span class="c1"># iterate is usable: refinement projects it to an exactly feasible curve</span>
+        <span class="c1"># before measuring it, and smoothing must fully solve.</span>
+        <span class="k">return</span> <span class="n">c</span> <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="n">n</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">c</span><span class="p">))</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">solution</span><span class="o">.</span><span class="n">status</span> <span class="o">!=</span> <span class="n">clarabel</span><span class="o">.</span><span class="n">SolverStatus</span><span class="o">.</span><span class="n">Solved</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">c</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_curvature_gram</span><span class="p">(</span><span class="n">knots</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Return the matrix of integrals of products of basis second derivatives.</span>
+
+<span class="sd">    Second derivatives are linear on each knot interval, so two-point Gauss</span>
+<span class="sd">    quadrature per interval is exact.</span>
+<span class="sd">    """</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">knots</span><span class="p">)</span> <span class="o">-</span> <span class="mi">4</span>
+    <span class="n">lo</span><span class="p">,</span> <span class="n">hi</span> <span class="o">=</span> <span class="n">knots</span><span class="p">[</span><span class="mi">3</span><span class="p">:</span><span class="o">-</span><span class="mi">4</span><span class="p">],</span> <span class="n">knots</span><span class="p">[</span><span class="mi">4</span><span class="p">:</span><span class="o">-</span><span class="mi">3</span><span class="p">]</span>
+    <span class="n">keep</span> <span class="o">=</span> <span class="n">hi</span> <span class="o">&gt;</span> <span class="n">lo</span>
+    <span class="n">mid</span><span class="p">,</span> <span class="n">half</span> <span class="o">=</span> <span class="p">(</span><span class="n">lo</span><span class="p">[</span><span class="n">keep</span><span class="p">]</span> <span class="o">+</span> <span class="n">hi</span><span class="p">[</span><span class="n">keep</span><span class="p">])</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span> <span class="p">(</span><span class="n">hi</span><span class="p">[</span><span class="n">keep</span><span class="p">]</span> <span class="o">-</span> <span class="n">lo</span><span class="p">[</span><span class="n">keep</span><span class="p">])</span> <span class="o">/</span> <span class="mi">2</span>
+    <span class="n">offset</span> <span class="o">=</span> <span class="n">half</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mf">3.0</span><span class="p">)</span>
+    <span class="n">nodes</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">mid</span> <span class="o">-</span> <span class="n">offset</span><span class="p">,</span> <span class="n">mid</span> <span class="o">+</span> <span class="n">offset</span><span class="p">]</span>
+    <span class="n">weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">half</span><span class="p">,</span> <span class="n">half</span><span class="p">]</span>
+    <span class="n">second</span> <span class="o">=</span> <span class="n">BSpline</span><span class="p">(</span><span class="n">knots</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">n</span><span class="p">),</span> <span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">derivative</span><span class="p">(</span><span class="mi">2</span><span class="p">)(</span><span class="n">nodes</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">second</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="p">(</span><span class="n">weights</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">second</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_smoothest</span><span class="p">(</span>
+    <span class="n">design</span><span class="p">:</span> <span class="n">sparse</span><span class="o">.</span><span class="n">csc_matrix</span><span class="p">,</span>
+    <span class="n">z</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">budget</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">rms_bound</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">knots</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Minimize curvature subject to the RMS bound and the monotone constraints."""</span>
+    <span class="n">gram</span> <span class="o">=</span> <span class="n">_curvature_gram</span><span class="p">(</span><span class="n">knots</span><span class="p">)</span>
+    <span class="c1"># Rescaling leaves the minimizer unchanged. Clustered knots make the diagonal</span>
+    <span class="c1"># span many orders of magnitude; dividing by its largest entry makes the</span>
+    <span class="c1"># objective so small that Clarabel stops before it has minimized curvature.</span>
+    <span class="c1"># The geometric mean keeps the objective at a middle scale.</span>
+    <span class="n">diagonal</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">gram</span><span class="p">)</span>
+    <span class="n">gram</span> <span class="o">/=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">diagonal</span><span class="p">[</span><span class="n">diagonal</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">])))</span>
+    <span class="n">P</span> <span class="o">=</span> <span class="n">sparse</span><span class="o">.</span><span class="n">triu</span><span class="p">(</span><span class="n">sparse</span><span class="o">.</span><span class="n">csc_matrix</span><span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">gram</span><span class="p">),</span> <span class="nb">format</span><span class="o">=</span><span class="s2">"csc"</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_solve_conic</span><span class="p">(</span><span class="n">design</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">budget</span><span class="p">,</span> <span class="n">P</span><span class="p">,</span> <span class="n">rms_bound</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_project</span><span class="p">(</span><span class="n">c</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Enforce `c[0] = 0`, `c[-1] = 1` and increments `&gt;= floor` exactly."""</span>
+    <span class="n">floor</span> <span class="o">=</span> <span class="n">_INCREMENT_FLOOR</span>
+    <span class="n">increments</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">c</span><span class="p">),</span> <span class="n">floor</span><span class="p">)</span>
+    <span class="n">excess</span> <span class="o">=</span> <span class="n">increments</span> <span class="o">-</span> <span class="n">floor</span>
+    <span class="n">increments</span> <span class="o">=</span> <span class="n">floor</span> <span class="o">+</span> <span class="n">excess</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">floor</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">increments</span><span class="p">))</span> <span class="o">/</span> <span class="n">excess</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+    <span class="n">projected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">increments</span><span class="p">)]</span>
+    <span class="n">projected</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="k">return</span> <span class="n">projected</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_fit_pilot</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">z</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">budget</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">max_knots</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BSpline</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Fit a smoothing guide, or its best LSQ approximation at the knot target.</span>
+
+<span class="sd">    A bounded layout may not meet the requested pilot RMS. In that case use</span>
+<span class="sd">    its least-RMS curve rather than asking the smoothing solver to satisfy an</span>
+<span class="sd">    infeasible constraint. The final monotone fit retains its separate budget.</span>
+<span class="sd">    SciPy's nest targets the full knot vector, including eight endpoint repeats.</span>
+<span class="sd">    """</span>
+    <span class="n">weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full_like</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">budget</span><span class="p">)</span>
+    <span class="n">nest</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">max_knots</span> <span class="o">+</span> <span class="mi">8</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">+</span> <span class="mi">4</span><span class="p">)</span>
+    <span class="n">knots</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">generate_knots</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">w</span><span class="o">=</span><span class="n">weights</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)),</span> <span class="n">nest</span><span class="o">=</span><span class="n">nest</span><span class="p">))[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">pilot</span> <span class="o">=</span> <span class="n">make_lsq_spline</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">knots</span><span class="p">,</span> <span class="n">w</span><span class="o">=</span><span class="n">weights</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">((</span><span class="n">pilot</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">-</span> <span class="n">z</span><span class="p">)</span> <span class="o">/</span> <span class="n">budget</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="n">pilot</span>
+    <span class="c1"># The pilot may be approximate; its smoothing iteration limit must not</span>
+    <span class="c1"># reject an otherwise valid final fit, including under warnings-as-errors.</span>
+    <span class="k">with</span> <span class="n">warnings</span><span class="o">.</span><span class="n">catch_warnings</span><span class="p">():</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span>
+            <span class="s2">"ignore"</span><span class="p">,</span>
+            <span class="n">message</span><span class="o">=</span><span class="sa">r</span><span class="s2">"error\. the maximal number of iterations maxit"</span><span class="p">,</span>
+            <span class="n">category</span><span class="o">=</span><span class="ne">RuntimeWarning</span><span class="p">,</span>
+            <span class="n">module</span><span class="o">=</span><span class="sa">r</span><span class="s2">"scipy\.interpolate\._fitpack_repro"</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">make_splrep</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">w</span><span class="o">=</span><span class="n">weights</span><span class="p">,</span> <span class="n">s</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)),</span> <span class="n">t</span><span class="o">=</span><span class="n">knots</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_pilot_guide</span><span class="p">(</span>
+    <span class="n">x</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">z</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">budget</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">max_knots</span><span class="p">:</span> <span class="nb">int</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Return pilot breakpoints and curvature-variation density per interval.</span>
+
+<span class="sd">    The second derivative of a cubic is piecewise linear. Its total variation</span>
+<span class="sd">    on an interval is exactly the integral of the absolute third derivative.</span>
+<span class="sd">    Thus each pilot interval has constant density abs(pilot'''). The smoothing</span>
+<span class="sd">    condition sum((residual / budget)**2) &lt;= n expresses the sample RMS budget.</span>
+<span class="sd">    """</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">_MIN_PILOT_SAMPLES</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]),</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">pilot</span> <span class="o">=</span> <span class="n">_fit_pilot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">budget</span><span class="p">,</span> <span class="n">max_knots</span><span class="p">)</span>
+    <span class="n">edges</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">pilot</span><span class="o">.</span><span class="n">t</span><span class="p">)</span>
+    <span class="n">midpoints</span> <span class="o">=</span> <span class="p">(</span><span class="n">edges</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">edges</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span> <span class="o">/</span> <span class="mf">2.0</span>
+    <span class="n">density</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">pilot</span><span class="o">.</span><span class="n">derivative</span><span class="p">(</span><span class="mi">3</span><span class="p">)(</span><span class="n">midpoints</span><span class="p">))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">density</span><span class="p">)):</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">"Unconstrained pilot has nonfinite curvature variation."</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">edges</span><span class="p">,</span> <span class="n">density</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_guide_location</span><span class="p">(</span>
+    <span class="n">a</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">guide</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Bisect the integral of curvature variation within the chosen interval.</span>
+
+<span class="sd">    Intersect the pilot cells with [a, b] before accumulating their masses, so</span>
+<span class="sd">    features outside this interval cannot attract its knot. Return None when</span>
+<span class="sd">    the pilot's curvature is constant throughout the interval.</span>
+<span class="sd">    """</span>
+    <span class="n">edges</span><span class="p">,</span> <span class="n">density</span> <span class="o">=</span> <span class="n">guide</span>
+    <span class="n">lo</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">edges</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">a</span><span class="p">)</span>
+    <span class="n">hi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">edges</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">b</span><span class="p">)</span>
+    <span class="n">mass</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">hi</span> <span class="o">-</span> <span class="n">lo</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">*</span> <span class="n">density</span>
+    <span class="n">cumulative</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">mass</span><span class="p">)</span>
+    <span class="n">total</span> <span class="o">=</span> <span class="n">cumulative</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">total</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">half</span> <span class="o">=</span> <span class="n">total</span> <span class="o">/</span> <span class="mf">2.0</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">cumulative</span><span class="p">,</span> <span class="n">half</span><span class="p">))</span>
+    <span class="n">before</span> <span class="o">=</span> <span class="n">cumulative</span><span class="p">[</span><span class="n">index</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">index</span> <span class="k">else</span> <span class="mf">0.0</span>
+    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">lo</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="n">half</span> <span class="o">-</span> <span class="n">before</span><span class="p">)</span> <span class="o">/</span> <span class="n">density</span><span class="p">[</span><span class="n">index</span><span class="p">])</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_choose_knots</span><span class="p">(</span>
+    <span class="n">x</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">residual</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">interior</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">limit</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">guide</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Score intervals by sample RMS error, then use the pilot for locations."""</span>
+    <span class="n">edges</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">interior</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]</span>
+    <span class="n">n_intervals</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">edges</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">edges</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">side</span><span class="o">=</span><span class="s2">"right"</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">n_intervals</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">score</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">bincount</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">residual</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">minlength</span><span class="o">=</span><span class="n">n_intervals</span><span class="p">)</span>
+    <span class="n">new</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">index</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="o">-</span><span class="n">score</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">new</span><span class="p">)</span> <span class="o">==</span> <span class="n">limit</span> <span class="ow">or</span> <span class="n">score</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">_BATCH_FRACTION</span> <span class="o">*</span> <span class="n">score</span><span class="o">.</span><span class="n">max</span><span class="p">():</span>
+            <span class="k">break</span>
+        <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="n">edges</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="n">edges</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="n">knot</span> <span class="o">=</span> <span class="n">_guide_location</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">guide</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">knot</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">inside</span> <span class="o">=</span> <span class="n">x</span><span class="p">[(</span><span class="n">x</span> <span class="o">&gt;</span> <span class="n">a</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">x</span> <span class="o">&lt;</span> <span class="n">b</span><span class="p">)]</span>
+            <span class="n">knot</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">inside</span><span class="p">))</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">inside</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">_MEDIAN_SAMPLE_THRESHOLD</span>
+                <span class="k">else</span> <span class="p">(</span><span class="n">a</span> <span class="o">+</span> <span class="n">b</span><span class="p">)</span> <span class="o">/</span> <span class="mf">2.0</span>
+            <span class="p">)</span>
+        <span class="n">guard</span> <span class="o">=</span> <span class="n">_SPLIT_GUARD</span> <span class="o">*</span> <span class="p">(</span><span class="n">b</span> <span class="o">-</span> <span class="n">a</span><span class="p">)</span>
+        <span class="n">knot</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">knot</span><span class="p">,</span> <span class="n">a</span> <span class="o">+</span> <span class="n">guard</span><span class="p">,</span> <span class="n">b</span> <span class="o">-</span> <span class="n">guard</span><span class="p">))</span>
+        <span class="c1"># On narrow intervals the clipped proposal can miss the minimum gap</span>
+        <span class="c1"># while the midpoint still fits. Try it before abandoning the interval.</span>
+        <span class="k">if</span> <span class="nb">min</span><span class="p">(</span><span class="n">knot</span> <span class="o">-</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">-</span> <span class="n">knot</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">_MIN_KNOT_GAP</span><span class="p">:</span>
+            <span class="n">knot</span> <span class="o">=</span> <span class="p">(</span><span class="n">a</span> <span class="o">+</span> <span class="n">b</span><span class="p">)</span> <span class="o">/</span> <span class="mf">2.0</span>
+        <span class="k">if</span> <span class="nb">min</span><span class="p">(</span><span class="n">knot</span> <span class="o">-</span> <span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">-</span> <span class="n">knot</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">_MIN_KNOT_GAP</span><span class="p">:</span>
+            <span class="n">new</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">knot</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">new</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_to_power_basis</span><span class="p">(</span>
+    <span class="n">knots</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">c</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">t0</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">span</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">y0</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">net</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Convert to physical local ascending-power coefficients.</span>
+
+<span class="sd">    Conversion happens in normalized space; the value offset enters only the</span>
+<span class="sd">    constant coefficient, so it cannot perturb the derivative.</span>
+<span class="sd">    """</span>
+    <span class="n">ppoly</span> <span class="o">=</span> <span class="n">SciPyPPoly</span><span class="o">.</span><span class="n">from_spline</span><span class="p">(</span><span class="n">BSpline</span><span class="p">(</span><span class="n">knots</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+    <span class="n">keep</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">ppoly</span><span class="o">.</span><span class="n">x</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
+    <span class="n">breaks</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">ppoly</span><span class="o">.</span><span class="n">x</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">][</span><span class="n">keep</span><span class="p">],</span> <span class="n">ppoly</span><span class="o">.</span><span class="n">x</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span>
+    <span class="n">a3</span><span class="p">,</span> <span class="n">a2</span><span class="p">,</span> <span class="n">a1</span><span class="p">,</span> <span class="n">a0</span> <span class="o">=</span> <span class="n">ppoly</span><span class="o">.</span><span class="n">c</span><span class="p">[:,</span> <span class="n">keep</span><span class="p">]</span>  <span class="c1"># SciPy stores descending powers.</span>
+    <span class="n">coeffs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
+        <span class="p">[</span><span class="n">y0</span> <span class="o">+</span> <span class="n">net</span> <span class="o">*</span> <span class="n">a0</span><span class="p">,</span> <span class="n">net</span> <span class="o">*</span> <span class="n">a1</span> <span class="o">/</span> <span class="n">span</span><span class="p">,</span> <span class="n">net</span> <span class="o">*</span> <span class="n">a2</span> <span class="o">/</span> <span class="n">span</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">net</span> <span class="o">*</span> <span class="n">a3</span> <span class="o">/</span> <span class="n">span</span><span class="o">**</span><span class="mi">3</span><span class="p">],</span>
+        <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">t0</span> <span class="o">+</span> <span class="n">span</span> <span class="o">*</span> <span class="n">breaks</span><span class="p">,</span> <span class="n">coeffs</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_evaluate</span><span class="p">(</span>
+    <span class="n">breaks</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">coeffs</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">t</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">side</span><span class="p">:</span> <span class="nb">str</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Evaluate like `TimeSeries.evaluate`, with `side` choosing the piece at breaks."""</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">breaks</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">side</span><span class="o">=</span><span class="n">side</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">coeffs</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">dt</span> <span class="o">=</span> <span class="n">t</span> <span class="o">-</span> <span class="n">breaks</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">coeffs</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">a</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">dt</span> <span class="o">*</span> <span class="p">(</span><span class="n">a</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">dt</span> <span class="o">*</span> <span class="p">(</span><span class="n">a</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">+</span> <span class="n">dt</span> <span class="o">*</span> <span class="n">a</span><span class="p">[:,</span> <span class="mi">3</span><span class="p">]))</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_check_stored</span><span class="p">(</span>
+    <span class="n">breaks</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">coeffs</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">times</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">values</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">rms_tol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">sign</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+    <span class="n">side</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"right"</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Return a problem description if the stored spline breaks a guarantee."""</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">breaks</span><span class="p">))</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">coeffs</span><span class="p">))):</span>
+        <span class="k">return</span> <span class="s2">"nonfinite coefficients"</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">breaks</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">"collapsed breakpoints"</span>
+    <span class="n">fitted</span> <span class="o">=</span> <span class="n">_evaluate</span><span class="p">(</span><span class="n">breaks</span><span class="p">,</span> <span class="n">coeffs</span><span class="p">,</span> <span class="n">times</span><span class="p">,</span> <span class="n">side</span><span class="p">)</span>
+    <span class="n">rms</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(((</span><span class="n">fitted</span> <span class="o">-</span> <span class="n">values</span><span class="p">)</span> <span class="o">/</span> <span class="n">rms_tol</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">rms</span> <span class="o">&gt;</span> <span class="mf">1.0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"RMS error </span><span class="si">{</span><span class="n">rms</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">rms_tol</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2"> exceeds rms_tol=</span><span class="si">{</span><span class="n">rms_tol</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2">"</span>
+    <span class="c1"># Roundoff at the end scales with the size of the last piece's terms there,</span>
+    <span class="c1"># plus its slope times the time resolution of the pinned last break.</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">coeffs</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">width</span> <span class="o">=</span> <span class="n">breaks</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">breaks</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">]</span>
+    <span class="n">end_rate</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">a</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="n">width</span> <span class="o">+</span> <span class="mi">3</span> <span class="o">*</span> <span class="n">a</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">*</span> <span class="n">width</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">tolerance</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">_ROUNDOFF_FACTOR</span>
+        <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span>
+        <span class="o">*</span> <span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">a</span> <span class="o">*</span> <span class="n">width</span> <span class="o">**</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">4</span><span class="p">))),</span> <span class="nb">abs</span><span class="p">(</span><span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">])))</span>
+        <span class="o">+</span> <span class="n">_ENDPOINT_TIME_ULPS</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">spacing</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">breaks</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span> <span class="o">*</span> <span class="n">end_rate</span>
+    <span class="p">)</span>
+    <span class="n">endpoint_error</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">fitted</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="nb">abs</span><span class="p">(</span><span class="n">fitted</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">values</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]))</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">endpoint_error</span> <span class="o">&lt;=</span> <span class="n">tolerance</span><span class="p">:</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">"endpoint error </span><span class="si">{</span><span class="n">endpoint_error</span><span class="si">:</span><span class="s2">.3g</span><span class="si">}</span><span class="s2">"</span>
+    <span class="c1"># Adjacent pieces must meet, up to roundoff of the values and breakpoints.</span>
+    <span class="n">widths</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">breaks</span><span class="p">)[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">coeffs</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">left</span> <span class="o">=</span> <span class="n">a</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">widths</span> <span class="o">*</span> <span class="p">(</span><span class="n">a</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">widths</span> <span class="o">*</span> <span class="p">(</span><span class="n">a</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span> <span class="o">+</span> <span class="n">widths</span> <span class="o">*</span> <span class="n">a</span><span class="p">[:,</span> <span class="mi">3</span><span class="p">]))</span>
+    <span class="n">tolerance</span> <span class="o">=</span> <span class="n">_ROUNDOFF_FACTOR</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+    <span class="p">)</span> <span class="o">+</span> <span class="n">_CONTINUITY_RTOL</span> <span class="o">*</span> <span class="nb">abs</span><span class="p">(</span><span class="n">values</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">values</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">left</span> <span class="o">-</span> <span class="n">coeffs</span><span class="p">[</span><span class="mi">1</span><span class="p">:,</span> <span class="mi">0</span><span class="p">])</span> <span class="o">&lt;=</span> <span class="n">tolerance</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">"value discontinuity at an interior break"</span>
+    <span class="n">rates</span> <span class="o">=</span> <span class="n">spline_ops</span><span class="o">.</span><span class="n">piece_rate_candidates</span><span class="p">(</span><span class="n">breaks</span><span class="p">,</span> <span class="n">coeffs</span><span class="p">,</span> <span class="n">times</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">times</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">sign</span> <span class="o">*</span> <span class="n">rates</span> <span class="o">&lt;</span> <span class="mf">0.0</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s2">"derivative changes sign"</span>
+    <span class="k">return</span> <span class="kc">None</span>
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Bioprocess Modeling Collective
+            </div>
+            Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
+            
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=04266cf0"></script>
+    <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script src="../../../_static/custom.js?v=fec45a96"></script>
+    </body>
+</html>

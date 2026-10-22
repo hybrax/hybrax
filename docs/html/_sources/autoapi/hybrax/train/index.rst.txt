@@ -39,6 +39,7 @@ Submodules
    /autoapi/hybrax/train/model_api/index
    /autoapi/hybrax/train/physical_solve/index
    /autoapi/hybrax/train/postprocessing/index
+   /autoapi/hybrax/train/preflight/index
    /autoapi/hybrax/train/prepare/index
    /autoapi/hybrax/train/run_config/index
    /autoapi/hybrax/train/runtime_artifact/index

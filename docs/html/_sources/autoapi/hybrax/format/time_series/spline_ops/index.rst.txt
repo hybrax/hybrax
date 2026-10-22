@@ -31,6 +31,7 @@ Functions
    hybrax.format.time_series.spline_ops.merge_breaks
    hybrax.format.time_series.spline_ops.merge_segment_starts
    hybrax.format.time_series.spline_ops.piece_index
+   hybrax.format.time_series.spline_ops.piece_rate_candidates
    hybrax.format.time_series.spline_ops.rebase_piece
    hybrax.format.time_series.spline_ops.rebase_to_breaks
    hybrax.format.time_series.spline_ops.validate_side
@@ -83,6 +84,15 @@ Module Contents
 .. py:function:: piece_index(t, breaks, side)
 
    Return the piece index for time t with continuity-side semantics.
+
+
+.. py:function:: piece_rate_candidates(breaks, coeffs, lower, upper)
+
+   Return first-derivative values where its extrema over [lower, upper] occur.
+
+   For each piece overlapping the interval, the rate is evaluated at the clipped
+   piece ends and at real interior roots of its second derivative. The minimum
+   and maximum of the result are the exact extrema of the rate.
 
 
 .. py:function:: rebase_piece(coeff_row, shift)

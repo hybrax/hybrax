@@ -262,8 +262,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../gallery/kan.html">KAN Models</a></li>
@@ -286,6 +284,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/format/splines/index.html">hybrax.format.splines</a></li>
@@ -322,6 +321,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -378,20 +378,32 @@
 <div><p>The loop, the optimizer, the two hooks that shape it, and how to use more than one
 core.</p>
 </div></blockquote>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="w"> </span>train-config.json<span class="w"> </span><span class="o">[</span>--overwrite<span class="o">]</span><span class="w"> </span><span class="o">[</span>--epochs<span class="w"> </span>N<span class="o">]</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="w"> </span>train-config.json<span class="w"> </span><span class="o">[</span>--overwrite<span class="o">]</span><span class="w"> </span><span class="o">[</span>--epochs<span class="w"> </span>N<span class="o">]</span><span class="w"> </span><span class="o">[</span>--init-from<span class="w"> </span>PATH<span class="o">]</span>
 </pre></div>
 </div>
 <section id="setup-in-order">
 <h2>Setup, in order<a class="headerlink" href="#setup-in-order" title="Link to this heading">¶</a></h2>
-<p>Before the first step, training resolves five hooks from <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>:
+<p>Before the first step, training resolves six hooks from <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>:
 <code class="docutils literal notranslate"><span class="pre">build_learning_rate</span></code> → <code class="docutils literal notranslate"><span class="pre">build_optimizer</span></code> → <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code> →
-<code class="docutils literal notranslate"><span class="pre">build_reaction_module</span></code> → <code class="docutils literal notranslate"><span class="pre">build_loss_module</span></code>. Two more, <code class="docutils literal notranslate"><span class="pre">transform_process_collection</span></code>
+<code class="docutils literal notranslate"><span class="pre">build_reaction_module</span></code> → <code class="docutils literal notranslate"><span class="pre">build_loss_module</span></code>, plus <code class="docutils literal notranslate"><span class="pre">build_solver</span></code>.
+Two more, <code class="docutils literal notranslate"><span class="pre">transform_process_collection</span></code>
 and <code class="docutils literal notranslate"><span class="pre">augment_state_values</span></code>, already ran during <code class="docutils literal notranslate"><span class="pre">prepare</span></code>. See
 <a class="reference internal" href="hooks_cheatsheet.html"><span class="std std-doc">Customization</span></a> for the full table, with every signature.</p>
-<p>This page covers <code class="docutils literal notranslate"><span class="pre">build_learning_rate</span></code> and <code class="docutils literal notranslate"><span class="pre">build_optimizer</span></code> below: they are purely a
-training concern. The other three are substantial enough to need their own page each:
+<p>This page covers <code class="docutils literal notranslate"><span class="pre">build_learning_rate</span></code>, <code class="docutils literal notranslate"><span class="pre">build_optimizer</span></code>, and <code class="docutils literal notranslate"><span class="pre">build_solver</span></code>.
+The other three training hooks have their own pages:
 <a class="reference internal" href="reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>, <a class="reference internal" href="loss_module.html"><span class="std std-doc">The Loss Module</span></a>,
 <a class="reference internal" href="scaling.html"><span class="std std-doc">Scaling</span></a>.</p>
+<p>Before training warmup, Hybrax checks each selected process’s prescribed continuous
+inflows and outflows independently. A scalar Tsit5 solve integrates each runtime
+flow rate over the measurement span, using the configured solver tolerances, step
+budget, and jump times. Its result must match the cumulative endpoint difference
+within <code class="docutils literal notranslate"><span class="pre">train.flow_integral_relative_tolerance</span> <span class="pre">*</span> <span class="pre">abs(expected_increment)</span></code>.
+The default relative tolerance is <code class="docutils literal notranslate"><span class="pre">1e-3</span></code> (0.1%), independent of solver tolerances;
+a zero expected increment requires an exactly zero integral. A mismatch or
+scalar solver failure stops training with the process and flow names. This check
+excludes modeled flows and discrete events.
+Passing does not certify the coupled model’s integration accuracy, because that
+solve takes different adaptive steps.</p>
 </section>
 <section id="what-one-step-does">
 <h2>What one step does<a class="headerlink" href="#what-one-step-does" title="Link to this heading">¶</a></h2>
@@ -402,10 +414,10 @@ physical state and discrete jumps applied at event times.</p></li>
 <li><p>Save states and rates at the measurement times (and on a dense grid, if the loss module
 asked for one).</p></li>
 <li><p>Hand those to the loss module; take the <strong>mean</strong> of its named losses.</p></li>
-<li><p>Differentiate the whole thing (solver steps, event jumps, spline evaluations) with
-respect to the trainable parameters.</p></li>
-<li><p>Clip the <strong>raw</strong> gradient by global norm, then apply the optimizer.</p></li>
 </ol>
+<p>Then average those process losses, differentiate with respect to the trainable
+parameters, clip the <strong>raw batch gradient</strong> by global norm, and apply the optimizer
+once. This includes gradients through solver steps, event jumps, and spline evaluations.</p>
 <p>One solve per sample serves both the reaction module (which runs <em>inside</em> it) and the
 loss module (which reads its saved outputs <em>after</em>). Adding dense save points costs extra
 interpolant evaluations, not extra solver steps.</p>
@@ -431,12 +443,45 @@ interpolant evaluations, not extra solver steps.</p>
 right, a real value (1 to 10) is usually what stabilises a stiff run. Check
 <code class="docutils literal notranslate"><span class="pre">grad_norm_curve.png</span></code> to pick it: clip somewhere around the bulk of the distribution, not
 below it.</p>
-<p><strong><code class="docutils literal notranslate"><span class="pre">solver.max_steps</span></code></strong> is the first thing to raise when solves start failing. Failures are
-not fatal (points after the bail are masked out of the loss) but a run where most
-samples bail is fitting almost nothing. If raising it does not help, the problem is
+<p><strong><code class="docutils literal notranslate"><span class="pre">solver.max_steps</span></code></strong> is the first thing to raise when solves start failing. During
+full-model solves, failures are not fatal (points after the bail are masked out of
+the loss) but a run where most samples bail is fitting almost nothing.
+If raising it does not help, the problem is
 usually stiffness caused by bad scaling, not the solver.</p>
 <p><strong><code class="docutils literal notranslate"><span class="pre">batch_size</span></code></strong> must not exceed the number of selected processes. It is not clamped;
 you get a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p>
+<p><strong><code class="docutils literal notranslate"><span class="pre">microbatch_size</span></code></strong> optionally limits how many process solves execute together.
+It preserves the logical batch, its process mean, and one optimizer update:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"batch_size"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w"> </span><span class="nt">"microbatch_size"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"devices"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<p>For twelve processes, this evaluates twelve one-process groups at unchanged
+parameters, then applies one update. Setting <code class="docutils literal notranslate"><span class="pre">batch_size=1</span></code> instead applies twelve
+updates per epoch. Omit <code class="docutils literal notranslate"><span class="pre">microbatch_size</span></code> to keep full-width execution. A width at
+least as large as the logical batch also uses full width.</p>
+<p>Microbatching requires <code class="docutils literal notranslate"><span class="pre">train.devices=1</span></code> and one actual local JAX device.
+Environment overrides do not bypass the configured restriction. Check
+<code class="docutils literal notranslate"><span class="pre">HYBRAX_TRAIN_DEVICES</span></code> and <code class="docutils literal notranslate"><span class="pre">XLA_FLAGS</span></code> if <code class="docutils literal notranslate"><span class="pre">devices=1</span></code> still raises.
+Smaller groups can improve throughput, but can also lose parallelism.
+Numerical results can change with execution width. Compare losses, gradients, and
+short training trajectories on your workload before choosing a width.</p>
+</section>
+<section id="hook-build-solver">
+<h2>Hook: <code class="docutils literal notranslate"><span class="pre">build_solver</span></code><a class="headerlink" href="#hook-build-solver" title="Link to this heading">¶</a></h2>
+<p>Hybrax uses <code class="docutils literal notranslate"><span class="pre">diffrax.Tsit5()</span></code> by default. To select another solver, return a
+Diffrax solver instance from <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">diffrax</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">build_solver</span><span class="p">(</span><span class="n">config</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">Kvaerno5</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>The hook receives the resolved run config and may read <code class="docutils literal notranslate"><span class="pre">config.custom</span></code> for
+solver constructor options. Training, checkpoint evaluation, and prediction
+use this solver. Saved-model prediction rebuilds it from the bundled <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>.
+Tolerances, <code class="docutils literal notranslate"><span class="pre">max_steps</span></code>, and <code class="docutils literal notranslate"><span class="pre">jump_ts</span></code> remain in the JSON <code class="docutils literal notranslate"><span class="pre">solver</span></code> section.
+Choose a solver compatible with Hybrax’s single ODE term and adaptive PID
+controller. The independent feed-integration preflight continues to use Tsit5.</p>
 </section>
 <section id="hook-build-learning-rate">
 <h2>Hook: <code class="docutils literal notranslate"><span class="pre">build_learning_rate</span></code><a class="headerlink" href="#hook-build-learning-rate" title="Link to this heading">¶</a></h2>
@@ -562,6 +607,38 @@ previous attempt, or pass <code class="docutils literal notranslate"><span class
 applies to failed runs; restarting training does not resume old optimizer state
 or combine checkpoint rankings. An incomplete output directory with no
 checkpoints can be reused.</p>
+</section>
+<section id="start-a-new-phase-from-checkpoint-weights">
+<h3>Start a new phase from checkpoint weights<a class="headerlink" href="#start-a-new-phase-from-checkpoint-weights" title="Link to this heading">¶</a></h3>
+<p>Use a new phase config and a separate output directory:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="w"> </span>phase2.json<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--init-from<span class="w"> </span>run/checkpoints/step_00500<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--output-dir<span class="w"> </span>run_phase2
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">--init-from</span></code> accepts a checkpoint directory, a completed run directory, or its
+<code class="docutils literal notranslate"><span class="pre">params.eqx</span></code> file. The phase loads both reaction-module and trainable loss-module
+parameters. It uses normal phase preparation and optimizer initialization;
+saved <code class="docutils literal notranslate"><span class="pre">opt_state.eqx</span></code> is not loaded. Default Adam moments and schedule counters
+start at zero. A custom optimizer hook remains responsible for its own <code class="docutils literal notranslate"><span class="pre">init</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">train.epochs</span></code> means additional epochs. The phase LR hook receives the additional
+update budget, and phase-local steps also restart step-dependent custom losses.
+Choose a new base LR or edit only the LR hook to change the schedule.</p>
+<p>Keep the same prepared data, targets, target source, and ordered training
+selection. These inputs are checked against source metadata. Keep model,
+scaling, and loss definitions and their model-affecting settings unchanged;
+parameter shape checks cannot verify arbitrary Python-code equivalence. Source
+holdout runs without a recorded resolved training selection are rejected.</p>
+<p>The new run records its source under <code class="docutils literal notranslate"><span class="pre">inputs.init_checkpoint</span></code>. Metrics,
+checkpoint numbering, and retention belong to the new phase. Output directories
+containing source weights are rejected before writes, including <code class="docutils literal notranslate"><span class="pre">--overwrite</span></code>.
+Prepared data is read once; there is no second source-model reconstruction.</p>
+<p>For Python callers, pass <code class="docutils literal notranslate"><span class="pre">init_from</span></code> to <code class="docutils literal notranslate"><span class="pre">train_from_collection()</span></code> or
+<code class="docutils literal notranslate"><span class="pre">train_from_prepared_json()</span></code>. The collection API keeps its ordinary return and
+output behavior. Its <code class="docutils literal notranslate"><span class="pre">checkpoint_dir</span></code> must not contain source weights.</p>
+<p>Remove manual checkpoint-loading hooks before adopting this path. In particular,
+a custom optimizer <code class="docutils literal notranslate"><span class="pre">init</span></code> that deserializes <code class="docutils literal notranslate"><span class="pre">opt_state.eqx</span></code> still restores old
+optimizer state. Use normal fresh initialization for the new phase.</p>
 </section>
 <section id="choose-a-selection-metric">
 <h3>Choose a selection metric<a class="headerlink" href="#choose-a-selection-metric" title="Link to this heading">¶</a></h3>
@@ -719,11 +796,13 @@ sixty times slower: a debugging tool, not an option.</p></li>
 <li><a class="reference internal" href="#setup-in-order">Setup, in order</a></li>
 <li><a class="reference internal" href="#what-one-step-does">What one step does</a></li>
 <li><a class="reference internal" href="#the-knobs-that-matter">The knobs that matter</a></li>
+<li><a class="reference internal" href="#hook-build-solver">Hook: <code class="docutils literal notranslate"><span class="pre">build_solver</span></code></a></li>
 <li><a class="reference internal" href="#hook-build-learning-rate">Hook: <code class="docutils literal notranslate"><span class="pre">build_learning_rate</span></code></a></li>
 <li><a class="reference internal" href="#hook-build-optimizer">Hook: <code class="docutils literal notranslate"><span class="pre">build_optimizer</span></code></a></li>
 <li><a class="reference internal" href="#running-on-more-than-one-core">Running on more than one core</a></li>
 <li><a class="reference internal" href="#checkpoints-and-retention">Checkpoints and retention</a><ul>
 <li><a class="reference internal" href="#limit-disk-use">Limit disk use</a></li>
+<li><a class="reference internal" href="#start-a-new-phase-from-checkpoint-weights">Start a new phase from checkpoint weights</a></li>
 <li><a class="reference internal" href="#choose-a-selection-metric">Choose a selection metric</a></li>
 <li><a class="reference internal" href="#hold-out-processes-in-ordinary-training">Hold out processes in ordinary training</a></li>
 </ul>

@@ -262,8 +262,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/stateful.html">Stateful Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/glutamine_decay.html">Glutamine Degradation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/loo.html">Cross-Validation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/gaussian_process.html">Gaussian Processes</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../../gallery/knowledge_transfer.html">Knowledge Transfer</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/fba_hyb.html">FBA-Hyb</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../../gallery/kan.html">KAN Models</a></li>
@@ -286,6 +284,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../format/inspect/index.html">hybrax.format.inspect</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/json_io/index.html">hybrax.format.json_io</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/mechanistic/index.html">hybrax.format.mechanistic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../format/monotone_spline/index.html">hybrax.format.monotone_spline</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/serialization/index.html">hybrax.format.serialization</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/simulation/index.html">hybrax.format.simulation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../format/splines/index.html">hybrax.format.splines</a></li>
@@ -322,6 +321,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../model_api/index.html">hybrax.train.model_api</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../physical_solve/index.html">hybrax.train.physical_solve</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../postprocessing/index.html">hybrax.train.postprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../preflight/index.html">hybrax.train.preflight</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../prepare/index.html">hybrax.train.prepare</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../run_config/index.html">hybrax.train.run_config</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../runtime_artifact/index.html">hybrax.train.runtime_artifact</a></li>
@@ -380,7 +380,16 @@
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.constants.METADATA_NAMESPACE" title="hybrax.train.constants.METADATA_NAMESPACE"><code class="xref py py-obj docutils literal notranslate"><span class="pre">METADATA_NAMESPACE</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.constants.DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE" title="hybrax.train.constants.DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.constants.DEFAULT_SOLVER" title="hybrax.train.constants.DEFAULT_SOLVER"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DEFAULT_SOLVER</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.constants.INITIAL_STEP_FRACTION" title="hybrax.train.constants.INITIAL_STEP_FRACTION"><code class="xref py py-obj docutils literal notranslate"><span class="pre">INITIAL_STEP_FRACTION</span></code></a></p></td>
+<td><p></p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.constants.METADATA_NAMESPACE" title="hybrax.train.constants.METADATA_NAMESPACE"><code class="xref py py-obj docutils literal notranslate"><span class="pre">METADATA_NAMESPACE</span></code></a></p></td>
 <td><p></p></td>
 </tr>
 </tbody>
@@ -389,6 +398,21 @@
 </section>
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py data">
+<dt class="sig sig-object py" id="hybrax.train.constants.DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.constants.</span></span><span class="sig-name descname"><span class="pre">DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.001</span></span><a class="headerlink" href="#hybrax.train.constants.DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="hybrax.train.constants.DEFAULT_SOLVER">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.constants.</span></span><span class="sig-name descname"><span class="pre">DEFAULT_SOLVER</span></span><a class="headerlink" href="#hybrax.train.constants.DEFAULT_SOLVER" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py" id="hybrax.train.constants.INITIAL_STEP_FRACTION">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.constants.</span></span><span class="sig-name descname"><span class="pre">INITIAL_STEP_FRACTION</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.001</span></span><a class="headerlink" href="#hybrax.train.constants.INITIAL_STEP_FRACTION" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
 <dl class="py data">
 <dt class="sig sig-object py" id="hybrax.train.constants.METADATA_NAMESPACE">
 <span class="sig-prename descclassname"><span class="pre">hybrax.train.constants.</span></span><span class="sig-name descname"><span class="pre">METADATA_NAMESPACE</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'hybrax.train'</span></span><a class="headerlink" href="#hybrax.train.constants.METADATA_NAMESPACE" title="Link to this definition">¶</a></dt>
@@ -455,6 +479,9 @@
 <li><a class="reference internal" href="#">hybrax.train.constants</a><ul>
 <li><a class="reference internal" href="#attributes">Attributes</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#hybrax.train.constants.DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE"><code class="docutils literal notranslate"><span class="pre">DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.constants.DEFAULT_SOLVER"><code class="docutils literal notranslate"><span class="pre">DEFAULT_SOLVER</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.constants.INITIAL_STEP_FRACTION"><code class="docutils literal notranslate"><span class="pre">INITIAL_STEP_FRACTION</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.constants.METADATA_NAMESPACE"><code class="docutils literal notranslate"><span class="pre">METADATA_NAMESPACE</span></code></a></li>
 </ul>
 </li>
