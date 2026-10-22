@@ -592,5 +592,5 @@ Every named term flows, by its key, to:
 
 - the per-step console table,
 - `metrics.csv` (the per-step loss history in the run directory),
-- the run-level `loss_curve.png`, refreshed at every checkpoint with one panel
+- the run-level `loss_curve.png`, refreshed during training with one panel
   per term plus a `total` panel.

@@ -274,6 +274,32 @@ def load_model_metadata(path: str | Path) -> dict[str, Any]:
     return load_json(path)
 
 
+def _downsample(
+    x: Sequence[float], y: Sequence[float], n_buckets: int = 1000
+) -> tuple[np.ndarray, np.ndarray]:
+    """Thin a series for plotting, keeping each bucket's min and max.
+
+    Points are split into `n_buckets` contiguous buckets; each keeps its finite
+    min and max (in step order) plus its first nonfinite point, so spikes
+    survive and NaN gaps still break the line. The first and last points are
+    always kept.
+    """
+    x, y = np.asarray(x), np.asarray(y, dtype=float)
+    if len(y) <= 2 * n_buckets + 2:
+        return x, y
+    keep = {0, len(y) - 1}
+    for bucket in np.array_split(np.arange(len(y)), n_buckets):
+        values = y[bucket]
+        finite = np.isfinite(values)
+        if finite.any():
+            masked = np.where(finite, values, np.nan)
+            keep.update(bucket[[np.nanargmin(masked), np.nanargmax(masked)]])
+        if not finite.all():
+            keep.add(bucket[np.argmin(finite)])
+    index = np.fromiter(sorted(keep), dtype=int)
+    return x[index], y[index]
+
+
 def plot_loss_curve(
     losses: Sequence[float],
     output_path: str | Path,
@@ -338,20 +364,16 @@ def plot_loss_curve(
     )
     axes_flat = list(axes.flat)
 
-    total_series = panels[0][1] if panels and panels[0][0] == "total" else None
+    total_steps, total_series = _downsample(train_steps, panels[0][1])
 
     holdout_label = monitor_label or "validation"
     for panel_idx, (ax, (panel_label, series)) in enumerate(zip(axes_flat, panels)):
         # On per-target panels, plot the total loss as a faint reference line
         # so the per-target curve can be read against the overall trajectory
         # despite the per-panel y-scale.
-        if (
-            panel_label != "total"
-            and total_series is not None
-            and len(total_series) > 0
-        ):
+        if panel_label != "total" and len(total_series) > 0:
             ax.plot(
-                train_steps,
+                total_steps,
                 total_series,
                 color="grey",
                 linewidth=0.8,
@@ -359,7 +381,12 @@ def plot_loss_curve(
                 label="total",
             )
         if series:
-            ax.plot(train_steps, series, color="C0", linewidth=1.2, label="train")
+            ax.plot(
+                *_downsample(train_steps, series),
+                color="C0",
+                linewidth=1.2,
+                label="train",
+            )
         # Holdout (monitor) overlay: the total on the "total" panel, the matching
         # per-target term on each target panel (panels[1:] map to targets 0..n-1).
         if panel_label == "total" and monitor_values:
@@ -385,7 +412,7 @@ def plot_loss_curve(
                     label=holdout_label,
                 )
         if ax.get_legend_handles_labels()[1]:
-            ax.legend(loc="best", fontsize="small")
+            ax.legend(loc="upper right", fontsize="small")
         ax.set_title(panel_label, fontsize="small")
         ax.set_yscale("log")
         ax.grid(True, alpha=0.3)
@@ -424,8 +451,13 @@ def plot_grad_norm_curve(
     steps = range(1, len(grad_norms) + 1)
     fig, ax = plt.subplots(figsize=(6.0, 3.5))
     if grad_norms:
-        ax.plot(steps, grad_norms, color="C2", linewidth=1.2, label="grad norm")
-        ax.legend(loc="best", fontsize="small")
+        ax.plot(
+            *_downsample(steps, grad_norms),
+            color="C2",
+            linewidth=1.2,
+            label="grad norm",
+        )
+        ax.legend(loc="upper right", fontsize="small")
     ax.set_yscale("log")
     ax.set_xlabel("Step")
     ax.set_ylabel("||grad||₂")
@@ -477,7 +509,12 @@ def plot_cross_fold_loss_curves(
     for i, (label, tr_steps, tr_loss, mon_steps, mon_loss) in enumerate(fold_curves):
         color = colors[i]
         if len(tr_loss):
-            ax.plot(tr_steps, tr_loss, color=color, linewidth=1.0, label=label)
+            ax.plot(
+                *_downsample(tr_steps, tr_loss),
+                color=color,
+                linewidth=1.0,
+                label=label,
+            )
             drawn = True
         if len(mon_loss):
             ax.plot(mon_steps, mon_loss, color=color, linewidth=1.0, linestyle="--")

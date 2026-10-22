@@ -659,6 +659,16 @@ def _checkpoint_update_boundaries(
         k = max(k + 1, quotient.numerator // quotient.denominator + 1)
 
 
+def _plot_boundaries(boundaries: frozenset[int], redraws: int = 100) -> frozenset[int]:
+    """Thin checkpoint boundaries to about `redraws` plot refreshes.
+
+    Keeps every k-th boundary and always the last one (the final step).
+    """
+    ordered = sorted(boundaries)
+    every = max(1, -(-len(ordered) // redraws))
+    return frozenset(ordered[every - 1 :: every]) | frozenset(ordered[-1:])
+
+
 def _require_stateful_opt_in(reaction_module, allow_stateful_models: bool) -> None:
     """Reject a stateful (``n_latent > 0``) module unless opt-in is set."""
     if reaction_module.n_latent > 0 and not allow_stateful_models:
@@ -1338,6 +1348,7 @@ def train_collection(
         if checkpoint_enabled
         else frozenset()
     )
+    plot_boundaries = _plot_boundaries(checkpoint_boundaries)
     if checkpoint_enabled and cfg.checkpoint_every is None:
         logger.info(
             "checkpoint_every is null; using sensible automatic default "
@@ -2273,6 +2284,7 @@ def train_collection(
                         step,
                         score,
                     )
+            if checkpoint_writer is not None and step in plot_boundaries:
                 _write_training_plots(
                     history=run_log.snapshot(),
                     holdout_per_target_by_step=holdout_per_target_so_far,

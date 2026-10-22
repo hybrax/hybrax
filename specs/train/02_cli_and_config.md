@@ -163,8 +163,8 @@ A `train` run writes a self-contained FAIR directory at `output.dir`:
   config.json            # the resolved RunConfig (provenance)
   custom.py              # copied custom hooks (provenance)
   metrics.csv            # per-update loss, epoch, sample, and grad-norm history
-  loss_curve.png         # training/holdout loss history, refreshed per checkpoint
-  grad_norm_curve.png    # global gradient-norm history, refreshed per checkpoint
+  loss_curve.png         # training/holdout loss history, refreshed during training
+  grad_norm_curve.png    # global gradient-norm history, refreshed during training
   predictions.csv        # selected processes; omitted for "none"
   model/                 # final trained bundle
   checkpoints/

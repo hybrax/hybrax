@@ -657,6 +657,32 @@
 
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_downsample</span><span class="p">(</span>
+    <span class="n">x</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">y</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">n_buckets</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1000</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Thin a series for plotting, keeping each bucket's min and max.</span>
+
+<span class="sd">    Points are split into `n_buckets` contiguous buckets; each keeps its finite</span>
+<span class="sd">    min and max (in step order) plus its first nonfinite point, so spikes</span>
+<span class="sd">    survive and NaN gaps still break the line. The first and last points are</span>
+<span class="sd">    always kept.</span>
+<span class="sd">    """</span>
+    <span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">y</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">n_buckets</span> <span class="o">+</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span>
+    <span class="n">keep</span> <span class="o">=</span> <span class="p">{</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">y</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">}</span>
+    <span class="k">for</span> <span class="n">bucket</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">array_split</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">y</span><span class="p">)),</span> <span class="n">n_buckets</span><span class="p">):</span>
+        <span class="n">values</span> <span class="o">=</span> <span class="n">y</span><span class="p">[</span><span class="n">bucket</span><span class="p">]</span>
+        <span class="n">finite</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">finite</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="n">masked</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">finite</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
+            <span class="n">keep</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">bucket</span><span class="p">[[</span><span class="n">np</span><span class="o">.</span><span class="n">nanargmin</span><span class="p">(</span><span class="n">masked</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">nanargmax</span><span class="p">(</span><span class="n">masked</span><span class="p">)]])</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">finite</span><span class="o">.</span><span class="n">all</span><span class="p">():</span>
+            <span class="n">keep</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">bucket</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">finite</span><span class="p">)])</span>
+    <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">fromiter</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">keep</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">x</span><span class="p">[</span><span class="n">index</span><span class="p">],</span> <span class="n">y</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+
+
 <div class="viewcode-block" id="plot_loss_curve">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/postprocessing/index.html#hybrax.train.postprocessing.plot_loss_curve">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">plot_loss_curve</span><span class="p">(</span>
@@ -723,20 +749,16 @@
     <span class="p">)</span>
     <span class="n">axes_flat</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">axes</span><span class="o">.</span><span class="n">flat</span><span class="p">)</span>
 
-    <span class="n">total_series</span> <span class="o">=</span> <span class="n">panels</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span> <span class="k">if</span> <span class="n">panels</span> <span class="ow">and</span> <span class="n">panels</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"total"</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="n">total_steps</span><span class="p">,</span> <span class="n">total_series</span> <span class="o">=</span> <span class="n">_downsample</span><span class="p">(</span><span class="n">train_steps</span><span class="p">,</span> <span class="n">panels</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
 
     <span class="n">holdout_label</span> <span class="o">=</span> <span class="n">monitor_label</span> <span class="ow">or</span> <span class="s2">"validation"</span>
     <span class="k">for</span> <span class="n">panel_idx</span><span class="p">,</span> <span class="p">(</span><span class="n">ax</span><span class="p">,</span> <span class="p">(</span><span class="n">panel_label</span><span class="p">,</span> <span class="n">series</span><span class="p">))</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">axes_flat</span><span class="p">,</span> <span class="n">panels</span><span class="p">)):</span>
         <span class="c1"># On per-target panels, plot the total loss as a faint reference line</span>
         <span class="c1"># so the per-target curve can be read against the overall trajectory</span>
         <span class="c1"># despite the per-panel y-scale.</span>
-        <span class="k">if</span> <span class="p">(</span>
-            <span class="n">panel_label</span> <span class="o">!=</span> <span class="s2">"total"</span>
-            <span class="ow">and</span> <span class="n">total_series</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-            <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">total_series</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span>
-        <span class="p">):</span>
+        <span class="k">if</span> <span class="n">panel_label</span> <span class="o">!=</span> <span class="s2">"total"</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">total_series</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
             <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
-                <span class="n">train_steps</span><span class="p">,</span>
+                <span class="n">total_steps</span><span class="p">,</span>
                 <span class="n">total_series</span><span class="p">,</span>
                 <span class="n">color</span><span class="o">=</span><span class="s2">"grey"</span><span class="p">,</span>
                 <span class="n">linewidth</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span>
@@ -744,7 +766,12 @@
                 <span class="n">label</span><span class="o">=</span><span class="s2">"total"</span><span class="p">,</span>
             <span class="p">)</span>
         <span class="k">if</span> <span class="n">series</span><span class="p">:</span>
-            <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">train_steps</span><span class="p">,</span> <span class="n">series</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"C0"</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mf">1.2</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">"train"</span><span class="p">)</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
+                <span class="o">*</span><span class="n">_downsample</span><span class="p">(</span><span class="n">train_steps</span><span class="p">,</span> <span class="n">series</span><span class="p">),</span>
+                <span class="n">color</span><span class="o">=</span><span class="s2">"C0"</span><span class="p">,</span>
+                <span class="n">linewidth</span><span class="o">=</span><span class="mf">1.2</span><span class="p">,</span>
+                <span class="n">label</span><span class="o">=</span><span class="s2">"train"</span><span class="p">,</span>
+            <span class="p">)</span>
         <span class="c1"># Holdout (monitor) overlay: the total on the "total" panel, the matching</span>
         <span class="c1"># per-target term on each target panel (panels[1:] map to targets 0..n-1).</span>
         <span class="k">if</span> <span class="n">panel_label</span> <span class="o">==</span> <span class="s2">"total"</span> <span class="ow">and</span> <span class="n">monitor_values</span><span class="p">:</span>
@@ -770,7 +797,7 @@
                     <span class="n">label</span><span class="o">=</span><span class="n">holdout_label</span><span class="p">,</span>
                 <span class="p">)</span>
         <span class="k">if</span> <span class="n">ax</span><span class="o">.</span><span class="n">get_legend_handles_labels</span><span class="p">()[</span><span class="mi">1</span><span class="p">]:</span>
-            <span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="s2">"best"</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="s2">"small"</span><span class="p">)</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="s2">"upper right"</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="s2">"small"</span><span class="p">)</span>
         <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">panel_label</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="s2">"small"</span><span class="p">)</span>
         <span class="n">ax</span><span class="o">.</span><span class="n">set_yscale</span><span class="p">(</span><span class="s2">"log"</span><span class="p">)</span>
         <span class="n">ax</span><span class="o">.</span><span class="n">grid</span><span class="p">(</span><span class="kc">True</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>
@@ -812,8 +839,13 @@
     <span class="n">steps</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">grad_norms</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
     <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mf">6.0</span><span class="p">,</span> <span class="mf">3.5</span><span class="p">))</span>
     <span class="k">if</span> <span class="n">grad_norms</span><span class="p">:</span>
-        <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">steps</span><span class="p">,</span> <span class="n">grad_norms</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"C2"</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mf">1.2</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">"grad norm"</span><span class="p">)</span>
-        <span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="s2">"best"</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="s2">"small"</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
+            <span class="o">*</span><span class="n">_downsample</span><span class="p">(</span><span class="n">steps</span><span class="p">,</span> <span class="n">grad_norms</span><span class="p">),</span>
+            <span class="n">color</span><span class="o">=</span><span class="s2">"C2"</span><span class="p">,</span>
+            <span class="n">linewidth</span><span class="o">=</span><span class="mf">1.2</span><span class="p">,</span>
+            <span class="n">label</span><span class="o">=</span><span class="s2">"grad norm"</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="s2">"upper right"</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="s2">"small"</span><span class="p">)</span>
     <span class="n">ax</span><span class="o">.</span><span class="n">set_yscale</span><span class="p">(</span><span class="s2">"log"</span><span class="p">)</span>
     <span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s2">"Step"</span><span class="p">)</span>
     <span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">"||grad||₂"</span><span class="p">)</span>
@@ -868,7 +900,12 @@
     <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">tr_steps</span><span class="p">,</span> <span class="n">tr_loss</span><span class="p">,</span> <span class="n">mon_steps</span><span class="p">,</span> <span class="n">mon_loss</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">fold_curves</span><span class="p">):</span>
         <span class="n">color</span> <span class="o">=</span> <span class="n">colors</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">tr_loss</span><span class="p">):</span>
-            <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">tr_steps</span><span class="p">,</span> <span class="n">tr_loss</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="n">color</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">)</span>
+            <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
+                <span class="o">*</span><span class="n">_downsample</span><span class="p">(</span><span class="n">tr_steps</span><span class="p">,</span> <span class="n">tr_loss</span><span class="p">),</span>
+                <span class="n">color</span><span class="o">=</span><span class="n">color</span><span class="p">,</span>
+                <span class="n">linewidth</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+                <span class="n">label</span><span class="o">=</span><span class="n">label</span><span class="p">,</span>
+            <span class="p">)</span>
             <span class="n">drawn</span> <span class="o">=</span> <span class="kc">True</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">mon_loss</span><span class="p">):</span>
             <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">mon_steps</span><span class="p">,</span> <span class="n">mon_loss</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="n">color</span><span class="p">,</span> <span class="n">linewidth</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">linestyle</span><span class="o">=</span><span class="s2">"--"</span><span class="p">)</span>

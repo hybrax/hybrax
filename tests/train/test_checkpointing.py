@@ -7,6 +7,7 @@ from pathlib import Path
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 import pytest
 from hybrax.format.dataclasses import (
@@ -22,7 +23,11 @@ from hybrax.format.dataclasses import (
 )
 
 from hybrax.train.checkpointing import CheckpointWriter, save_model
-from hybrax.train.harness import TrainHarnessConfig, train_collection
+from hybrax.train.harness import (
+    TrainHarnessConfig,
+    _plot_boundaries,
+    train_collection,
+)
 from hybrax.train.model_api import (
     ReactionOutputs,
     RateModule,
@@ -30,7 +35,11 @@ from hybrax.train.model_api import (
     partition_trainable,
     trainable_field,
 )
-from hybrax.train.postprocessing import plot_grad_norm_curve, plot_loss_curve
+from hybrax.train.postprocessing import (
+    _downsample,
+    plot_grad_norm_curve,
+    plot_loss_curve,
+)
 from hybrax.train.serialization import load_trained_wrapper
 from hybrax.train.training_data import TrainingDataStore
 
@@ -74,6 +83,26 @@ def test_plot_loss_curve_with_per_target_holdout(tmp_path: Path):
     )
     assert out.exists()
     assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_downsample_keeps_extremes_and_nan_gaps():
+    y = np.ones(10_000)
+    y[1234], y[5678], y[7000:7005] = 100.0, 0.01, np.nan
+    x = np.arange(1, 10_001)
+
+    xs, ys = _downsample(x, y)
+
+    assert len(xs) < 3_000
+    assert np.all(np.diff(xs) > 0)
+    assert (xs[0], xs[-1]) == (1, 10_000)
+    assert {100.0, 0.01} <= set(ys[np.isfinite(ys)])
+    assert 7001 in xs[np.isnan(ys)]
+    np.testing.assert_array_equal(_downsample(x[:100], y[:100])[1], y[:100])
+
+
+def test_plot_boundaries_thin_to_about_100_and_keep_the_final_step():
+    assert _plot_boundaries(frozenset({1, 2, 3})) == {1, 2, 3}
+    assert _plot_boundaries(frozenset(range(1, 1006))) == {*range(11, 1006, 11), 1005}
 
 
 # --------------------------------------------------------------------------
@@ -356,7 +385,7 @@ def test_training_writes_run_level_training_plots(tmp_path: Path):
     assert not (tmp_path / "predictions.csv").exists()
 
 
-def test_training_refreshes_plots_at_every_checkpoint(monkeypatch, tmp_path: Path):
+def test_training_refreshes_plots_at_plot_boundaries(monkeypatch, tmp_path: Path):
     plotted_loss_steps = []
     plotted_grad_norm_steps = []
 
@@ -371,10 +400,15 @@ def test_training_refreshes_plots_at_every_checkpoint(monkeypatch, tmp_path: Pat
         "hybrax.train.harness.plot_grad_norm_curve", record_grad_norm_plot
     )
 
+    monkeypatch.setattr(
+        "hybrax.train.harness._plot_boundaries",
+        lambda boundaries: _plot_boundaries(boundaries, redraws=2),
+    )
+
     _run_train(checkpoint_dir=tmp_path / "checkpoints", checkpoint_every=1, epochs=3)
 
-    assert plotted_loss_steps == [1, 2, 3]
-    assert plotted_grad_norm_steps == [1, 2, 3]
+    assert plotted_loss_steps == [2, 3]
+    assert plotted_grad_norm_steps == [2, 3]
 
 
 @pytest.mark.parametrize(
