@@ -1317,9 +1317,7 @@ def test_loo_survives_cross_fold_loss_plot_failure(monkeypatch, tmp_path, caplog
     def fail_plot(*_args, **_kwargs):
         raise OSError("disk full")
 
-    monkeypatch.setattr(
-        "hybrax.train.postprocessing.plot_cross_fold_loss_curves", fail_plot
-    )
+    monkeypatch.setattr("hybrax.train.loo.plot_cross_fold_loss_curves", fail_plot)
 
     loo_mod._plot_cross_fold_losses(folds=(fold,), output_dir=tmp_path)
 

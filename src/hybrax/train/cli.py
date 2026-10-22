@@ -217,8 +217,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--config",
         default=None,
         help=(
-            "Path to the run config JSON (same schema as `train`, plus an "
-            "optional `loo` section: per_fold_holdout_sets, parallel_folds). "
+            "Path to the run config JSON (same schema as `train` with "
+            "`train.holdout_processes` unset, plus an optional `loo` section: "
+            "per_fold_holdout_sets, parallel_folds, devices_per_fold). "
             "Required unless --resume."
         ),
     )

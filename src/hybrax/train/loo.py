@@ -53,7 +53,7 @@ from .harness import (
     train_collection,
     train_harness_config_from_run_config,
 )
-from .postprocessing import save_model_metadata
+from .postprocessing import plot_cross_fold_loss_curves, save_model_metadata
 from .runtime_artifact import (
     FORMAT_VERSION,
     RhsNames,
@@ -1261,10 +1261,6 @@ def _read_fold_loss_history(
 
 def _plot_cross_fold_losses(*, folds: tuple[Fold, ...], output_dir: Path) -> None:
     """Render one figure overlaying every fold's train + holdout loss curves."""
-    # Deferred like the other postprocessing uses here, to keep loo.py's
-    # module import free of matplotlib/jax-heavy postprocessing.
-    from .postprocessing import plot_cross_fold_loss_curves
-
     fold_curves = []
     for f in folds:
         tr_steps, tr_loss, mon_steps, mon_loss = _read_fold_loss_history(

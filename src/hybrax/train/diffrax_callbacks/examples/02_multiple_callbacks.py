@@ -64,9 +64,9 @@ callbacks = CallbackSet(
         ),
         direction="down",
     ),
-    # 2. Bleed when biomass exceeds 40 g/L (remove 10% of culture volume)
-    #    This removes both cells and media, reducing total biomass but not
-    #    concentration. Combined with continued growth, X will re-cross 40.
+    # 2. Bleed when biomass exceeds 40 g/L
+    #    Removes 10% of the volume and reduces biomass and product concentrations
+    #    by 15% (simulated partial harvest). Further growth can take X above 40 again.
     ContinuousCallback(
         condition_fn=lambda y, t, args: y[0] - 40.0,
         affect_fn=lambda y, t, args: jnp.array(
@@ -78,7 +78,7 @@ callbacks = CallbackSet(
             ]
         ),
         direction="up",
-        repeat_nudge=1.0,  # wait at least 1h before next bleed
+        repeat_nudge=1.0,  # skip 1h after every continuous event (feed or bleed)
     ),
     # 3. Take samples at fixed times (removes 50 mL)
     PresetTimeCallback(
@@ -88,7 +88,7 @@ callbacks = CallbackSet(
     # 4. Log state every 4 hours (no-op affect, just records in event log)
     PeriodicCallback(
         dt=4.0,
-        affect_fn=lambda y, t, args: y,
+        affect_fn=lambda y, t, args, i: y,
         t_end=t_end,
     ),
     # 5. Enforce non-negative concentrations

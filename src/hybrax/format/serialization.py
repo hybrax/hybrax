@@ -840,9 +840,7 @@ def _dict_to_volume_change(vc_data: Dict):
     if vc_type is None:
         raise ValueError(
             "Old VolumeChange schema detected (missing 'type'). "
-            "Please regenerate datasets by running "
-            "examples/*/01_load_single_process.ipynb and "
-            "examples/*/02_load_all_processes.ipynb."
+            "Regenerate the dataset with the current hybrax format."
         )
 
     # required: no default on VolumeChange.values

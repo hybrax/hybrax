@@ -32,7 +32,6 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
 
-
 TRAINABLE_METADATA_KEY = "hybrax_train_trainable"
 
 
@@ -257,11 +256,11 @@ class Scaler(eqx.Module):
         scale: jax.Array
         offset: jax.Array
 
-    def astype(self, dtype: jnp.dtype) -> "Scaler":
+    def astype(self, dtype: jnp.dtype) -> Scaler:
         """Return a scaler with the underlying arrays cast to ``dtype``."""
         raise NotImplementedError
 
-    def __getitem__(self, idx) -> "Scaler":
+    def __getitem__(self, idx) -> Scaler:
         """Sub-scaler by index (state target subsetting; value semantics)."""
         raise NotImplementedError
 
@@ -312,11 +311,11 @@ class LinearScaler(Scaler):
         """Always zero, matching :class:`AffineScaler`'s attribute for composition."""
         return jnp.zeros_like(self.scale)
 
-    def astype(self, dtype: jnp.dtype) -> "LinearScaler":
+    def astype(self, dtype: jnp.dtype) -> LinearScaler:
         """Return a :class:`LinearScaler` with ``scale`` cast to ``dtype``."""
         return LinearScaler(jnp.asarray(self.scale, dtype=dtype))
 
-    def __getitem__(self, idx) -> "LinearScaler":
+    def __getitem__(self, idx) -> LinearScaler:
         return LinearScaler(self.scale[idx])
 
 
@@ -404,7 +403,7 @@ class AffineScaler(Scaler):
         """Array shape of ``scale``."""
         return tuple(self.scale.shape)
 
-    def astype(self, dtype: jnp.dtype) -> "AffineScaler":
+    def astype(self, dtype: jnp.dtype) -> AffineScaler:
         """Return an :class:`AffineScaler` with ``scale``/``offset`` cast to
         ``dtype``.
         """
@@ -413,7 +412,7 @@ class AffineScaler(Scaler):
             jnp.asarray(self.offset, dtype=dtype),
         )
 
-    def __getitem__(self, idx) -> "AffineScaler":
+    def __getitem__(self, idx) -> AffineScaler:
         return AffineScaler(self.scale[idx], self.offset[idx])
 
 
