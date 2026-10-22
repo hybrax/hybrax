@@ -510,14 +510,18 @@ transform attached.</p>
 <hr class="docutils" />
 <section id="feed-composition-with-a-species-left-out">
 <h2>7. Feed composition with a species left out<a class="headerlink" href="#feed-composition-with-a-species-left-out" title="Link to this heading">¶</a></h2>
-<p><strong>The failure.</strong> A feed medium that omits a reactor species. hybrax.format will not guess
-whether that means “absent” or “not recorded”, so the dilution term for that species is
-simply not generated.</p>
-<p><strong>Why it is hard to spot.</strong> The run integrates fine. One species is just never diluted by
-that feed, and the model absorbs the discrepancy into its rates, which then look
-physically wrong for reasons that are not obvious.</p>
-<p><strong>How to catch it.</strong> <code class="docutils literal notranslate"><span class="pre">validate_process</span></code> reports it. Run it.</p>
-<p><strong>Fix.</strong> Declare every reactor species in every feed medium, including the zeros.</p>
+<p><strong>The failure.</strong> A feed medium that omits a reactor species which the feed actually
+contains. hybrax.format treats an omitted species as having zero concentration in that
+feed, so the feed dilutes it but never adds any.</p>
+<p><strong>Why it is hard to spot.</strong> The run integrates fine, and the model absorbs the missing
+addition into its rates, which then look physically wrong for reasons that are not
+obvious.</p>
+<p><strong>How to catch it.</strong> Validation accepts omitted species, but building the <code class="docutils literal notranslate"><span class="pre">BioProcess</span></code>
+logs one INFO line per feed that lists its omitted species (“Assumption: feed medium
+… assuming 0.”), and <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">prepare</span></code> shows these by default. Check those species
+against the source records.</p>
+<p><strong>Fix.</strong> Declare every nonzero feed concentration. Explicit zeros are optional but make
+it clear that a species is absent rather than unrecorded.</p>
 </section>
 <hr class="docutils" />
 <section id="sample-volume-recorded-as-zero">

@@ -535,8 +535,8 @@ Module Contents
 
    :param collection: Evaluation-only process collection to forward-solve.
    :param model_path: Path to the trained model's run/checkpoint directory.
-   :param config: Forward-run settings (prediction scope, plotting), or
-                  ``None`` for defaults.
+   :param config: Forward-run settings (evaluated processes, target layout, solver),
+                  or `None` for defaults.
    :param custom_py: Override for the recorded ``custom.py`` path, or ``None``
                      to use the one the run recorded.
    :param training_process_names: Restrict reconstruction to this subset of the
@@ -545,13 +545,13 @@ Module Contents
                       ``model_path``'s ``config.json``.
    :param custom_module: Pre-loaded custom module, or ``None`` to load it from
                          ``custom_py``/the recorded path.
-   :param prediction_process_names: Restrict prediction to this subset of
-                                    ``collection``'s processes, or ``None`` for all of them.
+   :param prediction_process_names: Subset of the evaluated processes to export;
+                                    `None` exports every evaluated process.
    :param prediction_grid_n: Size of the evenly-spaced prediction grid; see
                              :func:`model_predict`'s ``grid_n``.
 
-   :returns: per-process dense exports plus the rebuilt
-             wrapper and config.
+   :returns: per-process losses and dense exports plus the
+             trained wrapper and evaluation store.
    :rtype: The forward result
 
    :raises ValueError: If ``collection``'s measured/modeled variables are
@@ -665,8 +665,8 @@ Module Contents
 
    Map a typed :class:`RunConfig` + run-directory layout to the harness
    config, wiring the run-dir artifact paths (``metrics.csv``, ``checkpoints/``)
-   and the checkpoint/output/logging sections. Shared by the CLI train and LOO
-   paths.
+   and the data/train/solver/checkpoint/logging sections. Shared by the CLI train and
+   LOO paths.
 
 
 .. py:function:: validate_initial_checkpoint(prepared, source_config, source_document, prepared_content_hash)

@@ -822,8 +822,9 @@ it.</p>
 <dt class="sig sig-object py" id="hybrax.train.loo.run_single_fold">
 <span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">run_single_fold</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">cfg</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_module</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fold_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_py</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#run_single_fold"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.run_single_fold" title="Link to this definition">¶</a></dt>
 <dd><p>Prepare and execute one fold for direct Python callers.</p>
-<p>The CLI uses the two-stage entry points directly so its collection-owning
-frame returns to collection-free execution before training starts.</p>
+<p>The CLI worker instead prepares via <cite>prepare_single_fold_from_runtime_artifact</cite>,
+which loads runtime arrays and the artifact’s compact parent collection rather
+than the full augmented prepared collection.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

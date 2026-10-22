@@ -421,7 +421,7 @@
     <span class="n">train_collection</span><span class="p">,</span>
     <span class="n">train_harness_config_from_run_config</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.postprocessing</span><span class="w"> </span><span class="kn">import</span> <span class="n">save_model_metadata</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.postprocessing</span><span class="w"> </span><span class="kn">import</span> <span class="n">plot_cross_fold_loss_curves</span><span class="p">,</span> <span class="n">save_model_metadata</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.runtime_artifact</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">FORMAT_VERSION</span><span class="p">,</span>
     <span class="n">RhsNames</span><span class="p">,</span>
@@ -1462,8 +1462,9 @@
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">FoldResult</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Prepare and execute one fold for direct Python callers.</span>
 
-<span class="sd">    The CLI uses the two-stage entry points directly so its collection-owning</span>
-<span class="sd">    frame returns to collection-free execution before training starts.</span>
+<span class="sd">    The CLI worker instead prepares via `prepare_single_fold_from_runtime_artifact`,</span>
+<span class="sd">    which loads runtime arrays and the artifact's compact parent collection rather</span>
+<span class="sd">    than the full augmented prepared collection.</span>
 <span class="sd">    """</span>
     <span class="n">prepared</span> <span class="o">=</span> <span class="n">prepare_single_fold</span><span class="p">(</span>
         <span class="n">collection</span><span class="p">,</span>
@@ -1671,10 +1672,6 @@
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_plot_cross_fold_losses</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">folds</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Fold</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">output_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Render one figure overlaying every fold's train + holdout loss curves."""</span>
-    <span class="c1"># Deferred like the other postprocessing uses here, to keep loo.py's</span>
-    <span class="c1"># module import free of matplotlib/jax-heavy postprocessing.</span>
-    <span class="kn">from</span><span class="w"> </span><span class="nn">.postprocessing</span><span class="w"> </span><span class="kn">import</span> <span class="n">plot_cross_fold_loss_curves</span>
-
     <span class="n">fold_curves</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">folds</span><span class="p">:</span>
         <span class="n">tr_steps</span><span class="p">,</span> <span class="n">tr_loss</span><span class="p">,</span> <span class="n">mon_steps</span><span class="p">,</span> <span class="n">mon_loss</span> <span class="o">=</span> <span class="n">_read_fold_loss_history</span><span class="p">(</span>

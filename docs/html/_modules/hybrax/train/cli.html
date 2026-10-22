@@ -585,8 +585,9 @@
         <span class="s2">"--config"</span><span class="p">,</span>
         <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
         <span class="n">help</span><span class="o">=</span><span class="p">(</span>
-            <span class="s2">"Path to the run config JSON (same schema as `train`, plus an "</span>
-            <span class="s2">"optional `loo` section: per_fold_holdout_sets, parallel_folds). "</span>
+            <span class="s2">"Path to the run config JSON (same schema as `train` with "</span>
+            <span class="s2">"`train.holdout_processes` unset, plus an optional `loo` section: "</span>
+            <span class="s2">"per_fold_holdout_sets, parallel_folds, devices_per_fold). "</span>
             <span class="s2">"Required unless --resume."</span>
         <span class="p">),</span>
     <span class="p">)</span>

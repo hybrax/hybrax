@@ -657,7 +657,8 @@
     <span class="n">unit</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">is_controlled</span><span class="p">:</span> <span class="nb">bool</span>  <span class="c1"># True if controlled, False if modeled</span>
     <span class="n">is_continuous</span><span class="p">:</span> <span class="nb">bool</span>  <span class="c1"># True if continuous, False if discrete</span>
-    <span class="n">values</span><span class="p">:</span> <span class="n">TimeSeries</span>  <span class="c1"># For continuous changes (cumulative or rate)</span></div>
+    <span class="c1"># Cumulative volume (continuous) or per-event volume deltas (discrete)</span>
+    <span class="n">values</span><span class="p">:</span> <span class="n">TimeSeries</span></div>
 
 
 
@@ -995,9 +996,7 @@
 <span class="sd">    train/eval split so synthetic siblings cannot leak into a fold whose</span>
 <span class="sd">    parent is held out.</span>
 
-<span class="sd">    This is a placeholder in v1: no augmentation logic produces these</span>
-<span class="sd">    objects yet, but the data shape is fixed so downstream packages</span>
-<span class="sd">    (e.g. ``hybrax.train``'s LOO orchestrator) can rely on it.</span>
+<span class="sd">    Instances are produced by `hybrax.train.augmentation`.</span>
 <span class="sd">    """</span>
 
     <span class="n">parent_process</span><span class="p">:</span> <span class="nb">str</span></div>

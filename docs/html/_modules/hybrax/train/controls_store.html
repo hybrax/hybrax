@@ -684,8 +684,8 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">derive_control_partition</span><span class="p">(</span><span class="n">collection</span><span class="p">:</span> <span class="n">BioProcessCollection</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ControlPartition</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Derive the canonical control layout from a collection's processes alone.</span>
 
-<span class="sd">    Used at the runtime-artifact trust boundary, where control arrays are loaded</span>
-<span class="sd">    straight from disk and therefore bypass ``ControlsStore.__post_init__``.</span>
+<span class="sd">    Used at the runtime-artifact trust boundary to check a stored split against its</span>
+<span class="sd">    parent collection, because `ControlsStore.__post_init__` validates structure only.</span>
 <span class="sd">    """</span>
     <span class="n">process_order</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_control_partition</span><span class="p">(</span>
@@ -861,11 +861,12 @@
 
 <span class="sd">    Column axis follows</span>
 <span class="sd">    ``[name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]``</span>
-<span class="sd">    matching hybrax.format ``ControlSplines``. All columns are consumed by</span>
-<span class="sd">    ``eval_u(t)`` to build RhsOde's ``u`` argument. Discrete bolus/sample events</span>
-<span class="sd">    are NOT controls here — they are applied as state jumps by the callbacks</span>
-<span class="sd">    solve from the ``*_event_*`` arrays. ``jump_ts`` carries genuine vector-field</span>
-<span class="sd">    discontinuity times (``BioProcess.discrete_events``) for the adaptive solver.</span>
+<span class="sd">    matching hybrax.format `ControlSplines`. All columns are consumed through</span>
+<span class="sd">    the per-axis `eval_controlled_*` accessors, which the wrapper scales into</span>
+<span class="sd">    `ReactionInputs`. Discrete bolus/sample events are NOT controls here;</span>
+<span class="sd">    the callbacks solve applies them as state jumps from the `*_event_*`</span>
+<span class="sd">    arrays. `jump_ts` carries genuine vector-field discontinuity times</span>
+<span class="sd">    (`BioProcess.discrete_events`) for the adaptive solver.</span>
 
 <span class="sd">    All non-array fields are ``eqx.field(static=True)`` so they live in</span>
 <span class="sd">    the pytree treedef rather than as dynamic leaves.</span>
@@ -1246,8 +1247,9 @@
 
 <span class="sd">    Column axis follows</span>
 <span class="sd">    ``[name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]``</span>
-<span class="sd">    consistently across every process; the wrapper consumes the full</span>
-<span class="sd">    u-block via :meth:`PerProcessControls.eval_u`.</span>
+<span class="sd">    consistently across every process; the wrapper consumes it via the</span>
+<span class="sd">    per-axis `eval_controlled_*` accessors of `PerProcessControls` (one</span>
+<span class="sd">    process) or `BatchControls` (batched training).</span>
 <span class="sd">    """</span>
 
     <span class="c1"># Canonical prepared process keys in stable collection order.</span>
@@ -1256,9 +1258,9 @@
     <span class="n">name_controlled_Inflows</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
     <span class="n">name_controlled_Outflows</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
     <span class="n">name_controlled_PVs</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
-    <span class="c1"># Padded max shapes. No runtime consumer today (only tests assert on it);</span>
-    <span class="c1"># kept because it may be wanted again. Static so that a pytree traversal of</span>
-    <span class="c1"># the store cannot silently rewrite the values, as it would for a leaf.</span>
+    <span class="c1"># Padded max shapes. Serialized into runtime artifacts and checked against the</span>
+    <span class="c1"># loaded array shapes; no solver path reads them. Static so that a pytree</span>
+    <span class="c1"># traversal of the store cannot silently rewrite the values, as it would for a leaf.</span>
     <span class="n">shape_metadata</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">spline_indices</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">linear_indices</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">field</span><span class="p">(</span><span class="n">static</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>

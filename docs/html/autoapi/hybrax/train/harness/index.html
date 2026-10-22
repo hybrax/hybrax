@@ -1009,8 +1009,8 @@ same order — or the call fails with an explicit error.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>collection</strong> (<a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>) – Evaluation-only process collection to forward-solve.</p></li>
 <li><p><strong>model_path</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>) – Path to the trained model’s run/checkpoint directory.</p></li>
-<li><p><strong>config</strong> (<a class="reference internal" href="#hybrax.train.harness.ForwardConfig" title="hybrax.train.harness.ForwardConfig"><em>ForwardConfig</em></a><em> | </em><em>None</em>) – Forward-run settings (prediction scope, plotting), or
-<code class="docutils literal notranslate"><span class="pre">None</span></code> for defaults.</p></li>
+<li><p><strong>config</strong> (<a class="reference internal" href="#hybrax.train.harness.ForwardConfig" title="hybrax.train.harness.ForwardConfig"><em>ForwardConfig</em></a><em> | </em><em>None</em>) – Forward-run settings (evaluated processes, target layout, solver),
+or <cite>None</cite> for defaults.</p></li>
 <li><p><strong>custom_py</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><em>None</em>) – Override for the recorded <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> path, or <code class="docutils literal notranslate"><span class="pre">None</span></code>
 to use the one the run recorded.</p></li>
 <li><p><strong>training_process_names</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>) – Restrict reconstruction to this subset of the
@@ -1019,15 +1019,15 @@ model’s original training processes, or <code class="docutils literal notransl
 <code class="docutils literal notranslate"><span class="pre">model_path</span></code>’s <code class="docutils literal notranslate"><span class="pre">config.json</span></code>.</p></li>
 <li><p><strong>custom_module</strong> (<em>Any</em><em> | </em><em>None</em>) – Pre-loaded custom module, or <code class="docutils literal notranslate"><span class="pre">None</span></code> to load it from
 <code class="docutils literal notranslate"><span class="pre">custom_py</span></code>/the recorded path.</p></li>
-<li><p><strong>prediction_process_names</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>) – Restrict prediction to this subset of
-<code class="docutils literal notranslate"><span class="pre">collection</span></code>’s processes, or <code class="docutils literal notranslate"><span class="pre">None</span></code> for all of them.</p></li>
+<li><p><strong>prediction_process_names</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>) – Subset of the evaluated processes to export;
+<cite>None</cite> exports every evaluated process.</p></li>
 <li><p><strong>prediction_grid_n</strong> (<em>int</em>) – Size of the evenly-spaced prediction grid; see
 <a class="reference internal" href="#hybrax.train.harness.model_predict" title="hybrax.train.harness.model_predict"><code class="xref py py-func docutils literal notranslate"><span class="pre">model_predict()</span></code></a>’s <code class="docutils literal notranslate"><span class="pre">grid_n</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>per-process dense exports plus the rebuilt
-wrapper and config.</p>
+<dd class="field-even"><p>per-process losses and dense exports plus the
+trained wrapper and evaluation store.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p>The forward result</p>
@@ -1237,8 +1237,8 @@ prepared JSON twice.</p>
 <span class="sig-prename descclassname"><span class="pre">hybrax.train.harness.</span></span><span class="sig-name descname"><span class="pre">train_harness_config_from_run_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cfg</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_dir</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/harness.html#train_harness_config_from_run_config"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.harness.train_harness_config_from_run_config" title="Link to this definition">¶</a></dt>
 <dd><p>Map a typed <code class="xref py py-class docutils literal notranslate"><span class="pre">RunConfig</span></code> + run-directory layout to the harness
 config, wiring the run-dir artifact paths (<code class="docutils literal notranslate"><span class="pre">metrics.csv</span></code>, <code class="docutils literal notranslate"><span class="pre">checkpoints/</span></code>)
-and the checkpoint/output/logging sections. Shared by the CLI train and LOO
-paths.</p>
+and the data/train/solver/checkpoint/logging sections. Shared by the CLI train and
+LOO paths.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

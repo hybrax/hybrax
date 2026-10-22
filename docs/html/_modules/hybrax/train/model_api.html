@@ -383,8 +383,8 @@
 <span class="sd">  predictions and measurements into named loss terms.</span>
 
 <span class="sd">Both ``RateModule`` and ``UserLossModule`` are abstract base classes:</span>
-<span class="sd">their ``__call__`` (and, for the reaction module, every ``scale_*``/``unscale_*``</span>
-<span class="sd">helper) raise ``NotImplementedError`` until a subclass provides them. The</span>
+<span class="sd">their `__call__` (and, for the loss module, `loss_names`) raise</span>
+<span class="sd">`NotImplementedError` until a subclass provides them. The</span>
 <span class="sd">training harness (``harness.py``, ``trainer.py``) drives instances of these</span>
 <span class="sd">through the shared ODE solve; this module defines the contract, not the solve.</span>
 <span class="sd">"""</span>
@@ -399,7 +399,6 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.tree_util</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jtu</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-
 
 <span class="n">TRAINABLE_METADATA_KEY</span> <span class="o">=</span> <span class="s2">"hybrax_train_trainable"</span>
 
@@ -653,12 +652,12 @@
 
 <div class="viewcode-block" id="Scaler.astype">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.Scaler.astype">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">astype</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"Scaler"</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">astype</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Scaler</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Return a scaler with the underlying arrays cast to ``dtype``."""</span>
         <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
 
 
-    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"Scaler"</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Scaler</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Sub-scaler by index (state target subsetting; value semantics)."""</span>
         <span class="k">raise</span> <span class="ne">NotImplementedError</span></div>
 
@@ -726,12 +725,12 @@
 
 <div class="viewcode-block" id="LinearScaler.astype">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LinearScaler.astype">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">astype</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"LinearScaler"</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">astype</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LinearScaler</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Return a :class:`LinearScaler` with ``scale`` cast to ``dtype``."""</span>
         <span class="k">return</span> <span class="n">LinearScaler</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">))</span></div>
 
 
-    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"LinearScaler"</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LinearScaler</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">LinearScaler</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span></div>
 
 
@@ -749,7 +748,7 @@
 
 <span class="sd">    The default path never constructs this; a user opts in by returning an</span>
 <span class="sd">    ``AffineScaler`` for one axis from ``estimate_all_scales``. Offsets are</span>
-<span class="sd">    meaningful only on VALUE axes — the harness rejects a non-zero offset on</span>
+<span class="sd">    meaningful only on VALUE axes; `HybridOdeWrapper` rejects a non-zero offset on</span>
 <span class="sd">    rate axes. Closed-over concrete zero offsets retain</span>
 <span class="sd">    ``LinearScaler`` bit identity through reverse-mode training. A genuinely</span>
 <span class="sd">    dynamic traced offset uses runtime selection: values retain signed-zero</span>
@@ -833,7 +832,7 @@
 
 <div class="viewcode-block" id="AffineScaler.astype">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.AffineScaler.astype">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">astype</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"AffineScaler"</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">astype</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AffineScaler</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Return an :class:`AffineScaler` with ``scale``/``offset`` cast to</span>
 <span class="sd">        ``dtype``.</span>
 <span class="sd">        """</span>
@@ -843,7 +842,7 @@
         <span class="p">)</span></div>
 
 
-    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"AffineScaler"</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">idx</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AffineScaler</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">AffineScaler</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scale</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span></div>
 
 
@@ -883,10 +882,10 @@
 <span class="w">    </span><span class="sd">"""Promote a bare array to ``LinearScaler``; pass a ``Scaler`` through.</span>
 
 <span class="sd">    The ``estimate_all_scales`` hook and the no-hook defaults both return bare</span>
-<span class="sd">    arrays (the 21 live+frozen hooks keep doing so); this promotes them to</span>
-<span class="sd">    ``LinearScaler`` so the default path is pure division, bit-identical to the</span>
-<span class="sd">    pre-scaler code. A hook opts into affine scaling by returning a ``Scaler``</span>
-<span class="sd">    (e.g. ``AffineScaler``) for the axis it wants to transform.</span>
+<span class="sd">    arrays; this promotes them to `LinearScaler` so the default path is pure</span>
+<span class="sd">    division, bit-identical to the pre-scaler code. A hook opts into affine</span>
+<span class="sd">    scaling by returning a `Scaler` (e.g. `AffineScaler`) for the axis it</span>
+<span class="sd">    wants to transform.</span>
 <span class="sd">    """</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">Scaler</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">value</span>
@@ -1278,14 +1277,14 @@
 <div class="viewcode-block" id="RateModule.scale_state">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.scale_state">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">scale_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">RAW_state</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""RAW -&gt; SCL for the full integrated state, via ``SCALE_state``."""</span>
+<span class="w">        </span><span class="sd">"""RAW -&gt; SCL for the physical state block, via `SCALE_state`."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_state</span><span class="o">.</span><span class="n">scale_value</span><span class="p">(</span><span class="n">RAW_state</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="RateModule.unscale_state">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.RateModule.unscale_state">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unscale_state</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">SCL_state</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">"""SCL -&gt; RAW for the full integrated state, via ``SCALE_state``."""</span>
+<span class="w">        </span><span class="sd">"""SCL -&gt; RAW for the physical state block, via `SCALE_state`."""</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">SCALE_state</span><span class="o">.</span><span class="n">unscale_value</span><span class="p">(</span><span class="n">SCL_state</span><span class="p">)</span></div>
 
 
@@ -1649,11 +1648,9 @@
     <span class="c1"># whether or not the dense grid is enabled.</span>
     <span class="n">jump_ts</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
 
-    <span class="c1"># ---- Dense-grid view. Populated iff ``UserLossModule.dense_grid_n`` is</span>
-    <span class="c1"># not None. All have leading dim ``dense_grid_n + n_meas_padded`` is wrong</span>
-    <span class="c1"># -- the dense linspace has exactly ``dense_grid_n`` points and these</span>
-    <span class="c1"># arrays are the index-gathered dense rows from the union solve, so the</span>
-    <span class="c1"># leading dim is ``dense_grid_n``. ``dense_t`` is the linspace itself.</span>
+    <span class="c1"># ---- Dense-grid view. Populated iff `UserLossModule.dense_grid_n` is not</span>
+    <span class="c1"># None. These are the index-gathered dense rows of the union solve, so the</span>
+    <span class="c1"># leading dim is `dense_grid_n`. `dense_t` is the linspace itself.</span>
     <span class="n">dense_t</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">dense_SCL_states</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">dense_RAW_states</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>

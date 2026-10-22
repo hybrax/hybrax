@@ -1511,12 +1511,18 @@
 <span class="sd">      - reactor_volume_dense, sample_volume_dense, accumulated_feed_dense,</span>
 <span class="sd">        concentration_in_feed</span>
 <span class="sd">      - adf_at_meas, feed_corr_at_meas</span>
+<span class="sd">      - reactor_volume_ts, sample_compensation_ts, adf_ts, feed_corr_ts: exact</span>
+<span class="sd">        `TimeSeries`</span>
+<span class="sd">      - accumulated_feed_ts: mapping of feed names to exact `TimeSeries`</span>
+<span class="sd">      - adf_dense, feed_corr_dense, sample_compensation_dense: arrays on the</span>
+<span class="sd">        canonical break grid</span>
 <span class="sd">      - has_discrete_feed (bool)</span>
 
 <span class="sd">    Notes</span>
 <span class="sd">    -----</span>
-<span class="sd">    ADF and feed_correction are computed only at measurement times</span>
-<span class="sd">    (this avoids treating continuous feeds as discrete dilutions).</span>
+<span class="sd">    ADF and feed_correction are built as exact piecewise-polynomial `TimeSeries`</span>
+<span class="sd">    on the canonical break grid; `adf_at_meas` and `feed_corr_at_meas` are</span>
+<span class="sd">    evaluations of those series.</span>
 <span class="sd">    Discrete bolus events are treated as left-continuous in this transform:</span>
 <span class="sd">    at exactly ``t_b`` values are pre-event, and the jump appears for ``t &gt; t_b``.</span>
 <span class="sd">    """</span>
@@ -1588,9 +1594,7 @@
 <span class="sd">    ``TimeSeries`` payloads built directly from physical volume/feed events.</span>
 <span class="sd">    No epsilon-offset dense event grid is used.</span>
 
-<span class="sd">    Returns a runtime payload dict consumed by</span>
-<span class="sd">    ``evaluate_real_concentration``, ``to_timeseries``,</span>
-<span class="sd">    ``BacktransformSpline``, and the mechanistic pseudobatch path.</span>
+<span class="sd">    Returns a runtime payload dict consumed by `evaluate_real_concentration`.</span>
 <span class="sd">    """</span>
     <span class="n">c_star_ts</span> <span class="o">=</span> <span class="n">fit_timeseries_spline</span><span class="p">(</span>
         <span class="n">TimeSeries</span><span class="p">(</span><span class="n">times</span><span class="o">=</span><span class="n">inputs</span><span class="p">[</span><span class="s2">"meas_times"</span><span class="p">],</span> <span class="n">values</span><span class="o">=</span><span class="n">inputs</span><span class="p">[</span><span class="s2">"c_star"</span><span class="p">]),</span>

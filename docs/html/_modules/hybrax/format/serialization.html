@@ -1214,9 +1214,7 @@
     <span class="k">if</span> <span class="n">vc_type</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
             <span class="s2">"Old VolumeChange schema detected (missing 'type'). "</span>
-            <span class="s2">"Please regenerate datasets by running "</span>
-            <span class="s2">"examples/*/01_load_single_process.ipynb and "</span>
-            <span class="s2">"examples/*/02_load_all_processes.ipynb."</span>
+            <span class="s2">"Regenerate the dataset with the current hybrax format."</span>
         <span class="p">)</span>
 
     <span class="c1"># required: no default on VolumeChange.values</span>

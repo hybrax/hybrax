@@ -390,8 +390,8 @@ subclass <code class="docutils literal notranslate"><span class="pre">UserLossMo
 predictions and measurements into named loss terms.</p></li>
 </ul>
 <p>Both <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> and <code class="docutils literal notranslate"><span class="pre">UserLossModule</span></code> are abstract base classes:
-their <code class="docutils literal notranslate"><span class="pre">__call__</span></code> (and, for the reaction module, every <code class="docutils literal notranslate"><span class="pre">scale_*</span></code>/<code class="docutils literal notranslate"><span class="pre">unscale_*</span></code>
-helper) raise <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code> until a subclass provides them. The
+their <cite>__call__</cite> (and, for the loss module, <cite>loss_names</cite>) raise
+<cite>NotImplementedError</cite> until a subclass provides them. The
 training harness (<code class="docutils literal notranslate"><span class="pre">harness.py</span></code>, <code class="docutils literal notranslate"><span class="pre">trainer.py</span></code>) drives instances of these
 through the shared ODE solve; this module defines the contract, not the solve.</p>
 <section id="attributes">
@@ -477,7 +477,7 @@ divergence is the whole point of the explicit derivative ops — a value
 <code class="docutils literal notranslate"><span class="pre">/</span></code> applied to a rate would silently inject <code class="docutils literal notranslate"><span class="pre">-b/s</span></code> into the ODE RHS.</p>
 <p>The default path never constructs this; a user opts in by returning an
 <code class="docutils literal notranslate"><span class="pre">AffineScaler</span></code> for one axis from <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code>. Offsets are
-meaningful only on VALUE axes — the harness rejects a non-zero offset on
+meaningful only on VALUE axes; <cite>HybridOdeWrapper</cite> rejects a non-zero offset on
 rate axes. Closed-over concrete zero offsets retain
 <code class="docutils literal notranslate"><span class="pre">LinearScaler</span></code> bit identity through reverse-mode training. A genuinely
 dynamic traced offset uses runtime selection: values retain signed-zero
@@ -1139,7 +1139,7 @@ derivative op).</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.scale_state">
 <span class="sig-name descname"><span class="pre">scale_state</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">RAW_state</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.scale_state"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.scale_state" title="Link to this definition">¶</a></dt>
-<dd><p>RAW -&gt; SCL for the full integrated state, via <code class="docutils literal notranslate"><span class="pre">SCALE_state</span></code>.</p>
+<dd><p>RAW -&gt; SCL for the physical state block, via <cite>SCALE_state</cite>.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -1248,7 +1248,7 @@ derivative op).</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.unscale_state">
 <span class="sig-name descname"><span class="pre">unscale_state</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">SCL_state</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.unscale_state"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.unscale_state" title="Link to this definition">¶</a></dt>
-<dd><p>SCL -&gt; RAW for the full integrated state, via <code class="docutils literal notranslate"><span class="pre">SCALE_state</span></code>.</p>
+<dd><p>SCL -&gt; RAW for the physical state block, via <cite>SCALE_state</cite>.</p>
 </dd></dl>
 
 <dl class="py attribute">

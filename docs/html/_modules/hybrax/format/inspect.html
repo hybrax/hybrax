@@ -746,10 +746,11 @@
 <span class="sd">        collection: BioProcessCollection object to inspect</span>
 <span class="sd">        verbosity: Detail level (1=minimal, 2=medium, 3=full)</span>
 
-<span class="sd">            - Level 3 (most verbose): organism, citation (when set),</span>
-<span class="sd">              per-process datapoint counts, and total datapoints</span>
-<span class="sd">            - Level 2 (mid verbose): organism and process names listed</span>
-<span class="sd">              (no citation, no datapoint counts)</span>
+<span class="sd">            - Level 3 (most verbose): everything in level 2, plus the citation</span>
+<span class="sd">              (when `case_id` is set), per-process datapoint counts, and total</span>
+<span class="sd">              datapoints</span>
+<span class="sd">            - Level 2 (mid verbose): organism (when `case_id` is set; otherwise</span>
+<span class="sd">              metadata keys, if any) and process names</span>
 <span class="sd">            - Level 1 (least verbose): case_id/label and process count only</span>
 <span class="sd">    """</span>
     <span class="nb">print</span><span class="p">(</span><span class="s2">"="</span> <span class="o">*</span> <span class="mi">80</span><span class="p">)</span>
@@ -809,13 +810,14 @@
 
 <span class="sd">    Returns a list of dicts, each with:</span>
 <span class="sd">      - 'title': str</span>
-<span class="sd">      - 'category': 'ReactorMedium' | 'ProcessVariable' | 'VolumeChange'</span>
+<span class="sd">      - 'category': 'ReactorMedium' | 'ProcessVariable' | 'VolumeChange' | 'Volume'</span>
 <span class="sd">      - 'type': 'dynamic' | 'static'</span>
 <span class="sd">      - for dynamic: 'x' (times array), 'y' (values array)</span>
 <span class="sd">      - for static:  't_start' (float), 't_end' (float), 'value' (float)</span>
 <span class="sd">      - optional: 'render': 'line' | 'bar'</span>
 <span class="sd">      - optional: 'series': TimeSeries spline carrier (if available)</span>
 <span class="sd">      - optional: 'series_type': 'backtransform' | 'direct'</span>
+<span class="sd">      - optional: 'process', 'species_name' (for 'backtransform' panels)</span>
 <span class="sd">    """</span>
     <span class="n">t_start</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">start</span><span class="p">)</span> <span class="k">if</span> <span class="n">process</span><span class="o">.</span><span class="n">time_axis</span> <span class="k">else</span> <span class="mf">0.0</span>
     <span class="n">t_end</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">time_axis</span><span class="o">.</span><span class="n">end</span><span class="p">)</span> <span class="k">if</span> <span class="n">process</span><span class="o">.</span><span class="n">time_axis</span> <span class="k">else</span> <span class="mf">1.0</span>
@@ -1108,9 +1110,11 @@
 <span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Draw a single panel (dynamic or static) onto *ax*.</span>
 
-<span class="sd">    If the panel has a ``'series'`` key, the spline/backtransform curve is drawn and raw</span>
-<span class="sd">    data is shown as scatter points (no connecting lines). Otherwise raw</span>
-<span class="sd">    data is drawn with ``'o-'`` markers.</span>
+<span class="sd">    Bar-rendered panels are drawn as bars and static panels as dashed horizontal</span>
+<span class="sd">    lines. Otherwise, raw data with at most 50 points is drawn as scatter points if</span>
+<span class="sd">    the panel has a `'series'`, or with `'o-'` markers if not; longer data is drawn</span>
+<span class="sd">    as a plain line. When `t_start` and `t_end` are given, the spline/backtransform</span>
+<span class="sd">    curve of `'series'` is overlaid.</span>
 <span class="sd">    """</span>
     <span class="n">plot_kwargs</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">if</span> <span class="n">color</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -1510,7 +1514,9 @@
         <span class="k">return</span> <span class="mf">0.0</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">comp</span><span class="o">.</span><span class="n">concentration</span><span class="p">,</span> <span class="n">StaticVariable</span><span class="p">):</span>
         <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">comp</span><span class="o">.</span><span class="n">concentration</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
-    <span class="k">return</span> <span class="mf">0.0</span>  <span class="c1"># TimeSeries Cin not supported (mirrors mechanistic._build_cin)</span>
+    <span class="c1"># TimeSeries feed concentrations display as 0.0 here;</span>
+    <span class="c1"># mechanistic._build_cin rejects them</span>
+    <span class="k">return</span> <span class="mf">0.0</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_measure_subtable_width</span><span class="p">(</span><span class="n">headers</span><span class="p">:</span> <span class="nb">list</span><span class="p">,</span> <span class="n">rows</span><span class="p">:</span> <span class="nb">list</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
@@ -1692,8 +1698,8 @@
     <span class="n">target</span><span class="p">,</span>
     <span class="n">ordering</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ProcessOrdering</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Print the mechanistic ODE structure as a single ASCII box with two</span>
-<span class="sd">    sub-tables (Algebraic, Derivatives).</span>
+<span class="w">    </span><span class="sd">"""Print the mechanistic ODE structure as a single ASCII box with up to</span>
+<span class="sd">    four sub-tables (Algebraic, Rates, Derivatives, Volume).</span>
 
 <span class="sd">    Accepts a :class:`BioProcess` or a</span>
 <span class="sd">    :class:`BioProcessCollection`. For multi-process containers,</span>
@@ -1711,8 +1717,11 @@
 <span class="sd">    (``− |&lt;Outflow sum&gt;|``) columns.</span>
 
 <span class="sd">    Raises:</span>
-<span class="sd">        ValueError: if a multi-process container's processes do not share</span>
-<span class="sd">            equivalent ``reaction_ode`` blocks.</span>
+<span class="sd">        ValueError: if `process.reaction_ode` is unset, the collection has no</span>
+<span class="sd">            processes, or a multi-process container's processes do not share</span>
+<span class="sd">            equivalent `reaction_ode` blocks.</span>
+<span class="sd">        TypeError: if `target` is neither a `BioProcess` nor a</span>
+<span class="sd">            `BioProcessCollection`.</span>
 <span class="sd">    """</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.mechanistic</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_process_ordering</span>
 

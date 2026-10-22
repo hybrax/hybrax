@@ -373,15 +373,19 @@
 <span class="sd">MAE, and RMSE against the original measurements without reloading any model or</span>
 <span class="sd">rerunning the solver. Inputs:</span>
 
-<span class="sd">- ``&lt;loo_output_dir&gt;/folds/&lt;parent&gt;/predictions.csv`` — dense simulated</span>
+<span class="sd">- `&lt;loo_output_dir&gt;/folds/&lt;slug&gt;/predictions.csv`: dense simulated</span>
 <span class="sd">  trajectory of each process for that fold.</span>
-<span class="sd">- ``&lt;loo_output_dir&gt;/folds/&lt;parent&gt;/trained_wrapper.meta.json`` — sidecar</span>
+<span class="sd">- `&lt;loo_output_dir&gt;/folds/&lt;slug&gt;/trained_wrapper.meta.json`: sidecar</span>
 <span class="sd">  identifying which processes formed the holdout group for that fold.</span>
-<span class="sd">- ``prepared.json`` — source of truth for measurement timestamps and</span>
+<span class="sd">- `prepared.json`: source of truth for measurement timestamps and</span>
 <span class="sd">  measured values per target.</span>
 
-<span class="sd">Predictions are linearly interpolated to measurement timestamps before the</span>
-<span class="sd">metrics are computed.</span>
+<span class="sd">`&lt;slug&gt;` is the parent name in classic leave-one-out; otherwise it is the</span>
+<span class="sd">sanitized fold name or `+`-joined test set, with `fold_NNN` as a fallback.</span>
+
+<span class="sd">Each measurement time must match a prediction-grid node (within `np.isclose`</span>
+<span class="sd">tolerance); predictions are then read with `np.interp`. Non-finite or</span>
+<span class="sd">truncated predictions score NaN.</span>
 <span class="sd">"""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
@@ -615,8 +619,8 @@
     <span class="n">rtol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-4</span><span class="p">,</span>
     <span class="n">atol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-6</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Fail-fast: every measurement time must be an exact node of the (sorted)</span>
-<span class="sd">    prediction grid ``pred_t``.</span>
+<span class="w">    </span><span class="sd">"""Fail-fast: every measurement time must be a node (within tolerance) of the</span>
+<span class="sd">    (sorted) prediction grid `pred_t`.</span>
 
 <span class="sd">    Otherwise ``np.interp`` would silently draw a straight ramp across any</span>
 <span class="sd">    bolus/feed discontinuity that falls between two grid points. hybrax.train's export</span>
@@ -678,7 +682,8 @@
     <span class="n">measurements</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]],</span>
     <span class="n">process</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"?"</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]:</span>
-<span class="w">    </span><span class="sd">"""Read predictions at measurement times (exact nodes) and compute metrics.</span>
+<span class="w">    </span><span class="sd">"""Read predictions at measurement times (nodes within tolerance) and compute</span>
+<span class="sd">    metrics.</span>
 
 <span class="sd">    A diverged or truncated prediction (see</span>
 <span class="sd">    :func:`_prediction_unscoreable`) scores NaN and is skipped.</span>
@@ -772,7 +777,7 @@
 <span class="w">    </span><span class="sd">"""Compute per-fold/per-process/per-target R², NMAE, MAE, RMSE.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        loo_output_dir: directory containing ``folds/&lt;parent&gt;/`` produced</span>
+<span class="sd">        loo_output_dir: directory containing `folds/&lt;slug&gt;/` produced</span>
 <span class="sd">            by ``hybrax loo``.</span>
 <span class="sd">        prepared_json: path to ``prepared.json`` *or* an already-loaded</span>
 <span class="sd">            :class:`BioProcessCollection`. Source of measured values.</span>
@@ -1208,11 +1213,7 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_is_augmented_process</span><span class="p">(</span><span class="n">proc</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Detect AugmentedBioProcess without forcing the import at module top.</span>
-
-<span class="sd">    hybrax.format ships AugmentedBioProcess as a BioProcess subclass with a</span>
-<span class="sd">    ``parent_process`` attribute; we only need the structural test.</span>
-<span class="sd">    """</span>
+<span class="w">    </span><span class="sd">"""Return whether `proc` is an `AugmentedBioProcess`."""</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">AugmentedBioProcess</span>
     <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
@@ -1398,7 +1399,7 @@
 
 
 <span class="c1"># ---------------------------------------------------------------------------</span>
-<span class="c1"># Pretty-print helpers (used by demo scripts; not strictly required)</span>
+<span class="c1"># Pretty-print helpers</span>
 <span class="c1"># ---------------------------------------------------------------------------</span>
 
 

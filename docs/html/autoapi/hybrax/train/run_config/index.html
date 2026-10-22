@@ -503,18 +503,19 @@ is resampled onto, from the parent’s fitted spline.
 the spacing between consecutive points in that resampled grid, as a
 fraction of the uniform spacing; the remaining duration is distributed
 as random jitter between the interior points, and <code class="docutils literal notranslate"><span class="pre">1.0</span></code> forces
-exactly uniform spacing. <code class="docutils literal notranslate"><span class="pre">noise_std</span></code> (required, non-empty) maps a
+exactly uniform spacing. <cite>noise_std</cite> (required, non-empty) maps each
 modeled state name to the standard deviation of the Gaussian noise
-added to its resampled trajectory; only states named here are
-perturbed, every other state is copied through unchanged, and every
-name must be a modeled (not controlled) state with a fitted spline.
+added to its resampled trajectory. Every name must be a modeled (not
+controlled) state with a fitted spline. Only named states receive
+noise; other modeled states with fitted splines are resampled without
+noise, and all remaining states are copied unchanged.
 <code class="docutils literal notranslate"><span class="pre">initial_value_source</span></code> (default <code class="docutils literal notranslate"><span class="pre">&quot;measured&quot;</span></code>) decides how each
-noised state’s t=0 value is set: <code class="docutils literal notranslate"><span class="pre">&quot;measured&quot;</span></code> pins it to the parent’s
-actual t=0 measurement (raising if there is none), <code class="docutils literal notranslate"><span class="pre">&quot;spline&quot;</span></code> pins it
-to the parent’s fitted spline value at t=0, and <code class="docutils literal notranslate"><span class="pre">&quot;augmented&quot;</span></code> leaves
-it noised like every other point; it can be one value applied to every
-state in <code class="docutils literal notranslate"><span class="pre">noise_std</span></code>, or a per-state dict whose keys must exactly
-match <code class="docutils literal notranslate"><span class="pre">noise_std</span></code>’s.</p>
+noised state’s value at the process start is set: <cite>“measured”</cite> pins it
+to the parent’s actual measurement there (raising if there is none),
+<cite>“spline”</cite> pins it to the parent’s fitted spline value there, and
+<cite>“augmented”</cite> leaves it noised like every other point; it can be one
+value applied to every state in <cite>noise_std</cite>, or a per-state dict whose
+keys must exactly match <cite>noise_std</cite>’s.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>data</strong> (<em>Any</em>)</p>
@@ -574,9 +575,11 @@ still evaluated and logged, but only boundaries entering the best N and
 the final step are written, so <cite>latest</cite> is the newest written checkpoint.
 <code class="docutils literal notranslate"><span class="pre">retention.json</span></code> lists best checkpoints. Retention requires a fresh
 checkpoint directory.</p>
-<p>Checkpointing re-exports predictions and re-writes the bundled data, so
-on a fast run it can dominate the wall clock — set it coarse enough
-that it is not the bottleneck.</p>
+<p>Every checkpoint boundary evaluates the configured holdouts. Each
+written checkpoint also exports predictions for the selected holdout
+processes and, with <cite>bundle_prepared</cite> and an available prepared-data
+file, bundles that data. On a fast run this can dominate the wall
+clock, so set <cite>every</cite> coarse enough that it is not the bottleneck.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>data</strong> (<em>Any</em>)</p>
@@ -637,17 +640,24 @@ field means <code class="docutils literal notranslate"><span class="pre">model_c
 directory <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">prepare</span></code> wrote, or a <code class="docutils literal notranslate"><span class="pre">prepared.json</span></code>/
 <code class="docutils literal notranslate"><span class="pre">prepared.json.gz</span></code> file directly (see <a class="reference internal" href="#hybrax.train.run_config.resolve_prepared_path" title="hybrax.train.run_config.resolve_prepared_path"><code class="xref py py-func docutils literal notranslate"><span class="pre">resolve_prepared_path()</span></code></a>);
 resolved relative to the config file’s directory like every other path
-here. <code class="docutils literal notranslate"><span class="pre">processes</span></code> (optional) restricts training/evaluation to this
-subset of process names; omitted means every process in the prepared
-dataset. <code class="docutils literal notranslate"><span class="pre">targets</span></code> (optional) restricts the training targets to this
-explicit list of measured-quantity names, overriding automatic derivation
-from <code class="docutils literal notranslate"><span class="pre">target_source</span></code>. <code class="docutils literal notranslate"><span class="pre">target_source</span></code> decides <em>which</em> measurements
-the loss is computed against: <code class="docutils literal notranslate"><span class="pre">&quot;reactor_components&quot;</span></code> (medium components
-only), <code class="docutils literal notranslate"><span class="pre">&quot;process_variables&quot;</span></code> (process variables only), <code class="docutils literal notranslate"><span class="pre">&quot;combined&quot;</span></code>
-(both), or <code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> (default; decide from what the dataset actually
-has). Set it explicitly once you have modeled process variables —
-<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code> is a convenience, not a decision you want made implicitly on a
-dataset you care about.</p>
+here. <cite>processes</cite> (optional) selects the training processes for <cite>train</cite>
+and the eligible process pool for <cite>loo</cite>. If omitted, <cite>loo</cite> uses every
+process in the prepared dataset, and <cite>train</cite> uses every process outside
+the <cite>train.holdout_processes</cite> augmentation groups. When holdouts are set
+and <cite>processes</cite> is omitted, the CLI records the resolved training-process
+list in <cite>config.json</cite>. Whenever <cite>train.holdout_processes</cite> is set, the
+final evaluation after <cite>train</cite> also covers the holdout processes.
+<cite>forward</cite> selects what to evaluate with its own <cite>data.processes</cite>; there,
+the model’s recorded <cite>processes</cite> only identifies its training processes.
+<cite>targets</cite> (optional) restricts the training targets to this explicit list
+of measured-quantity names, overriding automatic derivation from
+<cite>target_source</cite>. <cite>target_source</cite> decides <em>which</em> measurements the loss is
+computed against: <cite>“reactor_components”</cite> (medium components only),
+<cite>“process_variables”</cite> (process variables only), <cite>“combined”</cite> (both), or
+<cite>“auto”</cite> (default; decide from what the dataset actually has). Set it
+explicitly once you have modeled process variables: <cite>“auto”</cite> is a
+convenience, not a decision you want made implicitly on a dataset you
+care about.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>data</strong> (<em>Any</em>)</p>
@@ -865,9 +875,9 @@ the test process names.</p>
 <dd><p>Bases: <a class="reference internal" href="#hybrax.train.run_config.ConfigBase" title="hybrax.train.run_config.ConfigBase"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ConfigBase</span></code></a></p>
 <p>Console output formatting for <code class="docutils literal notranslate"><span class="pre">train</span></code> and <code class="docutils literal notranslate"><span class="pre">loo</span></code>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">decimals</span></code> (default 4) is the number of decimal places used when
-formatting loss and gradient-norm values in the interactive console log.
-It does not affect <code class="docutils literal notranslate"><span class="pre">metrics.csv</span></code>/<code class="docutils literal notranslate"><span class="pre">metrics.jsonl</span></code>, which always
-record full precision regardless of this setting.</p>
+formatting loss values in console output. It does not affect
+<cite>metrics.csv</cite>, whose loss and gradient-norm values use 10 significant
+digits.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>data</strong> (<em>Any</em>)</p>
@@ -1322,8 +1332,14 @@ top-level sections are read and which are required.</p></li>
 <dd class="field-even"><p>The resolved config, loaded custom module (if any), and its SHA-256.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ValueError</strong> – If the JSON has an unknown top-level key, or a section
-required by <code class="docutils literal notranslate"><span class="pre">command</span></code> is missing.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ValueError</strong> – If a config section fails validation, the JSON has an
+unknown top-level key, a section required by <cite>command</cite> is
+missing, or <cite>command</cite> is <cite>“loo”</cite> and <cite>train.holdout_processes</cite>
+is set.</p></li>
+<li><p><strong>TypeError</strong> – If the top-level JSON is not an object, or <cite>custom</cite> is
+neither an object nor null.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="#hybrax.train.run_config.LoadedRunConfig" title="hybrax.train.run_config.LoadedRunConfig">LoadedRunConfig</a></p>
@@ -1354,7 +1370,7 @@ into the typed object the custom hooks expect.</p>
 <p>A fresh run wraps the raw <code class="docutils literal notranslate"><span class="pre">custom</span></code> section via <code class="docutils literal notranslate"><span class="pre">get_custom_config</span></code> (or
 <code class="docutils literal notranslate"><span class="pre">DefaultCustomConfig</span></code>) so hooks can use attribute access
 (<code class="docutils literal notranslate"><span class="pre">config.custom.target_loss_weights</span></code>). When a run is reconstructed from
-config.json (resume / model_load / forward), <code class="docutils literal notranslate"><span class="pre">custom</span></code> comes back as a plain
+config.json (model_load / forward), <cite>custom</cite> comes back as a plain
 dict; this restores the same typed wrapper so reconstruction matches a fresh
 run. No-op if <code class="docutils literal notranslate"><span class="pre">custom</span></code> is already resolved (not a dict) or absent.</p>
 <dl class="field-list simple">

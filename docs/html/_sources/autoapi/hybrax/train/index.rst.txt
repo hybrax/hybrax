@@ -8,8 +8,9 @@ hybrax.train
    hybrax.train: the training harness, config, and CLI over hybrax.format processes.
 
    Public names are lazily re-exported from their owning submodule via
-   ``__getattr__``/``_EXPORTS`` below, so importing ``hybrax.train`` does not
-   eagerly import JAX or any training submodule.
+   `__getattr__`/`_EXPORTS` below, so importing `hybrax.train` does not
+   eagerly import any training submodule. It does set `XLA_FLAGS` for the CPU
+   device count and then import JAX to enable float64.
 
 
 

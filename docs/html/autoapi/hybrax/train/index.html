@@ -376,8 +376,9 @@
 <span id="hybrax-train"></span><h1>hybrax.train<a class="headerlink" href="#module-hybrax.train" title="Link to this heading">¶</a></h1>
 <p>hybrax.train: the training harness, config, and CLI over hybrax.format processes.</p>
 <p>Public names are lazily re-exported from their owning submodule via
-<code class="docutils literal notranslate"><span class="pre">__getattr__</span></code>/<code class="docutils literal notranslate"><span class="pre">_EXPORTS</span></code> below, so importing <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> does not
-eagerly import JAX or any training submodule.</p>
+<cite>__getattr__</cite>/<cite>_EXPORTS</cite> below, so importing <cite>hybrax.train</cite> does not
+eagerly import any training submodule. It does set <cite>XLA_FLAGS</cite> for the CPU
+device count and then import JAX to enable float64.</p>
 <section id="submodules">
 <h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">¶</a></h2>
 <div class="toctree-wrapper compound">

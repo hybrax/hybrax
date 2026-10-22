@@ -70,9 +70,7 @@ Module Contents
    train/eval split so synthetic siblings cannot leak into a fold whose
    parent is held out.
 
-   This is a placeholder in v1: no augmentation logic produces these
-   objects yet, but the data shape is fixed so downstream packages
-   (e.g. ``hybrax.train``'s LOO orchestrator) can rely on it.
+   Instances are produced by `hybrax.train.augmentation`.
 
 
    .. py:attribute:: parent_process

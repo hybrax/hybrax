@@ -380,15 +380,18 @@
 MAE, and RMSE against the original measurements without reloading any model or
 rerunning the solver. Inputs:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">&lt;loo_output_dir&gt;/folds/&lt;parent&gt;/predictions.csv</span></code> — dense simulated
+<li><p><cite>&lt;loo_output_dir&gt;/folds/&lt;slug&gt;/predictions.csv</cite>: dense simulated
 trajectory of each process for that fold.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">&lt;loo_output_dir&gt;/folds/&lt;parent&gt;/trained_wrapper.meta.json</span></code> — sidecar
+<li><p><cite>&lt;loo_output_dir&gt;/folds/&lt;slug&gt;/trained_wrapper.meta.json</cite>: sidecar
 identifying which processes formed the holdout group for that fold.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">prepared.json</span></code> — source of truth for measurement timestamps and
+<li><p><cite>prepared.json</cite>: source of truth for measurement timestamps and
 measured values per target.</p></li>
 </ul>
-<p>Predictions are linearly interpolated to measurement timestamps before the
-metrics are computed.</p>
+<p><cite>&lt;slug&gt;</cite> is the parent name in classic leave-one-out; otherwise it is the
+sanitized fold name or <cite>+</cite>-joined test set, with <cite>fold_NNN</cite> as a fallback.</p>
+<p>Each measurement time must match a prediction-grid node (within <cite>np.isclose</cite>
+tolerance); predictions are then read with <cite>np.interp</cite>. Non-finite or
+truncated predictions score NaN.</p>
 <section id="attributes">
 <h2>Attributes<a class="headerlink" href="#attributes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
@@ -508,7 +511,7 @@ time) for target j”.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>loo_output_dir</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>) – directory containing <code class="docutils literal notranslate"><span class="pre">folds/&lt;parent&gt;/</span></code> produced
+<li><p><strong>loo_output_dir</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>) – directory containing <cite>folds/&lt;slug&gt;/</cite> produced
 by <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">loo</span></code>.</p></li>
 <li><p><strong>prepared_json</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>) – path to <code class="docutils literal notranslate"><span class="pre">prepared.json</span></code> <em>or</em> an already-loaded
 <code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcessCollection</span></code>. Source of measured values.</p></li>

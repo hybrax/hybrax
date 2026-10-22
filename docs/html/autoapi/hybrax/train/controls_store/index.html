@@ -662,8 +662,9 @@ genuine disagreement.</p>
 <p>Collection-level loader and index for prepared, padded JAX control tensors.</p>
 <p>Column axis follows
 <code class="docutils literal notranslate"><span class="pre">[name_controlled_Inflows</span> <span class="pre">|</span> <span class="pre">name_controlled_Outflows</span> <span class="pre">|</span> <span class="pre">name_controlled_PVs]</span></code>
-consistently across every process; the wrapper consumes the full
-u-block via <code class="xref py py-meth docutils literal notranslate"><span class="pre">PerProcessControls.eval_u()</span></code>.</p>
+consistently across every process; the wrapper consumes it via the
+per-axis <cite>eval_controlled_*</cite> accessors of <cite>PerProcessControls</cite> (one
+process) or <cite>BatchControls</cite> (batched training).</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="hybrax.train.controls_store.ControlsStore.from_collection">
 <span class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">from_collection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/controls_store.html#ControlsStore.from_collection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.controls_store.ControlsStore.from_collection" title="Link to this definition">¶</a></dt>
@@ -894,11 +895,12 @@ layout. Direct callers may omit it and retain the standalone fallback.</p>
 <p>Per-process hybrid runtime view over direct and linear controls.</p>
 <p>Column axis follows
 <code class="docutils literal notranslate"><span class="pre">[name_controlled_Inflows</span> <span class="pre">|</span> <span class="pre">name_controlled_Outflows</span> <span class="pre">|</span> <span class="pre">name_controlled_PVs]</span></code>
-matching hybrax.format <code class="docutils literal notranslate"><span class="pre">ControlSplines</span></code>. All columns are consumed by
-<code class="docutils literal notranslate"><span class="pre">eval_u(t)</span></code> to build RhsOde’s <code class="docutils literal notranslate"><span class="pre">u</span></code> argument. Discrete bolus/sample events
-are NOT controls here — they are applied as state jumps by the callbacks
-solve from the <code class="docutils literal notranslate"><span class="pre">*_event_*</span></code> arrays. <code class="docutils literal notranslate"><span class="pre">jump_ts</span></code> carries genuine vector-field
-discontinuity times (<code class="docutils literal notranslate"><span class="pre">BioProcess.discrete_events</span></code>) for the adaptive solver.</p>
+matching hybrax.format <cite>ControlSplines</cite>. All columns are consumed through
+the per-axis <cite>eval_controlled_*</cite> accessors, which the wrapper scales into
+<cite>ReactionInputs</cite>. Discrete bolus/sample events are NOT controls here;
+the callbacks solve applies them as state jumps from the <cite>*_event_*</cite>
+arrays. <cite>jump_ts</cite> carries genuine vector-field discontinuity times
+(<cite>BioProcess.discrete_events</cite>) for the adaptive solver.</p>
 <p>All non-array fields are <code class="docutils literal notranslate"><span class="pre">eqx.field(static=True)</span></code> so they live in
 the pytree treedef rather than as dynamic leaves.</p>
 <dl class="py method">
@@ -1194,8 +1196,8 @@ through float32 even when validation receives float64 arrays.</p>
 <dt class="sig sig-object py" id="hybrax.train.controls_store.derive_control_partition">
 <span class="sig-prename descclassname"><span class="pre">hybrax.train.controls_store.</span></span><span class="sig-name descname"><span class="pre">derive_control_partition</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/controls_store.html#derive_control_partition"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.controls_store.derive_control_partition" title="Link to this definition">¶</a></dt>
 <dd><p>Derive the canonical control layout from a collection’s processes alone.</p>
-<p>Used at the runtime-artifact trust boundary, where control arrays are loaded
-straight from disk and therefore bypass <code class="docutils literal notranslate"><span class="pre">ControlsStore.__post_init__</span></code>.</p>
+<p>Used at the runtime-artifact trust boundary to check a stored split against its
+parent collection, because <cite>ControlsStore.__post_init__</cite> validates structure only.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>collection</strong> (<a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p>

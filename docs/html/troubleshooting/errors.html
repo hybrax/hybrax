@@ -449,9 +449,9 @@ layout; a cycle in <code class="docutils literal notranslate"><span class="pre">
 <td><p>A feed has negative values, or a sample positive</p></td>
 <td><p>Flip the sign, or the type</p></td>
 </tr>
-<tr class="row-odd"><td><p>feed medium missing species</p></td>
-<td><p>A reactor species has no declared feed concentration</p></td>
-<td><p>Declare it, including <code class="docutils literal notranslate"><span class="pre">StaticVariable(0.0)</span></code></p></td>
+<tr class="row-odd"><td><p>feed medium / feed units</p></td>
+<td><p>A feed has no feed medium, or a feed component’s unit differs from the reactor’s</p></td>
+<td><p>Add the feed medium; use the reactor’s unit string</p></td>
 </tr>
 <tr class="row-even"><td><p>measurement / sampling alignment</p></td>
 <td><p>A measurement is timestamped just <em>after</em> its own sample draw</p></td>

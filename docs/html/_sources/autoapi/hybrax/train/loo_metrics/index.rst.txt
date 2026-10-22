@@ -12,15 +12,19 @@ hybrax.train.loo_metrics
    MAE, and RMSE against the original measurements without reloading any model or
    rerunning the solver. Inputs:
 
-   - ``<loo_output_dir>/folds/<parent>/predictions.csv`` — dense simulated
+   - `<loo_output_dir>/folds/<slug>/predictions.csv`: dense simulated
      trajectory of each process for that fold.
-   - ``<loo_output_dir>/folds/<parent>/trained_wrapper.meta.json`` — sidecar
+   - `<loo_output_dir>/folds/<slug>/trained_wrapper.meta.json`: sidecar
      identifying which processes formed the holdout group for that fold.
-   - ``prepared.json`` — source of truth for measurement timestamps and
+   - `prepared.json`: source of truth for measurement timestamps and
      measured values per target.
 
-   Predictions are linearly interpolated to measurement timestamps before the
-   metrics are computed.
+   `<slug>` is the parent name in classic leave-one-out; otherwise it is the
+   sanitized fold name or `+`-joined test set, with `fold_NNN` as a fallback.
+
+   Each measurement time must match a prediction-grid node (within `np.isclose`
+   tolerance); predictions are then read with `np.interp`. Non-finite or
+   truncated predictions score NaN.
 
 
 
@@ -99,7 +103,7 @@ Module Contents
 
    Compute per-fold/per-process/per-target R², NMAE, MAE, RMSE.
 
-   :param loo_output_dir: directory containing ``folds/<parent>/`` produced
+   :param loo_output_dir: directory containing `folds/<slug>/` produced
                           by ``hybrax loo``.
    :param prepared_json: path to ``prepared.json`` *or* an already-loaded
                          :class:`BioProcessCollection`. Source of measured values.

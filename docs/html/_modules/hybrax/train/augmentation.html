@@ -603,9 +603,11 @@
 <span class="sd">    ``augmentation.n_children_per_process`` synthetic children: each gets its</span>
 <span class="sd">    own randomly jittered time grid, and every modeled state named in</span>
 <span class="sd">    ``augmentation.noise_std`` is resampled from the parent's fitted spline</span>
-<span class="sd">    onto that grid with Gaussian noise added (reactor-medium components are</span>
-<span class="sd">    clipped to stay non-negative). Every other modeled state is copied through</span>
-<span class="sd">    from the spline unchanged. Mutates ``collection.processes`` in place with</span>
+<span class="sd">    onto that grid with Gaussian noise added. Other modeled states with fitted</span>
+<span class="sd">    splines are resampled onto the child's grid without noise; other states are</span>
+<span class="sd">    copied from the parent unchanged. Resampled reactor-medium values are</span>
+<span class="sd">    clipped to be non-negative before the optional custom hook, whose results</span>
+<span class="sd">    are not clipped again. Mutates `collection.processes` in place with</span>
 <span class="sd">    the new children and also returns ``collection``.</span>
 
 <span class="sd">    Args:</span>
@@ -625,7 +627,9 @@
 <span class="sd">        ValueError: If a generated child name collides with an existing</span>
 <span class="sd">            process, a requested state cannot be augmented (controlled PV,</span>
 <span class="sd">            unmodeled, or spline-less), the degenerate case ``t0 == t_end``,</span>
-<span class="sd">            the requested grid spacing cannot be represented, or a custom</span>
+<span class="sd">            the requested grid spacing cannot be represented, no acceptable</span>
+<span class="sd">            child grid is found within the attempt limit, a `measured` initial</span>
+<span class="sd">            value has no observation at the process start, or a custom</span>
 <span class="sd">            ``augment_state_values`` hook returns a mismatched shape or</span>
 <span class="sd">            non-finite values.</span>
 <span class="sd">    """</span>

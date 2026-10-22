@@ -37,9 +37,11 @@ Module Contents
    ``augmentation.n_children_per_process`` synthetic children: each gets its
    own randomly jittered time grid, and every modeled state named in
    ``augmentation.noise_std`` is resampled from the parent's fitted spline
-   onto that grid with Gaussian noise added (reactor-medium components are
-   clipped to stay non-negative). Every other modeled state is copied through
-   from the spline unchanged. Mutates ``collection.processes`` in place with
+   onto that grid with Gaussian noise added. Other modeled states with fitted
+   splines are resampled onto the child's grid without noise; other states are
+   copied from the parent unchanged. Resampled reactor-medium values are
+   clipped to be non-negative before the optional custom hook, whose results
+   are not clipped again. Mutates `collection.processes` in place with
    the new children and also returns ``collection``.
 
    :param collection: Parent process collection to augment; every non-augmented
@@ -56,7 +58,9 @@ Module Contents
    :raises ValueError: If a generated child name collides with an existing
        process, a requested state cannot be augmented (controlled PV,
        unmodeled, or spline-less), the degenerate case ``t0 == t_end``,
-       the requested grid spacing cannot be represented, or a custom
+       the requested grid spacing cannot be represented, no acceptable
+       child grid is found within the attempt limit, a `measured` initial
+       value has no observation at the process start, or a custom
        ``augment_state_values`` hook returns a mismatched shape or
        non-finite values.
 

@@ -379,7 +379,7 @@
 every train step: it maps a single sample’s ODE solve plus loss module
 evaluation (<code class="docutils literal notranslate"><span class="pre">evaluate_sample_with_loss_module</span></code>) across a batch, and
 <code class="docutils literal notranslate"><span class="pre">evaluate_one_sample_loss</span></code> provides the equivalent single-sample path used
-outside training (holdout evaluation, dense exports).</p>
+by the device-sharded (pmap and GSPMD) training steps.</p>
 <section id="classes">
 <h2>Classes<a class="headerlink" href="#classes" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
@@ -404,7 +404,7 @@ outside training (holdout evaluation, dense exports).</p>
 <td><p>Right-clamp padded rows to avoid NaNs in padded tails.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.trainer.evaluate_one_sample_loss" title="hybrax.train.trainer.evaluate_one_sample_loss"><code class="xref py py-obj docutils literal notranslate"><span class="pre">evaluate_one_sample_loss</span></code></a>(wrapper, batch_controls, ...)</p></td>
-<td><p>One process -&gt; <code class="docutils literal notranslate"><span class="pre">(total_loss,</span> <span class="pre">per_target_loss,</span> <span class="pre">fail_time)</span></code>. Shared by the</p></td>
+<td><p>One process -&gt; <cite>(total_loss, per_target_loss, fail_time)</cite>. Used by the</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.trainer.evaluate_sample_with_loss_module" title="hybrax.train.trainer.evaluate_sample_with_loss_module"><code class="xref py py-obj docutils literal notranslate"><span class="pre">evaluate_sample_with_loss_module</span></code></a>(wrapper, *, ...[, ...])</p></td>
 <td><p>Solve once, build <code class="docutils literal notranslate"><span class="pre">LossInputs</span></code>, and evaluate <code class="docutils literal notranslate"><span class="pre">wrapper.loss_module</span></code>.</p></td>
@@ -517,8 +517,8 @@ limits execution width without changing the process mean.</p>
 <dl class="py function">
 <dt class="sig sig-object py" id="hybrax.train.trainer.evaluate_one_sample_loss">
 <span class="sig-prename descclassname"><span class="pre">hybrax.train.trainer.</span></span><span class="sig-name descname"><span class="pre">evaluate_one_sample_loss</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">wrapper</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_controls</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">row_idx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t_measured</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">SCL_target_measured</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mask_measured</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_measured</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">RAW_y0_measured</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cin</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cin_modeled</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">retention</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">retention_modeled</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">jump_ts</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_solver_steps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">solver_rtol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">solver_atol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ode_solver</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">DEFAULT_SOLVER</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/trainer.html#evaluate_one_sample_loss"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.trainer.evaluate_one_sample_loss" title="Link to this definition">¶</a></dt>
-<dd><p>One process -&gt; <code class="docutils literal notranslate"><span class="pre">(total_loss,</span> <span class="pre">per_target_loss,</span> <span class="pre">fail_time)</span></code>. Shared by the
-vmap batched loss and the device-sharded (pmap) step. <code class="docutils literal notranslate"><span class="pre">fail_time</span></code> is <code class="docutils literal notranslate"><span class="pre">+inf</span></code>
+<dd><p>One process -&gt; <cite>(total_loss, per_target_loss, fail_time)</cite>. Used by the
+device-sharded (pmap and GSPMD) training steps. <cite>fail_time</cite> is <cite>+inf</cite>
 for a clean solve, finite when a segment bailed. <code class="docutils literal notranslate"><span class="pre">y0</span></code> stays RAW physical;
 the callbacks solve (<code class="docutils literal notranslate"><span class="pre">physical_solve.solve_physical_states</span></code>) integrates it.</p>
 <dl class="field-list simple">
@@ -591,10 +591,11 @@ wrapper). <code class="docutils literal notranslate"><span class="pre">RAW_y0_me
 <p>Convenience entry point for forward/export/plotting and tests: it points the
 wrapper at <code class="docutils literal notranslate"><span class="pre">process_data</span></code>’s per-process controls and integrates from
 <code class="docutils literal notranslate"><span class="pre">process_data.y0_measured</span></code> with the discrete-jump callbacks solve
-(<code class="xref py py-func docutils literal notranslate"><span class="pre">physical_solve.solve_physical_states()</span></code>). Returns the RAW physical state
-<code class="docutils literal notranslate"><span class="pre">[modeled_RMCs</span> <span class="pre">|</span> <span class="pre">V</span> <span class="pre">|</span> <span class="pre">modeled</span> <span class="pre">cumulative</span> <span class="pre">flows]</span></code> at each padded
-measurement time. (Replaces the pre-callbacks single-solve of the same name;
-no <code class="docutils literal notranslate"><span class="pre">jump_ts</span></code> argument — the callbacks solve lands segment ends on the events.)</p>
+(<code class="xref py py-func docutils literal notranslate"><span class="pre">physical_solve.solve_physical_states()</span></code>). Returns RAW states
+<cite>[modeled_RMCs | modeled_PVs | V | modeled cumulative flows]</cite> at the active
+measurement times. Bolus and sample jumps are segment boundaries. This helper
+passes no <cite>jump_ts</cite>, so <cite>discrete_events</cite> kinks are not given to the step-size
+controller as they are in training.</p>
 <p>For a stateful model the returned width is the full integrated <code class="docutils literal notranslate"><span class="pre">n_state</span></code>
 (physical columns followed by the trailing latent block); slice physical
 columns by index rather than assuming the physical-only width.</p>

@@ -144,12 +144,13 @@ interpolation, not linear, to preserve correct discontinuity behavior in the bac
 ### 5. Validation-first approach
 
 Bioprocess data comes from diverse sources, with common errors like negative feed volumes,
-missing biomass component, mismatched times/values lengths, feed media that omit reactor
-species, or measurement times coinciding with sampling events. hybrax.format validates early
-and explicitly. All validation functions return `(bool, str)` tuples, so callers can
-collect **all** issues in one pass and present a comprehensive report rather than failing
-on the first error. `validate_process()` runs single-process checks;
-`validate_for_publication()` adds cross-process consistency checks.
+missing biomass component, mismatched times/values lengths, feed components whose units
+differ from the reactor's, or measurements timestamped just after a sampling event.
+hybrax.format validates early and explicitly. All validation functions return
+`(bool, str)` tuples, so callers can collect **all** issues in one pass and present a
+comprehensive report rather than failing on the first error. `validate_process()` runs
+single-process checks; `validate_for_publication()` adds cross-process consistency
+checks.
 
 ---
 

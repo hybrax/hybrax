@@ -751,7 +751,8 @@
     <span class="c1"># for rows beyond ``n_measured`` and for cells where a target has no</span>
     <span class="c1"># measurement at that timestamp on the union grid.</span>
     <span class="n">mask_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
-    <span class="c1"># Full physical initial state `[all_RMCs..., all_PVs..., V, modeled_cum...]`.</span>
+    <span class="c1"># Full physical initial state</span>
+    <span class="c1"># `[modeled_RMCs..., modeled_PVs..., V, modeled_cum...]`.</span>
     <span class="n">y0_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
     <span class="c1"># This process's flow matrices. A wrapper's baked matrices belong to</span>
     <span class="c1"># whichever process supplied its template, so every solve substitutes all</span>
@@ -832,8 +833,8 @@
 <span class="sd">    modeled Outflow cumulative...]``, where targets may be RMCs, PVs, or both.</span>
 <span class="sd">    V is in the ODE state but not in the loss targets.</span>
 
-<span class="sd">    The y0 vector has layout ``[all RMCs..., all PVs..., V(0), modeled Inflow</span>
-<span class="sd">    cumulative..., modeled Outflow cumulative...]``, matching the physical ODE</span>
+<span class="sd">    The y0 vector has layout `[modeled RMCs..., modeled PVs..., V(0), modeled Inflow</span>
+<span class="sd">    cumulative..., modeled Outflow cumulative...]`, matching the physical ODE</span>
 <span class="sd">    state order expected by the wrapper.</span>
 <span class="sd">    """</span>
 
@@ -870,8 +871,10 @@
     <span class="n">mask_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
     <span class="c1"># Active measurement counts per process.</span>
     <span class="n">n_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
-    <span class="c1"># Initial state matrix `[n_processes, n_RMC + n_PV + 1 + n_modeled_flows]`</span>
-    <span class="c1"># where layout is `[all_RMCs_0..., all_PVs_0..., V(0), B_modeled_cum_0(0), ...]`.</span>
+    <span class="c1"># Initial state matrix</span>
+    <span class="c1"># `[n_processes, n_modeled_RMC + n_modeled_PV + 1 + n_modeled_flows]`,</span>
+    <span class="c1"># where layout is</span>
+    <span class="c1"># `[modeled_RMCs_0..., modeled_PVs_0..., V(0), B_modeled_cum_0(0), ...]`.</span>
     <span class="n">y0_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">__check_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>

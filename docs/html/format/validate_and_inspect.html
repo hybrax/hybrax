@@ -459,7 +459,7 @@ be applied to another.</p>
 <td><p>A feed imported as negative or a sample as positive. The single most common import bug.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">validate_volume_change_states</span></code></p></td>
-<td><p>A feed medium that omits a reactor species: “not present” silently confused with “not recorded”.</p></td>
+<td><p>A feed with no feed medium, or a declared feed component whose unit differs from its dynamic reactor counterpart.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">validate_measurement_sampling_alignment</span></code></p></td>
 <td><p>An offline measurement timestamped just <em>after</em> its own sample draw. Corrupts the dilution factor and every spline built on it.</p></td>

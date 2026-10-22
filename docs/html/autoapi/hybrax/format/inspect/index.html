@@ -395,7 +395,7 @@
 <td><p>Print a hierarchical view of the BioProcess object structure.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.inspect.print_rhs_ode" title="hybrax.format.inspect.print_rhs_ode"><code class="xref py py-obj docutils literal notranslate"><span class="pre">print_rhs_ode</span></code></a>(target[, ordering])</p></td>
-<td><p>Print the mechanistic ODE structure as a single ASCII box with two</p></td>
+<td><p>Print the mechanistic ODE structure as a single ASCII box with up to</p></td>
 </tr>
 </tbody>
 </table>
@@ -475,10 +475,11 @@ closed immediately, freeing its memory; nothing is returned.</p></li>
 <li><p><strong>collection</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>) – BioProcessCollection object to inspect</p></li>
 <li><p><strong>verbosity</strong> (<em>int</em>) – <p>Detail level (1=minimal, 2=medium, 3=full)</p>
 <ul>
-<li><p>Level 3 (most verbose): organism, citation (when set),
-per-process datapoint counts, and total datapoints</p></li>
-<li><p>Level 2 (mid verbose): organism and process names listed
-(no citation, no datapoint counts)</p></li>
+<li><p>Level 3 (most verbose): everything in level 2, plus the citation
+(when <cite>case_id</cite> is set), per-process datapoint counts, and total
+datapoints</p></li>
+<li><p>Level 2 (mid verbose): organism (when <cite>case_id</cite> is set; otherwise
+metadata keys, if any) and process names</p></li>
 <li><p>Level 1 (least verbose): case_id/label and process count only</p></li>
 </ul>
 </p></li>
@@ -525,8 +526,8 @@ no other details</p></li>
 <dl class="py function">
 <dt class="sig sig-object py" id="hybrax.format.inspect.print_rhs_ode">
 <span class="sig-prename descclassname"><span class="pre">hybrax.format.inspect.</span></span><span class="sig-name descname"><span class="pre">print_rhs_ode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">target</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ordering</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/format/inspect.html#print_rhs_ode"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.inspect.print_rhs_ode" title="Link to this definition">¶</a></dt>
-<dd><p>Print the mechanistic ODE structure as a single ASCII box with two
-sub-tables (Algebraic, Derivatives).</p>
+<dd><p>Print the mechanistic ODE structure as a single ASCII box with up to
+four sub-tables (Algebraic, Rates, Derivatives, Volume).</p>
 <p>Accepts a <code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcess</span></code> or a
 <code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcessCollection</span></code>. For multi-process containers,
 <a class="reference internal" href="../validate/index.html#hybrax.format.validate.validate_reaction_ode_equivalence" title="hybrax.format.validate.validate_reaction_ode_equivalence"><code class="xref py py-func docutils literal notranslate"><span class="pre">hybrax.format.validate.validate_reaction_ode_equivalence()</span></code></a> is
@@ -542,8 +543,13 @@ V separately with <em>Additions</em> (Inflow sum) and <em>Removals</em>
 (<code class="docutils literal notranslate"><span class="pre">−</span> <span class="pre">|&lt;Outflow</span> <span class="pre">sum&gt;|</span></code>) columns.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>ValueError</strong> – if a multi-process container’s processes do not share
-equivalent <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> blocks.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ValueError</strong> – if <cite>process.reaction_ode</cite> is unset, the collection has no
+processes, or a multi-process container’s processes do not share
+equivalent <cite>reaction_ode</cite> blocks.</p></li>
+<li><p><strong>TypeError</strong> – if <cite>target</cite> is neither a <cite>BioProcess</cite> nor a
+<cite>BioProcessCollection</cite>.</p></li>
+</ul>
 </dd>
 <dt class="field-even">Parameters<span class="colon">:</span></dt>
 <dd class="field-even"><p><strong>ordering</strong> (<em>Optional</em><em>[</em><a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.ProcessOrdering" title="hybrax.format.dataclasses.ProcessOrdering"><em>hybrax.format.dataclasses.ProcessOrdering</em></a><em>]</em>)</p>

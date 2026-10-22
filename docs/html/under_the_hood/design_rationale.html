@@ -509,12 +509,13 @@ interpolation, not linear, to preserve correct discontinuity behavior in the bac
 <section id="validation-first-approach">
 <h3>5. Validation-first approach<a class="headerlink" href="#validation-first-approach" title="Link to this heading">¶</a></h3>
 <p>Bioprocess data comes from diverse sources, with common errors like negative feed volumes,
-missing biomass component, mismatched times/values lengths, feed media that omit reactor
-species, or measurement times coinciding with sampling events. hybrax.format validates early
-and explicitly. All validation functions return <code class="docutils literal notranslate"><span class="pre">(bool,</span> <span class="pre">str)</span></code> tuples, so callers can
-collect <strong>all</strong> issues in one pass and present a comprehensive report rather than failing
-on the first error. <code class="docutils literal notranslate"><span class="pre">validate_process()</span></code> runs single-process checks;
-<code class="docutils literal notranslate"><span class="pre">validate_for_publication()</span></code> adds cross-process consistency checks.</p>
+missing biomass component, mismatched times/values lengths, feed components whose units
+differ from the reactor’s, or measurements timestamped just after a sampling event.
+hybrax.format validates early and explicitly. All validation functions return
+<code class="docutils literal notranslate"><span class="pre">(bool,</span> <span class="pre">str)</span></code> tuples, so callers can collect <strong>all</strong> issues in one pass and present a
+comprehensive report rather than failing on the first error. <code class="docutils literal notranslate"><span class="pre">validate_process()</span></code> runs
+single-process checks; <code class="docutils literal notranslate"><span class="pre">validate_for_publication()</span></code> adds cross-process consistency
+checks.</p>
 </section>
 </section>
 <hr class="docutils" />

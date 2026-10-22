@@ -488,7 +488,9 @@
 
 <span class="sd">    Power-basis pieces ``p(dt) = a + dt·(b + dt·(c + dt·d))`` with</span>
 <span class="sd">    ``idx = searchsorted(breaks, t, side) - 1`` clamped to a valid piece. This</span>
-<span class="sd">    NumPy evaluator is used during preparation and scale estimation.</span>
+<span class="sd">    NumPy evaluator backs spline-based `SignalSource.values`,</span>
+<span class="sd">    `SignalSource.evaluator` and `SignalSource.derivative`; prepare uses the evaluator</span>
+<span class="sd">    for control diagnostics.</span>
 <span class="sd">    """</span>
     <span class="n">ts_arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">_as_numpy</span><span class="p">(</span><span class="n">ts</span><span class="p">))</span>
     <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">breaks</span><span class="p">,</span> <span class="n">ts_arr</span><span class="p">,</span> <span class="n">side</span><span class="o">=</span><span class="n">side</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">breaks</span><span class="p">)</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span>

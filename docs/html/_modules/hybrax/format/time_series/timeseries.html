@@ -471,11 +471,11 @@
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Construct from discrete samples, a spline representation, or both.</span>
 
-<span class="sd">        Provide ``times``/``values`` (both or neither), and/or a spline via</span>
-<span class="sd">        ``poly`` or via ``breaks``/``coeffs``/``segment_start_piece_idx`` (all</span>
-<span class="sd">        three together). ``poly`` is shorthand for the latter three and must</span>
-<span class="sd">        agree with them when both are given. At least one representation is</span>
-<span class="sd">        required.</span>
+<span class="sd">        Provide `times`/`values` (both or neither), and/or a spline via</span>
+<span class="sd">        `breaks`/`coeffs` (or `poly` in their place) plus</span>
+<span class="sd">        `segment_start_piece_idx`. If `poly` and `breaks`/`coeffs` are both</span>
+<span class="sd">        given they must agree, and `poly.continuity_side` must equal</span>
+<span class="sd">        `continuity_side`. At least one representation is required.</span>
 <span class="sd">        """</span>
         <span class="c1"># All floating-point fields are float64 (x64 enabled package-wide).</span>
         <span class="n">dtype_resolved</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>

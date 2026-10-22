@@ -453,17 +453,24 @@
 <span class="sd">    directory ``hybrax prepare`` wrote, or a ``prepared.json``/</span>
 <span class="sd">    ``prepared.json.gz`` file directly (see :func:`resolve_prepared_path`);</span>
 <span class="sd">    resolved relative to the config file's directory like every other path</span>
-<span class="sd">    here. ``processes`` (optional) restricts training/evaluation to this</span>
-<span class="sd">    subset of process names; omitted means every process in the prepared</span>
-<span class="sd">    dataset. ``targets`` (optional) restricts the training targets to this</span>
-<span class="sd">    explicit list of measured-quantity names, overriding automatic derivation</span>
-<span class="sd">    from ``target_source``. ``target_source`` decides *which* measurements</span>
-<span class="sd">    the loss is computed against: ``"reactor_components"`` (medium components</span>
-<span class="sd">    only), ``"process_variables"`` (process variables only), ``"combined"``</span>
-<span class="sd">    (both), or ``"auto"`` (default; decide from what the dataset actually</span>
-<span class="sd">    has). Set it explicitly once you have modeled process variables —</span>
-<span class="sd">    ``"auto"`` is a convenience, not a decision you want made implicitly on a</span>
-<span class="sd">    dataset you care about.</span>
+<span class="sd">    here. `processes` (optional) selects the training processes for `train`</span>
+<span class="sd">    and the eligible process pool for `loo`. If omitted, `loo` uses every</span>
+<span class="sd">    process in the prepared dataset, and `train` uses every process outside</span>
+<span class="sd">    the `train.holdout_processes` augmentation groups. When holdouts are set</span>
+<span class="sd">    and `processes` is omitted, the CLI records the resolved training-process</span>
+<span class="sd">    list in `config.json`. Whenever `train.holdout_processes` is set, the</span>
+<span class="sd">    final evaluation after `train` also covers the holdout processes.</span>
+<span class="sd">    `forward` selects what to evaluate with its own `data.processes`; there,</span>
+<span class="sd">    the model's recorded `processes` only identifies its training processes.</span>
+<span class="sd">    `targets` (optional) restricts the training targets to this explicit list</span>
+<span class="sd">    of measured-quantity names, overriding automatic derivation from</span>
+<span class="sd">    `target_source`. `target_source` decides *which* measurements the loss is</span>
+<span class="sd">    computed against: `"reactor_components"` (medium components only),</span>
+<span class="sd">    `"process_variables"` (process variables only), `"combined"` (both), or</span>
+<span class="sd">    `"auto"` (default; decide from what the dataset actually has). Set it</span>
+<span class="sd">    explicitly once you have modeled process variables: `"auto"` is a</span>
+<span class="sd">    convenience, not a decision you want made implicitly on a dataset you</span>
+<span class="sd">    care about.</span>
 <span class="sd">    """</span>
 
     <span class="n">prepared</span><span class="p">:</span> <span class="n">Path</span>
@@ -608,9 +615,11 @@
 <span class="sd">    ``retention.json`` lists best checkpoints. Retention requires a fresh</span>
 <span class="sd">    checkpoint directory.</span>
 
-<span class="sd">    Checkpointing re-exports predictions and re-writes the bundled data, so</span>
-<span class="sd">    on a fast run it can dominate the wall clock — set it coarse enough</span>
-<span class="sd">    that it is not the bottleneck.</span>
+<span class="sd">    Every checkpoint boundary evaluates the configured holdouts. Each</span>
+<span class="sd">    written checkpoint also exports predictions for the selected holdout</span>
+<span class="sd">    processes and, with `bundle_prepared` and an available prepared-data</span>
+<span class="sd">    file, bundles that data. On a fast run this can dominate the wall</span>
+<span class="sd">    clock, so set `every` coarse enough that it is not the bottleneck.</span>
 <span class="sd">    """</span>
 
     <span class="n">every</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
@@ -669,9 +678,9 @@
 <span class="w">    </span><span class="sd">"""Console output formatting for ``train`` and ``loo``.</span>
 
 <span class="sd">    ``decimals`` (default 4) is the number of decimal places used when</span>
-<span class="sd">    formatting loss and gradient-norm values in the interactive console log.</span>
-<span class="sd">    It does not affect ``metrics.csv``/``metrics.jsonl``, which always</span>
-<span class="sd">    record full precision regardless of this setting.</span>
+<span class="sd">    formatting loss values in console output. It does not affect</span>
+<span class="sd">    `metrics.csv`, whose loss and gradient-norm values use 10 significant</span>
+<span class="sd">    digits.</span>
 <span class="sd">    """</span>
 
     <span class="n">decimals</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span></div>
@@ -691,18 +700,19 @@
 <span class="sd">    the spacing between consecutive points in that resampled grid, as a</span>
 <span class="sd">    fraction of the uniform spacing; the remaining duration is distributed</span>
 <span class="sd">    as random jitter between the interior points, and ``1.0`` forces</span>
-<span class="sd">    exactly uniform spacing. ``noise_std`` (required, non-empty) maps a</span>
+<span class="sd">    exactly uniform spacing. `noise_std` (required, non-empty) maps each</span>
 <span class="sd">    modeled state name to the standard deviation of the Gaussian noise</span>
-<span class="sd">    added to its resampled trajectory; only states named here are</span>
-<span class="sd">    perturbed, every other state is copied through unchanged, and every</span>
-<span class="sd">    name must be a modeled (not controlled) state with a fitted spline.</span>
+<span class="sd">    added to its resampled trajectory. Every name must be a modeled (not</span>
+<span class="sd">    controlled) state with a fitted spline. Only named states receive</span>
+<span class="sd">    noise; other modeled states with fitted splines are resampled without</span>
+<span class="sd">    noise, and all remaining states are copied unchanged.</span>
 <span class="sd">    ``initial_value_source`` (default ``"measured"``) decides how each</span>
-<span class="sd">    noised state's t=0 value is set: ``"measured"`` pins it to the parent's</span>
-<span class="sd">    actual t=0 measurement (raising if there is none), ``"spline"`` pins it</span>
-<span class="sd">    to the parent's fitted spline value at t=0, and ``"augmented"`` leaves</span>
-<span class="sd">    it noised like every other point; it can be one value applied to every</span>
-<span class="sd">    state in ``noise_std``, or a per-state dict whose keys must exactly</span>
-<span class="sd">    match ``noise_std``'s.</span>
+<span class="sd">    noised state's value at the process start is set: `"measured"` pins it</span>
+<span class="sd">    to the parent's actual measurement there (raising if there is none),</span>
+<span class="sd">    `"spline"` pins it to the parent's fitted spline value there, and</span>
+<span class="sd">    `"augmented"` leaves it noised like every other point; it can be one</span>
+<span class="sd">    value applied to every state in `noise_std`, or a per-state dict whose</span>
+<span class="sd">    keys must exactly match `noise_std`'s.</span>
 <span class="sd">    """</span>
 
     <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
@@ -1056,8 +1066,12 @@
 <span class="sd">        The resolved config, loaded custom module (if any), and its SHA-256.</span>
 
 <span class="sd">    Raises:</span>
-<span class="sd">        ValueError: If the JSON has an unknown top-level key, or a section</span>
-<span class="sd">            required by ``command`` is missing.</span>
+<span class="sd">        ValueError: If a config section fails validation, the JSON has an</span>
+<span class="sd">            unknown top-level key, a section required by `command` is</span>
+<span class="sd">            missing, or `command` is `"loo"` and `train.holdout_processes`</span>
+<span class="sd">            is set.</span>
+<span class="sd">        TypeError: If the top-level JSON is not an object, or `custom` is</span>
+<span class="sd">            neither an object nor null.</span>
 <span class="sd">    """</span>
     <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">config_path</span><span class="p">)</span>
     <span class="n">raw</span> <span class="o">=</span> <span class="n">_read_raw_config</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
@@ -1221,7 +1235,7 @@
 <span class="sd">    A fresh run wraps the raw ``custom`` section via ``get_custom_config`` (or</span>
 <span class="sd">    ``DefaultCustomConfig``) so hooks can use attribute access</span>
 <span class="sd">    (``config.custom.target_loss_weights``). When a run is reconstructed from</span>
-<span class="sd">    config.json (resume / model_load / forward), ``custom`` comes back as a plain</span>
+<span class="sd">    config.json (model_load / forward), `custom` comes back as a plain</span>
 <span class="sd">    dict; this restores the same typed wrapper so reconstruction matches a fresh</span>
 <span class="sd">    run. No-op if ``custom`` is already resolved (not a dict) or absent.</span>
 <span class="sd">    """</span>

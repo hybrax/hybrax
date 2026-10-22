@@ -71,13 +71,12 @@ Module Contents
    ``fail_time``. That guarantee requires Equinox runtime errors to remain enabled;
    setting ``EQX_ON_ERROR=off`` deliberately disables it.
 
-   ``max_steps`` (from ``--solver-max-steps``) is the **budget for the whole
-   solve**: it
-   bounds each segment's inner solve and the running sum across segments, so exceeding
-   it is the same failure as any segment bail (state poisoned to ``inf``, ``fail_time``
-   recorded, later segments collapsed). It is grid-independent — chopping the same
-   horizon into more segments does not multiply the ceiling, so ``fail_time`` no longer
-   moves just because a denser output grid was requested.
+   `max_steps` (from the run config's `solver.max_steps`) is the **budget for the whole
+   solve**: it bounds each segment's inner solve and the running sum across segments,
+   so exceeding it is the same failure as any segment bail (state poisoned to `inf`,
+   `fail_time` recorded, later segments collapsed). It is grid-independent: chopping
+   the same horizon into more segments does not multiply the ceiling, so `fail_time`
+   no longer moves just because a denser output grid was requested.
 
 
 .. py:function:: within_fail_time(t, fail_time)

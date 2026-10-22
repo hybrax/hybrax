@@ -5,7 +5,7 @@ hybrax.format.time_series
 
 .. autoapi-nested-parse::
 
-   hybrax.format.time_series package scaffolding.
+   TimeSeries and PPoly spline data model for hybrax.format.
 
 
 

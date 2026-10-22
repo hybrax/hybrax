@@ -1412,9 +1412,9 @@
 <span class="sd">    pseudobatch transform may use the wrong reactor volume, corrupting the</span>
 <span class="sd">    normalisation and downstream spline calculations.</span>
 
-<span class="sd">    This function flags every measurement time point that is close to (but not</span>
-<span class="sd">    exactly at) a sampling time point, where "close" means within</span>
-<span class="sd">    ``rel_threshold`` of the total process length.</span>
+<span class="sd">    This function flags every reactor-medium measurement time point that falls</span>
+<span class="sd">    after its nearest discrete-`Outflow` sampling time point by at most</span>
+<span class="sd">    `rel_threshold` of the total process length.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        process: BioProcess object to validate.</span>
@@ -1505,9 +1505,10 @@
 
 <span class="sd">    Args:</span>
 <span class="sd">        process: BioProcess object whose volume changes are validated.</span>
-<span class="sd">        final_volume: Expected final volume in the process's volume unit.  When</span>
-<span class="sd">            provided the function checks that the sum of all volume changes plus</span>
-<span class="sd">            ``process.volume.initial_volume`` is within 5 % of this value.</span>
+<span class="sd">        final_volume: Expected final volume in the process's volume unit.  A</span>
+<span class="sd">            numeric value must be supplied.  For positive values, checks that the</span>
+<span class="sd">            sum of all volume changes plus `process.volume.initial_volume` is</span>
+<span class="sd">            within 5 % of this value.</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        A tuple ``(is_valid, message, total_change)`` where:</span>
@@ -1521,7 +1522,7 @@
 
     <span class="n">volume</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">volume</span>
 
-    <span class="c1"># Calculate total volume change and collect data for plotting</span>
+    <span class="c1"># Calculate total volume change and collect lines for the summary table</span>
     <span class="n">total_change</span> <span class="o">=</span> <span class="mf">0.0</span>
     <span class="n">table</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
 
@@ -1690,13 +1691,15 @@
 <span class="sd">        collection: :class:`BioProcessCollection` object to validate.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        A tuple ``(all_valid, report)`` where ``all_valid`` is ``True`` only</span>
-<span class="sd">        when every per-process validation passes *and* the cross-process</span>
-<span class="sd">        structure is consistent, and ``report`` is a dict mapping each</span>
+<span class="sd">        A tuple `(all_valid, report)` where `all_valid` is `True` only</span>
+<span class="sd">        when every per-process validation passes, the cross-process</span>
+<span class="sd">        structure is consistent, and all augmented parent references are</span>
+<span class="sd">        valid. `report` is a dict mapping each</span>
 <span class="sd">        process name to its list of ``(check_ok, message)`` results.</span>
 <span class="sd">        Cross-process consistency results are stored under the key</span>
 <span class="sd">        ``"__consistency__"``, augmented-parent findings under the key</span>
-<span class="sd">        ``"__augmented__"``. Both are always non-empty.</span>
+<span class="sd">        `"__augmented__"`. For a non-empty collection, both keys are always</span>
+<span class="sd">        present and non-empty; an empty collection returns an empty report.</span>
 
 <span class="sd">    Raises:</span>
 <span class="sd">        TypeError: If ``collection`` is not a :class:`BioProcessCollection`.</span>

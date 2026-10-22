@@ -11,7 +11,7 @@ hybrax.train.trainer
    every train step: it maps a single sample's ODE solve plus loss module
    evaluation (``evaluate_sample_with_loss_module``) across a batch, and
    ``evaluate_one_sample_loss`` provides the equivalent single-sample path used
-   outside training (holdout evaluation, dense exports).
+   by the device-sharded (pmap and GSPMD) training steps.
 
 
 
@@ -115,8 +115,8 @@ Module Contents
 
 .. py:function:: evaluate_one_sample_loss(wrapper, batch_controls, row_idx, t_measured, SCL_target_measured, mask_measured, n_measured, RAW_y0_measured, cin, cin_modeled, retention, retention_modeled, jump_ts, *, max_solver_steps, solver_rtol, solver_atol, ode_solver = DEFAULT_SOLVER, step = None)
 
-   One process -> ``(total_loss, per_target_loss, fail_time)``. Shared by the
-   vmap batched loss and the device-sharded (pmap) step. ``fail_time`` is ``+inf``
+   One process -> `(total_loss, per_target_loss, fail_time)`. Used by the
+   device-sharded (pmap and GSPMD) training steps. `fail_time` is `+inf`
    for a clean solve, finite when a segment bailed. ``y0`` stays RAW physical;
    the callbacks solve (``physical_solve.solve_physical_states``) integrates it.
 
@@ -144,10 +144,11 @@ Module Contents
    Convenience entry point for forward/export/plotting and tests: it points the
    wrapper at ``process_data``'s per-process controls and integrates from
    ``process_data.y0_measured`` with the discrete-jump callbacks solve
-   (:func:`physical_solve.solve_physical_states`). Returns the RAW physical state
-   ``[modeled_RMCs | V | modeled cumulative flows]`` at each padded
-   measurement time. (Replaces the pre-callbacks single-solve of the same name;
-   no ``jump_ts`` argument — the callbacks solve lands segment ends on the events.)
+   (:func:`physical_solve.solve_physical_states`). Returns RAW states
+   `[modeled_RMCs | modeled_PVs | V | modeled cumulative flows]` at the active
+   measurement times. Bolus and sample jumps are segment boundaries. This helper
+   passes no `jump_ts`, so `discrete_events` kinks are not given to the step-size
+   controller as they are in training.
 
    For a stateful model the returned width is the full integrated ``n_state``
    (physical columns followed by the trailing latent block); slice physical

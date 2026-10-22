@@ -69,9 +69,10 @@ two](../gallery/fed_batch.md) (most popular).
   already there.
 - **Datasets become comparable.** Batch and fed-batch runs from different labs end up
   in the same object, so the same model can be trained across them.
-- **Errors surface at load time, not in your results.** A feed with no composition, a
-  sample with a positive volume, a measurement timestamped just after a sampling
-  event: these are caught by validators instead of quietly biasing a fit.
+- **Errors surface before they reach your results.** Validators catch a feed with no
+  composition, a sample with a positive volume, or a measurement timestamped just after
+  a sampling event, instead of letting them quietly bias a fit. `hybrax prepare` runs
+  them for you; from Python, run them before fitting.
 - **Swapping the model is cheap.** The reaction module and the loss module are two
   small, replaceable objects. Everything else stays.
 
@@ -80,8 +81,10 @@ two](../gallery/fed_batch.md) (most popular).
 - Not a parameter database and not a protocol source. It stores *your* data.
 - Not a unit engine. Units are recorded as strings and checked for consistency, never
   converted. See [Limits and gotchas](../format/limits_and_gotchas.md).
-- Not a general reactor simulator. The model is a well-mixed vessel. Perfusion with
-  cell retention and evaporation with solute retention are not yet implemented.
+- Not a general reactor simulator. The model is a well-mixed vessel. Continuous
+  `Outflow`s support fixed per-component retention, for example cell retention in
+  perfusion and solute retention during evaporation. Pseudobatch normalization does not
+  support continuous `Outflow`s.
 - Not automatic. Nothing here decides *which* model is right for your process. It
   removes the plumbing so you can spend your attention on that.
 

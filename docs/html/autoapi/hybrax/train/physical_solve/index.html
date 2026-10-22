@@ -440,13 +440,12 @@ to <code class="docutils literal notranslate"><span class="pre">inf</span></code
 <p>Reactor-volume depletion is a fatal error, not a solver failure represented by
 <code class="docutils literal notranslate"><span class="pre">fail_time</span></code>. That guarantee requires Equinox runtime errors to remain enabled;
 setting <code class="docutils literal notranslate"><span class="pre">EQX_ON_ERROR=off</span></code> deliberately disables it.</p>
-<p><code class="docutils literal notranslate"><span class="pre">max_steps</span></code> (from <code class="docutils literal notranslate"><span class="pre">--solver-max-steps</span></code>) is the <strong>budget for the whole
-solve</strong>: it
-bounds each segment’s inner solve and the running sum across segments, so exceeding
-it is the same failure as any segment bail (state poisoned to <code class="docutils literal notranslate"><span class="pre">inf</span></code>, <code class="docutils literal notranslate"><span class="pre">fail_time</span></code>
-recorded, later segments collapsed). It is grid-independent — chopping the same
-horizon into more segments does not multiply the ceiling, so <code class="docutils literal notranslate"><span class="pre">fail_time</span></code> no longer
-moves just because a denser output grid was requested.</p>
+<p><cite>max_steps</cite> (from the run config’s <cite>solver.max_steps</cite>) is the <strong>budget for the whole
+solve</strong>: it bounds each segment’s inner solve and the running sum across segments,
+so exceeding it is the same failure as any segment bail (state poisoned to <cite>inf</cite>,
+<cite>fail_time</cite> recorded, later segments collapsed). It is grid-independent: chopping
+the same horizon into more segments does not multiply the ceiling, so <cite>fail_time</cite>
+no longer moves just because a denser output grid was requested.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

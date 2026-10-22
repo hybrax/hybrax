@@ -22,8 +22,8 @@ hybrax.train.model_api
      predictions and measurements into named loss terms.
 
    Both ``RateModule`` and ``UserLossModule`` are abstract base classes:
-   their ``__call__`` (and, for the reaction module, every ``scale_*``/``unscale_*``
-   helper) raise ``NotImplementedError`` until a subclass provides them. The
+   their `__call__` (and, for the loss module, `loss_names`) raise
+   `NotImplementedError` until a subclass provides them. The
    training harness (``harness.py``, ``trainer.py``) drives instances of these
    through the shared ODE solve; this module defines the contract, not the solve.
 
@@ -82,7 +82,7 @@ Module Contents
 
    The default path never constructs this; a user opts in by returning an
    ``AffineScaler`` for one axis from ``estimate_all_scales``. Offsets are
-   meaningful only on VALUE axes — the harness rejects a non-zero offset on
+   meaningful only on VALUE axes; `HybridOdeWrapper` rejects a non-zero offset on
    rate axes. Closed-over concrete zero offsets retain
    ``LinearScaler`` bit identity through reverse-mode training. A genuinely
    dynamic traced offset uses runtime selection: values retain signed-zero
@@ -639,7 +639,7 @@ Module Contents
 
    .. py:method:: scale_state(RAW_state)
 
-      RAW -> SCL for the full integrated state, via ``SCALE_state``.
+      RAW -> SCL for the physical state block, via `SCALE_state`.
 
 
 
@@ -748,7 +748,7 @@ Module Contents
 
    .. py:method:: unscale_state(SCL_state)
 
-      SCL -> RAW for the full integrated state, via ``SCALE_state``.
+      SCL -> RAW for the physical state block, via `SCALE_state`.
 
 
 

@@ -528,9 +528,9 @@ to be specific <em>to</em> otherwise. See <a class="reference internal" href="..
 <section id="volume-feeds-and-samples">
 <h2>Volume, feeds and samples<a class="headerlink" href="#volume-feeds-and-samples" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><strong>Feed medium</strong>: the composition of what a feed adds. Every reactor species should
-have an explicit concentration in it, including the zeros: “absent” and “not recorded”
-must not be confusable.</p></li>
+<li><p><strong>Feed medium</strong>: the composition of what a feed adds. A species left out has zero
+concentration in that feed. Writing the zeros explicitly is optional but keeps
+“absent” and “not recorded” apart.</p></li>
 <li><p><strong>Bolus</strong>: a discrete addition. Volume jumps at that instant and everything not in the
 bolus is diluted.</p></li>
 <li><p><strong>Sample</strong>: a well-mixed removal. Volume drops; concentrations are <em>unchanged</em>, because

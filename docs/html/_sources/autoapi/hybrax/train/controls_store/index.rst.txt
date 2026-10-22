@@ -232,8 +232,9 @@ Module Contents
 
    Column axis follows
    ``[name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]``
-   consistently across every process; the wrapper consumes the full
-   u-block via :meth:`PerProcessControls.eval_u`.
+   consistently across every process; the wrapper consumes it via the
+   per-axis `eval_controlled_*` accessors of `PerProcessControls` (one
+   process) or `BatchControls` (batched training).
 
 
    .. py:method:: from_collection(collection)
@@ -393,11 +394,12 @@ Module Contents
 
    Column axis follows
    ``[name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]``
-   matching hybrax.format ``ControlSplines``. All columns are consumed by
-   ``eval_u(t)`` to build RhsOde's ``u`` argument. Discrete bolus/sample events
-   are NOT controls here — they are applied as state jumps by the callbacks
-   solve from the ``*_event_*`` arrays. ``jump_ts`` carries genuine vector-field
-   discontinuity times (``BioProcess.discrete_events``) for the adaptive solver.
+   matching hybrax.format `ControlSplines`. All columns are consumed through
+   the per-axis `eval_controlled_*` accessors, which the wrapper scales into
+   `ReactionInputs`. Discrete bolus/sample events are NOT controls here;
+   the callbacks solve applies them as state jumps from the `*_event_*`
+   arrays. `jump_ts` carries genuine vector-field discontinuity times
+   (`BioProcess.discrete_events`) for the adaptive solver.
 
    All non-array fields are ``eqx.field(static=True)`` so they live in
    the pytree treedef rather than as dynamic leaves.
@@ -606,7 +608,7 @@ Module Contents
 
    Derive the canonical control layout from a collection's processes alone.
 
-   Used at the runtime-artifact trust boundary, where control arrays are loaded
-   straight from disk and therefore bypass ``ControlsStore.__post_init__``.
+   Used at the runtime-artifact trust boundary to check a stored split against its
+   parent collection, because `ControlsStore.__post_init__` validates structure only.
 
 

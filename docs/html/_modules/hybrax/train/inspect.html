@@ -377,7 +377,7 @@
 
 <span class="sd">- ``format_reaction_schema`` / ``print_reaction_schema``: render labeled</span>
 <span class="sd">  tables for the :class:`ReactionInputs` / :class:`ReactionOutputs` axes</span>
-<span class="sd">  of a wrapper, with names sourced from ``rhs_ode`` and ``controls``.</span>
+<span class="sd">  of a wrapper, with names sourced from `rhs_ode`.</span>
 <span class="sd">  Lets a user cross-reference each SCL vector slot with the underlying</span>
 <span class="sd">  hybrax.format entity it represents.</span>
 <span class="sd">"""</span>
@@ -798,7 +798,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">print_reaction_schema</span><span class="p">(</span><span class="n">wrapper</span><span class="p">:</span> <span class="s2">"HybridOdeWrapper"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Print the labeled ReactionInputs / ReactionOutputs tables.</span>
 
-<span class="sd">    Sources names from ``wrapper.rhs_ode`` and ``wrapper.controls``.</span>
+<span class="sd">    Sources names from `wrapper.rhs_ode`.</span>
 <span class="sd">    """</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">format_reaction_schema</span><span class="p">(</span><span class="n">wrapper</span><span class="o">.</span><span class="n">rhs_ode</span><span class="p">,</span> <span class="n">wrapper</span><span class="o">.</span><span class="n">controls</span><span class="p">),</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
 

@@ -400,10 +400,13 @@ them, you need to know now rather than halfway through.</p>
 <tr class="row-even"><td><p><strong>Pseudobatch on a continuous <code class="docutils literal notranslate"><span class="pre">Outflow</span></code></strong></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">build_pseudobatch_transform</span></code> raises <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code> for any continuous <code class="docutils literal notranslate"><span class="pre">Outflow</span></code> (perfusion, continuous harvest), retention or not. Its closed-form ADF assumes volume only grows from <code class="docutils literal notranslate"><span class="pre">Inflow</span></code>s. Only <code class="docutils literal notranslate"><span class="pre">Inflow</span></code> and discrete <code class="docutils literal notranslate"><span class="pre">Outflow</span></code> (sampling) are supported. See <a class="reference internal" href="pseudobatch_transform.html"><span class="std std-doc">The pseudobatch transform</span></a>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><strong>Rate inversion</strong></p></td>
+<tr class="row-odd"><td><p><strong>Filtered samples</strong></p></td>
+<td><p>Every sample is a discrete <code class="docutils literal notranslate"><span class="pre">Outflow</span></code> that removes cells and liquid at the bulk concentration. Retention is only supported on continuous <code class="docutils literal notranslate"><span class="pre">Outflow</span></code>s, so a filtered sample (liquid removed, cells left behind) cannot be represented.</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Rate inversion</strong></p></td>
 <td><p>There is no facility for computing rates analytically from measured concentrations. Rates come from a model.</p></td>
 </tr>
-<tr class="row-even"><td><p><strong>Unit conversion</strong></p></td>
+<tr class="row-odd"><td><p><strong>Unit conversion</strong></p></td>
 <td><p>Units are free-form strings. Nothing is parsed and nothing is converted.</p></td>
 </tr>
 </tbody>
@@ -413,9 +416,11 @@ them, you need to know now rather than halfway through.</p>
 supports, for example, cell retention in perfusion and solute retention during
 evaporation. Missing components have zero retention and leave at the well-mixed bulk
 concentration.</p>
-<p>The last one deserves emphasis: units are used for exactly two checks, that quantities
-you <em>add</em> in a <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> expression share a unit, and that processes in a case
-study agree. <code class="docutils literal notranslate"><span class="pre">&quot;g/L&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;g/l&quot;</span></code> are different strings. Pick one spelling.</p>
+<p>The last one deserves emphasis: units are only ever compared as strings. The checks are
+that quantities you <em>add</em> in a <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> expression share a unit, that each
+declared feed component uses its reactor component’s unit, that every volume change
+uses the process volume unit, and that processes in a case study agree. <code class="docutils literal notranslate"><span class="pre">&quot;g/L&quot;</span></code> and
+<code class="docutils literal notranslate"><span class="pre">&quot;g/l&quot;</span></code> are different strings. Pick one spelling.</p>
 </section>
 <section id="things-that-raise">
 <h2>Things that raise<a class="headerlink" href="#things-that-raise" title="Link to this heading">¶</a></h2>
@@ -447,16 +452,17 @@ than producing infinities.</p></li>
 </section>
 <section id="things-that-do-not-raise">
 <h2>Things that do not raise<a class="headerlink" href="#things-that-do-not-raise" title="Link to this heading">¶</a></h2>
-<p>The dangerous category. None of these produce an error; all of them produce wrong
-numbers.</p>
+<p>The dangerous category. None of these produce an error; some of them can produce
+wrong results.</p>
 <ul class="simple">
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">build_pseudobatch_transform</span></code> does not set <code class="docutils literal notranslate"><span class="pre">process.pseudobatch_transform</span></code>.</strong> It
 writes <code class="docutils literal notranslate"><span class="pre">pseudobatch_concentration</span></code> onto each component in place and <em>returns</em> the
 bundle. If
 you ignore the return value, the components look transformed but the process has no
 transform attached.</p></li>
-<li><p><strong>Feed composition omitting a species.</strong> Only a validator catches it, and only if you
-run the validator. A missing species means a missing dilution term.</p></li>
+<li><p><strong>Feed composition omitting a species.</strong> An omitted species is assumed to have zero
+concentration in that feed. Dilution still applies. Declare any nonzero feed
+concentration explicitly.</p></li>
 <li><p><strong>Sample volume recorded as <code class="docutils literal notranslate"><span class="pre">0.0</span></code>.</strong> That is an assertion that sampling removed nothing,
 which is different from “unknown”. If it is unknown, say so; do not write a zero.</p></li>
 <li><p><strong>Bounds are never enforced.</strong> They are metadata for downstream consumers.</p></li>

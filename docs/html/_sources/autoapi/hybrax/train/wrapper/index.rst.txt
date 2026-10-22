@@ -232,6 +232,7 @@ Module Contents
    :param candidate_name: Label for ``candidate_rhs_ode`` in any error message.
    :param candidate_rhs_ode: The RhsOde being checked for compatibility.
 
-   :raises ValueError: If any of the two RhsOdes' name-tuple fields differ.
+   :raises ValueError: If the two RhsOdes' name-tuple fields differ, or their Cin
+       or retention array shapes differ.
 
 

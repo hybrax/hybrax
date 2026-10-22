@@ -63,7 +63,7 @@ Module Contents
 
    .. py:method:: build_result(*, process, state_times, states, online_times, state_names, reactor_state_names, events = (), extra_columns = None, volume_state_name = 'volume')
 
-      Build dense rows, event rows, and optionally write CSV outputs.
+      Build dense rows and event rows for one process.
 
 
 

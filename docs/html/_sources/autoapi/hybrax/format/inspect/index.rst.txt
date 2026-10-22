@@ -72,10 +72,11 @@ Module Contents
    :param collection: BioProcessCollection object to inspect
    :param verbosity: Detail level (1=minimal, 2=medium, 3=full)
 
-                     - Level 3 (most verbose): organism, citation (when set),
-                       per-process datapoint counts, and total datapoints
-                     - Level 2 (mid verbose): organism and process names listed
-                       (no citation, no datapoint counts)
+                     - Level 3 (most verbose): everything in level 2, plus the citation
+                       (when `case_id` is set), per-process datapoint counts, and total
+                       datapoints
+                     - Level 2 (mid verbose): organism (when `case_id` is set; otherwise
+                       metadata keys, if any) and process names
                      - Level 1 (least verbose): case_id/label and process count only
 
 
@@ -102,8 +103,8 @@ Module Contents
 
 .. py:function:: print_rhs_ode(target, ordering = None)
 
-   Print the mechanistic ODE structure as a single ASCII box with two
-   sub-tables (Algebraic, Derivatives).
+   Print the mechanistic ODE structure as a single ASCII box with up to
+   four sub-tables (Algebraic, Rates, Derivatives, Volume).
 
    Accepts a :class:`BioProcess` or a
    :class:`BioProcessCollection`. For multi-process containers,
@@ -120,7 +121,10 @@ Module Contents
    V separately with *Additions* (Inflow sum) and *Removals*
    (``− |<Outflow sum>|``) columns.
 
-   :raises ValueError: if a multi-process container's processes do not share
-       equivalent ``reaction_ode`` blocks.
+   :raises ValueError: if `process.reaction_ode` is unset, the collection has no
+       processes, or a multi-process container's processes do not share
+       equivalent `reaction_ode` blocks.
+   :raises TypeError: if `target` is neither a `BioProcess` nor a
+       `BioProcessCollection`.
 
 

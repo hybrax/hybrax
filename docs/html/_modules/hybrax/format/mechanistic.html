@@ -477,10 +477,11 @@
 <span class="sd">    change that concentration. Only feeding (which adds material at a</span>
 <span class="sd">    *different* concentration, ``Cin``) does. So an unretained outflow</span>
 <span class="sd">    (retention sigma=0, the default) contributes no dilution term of its</span>
-<span class="sd">    own; it only shrinks ``V``, which concentrates whatever is left. Each</span>
-<span class="sd">    Outflow's per-component ``retention`` (sigma in [0, 1]) inverts this:</span>
-<span class="sd">    the retained fraction of a component does *not* leave with the flow,</span>
-<span class="sd">    so as volume drops around it, its concentration rises. Sigma=1 means</span>
+<span class="sd">    own; it only shrinks `V` and removes species at the bulk concentration, so</span>
+<span class="sd">    concentrations are unchanged. Each Outflow's per-component `retention`</span>
+<span class="sd">    (sigma in [0, 1]) inverts this: the retained fraction of a component</span>
+<span class="sd">    does *not* leave with the flow, so as volume drops around it, its</span>
+<span class="sd">    concentration rises. Sigma=1 means</span>
 <span class="sd">    that component is fully retained (e.g. cells in perfusion; solutes in</span>
 <span class="sd">    evaporation) and concentrates exactly in step with the volume loss.</span>
 
@@ -507,9 +508,9 @@
     <span class="c1"># into negative volume.</span>
     <span class="c1">#</span>
     <span class="c1"># Detecting that belongs on ACCEPTED states, not here. `hybrax.train.physical_solve`</span>
-    <span class="c1"># checks the initial state and every post-sample state, but not yet the solver's</span>
-    <span class="c1"># accepted output states, so depletion driven purely by a continuous outflow</span>
-    <span class="c1"># mid-segment currently goes unreported.</span>
+    <span class="c1"># checks the initial state, every post-sample state, and every accepted solver</span>
+    <span class="c1"># step, so depletion driven purely by a continuous outflow mid-segment is</span>
+    <span class="c1"># reported as an error.</span>
     <span class="n">V_safe</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">V</span><span class="p">,</span> <span class="n">V_min</span><span class="p">)</span>
 
     <span class="n">total_in</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">u_controlled_Inflows</span><span class="p">)</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">f_modeled_Inflows</span><span class="p">)</span>  <span class="c1"># &gt;= 0</span>
@@ -905,8 +906,8 @@
 <span class="w">    </span><span class="sd">"""Build a ``(len(vc_names), len(RMCs))`` retention matrix.</span>
 
 <span class="sd">    Each row is the per-component retention fraction (sigma in [0, 1]) of</span>
-<span class="sd">    the corresponding ``Outflow.retention``. Unlike ``_build_cin``,</span>
-<span class="sd">    a missing entry here is deliberately left at 0 (not an error). An</span>
+<span class="sd">    the corresponding `Outflow.retention`. As in `_build_cin`, a missing</span>
+<span class="sd">    entry is deliberately left at 0 (not an error). An</span>
 <span class="sd">    empty/partial ``retention`` is the ordinary, correct state for</span>
 <span class="sd">    the overwhelming majority of processes (no perfusion/evaporation</span>
 <span class="sd">    modeling), not a data gap standing in for something unknown.</span>

@@ -496,13 +496,12 @@ product         0.0 g/L
 </div>
 </div>
 </div>
-<div class="warning admonition">
-<p class="admonition-title">State every reactor species, including the zeros</p>
-<p>A species missing from a feed medium is <strong>ambiguous</strong>: it could mean genuinely absent,
-or simply not recorded. hybrax.format will not guess, and <code class="docutils literal notranslate"><span class="pre">validate_volume_change_states</span></code>
-flags it.</p>
-<p>Write the zeros explicitly, as above. It matters: a feed that contains no biomass still
-<em>dilutes</em> biomass, and that dilution term only appears if the zero is declared.</p>
+<div class="important admonition">
+<p class="admonition-title">Declare every nonzero feed concentration</p>
+<p>A reactor species missing from a feed medium has zero concentration in that feed.
+Dilution still applies: a feed that contains no biomass still <em>dilutes</em> biomass.
+Declare every nonzero concentration explicitly. Explicit zeros, as above, are optional
+but make it clear that the species is absent rather than unrecorded.</p>
 </div>
 <div class="important admonition">
 <p class="admonition-title">Feed concentrations must be constant</p>
@@ -519,13 +518,14 @@ volume. If you have offline data, you had sample draws.</p>
 <p>A sample is a <strong>well-mixed removal</strong>: amount and volume drop together, so concentrations
 are <em>unchanged</em> at the instant of sampling. What changes is everything afterwards: a
 smaller vessel dilutes differently.</p>
-<p>Two things to get right:</p>
+<p>Two things to keep in mind:</p>
 <ul class="simple">
 <li><p><strong>One draw, many assays.</strong> Glucose, biomass and product measured from the same sample
 are one volume removal, not three.</p></li>
-<li><p><strong>Whole-broth versus filtered.</strong> A whole-broth sample removes cells and liquid; a
-filtered sample removes liquid and dissolved species but leaves the cells behind. Only
-the first should remove biomass.</p></li>
+<li><p><strong>Whole broth only.</strong> Every sample is a discrete <code class="docutils literal notranslate"><span class="pre">Outflow</span></code>, which removes cells and
+liquid at the bulk concentration. Filtered samples (removing liquid but leaving cells
+behind) cannot be represented, because retention is only supported on continuous
+<code class="docutils literal notranslate"><span class="pre">Outflow</span></code>s.</p></li>
 </ul>
 <p>If sample volumes are genuinely unknown, that is under-specified metadata, not zero.
 Recording them as absent is defensible; recording them as <code class="docutils literal notranslate"><span class="pre">0.0</span></code> asserts something false.</p>

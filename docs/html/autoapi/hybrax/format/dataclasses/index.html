@@ -480,9 +480,7 @@ inherit the parent’s structural identity (control/state schema,
 medium semantics) and must be grouped with the parent for any
 train/eval split so synthetic siblings cannot leak into a fold whose
 parent is held out.</p>
-<p>This is a placeholder in v1: no augmentation logic produces these
-objects yet, but the data shape is fixed so downstream packages
-(e.g. <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s LOO orchestrator) can rely on it.</p>
+<p>Instances are produced by <cite>hybrax.train.augmentation</cite>.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.format.dataclasses.AugmentedBioProcess.parent_process">
 <span class="sig-name descname"><span class="pre">parent_process</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.AugmentedBioProcess.parent_process" title="Link to this definition">¶</a></dt>

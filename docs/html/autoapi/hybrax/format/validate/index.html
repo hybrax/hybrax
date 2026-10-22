@@ -581,13 +581,15 @@ concern (<code class="docutils literal notranslate"><span class="pre">hybrax.tra
 <dd class="field-odd"><p><strong>collection</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>) – <code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcessCollection</span></code> object to validate.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(all_valid,</span> <span class="pre">report)</span></code> where <code class="docutils literal notranslate"><span class="pre">all_valid</span></code> is <code class="docutils literal notranslate"><span class="pre">True</span></code> only
-when every per-process validation passes <em>and</em> the cross-process
-structure is consistent, and <code class="docutils literal notranslate"><span class="pre">report</span></code> is a dict mapping each
+<dd class="field-even"><p>A tuple <cite>(all_valid, report)</cite> where <cite>all_valid</cite> is <cite>True</cite> only
+when every per-process validation passes, the cross-process
+structure is consistent, and all augmented parent references are
+valid. <cite>report</cite> is a dict mapping each
 process name to its list of <code class="docutils literal notranslate"><span class="pre">(check_ok,</span> <span class="pre">message)</span></code> results.
 Cross-process consistency results are stored under the key
 <code class="docutils literal notranslate"><span class="pre">&quot;__consistency__&quot;</span></code>, augmented-parent findings under the key
-<code class="docutils literal notranslate"><span class="pre">&quot;__augmented__&quot;</span></code>. Both are always non-empty.</p>
+<cite>“__augmented__”</cite>. For a non-empty collection, both keys are always
+present and non-empty; an empty collection returns an empty report.</p>
 </dd>
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">collection</span></code> is not a <code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcessCollection</span></code>.</p>
@@ -625,9 +627,9 @@ sampling times.</p>
 event it belongs to. The accumulated dilution factor (ADF) in the
 pseudobatch transform may use the wrong reactor volume, corrupting the
 normalisation and downstream spline calculations.</p>
-<p>This function flags every measurement time point that is close to (but not
-exactly at) a sampling time point, where “close” means within
-<code class="docutils literal notranslate"><span class="pre">rel_threshold</span></code> of the total process length.</p>
+<p>This function flags every reactor-medium measurement time point that falls
+after its nearest discrete-<cite>Outflow</cite> sampling time point by at most
+<cite>rel_threshold</cite> of the total process length.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -870,9 +872,10 @@ here only the last time points are considered.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>) – BioProcess object whose volume changes are validated.</p></li>
-<li><p><strong>final_volume</strong> (<em>Optional</em><em>[</em><em>float</em><em>]</em>) – Expected final volume in the process’s volume unit.  When
-provided the function checks that the sum of all volume changes plus
-<code class="docutils literal notranslate"><span class="pre">process.volume.initial_volume</span></code> is within 5 % of this value.</p></li>
+<li><p><strong>final_volume</strong> (<em>Optional</em><em>[</em><em>float</em><em>]</em>) – Expected final volume in the process’s volume unit.  A
+numeric value must be supplied.  For positive values, checks that the
+sum of all volume changes plus <cite>process.volume.initial_volume</cite> is
+within 5 % of this value.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>

@@ -514,7 +514,8 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"duplicate process names: </span><span class="si">{</span><span class="n">duplicates</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="n">store</span><span class="o">.</span><span class="n">validate_control_support</span><span class="p">(</span><span class="n">process_names</span><span class="p">)</span>
 
-    <span class="n">batch_size</span> <span class="o">=</span> <span class="n">_EVALUATION_BATCH_SIZE</span>
+    <span class="c1"># Small sets (e.g. a single holdout) skip padding to the full batch size.</span>
+    <span class="n">batch_size</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">_EVALUATION_BATCH_SIZE</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">process_names</span><span class="p">))</span>
     <span class="k">for</span> <span class="n">start</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">process_names</span><span class="p">),</span> <span class="n">batch_size</span><span class="p">):</span>
         <span class="n">valid_names</span> <span class="o">=</span> <span class="n">process_names</span><span class="p">[</span><span class="n">start</span> <span class="p">:</span> <span class="n">start</span> <span class="o">+</span> <span class="n">batch_size</span><span class="p">]</span>
         <span class="n">indices</span> <span class="o">=</span> <span class="p">[</span><span class="n">store</span><span class="o">.</span><span class="n">process_order</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">valid_names</span><span class="p">]</span>
@@ -1441,8 +1442,8 @@
 <span class="sd">    Args:</span>
 <span class="sd">        collection: Evaluation-only process collection to forward-solve.</span>
 <span class="sd">        model_path: Path to the trained model's run/checkpoint directory.</span>
-<span class="sd">        config: Forward-run settings (prediction scope, plotting), or</span>
-<span class="sd">            ``None`` for defaults.</span>
+<span class="sd">        config: Forward-run settings (evaluated processes, target layout, solver),</span>
+<span class="sd">            or `None` for defaults.</span>
 <span class="sd">        custom_py: Override for the recorded ``custom.py`` path, or ``None``</span>
 <span class="sd">            to use the one the run recorded.</span>
 <span class="sd">        training_process_names: Restrict reconstruction to this subset of the</span>
@@ -1451,14 +1452,14 @@
 <span class="sd">            ``model_path``'s ``config.json``.</span>
 <span class="sd">        custom_module: Pre-loaded custom module, or ``None`` to load it from</span>
 <span class="sd">            ``custom_py``/the recorded path.</span>
-<span class="sd">        prediction_process_names: Restrict prediction to this subset of</span>
-<span class="sd">            ``collection``'s processes, or ``None`` for all of them.</span>
+<span class="sd">        prediction_process_names: Subset of the evaluated processes to export;</span>
+<span class="sd">            `None` exports every evaluated process.</span>
 <span class="sd">        prediction_grid_n: Size of the evenly-spaced prediction grid; see</span>
 <span class="sd">            :func:`model_predict`'s ``grid_n``.</span>
 
 <span class="sd">    Returns:</span>
-<span class="sd">        The forward result: per-process dense exports plus the rebuilt</span>
-<span class="sd">        wrapper and config.</span>
+<span class="sd">        The forward result: per-process losses and dense exports plus the</span>
+<span class="sd">        trained wrapper and evaluation store.</span>
 
 <span class="sd">    Raises:</span>
 <span class="sd">        ValueError: If ``collection``'s measured/modeled variables are</span>
@@ -1931,8 +1932,9 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">_make_sharded_step</span><span class="p">():</span>
 <span class="w">        </span><span class="sd">"""Data-parallel step: shard the batch across local devices via pmap,</span>
 <span class="sd">        psum/all_gather to the batch mean, then apply the optimiser update.</span>
-<span class="sd">        Same math as the vmap step up to float32 cross-device reduction order.</span>
-<span class="sd">        Pseudo-space variant: y0 stays RAW (wrapper builds the pseudobatch state).</span>
+<span class="sd">        Same math as the vmap step up to floating-point cross-device reduction order.</span>
+<span class="sd">        y0 stays RAW; the callbacks solve integrates scaled physical states and returns</span>
+<span class="sd">        RAW states.</span>
 <span class="sd">        Uses min(devices, batch) devices, so a device count exceeding the process</span>
 <span class="sd">        count shards across the processes instead of collapsing to one device."""</span>
         <span class="n">bs</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">effective_batch_size</span><span class="p">)</span>
@@ -3068,8 +3070,8 @@
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrainHarnessConfig</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Map a typed :class:`RunConfig` + run-directory layout to the harness</span>
 <span class="sd">    config, wiring the run-dir artifact paths (``metrics.csv``, ``checkpoints/``)</span>
-<span class="sd">    and the checkpoint/output/logging sections. Shared by the CLI train and LOO</span>
-<span class="sd">    paths.</span>
+<span class="sd">    and the data/train/solver/checkpoint/logging sections. Shared by the CLI train and</span>
+<span class="sd">    LOO paths.</span>
 <span class="sd">    """</span>
     <span class="n">data</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">data</span>
     <span class="k">return</span> <span class="n">TrainHarnessConfig</span><span class="p">(</span>

@@ -51,7 +51,7 @@ Module Contents
    :func:`~hybrax.train.augmentation.augment_process_collection`,
    re-validates the result under strict training semantics, extracts and
    validates each process's control sources, and assembles the
-   ``hybrax_train`` metadata block (provenance, semantics diffs vs. the raw
+   `hybrax.train` metadata block (provenance, semantics diffs vs. the raw
    input, per-process control names, a stable ``content_hash``). Writes the
    prepared collection to ``prepared.json``, a standalone
    ``prepare_config.json`` record of the run, and (unless disabled) a

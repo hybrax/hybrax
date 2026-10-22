@@ -627,8 +627,8 @@ evaluators, <code class="docutils literal notranslate"><span class="pre">Trainin
 <p>The y_measured columns are <code class="docutils literal notranslate"><span class="pre">[targets...,</span> <span class="pre">modeled</span> <span class="pre">Inflow</span> <span class="pre">cumulative...,</span>
 <span class="pre">modeled</span> <span class="pre">Outflow</span> <span class="pre">cumulative...]</span></code>, where targets may be RMCs, PVs, or both.
 V is in the ODE state but not in the loss targets.</p>
-<p>The y0 vector has layout <code class="docutils literal notranslate"><span class="pre">[all</span> <span class="pre">RMCs...,</span> <span class="pre">all</span> <span class="pre">PVs...,</span> <span class="pre">V(0),</span> <span class="pre">modeled</span> <span class="pre">Inflow</span>
-<span class="pre">cumulative...,</span> <span class="pre">modeled</span> <span class="pre">Outflow</span> <span class="pre">cumulative...]</span></code>, matching the physical ODE
+<p>The y0 vector has layout <cite>[modeled RMCs…, modeled PVs…, V(0), modeled Inflow
+cumulative…, modeled Outflow cumulative…]</cite>, matching the physical ODE
 state order expected by the wrapper.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="hybrax.train.training_data.TrainingDataStore.from_collection">

@@ -998,7 +998,8 @@
 <span class="sd">        candidate_rhs_ode: The RhsOde being checked for compatibility.</span>
 
 <span class="sd">    Raises:</span>
-<span class="sd">        ValueError: If any of the two RhsOdes' name-tuple fields differ.</span>
+<span class="sd">        ValueError: If the two RhsOdes' name-tuple fields differ, or their Cin</span>
+<span class="sd">            or retention array shapes differ.</span>
 <span class="sd">    """</span>
     <span class="n">name_fields</span> <span class="o">=</span> <span class="p">(</span>
         <span class="s2">"name_modeled_RMCs"</span><span class="p">,</span>

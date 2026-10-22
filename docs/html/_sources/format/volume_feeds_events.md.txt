@@ -83,15 +83,13 @@ for name, comp in medium.components.items():
     print(f"{name:10s} {comp.concentration.value:8.1f} {comp.unit}")
 ```
 
-:::{admonition} State every reactor species, including the zeros
-:class: warning
+:::{admonition} Declare every nonzero feed concentration
+:class: important
 
-A species missing from a feed medium is **ambiguous**: it could mean genuinely absent,
-or simply not recorded. hybrax.format will not guess, and `validate_volume_change_states`
-flags it.
-
-Write the zeros explicitly, as above. It matters: a feed that contains no biomass still
-*dilutes* biomass, and that dilution term only appears if the zero is declared.
+A reactor species missing from a feed medium has zero concentration in that feed.
+Dilution still applies: a feed that contains no biomass still *dilutes* biomass.
+Declare every nonzero concentration explicitly. Explicit zeros, as above, are optional
+but make it clear that the species is absent rather than unrecorded.
 :::
 
 :::{admonition} Feed concentrations must be constant
@@ -111,13 +109,14 @@ A sample is a **well-mixed removal**: amount and volume drop together, so concen
 are *unchanged* at the instant of sampling. What changes is everything afterwards: a
 smaller vessel dilutes differently.
 
-Two things to get right:
+Two things to keep in mind:
 
 - **One draw, many assays.** Glucose, biomass and product measured from the same sample
   are one volume removal, not three.
-- **Whole-broth versus filtered.** A whole-broth sample removes cells and liquid; a
-  filtered sample removes liquid and dissolved species but leaves the cells behind. Only
-  the first should remove biomass.
+- **Whole broth only.** Every sample is a discrete `Outflow`, which removes cells and
+  liquid at the bulk concentration. Filtered samples (removing liquid but leaving cells
+  behind) cannot be represented, because retention is only supported on continuous
+  `Outflow`s.
 
 If sample volumes are genuinely unknown, that is under-specified metadata, not zero.
 Recording them as absent is defensible; recording them as `0.0` asserts something false.

@@ -618,14 +618,20 @@ supplies the stored <code class="docutils literal notranslate"><span class="pre"
 <li><p>reactor_volume_dense, sample_volume_dense, accumulated_feed_dense,
 concentration_in_feed</p></li>
 <li><p>adf_at_meas, feed_corr_at_meas</p></li>
+<li><p>reactor_volume_ts, sample_compensation_ts, adf_ts, feed_corr_ts: exact
+<cite>TimeSeries</cite></p></li>
+<li><p>accumulated_feed_ts: mapping of feed names to exact <cite>TimeSeries</cite></p></li>
+<li><p>adf_dense, feed_corr_dense, sample_compensation_dense: arrays on the
+canonical break grid</p></li>
 <li><p>has_discrete_feed (bool)</p></li>
 </ul>
 </dd>
 </dl>
 <section id="notes">
 <h3>Notes<a class="headerlink" href="#notes" title="Link to this heading">¶</a></h3>
-<p>ADF and feed_correction are computed only at measurement times
-(this avoids treating continuous feeds as discrete dilutions).
+<p>ADF and feed_correction are built as exact piecewise-polynomial <cite>TimeSeries</cite>
+on the canonical break grid; <cite>adf_at_meas</cite> and <cite>feed_corr_at_meas</cite> are
+evaluations of those series.
 Discrete bolus events are treated as left-continuous in this transform:
 at exactly <code class="docutils literal notranslate"><span class="pre">t_b</span></code> values are pre-event, and the jump appears for <code class="docutils literal notranslate"><span class="pre">t</span> <span class="pre">&gt;</span> <span class="pre">t_b</span></code>.</p>
 </section>
@@ -668,9 +674,7 @@ at exactly <code class="docutils literal notranslate"><span class="pre">t_b</spa
 <p>The feed-correction and ADF trajectories are represented by canonical
 <code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> payloads built directly from physical volume/feed events.
 No epsilon-offset dense event grid is used.</p>
-<p>Returns a runtime payload dict consumed by
-<code class="docutils literal notranslate"><span class="pre">evaluate_real_concentration</span></code>, <code class="docutils literal notranslate"><span class="pre">to_timeseries</span></code>,
-<code class="docutils literal notranslate"><span class="pre">BacktransformSpline</span></code>, and the mechanistic pseudobatch path.</p>
+<p>Returns a runtime payload dict consumed by <cite>evaluate_real_concentration</cite>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
