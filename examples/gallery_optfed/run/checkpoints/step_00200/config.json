@@ -1,0 +1,83 @@
+{
+  "status": "complete",
+  "started_at": "2026-10-19T23:06:04+0200",
+  "cli_argv": [
+    "/work/t3code-workspaces/hybrax-2/src/hybrax/train/cli.py",
+    "train",
+    "--config",
+    "train-config.json",
+    "--overwrite"
+  ],
+  "config": {
+    "data": {
+      "prepared": "prepared.json.gz",
+      "processes": null,
+      "targets": [
+        "biomass",
+        "glycerol",
+        "product"
+      ],
+      "target_source": "reactor_components"
+    },
+    "custom_py": "custom.py",
+    "train": {
+      "epochs": 200,
+      "seed": 0,
+      "optimizer": "adam",
+      "learning_rate": 0.05,
+      "grad_clip_norm": 0.05,
+      "batch_size": null,
+      "microbatch_size": null,
+      "shuffle": false,
+      "batch_seed": null,
+      "devices": 1,
+      "allow_stateful_models": true,
+      "flow_integral_relative_tolerance": 0.001,
+      "holdout_processes": null
+    },
+    "solver": {
+      "max_steps": 100000,
+      "rtol": 1e-07,
+      "atol": 1e-09,
+      "jump_ts": true
+    },
+    "checkpoint": {
+      "every": 10.0,
+      "bundle_prepared": true,
+      "keep_best": null,
+      "select_by": null
+    },
+    "output": {
+      "dir": "run",
+      "predictions": "parents"
+    },
+    "logging": {
+      "decimals": 4
+    },
+    "prepare": null,
+    "custom": null,
+    "loo": null
+  },
+  "inputs": {
+    "prepared_input": {
+      "path": "prepared.json.gz",
+      "content_hash": "sha256:00f4eed5c31b63d2069228f38a7a8b9d74af96c7a38ba9b58aa3889bca5fb2ef"
+    },
+    "custom_py": {
+      "bundled": "custom.py",
+      "file_hash": "sha256:3c328bb313a8852865bae84f8beb00d750df860236458053a36f951873730a4a"
+    }
+  },
+  "environment": {
+    "python": "3.13.15",
+    "hybrax": "0.1.0",
+    "jax": "0.10.0",
+    "optax": "0.2.8",
+    "equinox": "0.13.8",
+    "diffrax": "0.7.2",
+    "pydantic": "2.13.4"
+  },
+  "finished_at": "2026-10-19T23:32:41+0200",
+  "updates_completed": 200,
+  "final_mean_loss": 0.006569509884057852
+}

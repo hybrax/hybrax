@@ -35,6 +35,36 @@ OptFed, originating from Kittler et al. \[[2](#ref-kittler)\].
 The raw data can be found on [GitHub](https://github.com/gschloegel/OptFed/tree/7811f7b9ef76d624f53b852c03d06cb1b5cc96a3/data).
 The model fits them jointly with one shared set of eleven parameters.
 
+## How the pieces fit
+
+This example follows the standard Hybrax pipeline. Each step has its own file
+in `examples/gallery_optfed/`:
+
+1. **Data** (`import_data.py` → `data.json`). The importer converts the
+   published CSVs into a Hybrax `BioProcessCollection`: measurements, feeds,
+   sampling withdrawals, and temperature for each process. Each process also
+   carries a `ReactionOde`, which declares the named rates and the reaction
+   part of each state's derivative. The bundled `data.json` is the output of
+   this step, so you only need to rerun the importer to regenerate it.
+2. **Prepare** (`hybrax prepare`, `prepare-config.json`). Prepare validates
+   the collection, checks that all processes share the same state and control
+   layout, and writes `prepared/prepared.json`. Training reads this artifact
+   rather than `data.json`.
+3. **Train** (`hybrax train`, `train-config.json` + `custom.py`). The config
+   points to `custom.py`, and Hybrax looks up its hook functions by name.
+   Here `build_reaction_module` returns the mechanistic `RateModule` that
+   computes the named rates, and the other hooks choose the solver, the
+   learning-rate schedule, and the scales.
+4. **Forward** (`hybrax forward`, `forward-config.json`). Forward simulates the
+   fitted model and writes trajectories and plots.
+
+If this is your first Hybrax model, work through the
+[tutorials](../tutorials/01_your_first_dataset.md) first;
+[Tutorial 4](../tutorials/04_your_first_custom_py.md) introduces `custom.py`.
+[The reaction module](../train/reaction_module.md) and
+[Customization](../train/hooks_cheatsheet.md) document the interfaces used
+below.
+
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
@@ -90,10 +120,17 @@ is a Hybrax `BioProcessCollection`. It is generated from the
 four CSVs from the [OptFed GitHub repo](https://github.com/gschloegel/OptFed/tree/7811f7b9ef76d624f53b852c03d06cb1b5cc96a3/data).
 The full importer code is in the collapsible box at the end of this section.
 
-The raw data is structured as follows:
+Each process contains the measured glycerol, total biomass, and product
+concentrations, the carbon and base feeds, the sampling withdrawals, and the
+measured temperature. Time zero is induction. OptFed uses a mass-based balance,
+so `volume` stores reactor mass in kg, feed amounts are in kg, and
+concentrations use g/kg. Temperature is in Kelvin. The importer smooths the
+cumulative feeds, and Hybrax uses their derivatives as feed rates.
+
+````{dropdown} How the importer converts the raw CSVs
 
 - `sampling_points.csv` supplies initial reactor mass and raw glycerol, total
-  biomass, and product concentrations. Time zero is induction. As in OptFed's
+  biomass, and product concentrations. As in OptFed's
   original fitting script, the row with index 40 in `sampling_points.csv`,
   from `DoE1_R3` at 10.35 h, is excluded as an erroneous measurement (but the
   removed sample volume remains in the mass balance).
@@ -107,9 +144,8 @@ The raw data is structured as follows:
   individual processes). The importer uses OptFed's density correction to
   convert this value from g/L to g/kg.
 
-OptFed uses a mass-based balance. Here `volume` stores reactor mass in kg,
-feed amounts are in kg, and concentrations use g/kg. The reactor density
-is set to 1 kg/L; it does not enter this mass-based calculation.
+The reactor density is set to 1 kg/L; it does not enter this mass-based
+calculation.
 
 The importer fits smooth, non-decreasing cubic splines to cumulative carbon and
 base feeds. Both endpoints are preserved, keeping the total added feed
@@ -119,6 +155,8 @@ uses a cubic interpolating spline with `s=0`, matching OptFed's preprocessing.
 The importer fits complete traces first, then keeps the curve from induction
 through the last concentration sample. The retained curve is unchanged by this
 trimming.
+
+````
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -193,8 +231,24 @@ inhibition reduce it to `uptake`. The module then allocates uptake to
 maintenance, growth, and product formation, and converts the glycerol
 allocations into biomass and product formation rates. It returns
 `[q_biomass, uptake, q_product]` in the order of `reaction_ode.rates`, so
-`q_glycerol` receives `uptake`. `scale_modeled_ReactionOde_rates` scales this
-vector for `SCL_modeled_ReactionOde_rates`.
+`q_glycerol` receives `uptake`.
+
+Hybrax solves the ODE in scaled units: each quantity is divided by a
+characteristic magnitude so that values in the solve are roughly 1 (see
+[Scaling](../train/scaling.md)). Names starting with `SCL_` hold scaled values.
+The module therefore receives scaled inputs and converts them back to physical
+units with its `unscale_*` helpers:
+
+- `unscale_modeled_RMCs` for the reactor medium components (RMCs): biomass,
+  glycerol, and product.
+- `unscale_controlled_PVs` for the controlled process variables (PVs): here
+  only temperature.
+- `unscale_latent` for the generation count.
+
+It computes the rates in physical units and converts them back to scaled units
+with `scale_modeled_ReactionOde_rates`. In this example all reaction-rate scales are
+1, so this last step does not change the values, but it keeps the module
+correct if those scales change.
 
 ````{dropdown} OptFed model equations
 
@@ -340,7 +394,20 @@ is $\mu/\ln 2$, where
 $\mu=(q_{\mathrm{biomass}}+q_{\mathrm{product}})(X-P)/X$ is the biological
 specific growth rate of total biomass. Integrating growth keeps this count independent
 of dilution and the volume removed during sampling. It has no extra fitted
-parameters. Set `allow_stateful_models` to enable this latent state.
+parameters.
+
+The module declares this latent state in its constructor. The length of
+`SCALE_latent` sets the number of latent states, and a scale of 1 keeps the
+count in generations, so the derivative can be returned without rescaling.
+Hybrax rejects models with latent states unless `train.allow_stateful_models`
+is `true` in `train-config.json`.
+
+```{literalinclude} ../../../examples/gallery_optfed/custom.py
+:language: python
+:start-at:     def __init__(self, **kwargs):
+:end-at:         super().__init__(SCALE_latent=jnp.ones(1), **kwargs)
+:dedent: 4
+```
 
 ```{literalinclude} ../../../examples/gallery_optfed/custom.py
 :language: python
@@ -349,8 +416,28 @@ parameters. Set `allow_stateful_models` to enable this latent state.
 :dedent: 12
 ```
 
-The complete implementation, including initialization, scaling, and training
-hooks, is shown below.
+### Build the reaction module
+
+Hybrax creates the module by calling the `build_reaction_module` hook at
+training setup, after `estimate_all_scales`. The hook receives keyword
+arguments: the training collection, the run config, the target and process
+names, a random seed, and the scales as `SCALE_*` keywords. A mechanistic model
+needs no random initialization, so this hook discards the arguments it does not
+use. It looks up the positions of biomass, glycerol, product, and temperature
+in the state and control vectors, converts the starting values in
+`NEUTRAL_INITIAL` to raw parameters, and passes the scales on to the module.
+The module holds the scales for the rest of the run.
+
+```{literalinclude} ../../../examples/gallery_optfed/custom.py
+:language: python
+:pyobject: build_reaction_module
+```
+
+`raw_parameters` is declared with `trainable_field()`, so the optimizer updates
+it. Array fields without this tag stay frozen. The index fields are static
+integers rather than arrays, so they are not trained either.
+
+The complete implementation, including the other hooks, is shown below.
 
 ````{dropdown} Complete custom.py
 ```{literalinclude} ../../../examples/gallery_optfed/custom.py
@@ -360,8 +447,15 @@ hooks, is shown below.
 
 ## Prepare and fit concentrations
 
-State and control scales come from the training data. State scaling also weights
-the default concentration loss, so glycerol does not dominate simply because
+The scales come from the `estimate_all_scales` hook in `custom.py`. Without
+this hook every scale is 1 and Hybrax integrates the physical values directly,
+without a warning. The returned `EstimatedScales` has one field per kind of
+quantity. Fields for quantities this model does not have are empty arrays
+(`jnp.zeros(0)`).
+
+The state scale is each species' largest observed concentration across all
+processes. Because the default loss compares scaled concentrations, state
+scaling also weights the loss, so glycerol does not dominate simply because
 its concentrations are larger than product concentrations.
 
 ```{literalinclude} ../../../examples/gallery_optfed/custom.py
@@ -370,6 +464,12 @@ its concentrations are larger than product concentrations.
 :end-before:         SCALE_V_in_cumulative=
 :dedent: 8
 ```
+
+Control traces, such as feed rates and temperature, are scaled by their largest
+absolute value, with a floor of `0.01`. These maxima come from the logged
+readings, not from the fitted splines: feed-rate scales use finite differences
+of the raw cumulative feed readings. Temperature is therefore divided by its
+maximum in Kelvin. The reaction-rate scales are fixed at 1.
 
 Use Adam for 200 epochs, with gradient clipping configured at `0.05` and linear
 learning-rate decay from `0.05` to `0.0001`, supplied by the
@@ -386,7 +486,11 @@ The `build_solver` hook in `custom.py` selects this solver:
 :pyobject: build_solver
 ```
 
-This implicit solver handles the stiff glycerol balance near depletion.
+The model needs an implicit solver such as Kvaerno5 because the glycerol balance
+is stiff. With the half-saturation constant fixed at $K_G=0.001\,\mathrm{g/kg}$,
+uptake drops from its maximum to zero within a tiny glycerol range, so near
+depletion glycerol changes on time scales far shorter than the process. An
+explicit solver would need very small steps there.
 Before training, Hybrax checks whether each continuous feed integrates to its
 known cumulative increment within 0.1%. The smoothed feeds pass this preflight
 with these solver settings. This diagnostic does not guarantee coupled-model
@@ -398,13 +502,17 @@ progress to the terminal.
 :language: json
 ```
 
-From the repository root, switch to the example directory, prepare the data,
-and train the model:
+A selected pretrained checkpoint is bundled in `examples/gallery_optfed/run/`.
+To simulate it immediately, skip to the forward command in
+[Run the example locally](#run-the-example-locally).
+
+To refit the model, switch to the example directory, prepare the data, and train.
+The `--overwrite` flag replaces the bundled run with the new fit:
 
 ```bash
 cd examples/gallery_optfed
 hybrax prepare --config prepare-config.json --output-dir prepared
-hybrax train --config train-config.json
+hybrax train --config train-config.json --overwrite
 ```
 
 ```{code-cell} ipython3
@@ -417,20 +525,34 @@ print(next(line for line in output.splitlines() if "training complete" in line))
 print("Run directory: docs/source/_data/out/runs/gallery_optfed/run/")
 ```
 
-Combined NRMSE is the root mean squared normalized error across all 249
-concentration values in the 83 retained measurement rows, including initial
-conditions. Each species is divided by its maximum observed concentration across
-the twelve processes. Total R² uses the same scaling and centers each species
-on its own mean. P/X NRMSE divides ratio RMSE by maximum observed P/X.
-
 Evaluate each saved checkpoint on the measured concentrations and select the
-one with the lowest combined NRMSE. This is selection on training data, not
-validation on held-out processes. All following plots and parameter values use
-that selected checkpoint. `run/predictions.csv` contains the final epoch's
-predictions; `run/selected-predictions.csv` contains the selected model's curves.
+one with the lowest combined NRMSE: the root mean squared error over all
+measurements, with each species divided by its largest observed concentration
+so that the three species are on a comparable scale. This is selection on
+training data, not validation on held-out processes. All following plots and
+parameter values use that selected checkpoint. `run/predictions.csv` contains
+the final epoch's predictions; `run/selected-predictions.csv` contains the
+selected model's curves.
 
-The printed per-species R² scores use raw concentrations. The pooled
-scores below use the scaled definition above.
+The output below prints the ordinary R² for each species and for the
+product-to-biomass ratio P/X, computed on raw concentrations.
+
+````{dropdown} Score definitions
+
+- **Combined NRMSE** is the root mean squared normalized error across all 249
+  concentration values in the 83 retained measurement rows, including initial
+  conditions. Each species is divided by its maximum observed concentration
+  across the twelve processes.
+- **Total R²** uses the same scaling and centers each species on its own mean.
+- **P/X NRMSE** divides the RMSE of the ratio by its maximum observed value;
+  **P/X R²** is computed the same way as total R², on the ratio alone.
+- **Per-species R²**, printed below, uses raw concentrations and each
+  species on its own.
+
+The comparison table in [Compare with OptFed](#compare-with-optfed)
+uses the pooled, scaled scores.
+
+````
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -471,7 +593,8 @@ rows = [
     }
     for name, value in model.reaction_module.parameters.items()
 ]
-display(pd.DataFrame(rows))
+numbers = ["Lower", "Fitted", "Upper"]
+display(pd.DataFrame(rows).style.format("{:.3g}", subset=numbers))
 ```
 
 ```{code-cell} ipython3
@@ -533,6 +656,45 @@ for name, frame in (("Original OptFed", reference), ("Hybrax", points)):
 comparison = pd.DataFrame(comparison).set_index("Model")
 ```
 
+## Compare with OptFed
+
+Fitting concentrations directly, Hybrax reproduces the measurements about as
+well as the published OptFed model. The table scores both models on the same
+measurements. These are the processes used for training, so the scores measure
+goodness of fit rather than performance on unseen processes.
+
+```{code-cell} ipython3
+:tags: [remove-input]
+
+display(comparison.style.format("{:.3g}"))
+```
+
+OptFed minimised error in derived rates, while Hybrax fits concentrations
+directly and its checkpoint is selected on pooled concentration NRMSE, so this
+comparison favours the concentration-fitting objective. Similar pooled errors
+can also hide differences between processes, so the next section compares the
+individual trajectories. A good fit also does not establish unique parameters:
+the Eyring prefactor and activation energy, for example, can compensate for
+each other over a narrow temperature range.
+
+````{dropdown} Comparison details
+
+- The comparison uses all 83 retained measurement rows, including the initial
+  conditions. The scores use the same per-species scaling as the Hybrax
+  training loss.
+- The training loss weights processes equally; pooled NRMSE weights
+  measurement rows equally.
+- The two fits also differ in optimizer, feed splines, and sampling treatment.
+  Differences in their parameters or trajectories therefore do not establish
+  weak identifiability on their own.
+- These are measurement-based scores, not quoted cross-validation scores from
+  the paper. The reference scores use measurement-time predictions exported
+  from archived OptFed analysis outputs, rather than interpolation from the
+  plotted curves. These archives are not included in the pinned GitHub commit;
+  the bundled CSV makes the comparison reproducible locally.
+
+````
+
 ## Inspect the fitted trajectories
 
 The following plot compares the fitted Hybrax model, the original OptFed model,
@@ -544,10 +706,8 @@ The bundled {download}`reference curves
 <../../../examples/gallery_optfed/original_predictions.csv>` and
 {download}`measurement-time predictions
 <../../../examples/gallery_optfed/original_sampling_predictions.csv>` let this
-comparison run without downloading or refitting OptFed. Hybrax fits
-concentrations directly.
-The reported scores describe the same processes used for training, so they
-measure goodness of fit rather than performance on unseen processes.
+comparison run without downloading or refitting OptFed.
+
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
@@ -594,44 +754,6 @@ plt.close(fig)
 
 display(Image(filename=str(WORK / "run/concentration_fit.png")))
 ```
-
-## Compare fitting objectives
-
-Both models reproduce the measurements with comparable aggregate error.
-Their objectives, optimizers, feed splines, and sampling treatments differ.
-Differences in their parameters or trajectories therefore do not establish
-weak identifiability on their own.
-The following comparison uses all 83 retained measurement rows, including the
-initial conditions. These scores use the same per-species scaling as the Hybrax
-training loss.
-The training loss weights processes equally; pooled NRMSE weights measurement
-rows equally. The checkpoint is selected on pooled concentration NRMSE, so this
-comparison favours the concentration-fitting objective. OptFed minimised error
-in derived rates instead.
-
-```{code-cell} ipython3
-:tags: [remove-input]
-
-display(comparison)
-```
-
-The table compares aggregate agreement with the raw measurements. Inspect the
-individual trajectories too, since similar pooled errors can hide differences
-between processes. These are measurement-based scores, not quoted
-cross-validation scores from the paper. The reference scores use measurement-time
-predictions exported from
-archived OptFed analysis outputs, rather than interpolation from the
-plotted curves. These archives are not included in the pinned GitHub
-commit; the bundled CSV makes the comparison reproducible locally.
-
-The Eyring prefactor and activation energy can also compensate for each other
-over a narrow temperature range. A good fit does not establish unique parameters.
-
-## Gotchas
-
-- Temperature must be in Kelvin. The published temperature trace uses Kelvin.
-- Use an implicit solver for kinetic uptake near glycerol depletion. Finite
-  forward predictions alone do not establish that training gradients are accurate.
 
 ## Run the example locally
 

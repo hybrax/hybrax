@@ -218,7 +218,7 @@ everything above it is setup.
   half-life would leave almost no visible trace over a 10-15 h batch window; this
   page's 120 h duration exists specifically so the effect is separable from noise,
   the same lesson discussed in
-  [OptFed's comparison of fitting objectives](optfed.md#compare-fitting-objectives)
+  [OptFed's comparison with the original fit](optfed.md#compare-with-optfed)
   for a different rate.
 - **This page's unusual rate shape (one rate feeding two derivatives) needs no custom
   reaction module at all, technically.** `hybrax.train`'s default reaction module sizes

@@ -5,10 +5,10 @@ product concentrations. Temperature and carbon feed are controlled inputs.
 All twelve processes use kinetic uptake. One latent state tracks accumulated
 generations.
 
-From the repository root:
+From this directory:
 
 ```bash
-uv run python examples/gallery_optfed/run.py
+python run.py
 ```
 
 The run uses 200 full-batch Adam epochs, gradient clipping at `0.05`, and linear
@@ -37,7 +37,7 @@ Withdrawals are individual reactor-mass drops, not cumulative sample amounts.
 Regenerate the dataset with:
 
 ```bash
-uv run python examples/gallery_optfed/import_data.py
+python import_data.py
 ```
 
 The importer downloads four CSVs from OptFed commit
