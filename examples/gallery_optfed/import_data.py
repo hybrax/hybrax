@@ -1,4 +1,4 @@
-"""Convert the published OptFed CSVs to a mass-based Hybrax collection."""
+"""Convert the published OptFed CSVs to a Hybrax collection."""
 
 from pathlib import Path
 
@@ -6,11 +6,15 @@ import numpy as np
 import pandas as pd
 
 import hybrax.format as hxf
+from hybrax.format.splines import (
+    fit_monotone_timeseries_spline,
+    fit_timeseries_spline,
+)
 from hybrax.format.time_series import TimeSeries
+from hybrax.format.time_series.spline_ops import rebase_to_breaks
 
 REVISION = "7811f7b9ef76d624f53b852c03d06cb1b5cc96a3"
 SOURCE = f"https://raw.githubusercontent.com/gschloegel/OptFed/{REVISION}/data"
-KINETIC_UPTAKE = {"DoE1_R1", "DoE2_R1", "DoE3_R2"}
 SPECIES = {"biomass": "X", "glycerol": "G", "product": "P"}
 GLYCEROL_DENSITY = 1.261  # kg/L; use OptFed's additive-volume approximation
 
@@ -22,6 +26,29 @@ def control_series(frame, column, end, *, cumulative=False):
     if cumulative:
         values = values - values[0]
     return TimeSeries(times=times, values=values)
+
+
+def temperature_series(frame, end):
+    """Restrict OptFed's s=0 curve to the process interval without refitting."""
+    fitted = fit_timeseries_spline(
+        TimeSeries(times=frame.t, values=frame["T"]), smoothing_s=0
+    )
+    times = np.r_[0.0, frame.t[(frame.t > 0) & (frame.t < end)], end]
+    breaks = np.asarray(fitted.breaks)
+    breaks = np.r_[0.0, breaks[(breaks > 0) & (breaks < end)], end]
+    coeffs = np.array(rebase_to_breaks(fitted.breaks, fitted.coeffs, breaks))
+    first_time = float(fitted.times[0])
+    if first_time > 0:
+        # OptFed holds the first temperature before the first logged reading.
+        coeffs[0] = [float(fitted.values[0]), 0.0, 0.0, 0.0]
+    return TimeSeries(
+        times=times,
+        values=fitted.evaluate_many(np.maximum(times, first_time)),
+        breaks=breaks,
+        coeffs=coeffs,
+        segment_start_piece_idx=[0],
+        metadata=fitted.metadata | {"evaluation_interval": [0.0, end]},
+    )
 
 
 def build_collection(source=SOURCE):
@@ -47,12 +74,18 @@ def build_collection(source=SOURCE):
             ("carbon_feed", "f_cum", feed_glycerol, density),
             ("base_feed", "f_base_cum", 0.0, 1.0),
         ):
+            # Keep a 0.1 g RMS fit budget while preserving both endpoints/feed total.
+            feed_values = fit_monotone_timeseries_spline(
+                control_series(flow, column, end, cumulative=True),
+                rms_tol=1e-4,
+                increasing=True,
+            )
             feeds[feed_name] = hxf.Inflow(
                 name=feed_name,
                 unit="kg",
                 is_controlled=True,
                 is_continuous=True,
-                values=control_series(flow, column, end, cumulative=True),
+                values=feed_values,
                 feed_medium=hxf.FeedMedium(
                     name=feed_name,
                     density=feed_density,
@@ -82,7 +115,7 @@ def build_collection(source=SOURCE):
             is_continuous=False,
             values=TimeSeries(times=flow.t[draws], values=withdrawals[draws]),
         )
-        temp = control_series(temperature, "T", end)
+        temp = temperature_series(temperature, end)
         processes[name] = hxf.BioProcess(
             metadata=hxf.BioProcessMetadata(
                 name=name,
@@ -116,15 +149,6 @@ def build_collection(source=SOURCE):
                 "temperature": hxf.ProcessVariable(
                     name="temperature", unit="K", is_controlled=True, values=temp
                 ),
-                "supply_limited_uptake": hxf.ProcessVariable(
-                    name="supply_limited_uptake",
-                    unit="1",
-                    is_controlled=True,
-                    values=TimeSeries(
-                        times=[0.0, end],
-                        values=[float(name not in KINETIC_UPTAKE)] * 2,
-                    ),
-                ),
             },
             reaction_ode=hxf.ReactionOde(
                 algebraic={"active_biomass": "biomass - product"},
@@ -142,7 +166,7 @@ def build_collection(source=SOURCE):
     return hxf.BioProcessCollection(
         case_id="optfed",
         organism="Escherichia coli",
-        citation="Schlögl et al. (2024), doi:10.1016/j.csbj.2024.09.024",
+        citation="Schlögel et al. (2024), doi:10.1016/j.csbj.2024.09.024",
         metadata={"source": SOURCE, "excluded_measurement_row": 40},
         processes=processes,
     )

@@ -5,7 +5,6 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
-import optax
 
 from hybrax.format.mechanistic import build_rhs_ode
 from hybrax.train import EstimatedScales, RateModule, ReactionOutputs, trainable_field
@@ -20,31 +19,37 @@ K_GLYCEROL = 0.001  # g/kg, fixed OptFed ODE saturation constant
 # Bounds keep every fitted physical parameter in a meaningful range. Parameters
 # are optimized in unconstrained raw space and mapped through a sigmoid.
 BOUNDS = {
-    "uptake_max": ((1e-12, 1.0),),  # g glycerol / (g active biomass h)
-    "glycerol_inhibition": ((1e-5, 1e4),),  # g/kg
-    "maintenance": ((1e-12, 1.0),),  # g glycerol / (g active biomass h)
-    "uptake_maintenance": ((1e-12, 1e6),),  # g active biomass h / g glycerol
-    "product_maintenance": ((1e-12, 1e6),),  # g total biomass / g product
-    "production_max": ((1e-12, 1e-5),),  # g glycerol / g active biomass
-    "production_half_saturation": ((1e-12, 1e2),),  # same units as uptake
-    "generation_inhibition": ((1e-12, 1e4),),  # generations
-    "temperature": ((4e4, 1e5), (1e5, 1e7), (300.0, 315.0)),  # J/mol, J/mol, K
+    "uptake_max": (1e-12, 1.0),  # g glycerol / (g active biomass h)
+    "glycerol_inhibition": (1e-5, 1e4),  # g/kg
+    "maintenance": (1e-12, 1.0),  # g glycerol / (g active biomass h)
+    "uptake_maintenance": (1e-12, 1e6),  # g active biomass h / g glycerol
+    "product_maintenance": (1e-12, 1e6),  # g total biomass / g product
+    "production_max": (1e-12, 1e-5),  # g glycerol / g active biomass
+    "production_half_saturation": (1e-12, 1e2),  # same units as uptake
+    "generation_inhibition": (1e-12, 1e4),  # generations
+    "activation_energy": (1e4, 1e5),  # J/mol
+    "inactivation_enthalpy": (1e5, 1e7),  # J/mol
+    "equilibrium_temperature": (300.0, 315.0),  # K
 }
 NEUTRAL_INITIAL = {
-    "uptake_max": (0.25,),
-    "glycerol_inhibition": (100.0,),
-    "maintenance": (1e-3,),
-    "uptake_maintenance": (1.0,),
-    "product_maintenance": (1.0,),
+    "uptake_max": 0.5,
+    "glycerol_inhibition": 1.0,
+    "maintenance": 1e-3,
+    "uptake_maintenance": 1.0,
+    "product_maintenance": 1.0,
     # Start below the substrate cap so production parameters receive gradients.
-    "production_max": (1e-9,),
-    "production_half_saturation": (0.1,),
-    "generation_inhibition": (10.0,),
-    "temperature": (5.2e4, 1e6, 307.5),
+    "production_max": 1e-9,
+    "production_half_saturation": 1.0,
+    "generation_inhibition": 1.0,
+    "activation_energy": 5.5e4,
+    "inactivation_enthalpy": 1e6,
+    "equilibrium_temperature": 307.5,
 }
 
 
 def _to_raw(value, bounds, *, linear=False):
+    # Keep scalar types stable across the first optimizer update.
+    value = jnp.asarray(value, dtype=jnp.float64)
     low, high = bounds
     if linear:
         fraction = (value - low) / (high - low)
@@ -61,35 +66,26 @@ def _from_raw(raw, bounds, *, linear=False):
     return jnp.exp(jnp.log(low) + fraction * (jnp.log(high) - jnp.log(low)))
 
 
-def _neutral_raw_parameters():
+def _map_bounds(transform, values):
+    """Map the named scalars between bounded physical and raw coordinates."""
     return {
-        name: jnp.asarray(
-            [
-                _to_raw(value, bound, linear=name == "temperature" and i == 2)
-                for i, (value, bound) in enumerate(
-                    zip(NEUTRAL_INITIAL[name], bounds, strict=True)
-                )
-            ]
-        )
-        for name, bounds in BOUNDS.items()
+        name: transform(value, BOUNDS[name], linear=name == "equilibrium_temperature")
+        for name, value in values.items()
     }
 
 
-def _temperature_ceiling(temperature, constant, parameters):
-    activation_energy, enthalpy, equilibrium_temperature = parameters
+def _temperature_ceiling(temperature, p):
+    """Eyring production ceiling with thermal inactivation."""
     return (
-        constant
+        p["production_max"]
         * K_B
         * temperature
-        * jnp.exp(-activation_energy / (R * temperature))
-        / (
-            H
-            * (
-                1.0
-                + jnp.exp(
-                    enthalpy * (1.0 / equilibrium_temperature - 1.0 / temperature) / R
-                )
-            )
+        * jnp.exp(-p["activation_energy"] / (R * temperature))
+        / H
+        * jax.nn.sigmoid(
+            -p["inactivation_enthalpy"]
+            * (1.0 / p["equilibrium_temperature"] - 1.0 / temperature)
+            / R
         )
         * 3600.0
     )
@@ -107,43 +103,15 @@ class OptFedReactionModule(RateModule):
     i_glycerol: int = eqx.field(static=True)
     i_product: int = eqx.field(static=True)
     i_temperature: int = eqx.field(static=True)
-    i_supply_limited: int = eqx.field(static=True)
 
-    def __init__(
-        self,
-        *,
-        raw_parameters,
-        i_biomass,
-        i_glycerol,
-        i_product,
-        i_temperature,
-        i_supply_limited,
-        **scale_kwargs,
-    ):
-        super().__init__(SCALE_latent=jnp.ones(1), **scale_kwargs)
-        self.raw_parameters = raw_parameters
-        self.i_biomass = i_biomass
-        self.i_glycerol = i_glycerol
-        self.i_product = i_product
-        self.i_temperature = i_temperature
-        self.i_supply_limited = i_supply_limited
+    def __init__(self, **kwargs):
+        super().__init__(SCALE_latent=jnp.ones(1), **kwargs)
 
     @property
     def parameters(self):
-        return {
-            name: jnp.asarray(
-                [
-                    _from_raw(raw, bound, linear=name == "temperature" and i == 2)
-                    for i, (raw, bound) in enumerate(
-                        zip(self.raw_parameters[name], bounds, strict=True)
-                    )
-                ]
-            )
-            for name, bounds in BOUNDS.items()
-        }
+        return _map_bounds(_from_raw, self.raw_parameters)
 
-    def __call__(self, t, inputs):
-        del t
+    def __call__(self, _t, inputs):
         states = self.unscale_modeled_RMCs(inputs.SCL_modeled_RMCs)
         biomass = jnp.maximum(states[self.i_biomass], 1e-8)
         glycerol = jnp.maximum(states[self.i_glycerol], 0.0)
@@ -156,39 +124,22 @@ class OptFedReactionModule(RateModule):
         temperature = controls[self.i_temperature]
         p = self.parameters
 
-        kinetic_uptake = p["uptake_max"][0]
-        kinetic_uptake *= glycerol / (K_GLYCEROL + glycerol)
-        kinetic_uptake *= _inhibition(glycerol, p["glycerol_inhibition"][0])
+        uptake = p["uptake_max"]
+        uptake *= glycerol / (K_GLYCEROL + glycerol)
+        uptake *= _inhibition(glycerol, p["glycerol_inhibition"])
 
-        volume = self.unscale_modeled_V(inputs.SCL_modeled_V)
-        feed_rates = self.unscale_controlled_Inflows_rates(
-            inputs.SCL_controlled_Inflows_rates
-        )
-        feed_compositions = self.unscale_controlled_Inflows_Cin(
-            inputs.SCL_controlled_Inflows_Cin
-        )
-        glycerol_feed = jnp.sum(feed_rates * feed_compositions[:, self.i_glycerol])
-        supply_uptake = glycerol_feed / (volume * jnp.maximum(active_biomass, 1e-8))
-        uptake = jax.lax.cond(
-            controls[self.i_supply_limited] > 0.5,
-            lambda: supply_uptake,
-            lambda: kinetic_uptake,
-        )
-
-        maintenance = p["maintenance"][0]
-        maintenance *= 1.0 + uptake * p["uptake_maintenance"][0]
-        maintenance *= 1.0 + product_biomass * p["product_maintenance"][0]
+        maintenance = p["maintenance"]
+        maintenance *= 1.0 + uptake * p["uptake_maintenance"]
+        maintenance *= 1.0 + product_biomass * p["product_maintenance"]
         maintenance = jnp.minimum(maintenance, uptake)
 
-        available = jnp.maximum(uptake - maintenance, 0.0)
-        production = _temperature_ceiling(
-            temperature, p["production_max"][0], p["temperature"]
-        )
-        production *= available / (p["production_half_saturation"][0] + available)
-        production *= _inhibition(generations, p["generation_inhibition"][0])
+        available = uptake - maintenance
+        production = _temperature_ceiling(temperature, p)
+        production *= available / (p["production_half_saturation"] + available)
+        production *= _inhibition(generations, p["generation_inhibition"])
         production = jnp.minimum(production, available)
 
-        q_biomass = jnp.maximum(available - production, 0.0) * Y_XG
+        q_biomass = (available - production) * Y_XG
         q_product = production * Y_PG
         growth_rate = (q_biomass + q_product) * active_biomass / biomass
         return ReactionOutputs(
@@ -217,19 +168,17 @@ def build_reaction_module(
     **scale_kwargs,
 ):
     """Build the eleven-parameter model from neutral physical values."""
-    del target_names, process_names, seed
+    del config, target_names, process_names, seed
     process = next(iter(training_parent_collection.processes.values()))
     rhs = build_rhs_ode(process)
-    states = list(rhs.name_modeled_RMCs)
-    controls = list(rhs.name_controlled_PVs)
-    raw = _neutral_raw_parameters()
+    states = rhs.name_modeled_RMCs
+    controls = rhs.name_controlled_PVs
     return OptFedReactionModule(
-        raw_parameters=raw,
+        raw_parameters=_map_bounds(_to_raw, NEUTRAL_INITIAL),
         i_biomass=states.index("biomass"),
         i_glycerol=states.index("glycerol"),
         i_product=states.index("product"),
         i_temperature=controls.index("temperature"),
-        i_supply_limited=controls.index("supply_limited_uptake"),
         **scale_kwargs,
     )
 
@@ -241,13 +190,11 @@ def build_solver(config):
 
 
 def build_learning_rate(config, train_cfg, total_updates):
-    """Warm from 10% to the configured peak, then cosine-decay to 5%."""
-    return optax.warmup_cosine_decay_schedule(
-        init_value=train_cfg.learning_rate * 0.1,
-        peak_value=train_cfg.learning_rate,
-        warmup_steps=int(total_updates * 0.05),
-        decay_steps=total_updates,
-        end_value=train_cfg.learning_rate * 0.05,
+    """Linearly decay from the configured learning rate to 1e-4."""
+    del config
+    return lambda step: (
+        train_cfg.learning_rate
+        + (1e-4 - train_cfg.learning_rate) * step / (total_updates - 1)
     )
 
 
