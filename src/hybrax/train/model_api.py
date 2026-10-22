@@ -15,8 +15,8 @@ This module provides:
   predictions and measurements into named loss terms.
 
 Both ``RateModule`` and ``UserLossModule`` are abstract base classes:
-their ``__call__`` (and, for the reaction module, every ``scale_*``/``unscale_*``
-helper) raise ``NotImplementedError`` until a subclass provides them. The
+their `__call__` (and, for the loss module, `loss_names`) raise
+`NotImplementedError` until a subclass provides them. The
 training harness (``harness.py``, ``trainer.py``) drives instances of these
 through the shared ODE solve; this module defines the contract, not the solve.
 """
@@ -330,7 +330,7 @@ class AffineScaler(Scaler):
 
     The default path never constructs this; a user opts in by returning an
     ``AffineScaler`` for one axis from ``estimate_all_scales``. Offsets are
-    meaningful only on VALUE axes — the harness rejects a non-zero offset on
+    meaningful only on VALUE axes; `HybridOdeWrapper` rejects a non-zero offset on
     rate axes. Closed-over concrete zero offsets retain
     ``LinearScaler`` bit identity through reverse-mode training. A genuinely
     dynamic traced offset uses runtime selection: values retain signed-zero
@@ -451,10 +451,10 @@ def _as_scaler(value: jax.Array | Scaler) -> Scaler:
     """Promote a bare array to ``LinearScaler``; pass a ``Scaler`` through.
 
     The ``estimate_all_scales`` hook and the no-hook defaults both return bare
-    arrays (the 21 live+frozen hooks keep doing so); this promotes them to
-    ``LinearScaler`` so the default path is pure division, bit-identical to the
-    pre-scaler code. A hook opts into affine scaling by returning a ``Scaler``
-    (e.g. ``AffineScaler``) for the axis it wants to transform.
+    arrays; this promotes them to `LinearScaler` so the default path is pure
+    division, bit-identical to the pre-scaler code. A hook opts into affine
+    scaling by returning a `Scaler` (e.g. `AffineScaler`) for the axis it
+    wants to transform.
     """
     if isinstance(value, Scaler):
         return value
@@ -788,11 +788,11 @@ class RateModule(eqx.Module):
     # ------------------------------------------------------------------
 
     def scale_state(self, RAW_state):
-        """RAW -> SCL for the full integrated state, via ``SCALE_state``."""
+        """RAW -> SCL for the physical state block, via `SCALE_state`."""
         return self.SCALE_state.scale_value(RAW_state)
 
     def unscale_state(self, SCL_state):
-        """SCL -> RAW for the full integrated state, via ``SCALE_state``."""
+        """SCL -> RAW for the physical state block, via `SCALE_state`."""
         return self.SCALE_state.unscale_value(SCL_state)
 
     def scale_latent(self, RAW_latent):
@@ -1050,11 +1050,9 @@ class LossInputs(eqx.Module):
     # whether or not the dense grid is enabled.
     jump_ts: jax.Array | None = None
 
-    # ---- Dense-grid view. Populated iff ``UserLossModule.dense_grid_n`` is
-    # not None. All have leading dim ``dense_grid_n + n_meas_padded`` is wrong
-    # -- the dense linspace has exactly ``dense_grid_n`` points and these
-    # arrays are the index-gathered dense rows from the union solve, so the
-    # leading dim is ``dense_grid_n``. ``dense_t`` is the linspace itself.
+    # ---- Dense-grid view. Populated iff `UserLossModule.dense_grid_n` is not
+    # None. These are the index-gathered dense rows of the union solve, so the
+    # leading dim is `dense_grid_n`. `dense_t` is the linspace itself.
     dense_t: jax.Array | None = None
     dense_SCL_states: jax.Array | None = None
     dense_RAW_states: jax.Array | None = None

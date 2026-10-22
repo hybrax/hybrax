@@ -1056,8 +1056,9 @@ def run_single_fold(
 ) -> FoldResult:
     """Prepare and execute one fold for direct Python callers.
 
-    The CLI uses the two-stage entry points directly so its collection-owning
-    frame returns to collection-free execution before training starts.
+    The CLI worker instead prepares via `prepare_single_fold_from_runtime_artifact`,
+    which loads runtime arrays and the artifact's compact parent collection rather
+    than the full augmented prepared collection.
     """
     prepared = prepare_single_fold(
         collection,

@@ -145,7 +145,7 @@ class Simulation:
         extra_columns: Mapping[str, Sequence[float]] | None = None,
         volume_state_name: str = "volume",
     ) -> SimulationResult:
-        """Build dense rows, event rows, and optionally write CSV outputs."""
+        """Build dense rows and event rows for one process."""
         times = np.asarray(state_times, dtype=float)
         state_array = np.asarray(states, dtype=float)
         state_names = tuple(state_names)

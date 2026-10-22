@@ -5,9 +5,6 @@ trainer solves the ODE on the union of the measurement times and a uniform
 linspace, then exposes both views on :class:`LossInputs`. The helpers here
 build that union grid and provide mask utilities for skipping dense points
 near controls-discontinuities (where finite differences are unreliable).
-
-Lifted verbatim from the Martens structured example's internals so any
-consumer can use them without re-inventing.
 """
 
 from __future__ import annotations

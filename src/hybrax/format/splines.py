@@ -1123,12 +1123,18 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
       - reactor_volume_dense, sample_volume_dense, accumulated_feed_dense,
         concentration_in_feed
       - adf_at_meas, feed_corr_at_meas
+      - reactor_volume_ts, sample_compensation_ts, adf_ts, feed_corr_ts: exact
+        `TimeSeries`
+      - accumulated_feed_ts: mapping of feed names to exact `TimeSeries`
+      - adf_dense, feed_corr_dense, sample_compensation_dense: arrays on the
+        canonical break grid
       - has_discrete_feed (bool)
 
     Notes
     -----
-    ADF and feed_correction are computed only at measurement times
-    (this avoids treating continuous feeds as discrete dilutions).
+    ADF and feed_correction are built as exact piecewise-polynomial `TimeSeries`
+    on the canonical break grid; `adf_at_meas` and `feed_corr_at_meas` are
+    evaluations of those series.
     Discrete bolus events are treated as left-continuous in this transform:
     at exactly ``t_b`` values are pre-event, and the jump appears for ``t > t_b``.
     """
@@ -1197,9 +1203,7 @@ def build_splines(
     ``TimeSeries`` payloads built directly from physical volume/feed events.
     No epsilon-offset dense event grid is used.
 
-    Returns a runtime payload dict consumed by
-    ``evaluate_real_concentration``, ``to_timeseries``,
-    ``BacktransformSpline``, and the mechanistic pseudobatch path.
+    Returns a runtime payload dict consumed by `evaluate_real_concentration`.
     """
     c_star_ts = fit_timeseries_spline(
         TimeSeries(times=inputs["meas_times"], values=inputs["c_star"]),

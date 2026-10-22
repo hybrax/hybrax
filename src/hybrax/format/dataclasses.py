@@ -254,7 +254,8 @@ class VolumeChange:
     unit: str
     is_controlled: bool  # True if controlled, False if modeled
     is_continuous: bool  # True if continuous, False if discrete
-    values: TimeSeries  # For continuous changes (cumulative or rate)
+    # Cumulative volume (continuous) or per-event volume deltas (discrete)
+    values: TimeSeries
 
 
 @dataclass
@@ -571,9 +572,7 @@ class AugmentedBioProcess(BioProcess):
     train/eval split so synthetic siblings cannot leak into a fold whose
     parent is held out.
 
-    This is a placeholder in v1: no augmentation logic produces these
-    objects yet, but the data shape is fixed so downstream packages
-    (e.g. ``hybrax.train``'s LOO orchestrator) can rely on it.
+    Instances are produced by `hybrax.train.augmentation`.
     """
 
     parent_process: str

@@ -997,9 +997,9 @@ def validate_measurement_sampling_alignment(
     pseudobatch transform may use the wrong reactor volume, corrupting the
     normalisation and downstream spline calculations.
 
-    This function flags every measurement time point that is close to (but not
-    exactly at) a sampling time point, where "close" means within
-    ``rel_threshold`` of the total process length.
+    This function flags every reactor-medium measurement time point that falls
+    after its nearest discrete-`Outflow` sampling time point by at most
+    `rel_threshold` of the total process length.
 
     Args:
         process: BioProcess object to validate.
@@ -1087,9 +1087,10 @@ def validate_volume_consistency(
 
     Args:
         process: BioProcess object whose volume changes are validated.
-        final_volume: Expected final volume in the process's volume unit.  When
-            provided the function checks that the sum of all volume changes plus
-            ``process.volume.initial_volume`` is within 5 % of this value.
+        final_volume: Expected final volume in the process's volume unit.  A
+            numeric value must be supplied.  For positive values, checks that the
+            sum of all volume changes plus `process.volume.initial_volume` is
+            within 5 % of this value.
 
     Returns:
         A tuple ``(is_valid, message, total_change)`` where:
@@ -1103,7 +1104,7 @@ def validate_volume_consistency(
 
     volume = process.volume
 
-    # Calculate total volume change and collect data for plotting
+    # Calculate total volume change and collect lines for the summary table
     total_change = 0.0
     table: List[str] = []
 
@@ -1266,13 +1267,15 @@ def validate_for_publication(
         collection: :class:`BioProcessCollection` object to validate.
 
     Returns:
-        A tuple ``(all_valid, report)`` where ``all_valid`` is ``True`` only
-        when every per-process validation passes *and* the cross-process
-        structure is consistent, and ``report`` is a dict mapping each
+        A tuple `(all_valid, report)` where `all_valid` is `True` only
+        when every per-process validation passes, the cross-process
+        structure is consistent, and all augmented parent references are
+        valid. `report` is a dict mapping each
         process name to its list of ``(check_ok, message)`` results.
         Cross-process consistency results are stored under the key
         ``"__consistency__"``, augmented-parent findings under the key
-        ``"__augmented__"``. Both are always non-empty.
+        `"__augmented__"`. For a non-empty collection, both keys are always
+        present and non-empty; an empty collection returns an empty report.
 
     Raises:
         TypeError: If ``collection`` is not a :class:`BioProcessCollection`.

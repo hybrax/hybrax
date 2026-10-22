@@ -1,4 +1,4 @@
-"""hybrax.format.time_series package scaffolding."""
+"""TimeSeries and PPoly spline data model for hybrax.format."""
 
 from .ppoly import PPoly
 from .timeseries import TimeSeries

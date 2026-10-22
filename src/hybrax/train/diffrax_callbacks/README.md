@@ -2,7 +2,7 @@
 
 **Julia-style callback system for [Diffrax](https://github.com/patrick-kidger/diffrax): differentiable discrete event handling for Neural ODEs in JAX.**
 
-Brings `ContinuousCallback`, `StopConditionCallback`, `DiscreteCallback`, `PresetTimeCallback`, `PeriodicCallback`, `ManifoldProjection`, and `CallbackSet` to JAX/Diffrax — with full differentiability through discrete events.
+Brings `ContinuousCallback`, `StopConditionCallback`, `DiscreteCallback`, `PresetTimeCallback`, `PeriodicCallback`, `ManifoldProjection`, and `CallbackSet` to JAX/Diffrax. Gradients flow through ODE solves, continuous-event times, and callback effects; boolean trigger and stop decisions are not differentiable.
 
 ## Why?
 
@@ -16,23 +16,17 @@ Julia's [DifferentialEquations.jl](https://docs.sciml.ai/DiffEqDocs/stable/featu
 
 ## Installation
 
-```bash
-pip install diffrax-callbacks
-```
-
-Or from source:
-```bash
-pip install -e ".[dev]"
-```
-
-**Requirements:** JAX >= 0.4, Diffrax >= 0.5, Equinox >= 0.11, Optimistix >= 0.0.6
+Vendored in Hybrax as `hybrax.train.diffrax_callbacks`; no separate install is needed.
 
 ## Quick Start
 
 ```python
 import jax.numpy as jnp
 import diffrax
-from diffrax_callbacks import ContinuousCallback, diffeqsolve_with_callbacks
+from hybrax.train.diffrax_callbacks import (
+    ContinuousCallback,
+    diffeqsolve_with_callbacks,
+)
 
 # Your ODE
 def ode(t, y, args):
@@ -92,9 +86,13 @@ ContinuousCallback(
     affect_fn,          # (y, t, args) -> new_y. Applied when triggered.
     direction="down",   # "up", "down", or "both"
     root_finder=...,    # optimistix root finder (default: Newton)
-    repeat_nudge=1e-6,  # min time before re-triggering (prevents loops)
+    repeat_nudge=1e-6,  # time skipped after an event (prevents loops); see below
 )
 ```
+
+After every continuous event, the callback set skips ahead by the largest
+`repeat_nudge` of all its continuous callbacks, without integrating that interval.
+Keep it small unless every continuous callback can tolerate the skip.
 
 **Julia equivalent:** `ContinuousCallback(condition, affect!; direction)`
 
@@ -132,9 +130,12 @@ Triggers at predetermined times. The solver steps exactly to each time.
 ```python
 PresetTimeCallback(
     times=jnp.array([6.0, 12.0, 24.0]),  # trigger times
-    affect_fn=lambda y, t, args: ...,      # state modification
+    affect_fn=lambda y, t, args, i: ...,   # state modification; i = index into times
 )
 ```
+
+`i` indexes this callback's own `times` array, or is `-1` during speculative
+batched evaluation. The result is then discarded, so the affect must be pure.
 
 **Julia equivalent:** `PresetTimeCallback(tstops, affect!)`
 
@@ -144,11 +145,14 @@ Triggers every Δt time units. Convenience wrapper around PresetTimeCallback.
 
 ```python
 PeriodicCallback(
-    dt=4.0,                           # interval
-    affect_fn=lambda y, t, args: y,   # e.g., log state (no-op)
-    t_end=48.0,                       # last possible trigger
+    dt=4.0,                              # interval
+    affect_fn=lambda y, t, args, i: y,   # e.g., log state (no-op); i = trigger index
+    t_end=48.0,                          # last possible trigger
 )
 ```
+
+`i` indexes the generated trigger times, or is `-1` during speculative batched
+evaluation.
 
 **Julia equivalent:** `PeriodicCallback(dt, affect!)`
 
@@ -167,10 +171,11 @@ ManifoldProjection(
 ### CallbackSet
 
 Combines multiple callbacks with priority handling:
-1. StopConditionCallbacks — terminate without applying an effect
-2. ContinuousCallbacks — earliest event wins
-3. PresetTimeCallbacks — at exact times
-4. DiscreteCallbacks / ManifoldProjection — at every segment boundary
+1. StopConditionCallbacks: terminate without applying an effect
+2. ContinuousCallbacks: earliest event wins
+3. PresetTimeCallbacks: at exact times
+4. DiscreteCallbacks / ManifoldProjection: at every segment boundary, unless a
+   StopConditionCallback ends that segment
 
 ```python
 callbacks = CallbackSet(
@@ -320,7 +325,7 @@ sol = diffeqsolve_with_callbacks(..., args=args, callbacks=cb)
 
 2. **Fixed event budget.** `jax.lax.scan` requires a fixed iteration count. Set `max_events` high enough — unused slots have negligible cost.
 
-3. **DiscreteCallback runs at segment boundaries**, not every solver step. This covers most practical use cases (clamping, validation, logging). For per-step evaluation, you'd need to modify Diffrax internals.
+3. **DiscreteCallback runs at segment boundaries**, not every solver step. This covers most practical use cases (clamping, logging). For checks at every accepted solver step, use `StopConditionCallback`.
 
 ## Citation
 

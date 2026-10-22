@@ -9,7 +9,7 @@ Two responsibilities:
 
 - ``format_reaction_schema`` / ``print_reaction_schema``: render labeled
   tables for the :class:`ReactionInputs` / :class:`ReactionOutputs` axes
-  of a wrapper, with names sourced from ``rhs_ode`` and ``controls``.
+  of a wrapper, with names sourced from `rhs_ode`.
   Lets a user cross-reference each SCL vector slot with the underlying
   hybrax.format entity it represents.
 """
@@ -419,6 +419,6 @@ def format_reaction_schema(
 def print_reaction_schema(wrapper: "HybridOdeWrapper") -> None:
     """Print the labeled ReactionInputs / ReactionOutputs tables.
 
-    Sources names from ``wrapper.rhs_ode`` and ``wrapper.controls``.
+    Sources names from `wrapper.rhs_ode`.
     """
     print(format_reaction_schema(wrapper.rhs_ode, wrapper.controls), flush=True)

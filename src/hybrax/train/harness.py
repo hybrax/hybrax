@@ -1041,8 +1041,8 @@ def forward_from_collection(
     Args:
         collection: Evaluation-only process collection to forward-solve.
         model_path: Path to the trained model's run/checkpoint directory.
-        config: Forward-run settings (prediction scope, plotting), or
-            ``None`` for defaults.
+        config: Forward-run settings (evaluated processes, target layout, solver),
+            or `None` for defaults.
         custom_py: Override for the recorded ``custom.py`` path, or ``None``
             to use the one the run recorded.
         training_process_names: Restrict reconstruction to this subset of the
@@ -1051,14 +1051,14 @@ def forward_from_collection(
             ``model_path``'s ``config.json``.
         custom_module: Pre-loaded custom module, or ``None`` to load it from
             ``custom_py``/the recorded path.
-        prediction_process_names: Restrict prediction to this subset of
-            ``collection``'s processes, or ``None`` for all of them.
+        prediction_process_names: Subset of the evaluated processes to export;
+            `None` exports every evaluated process.
         prediction_grid_n: Size of the evenly-spaced prediction grid; see
             :func:`model_predict`'s ``grid_n``.
 
     Returns:
-        The forward result: per-process dense exports plus the rebuilt
-        wrapper and config.
+        The forward result: per-process losses and dense exports plus the
+        trained wrapper and evaluation store.
 
     Raises:
         ValueError: If ``collection``'s measured/modeled variables are
@@ -1525,8 +1525,9 @@ def train_collection(
     def _make_sharded_step():
         """Data-parallel step: shard the batch across local devices via pmap,
         psum/all_gather to the batch mean, then apply the optimiser update.
-        Same math as the vmap step up to float32 cross-device reduction order.
-        Pseudo-space variant: y0 stays RAW (wrapper builds the pseudobatch state).
+        Same math as the vmap step up to floating-point cross-device reduction order.
+        y0 stays RAW; the callbacks solve integrates scaled physical states and returns
+        RAW states.
         Uses min(devices, batch) devices, so a device count exceeding the process
         count shards across the processes instead of collapsing to one device."""
         bs = int(effective_batch_size)
@@ -2641,8 +2642,8 @@ def train_harness_config_from_run_config(
 ) -> TrainHarnessConfig:
     """Map a typed :class:`RunConfig` + run-directory layout to the harness
     config, wiring the run-dir artifact paths (``metrics.csv``, ``checkpoints/``)
-    and the checkpoint/output/logging sections. Shared by the CLI train and LOO
-    paths.
+    and the data/train/solver/checkpoint/logging sections. Shared by the CLI train and
+    LOO paths.
     """
     data = cfg.data
     return TrainHarnessConfig(

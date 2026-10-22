@@ -80,17 +80,24 @@ class DataConfig(ConfigBase):
     directory ``hybrax prepare`` wrote, or a ``prepared.json``/
     ``prepared.json.gz`` file directly (see :func:`resolve_prepared_path`);
     resolved relative to the config file's directory like every other path
-    here. ``processes`` (optional) restricts training/evaluation to this
-    subset of process names; omitted means every process in the prepared
-    dataset. ``targets`` (optional) restricts the training targets to this
-    explicit list of measured-quantity names, overriding automatic derivation
-    from ``target_source``. ``target_source`` decides *which* measurements
-    the loss is computed against: ``"reactor_components"`` (medium components
-    only), ``"process_variables"`` (process variables only), ``"combined"``
-    (both), or ``"auto"`` (default; decide from what the dataset actually
-    has). Set it explicitly once you have modeled process variables —
-    ``"auto"`` is a convenience, not a decision you want made implicitly on a
-    dataset you care about.
+    here. `processes` (optional) selects the training processes for `train`
+    and the eligible process pool for `loo`. If omitted, `loo` uses every
+    process in the prepared dataset, and `train` uses every process outside
+    the `train.holdout_processes` augmentation groups. When holdouts are set
+    and `processes` is omitted, the CLI records the resolved training-process
+    list in `config.json`. Whenever `train.holdout_processes` is set, the
+    final evaluation after `train` also covers the holdout processes.
+    `forward` selects what to evaluate with its own `data.processes`; there,
+    the model's recorded `processes` only identifies its training processes.
+    `targets` (optional) restricts the training targets to this explicit list
+    of measured-quantity names, overriding automatic derivation from
+    `target_source`. `target_source` decides *which* measurements the loss is
+    computed against: `"reactor_components"` (medium components only),
+    `"process_variables"` (process variables only), `"combined"` (both), or
+    `"auto"` (default; decide from what the dataset actually has). Set it
+    explicitly once you have modeled process variables: `"auto"` is a
+    convenience, not a decision you want made implicitly on a dataset you
+    care about.
     """
 
     prepared: Path
@@ -226,9 +233,11 @@ class CheckpointConfig(ConfigBase):
     ``retention.json`` lists best checkpoints. Retention requires a fresh
     checkpoint directory.
 
-    Checkpointing re-exports predictions and re-writes the bundled data, so
-    on a fast run it can dominate the wall clock — set it coarse enough
-    that it is not the bottleneck.
+    Every checkpoint boundary evaluates the configured holdouts. Each
+    written checkpoint also exports predictions for the selected holdout
+    processes and, with `bundle_prepared` and an available prepared-data
+    file, bundles that data. On a fast run this can dominate the wall
+    clock, so set `every` coarse enough that it is not the bottleneck.
     """
 
     every: float | None = Field(None, ge=0)
@@ -281,9 +290,9 @@ class LoggingConfig(ConfigBase):
     """Console output formatting for ``train`` and ``loo``.
 
     ``decimals`` (default 4) is the number of decimal places used when
-    formatting loss and gradient-norm values in the interactive console log.
-    It does not affect ``metrics.csv``/``metrics.jsonl``, which always
-    record full precision regardless of this setting.
+    formatting loss values in console output. It does not affect
+    `metrics.csv`, whose loss and gradient-norm values use 10 significant
+    digits.
     """
 
     decimals: int = Field(4, ge=0)
@@ -300,18 +309,19 @@ class AugmentationConfig(ConfigBase):
     the spacing between consecutive points in that resampled grid, as a
     fraction of the uniform spacing; the remaining duration is distributed
     as random jitter between the interior points, and ``1.0`` forces
-    exactly uniform spacing. ``noise_std`` (required, non-empty) maps a
+    exactly uniform spacing. `noise_std` (required, non-empty) maps each
     modeled state name to the standard deviation of the Gaussian noise
-    added to its resampled trajectory; only states named here are
-    perturbed, every other state is copied through unchanged, and every
-    name must be a modeled (not controlled) state with a fitted spline.
+    added to its resampled trajectory. Every name must be a modeled (not
+    controlled) state with a fitted spline. Only named states receive
+    noise; other modeled states with fitted splines are resampled without
+    noise, and all remaining states are copied unchanged.
     ``initial_value_source`` (default ``"measured"``) decides how each
-    noised state's t=0 value is set: ``"measured"`` pins it to the parent's
-    actual t=0 measurement (raising if there is none), ``"spline"`` pins it
-    to the parent's fitted spline value at t=0, and ``"augmented"`` leaves
-    it noised like every other point; it can be one value applied to every
-    state in ``noise_std``, or a per-state dict whose keys must exactly
-    match ``noise_std``'s.
+    noised state's value at the process start is set: `"measured"` pins it
+    to the parent's actual measurement there (raising if there is none),
+    `"spline"` pins it to the parent's fitted spline value there, and
+    `"augmented"` leaves it noised like every other point; it can be one
+    value applied to every state in `noise_std`, or a per-state dict whose
+    keys must exactly match `noise_std`'s.
     """
 
     seed: int = 0
@@ -620,8 +630,12 @@ def load_run_config(config_path: str | Path, *, command: _Command) -> LoadedRunC
         The resolved config, loaded custom module (if any), and its SHA-256.
 
     Raises:
-        ValueError: If the JSON has an unknown top-level key, or a section
-            required by ``command`` is missing.
+        ValueError: If a config section fails validation, the JSON has an
+            unknown top-level key, a section required by `command` is
+            missing, or `command` is `"loo"` and `train.holdout_processes`
+            is set.
+        TypeError: If the top-level JSON is not an object, or `custom` is
+            neither an object nor null.
     """
     path = Path(config_path)
     raw = _read_raw_config(path)
@@ -779,7 +793,7 @@ def reresolve_custom(config: RunConfig, custom_module: ModuleType | None) -> Run
     A fresh run wraps the raw ``custom`` section via ``get_custom_config`` (or
     ``DefaultCustomConfig``) so hooks can use attribute access
     (``config.custom.target_loss_weights``). When a run is reconstructed from
-    config.json (resume / model_load / forward), ``custom`` comes back as a plain
+    config.json (model_load / forward), `custom` comes back as a plain
     dict; this restores the same typed wrapper so reconstruction matches a fresh
     run. No-op if ``custom`` is already resolved (not a dict) or absent.
     """

@@ -74,7 +74,7 @@ layout; a cycle in `algebraic` cannot be evaluated.
 | Report | Meaning | Fix |
 |---|---|---|
 | volume change sign | A feed has negative values, or a sample positive | Flip the sign, or the type |
-| feed medium missing species | A reactor species has no declared feed concentration | Declare it, including `StaticVariable(0.0)` |
+| feed medium / feed units | A feed has no feed medium, or a feed component's unit differs from the reactor's | Add the feed medium; use the reactor's unit string |
 | measurement / sampling alignment | A measurement is timestamped just *after* its own sample draw | Usually rounding in the export; move it to the sample time |
 | missing derivative | A dynamic state has no `derivatives` entry | Add one; write `"0"` if it has no reaction dynamics |
 | additive unit mismatch | `biomass - product` with different units | Make units consistent: they are strings, never converted |

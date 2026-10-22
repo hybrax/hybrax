@@ -373,10 +373,11 @@ def print_collection_structure(
         collection: BioProcessCollection object to inspect
         verbosity: Detail level (1=minimal, 2=medium, 3=full)
 
-            - Level 3 (most verbose): organism, citation (when set),
-              per-process datapoint counts, and total datapoints
-            - Level 2 (mid verbose): organism and process names listed
-              (no citation, no datapoint counts)
+            - Level 3 (most verbose): everything in level 2, plus the citation
+              (when `case_id` is set), per-process datapoint counts, and total
+              datapoints
+            - Level 2 (mid verbose): organism (when `case_id` is set; otherwise
+              metadata keys, if any) and process names
             - Level 1 (least verbose): case_id/label and process count only
     """
     print("=" * 80)
@@ -435,13 +436,14 @@ def _collect_process_panels(process: BioProcess):
 
     Returns a list of dicts, each with:
       - 'title': str
-      - 'category': 'ReactorMedium' | 'ProcessVariable' | 'VolumeChange'
+      - 'category': 'ReactorMedium' | 'ProcessVariable' | 'VolumeChange' | 'Volume'
       - 'type': 'dynamic' | 'static'
       - for dynamic: 'x' (times array), 'y' (values array)
       - for static:  't_start' (float), 't_end' (float), 'value' (float)
       - optional: 'render': 'line' | 'bar'
       - optional: 'series': TimeSeries spline carrier (if available)
       - optional: 'series_type': 'backtransform' | 'direct'
+      - optional: 'process', 'species_name' (for 'backtransform' panels)
     """
     t_start = float(process.time_axis.start) if process.time_axis else 0.0
     t_end = float(process.time_axis.end) if process.time_axis else 1.0
@@ -734,9 +736,11 @@ def _draw_panel(
 ):
     """Draw a single panel (dynamic or static) onto *ax*.
 
-    If the panel has a ``'series'`` key, the spline/backtransform curve is drawn and raw
-    data is shown as scatter points (no connecting lines). Otherwise raw
-    data is drawn with ``'o-'`` markers.
+    Bar-rendered panels are drawn as bars and static panels as dashed horizontal
+    lines. Otherwise, raw data with at most 50 points is drawn as scatter points if
+    the panel has a `'series'`, or with `'o-'` markers if not; longer data is drawn
+    as a plain line. When `t_start` and `t_end` are given, the spline/backtransform
+    curve of `'series'` is overlaid.
     """
     plot_kwargs = {}
     if color is not None:
@@ -1127,7 +1131,9 @@ def _cin_static_value(vc, rmc_name: str) -> float:
         return 0.0
     if isinstance(comp.concentration, StaticVariable):
         return float(comp.concentration.value)
-    return 0.0  # TimeSeries Cin not supported (mirrors mechanistic._build_cin)
+    # TimeSeries feed concentrations display as 0.0 here;
+    # mechanistic._build_cin rejects them
+    return 0.0
 
 
 def _measure_subtable_width(headers: list, rows: list) -> int:
@@ -1307,8 +1313,8 @@ def print_rhs_ode(
     target,
     ordering: Optional[ProcessOrdering] = None,
 ) -> None:
-    """Print the mechanistic ODE structure as a single ASCII box with two
-    sub-tables (Algebraic, Derivatives).
+    """Print the mechanistic ODE structure as a single ASCII box with up to
+    four sub-tables (Algebraic, Rates, Derivatives, Volume).
 
     Accepts a :class:`BioProcess` or a
     :class:`BioProcessCollection`. For multi-process containers,
@@ -1326,8 +1332,11 @@ def print_rhs_ode(
     (``− |<Outflow sum>|``) columns.
 
     Raises:
-        ValueError: if a multi-process container's processes do not share
-            equivalent ``reaction_ode`` blocks.
+        ValueError: if `process.reaction_ode` is unset, the collection has no
+            processes, or a multi-process container's processes do not share
+            equivalent `reaction_ode` blocks.
+        TypeError: if `target` is neither a `BioProcess` nor a
+            `BioProcessCollection`.
     """
     from .mechanistic import get_process_ordering
 

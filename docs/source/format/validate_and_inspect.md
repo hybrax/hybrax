@@ -50,7 +50,7 @@ Note the two synthetic sections: `__consistency__` holds the cross-process resul
 | Check | The real-world bug |
 |---|---|
 | `validate_volume_change_sign` | A feed imported as negative or a sample as positive. The single most common import bug. |
-| `validate_volume_change_states` | A feed medium that omits a reactor species: "not present" silently confused with "not recorded". |
+| `validate_volume_change_states` | A feed with no feed medium, or a declared feed component whose unit differs from its dynamic reactor counterpart. |
 | `validate_measurement_sampling_alignment` | An offline measurement timestamped just *after* its own sample draw. Corrupts the dilution factor and every spline built on it. |
 | `validate_biomass_in_reactor_medium` | Auto-generated dynamics with nothing to be specific *to*. |
 | `validate_timeseries_shape` | Mismatched `times`/`values` lengths. |

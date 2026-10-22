@@ -54,7 +54,8 @@ from .wrapper import HybridOdeWrapper
 _FAIL_TIME_EPS = 1e-4
 
 # Initial step for a DEGENERATE solve window (``t1 == t0``: one active measurement, or
-# every measurement at the same timestamp), where ``span * 1e-3`` is exactly zero.
+# every measurement at the same timestamp), where `span * INITIAL_STEP_FRACTION` is
+# exactly zero.
 # diffrax requires a strictly positive ``dt0``; a zero one makes it bail on the
 # tol-floored micro-segment inside the callback loop, and that bail is then flagged as
 # a solve failure and poisoned to ``inf`` — so a healthy single-point process would
@@ -148,13 +149,12 @@ def solve_physical_states(
     ``fail_time``. That guarantee requires Equinox runtime errors to remain enabled;
     setting ``EQX_ON_ERROR=off`` deliberately disables it.
 
-    ``max_steps`` (from ``--solver-max-steps``) is the **budget for the whole
-    solve**: it
-    bounds each segment's inner solve and the running sum across segments, so exceeding
-    it is the same failure as any segment bail (state poisoned to ``inf``, ``fail_time``
-    recorded, later segments collapsed). It is grid-independent — chopping the same
-    horizon into more segments does not multiply the ceiling, so ``fail_time`` no longer
-    moves just because a denser output grid was requested.
+    `max_steps` (from the run config's `solver.max_steps`) is the **budget for the whole
+    solve**: it bounds each segment's inner solve and the running sum across segments,
+    so exceeding it is the same failure as any segment bail (state poisoned to `inf`,
+    `fail_time` recorded, later segments collapsed). It is grid-independent: chopping
+    the same horizon into more segments does not multiply the ceiling, so `fail_time`
+    no longer moves just because a denser output grid was requested.
     """
     n_RMCs = len(wrapper.modeled_RMC_names)
     n_PVs = len(wrapper.modeled_PV_names)
@@ -264,7 +264,7 @@ def solve_physical_states(
     # ``jump_ts`` = genuine vector-field discontinuity times (from
     # ``BioProcess.discrete_events``); ``None``/empty ⇒ the controller behaves
     # exactly as a plain ``PIDController(rtol, atol)``. Bolus/sample STATE jumps
-    # are handled by ``affect_fn`` below, NOT here.
+    # are handled by `affect_fn` above, NOT here.
     jump_ts_arg = jump_ts if jump_ts is not None and jump_ts.shape[0] > 0 else None
 
     y0 = wrapper.initial_physical_state_from_raw(RAW_y0)
@@ -304,12 +304,13 @@ def solve_physical_states(
     )
 
     # ``dt0`` must be strictly positive. For a degenerate window (``t1 == t0``: a single
-    # active measurement, or all measurements at t0) ``(t1 - t0) * 1e-3`` is exactly 0,
-    # and a zero initial step makes diffrax bail on the tol-floored micro-segment inside
-    # the callback loop; that bail is then flagged as a failure and poisoned to inf.
+    # active measurement, or all measurements at t0), `span * INITIAL_STEP_FRACTION`
+    # is exactly 0, and a zero initial step makes diffrax bail on the tol-floored
+    # micro-segment inside the callback loop; that bail is then flagged as a failure and
+    # poisoned to inf.
     # Only the exact zero-span case needs a fallback (any positive value works there, as
     # the adaptive controller adjusts immediately), so a genuinely short run keeps its
-    # usual ``span * 1e-3`` untouched.
+    # usual `span * INITIAL_STEP_FRACTION` untouched.
     span = t1 - t0
     dt0 = jnp.where(
         span > 0, span * INITIAL_STEP_FRACTION, jnp.asarray(_DEGENERATE_DT0, dtype)

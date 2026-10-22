@@ -100,9 +100,9 @@ to be specific *to* otherwise. See [the Bioprocess ODE](../format/bioprocess_ode
 
 ## Volume, feeds and samples
 
-- **Feed medium**: the composition of what a feed adds. Every reactor species should
-  have an explicit concentration in it, including the zeros: "absent" and "not recorded"
-  must not be confusable.
+- **Feed medium**: the composition of what a feed adds. A species left out has zero
+  concentration in that feed. Writing the zeros explicitly is optional but keeps
+  "absent" and "not recorded" apart.
 - **Bolus**: a discrete addition. Volume jumps at that instant and everything not in the
   bolus is diluted.
 - **Sample**: a well-mixed removal. Volume drops; concentrations are *unchanged*, because

@@ -109,10 +109,11 @@ def _apply_feed_dilution(
     change that concentration. Only feeding (which adds material at a
     *different* concentration, ``Cin``) does. So an unretained outflow
     (retention sigma=0, the default) contributes no dilution term of its
-    own; it only shrinks ``V``, which concentrates whatever is left. Each
-    Outflow's per-component ``retention`` (sigma in [0, 1]) inverts this:
-    the retained fraction of a component does *not* leave with the flow,
-    so as volume drops around it, its concentration rises. Sigma=1 means
+    own; it only shrinks `V` and removes species at the bulk concentration, so
+    concentrations are unchanged. Each Outflow's per-component `retention`
+    (sigma in [0, 1]) inverts this: the retained fraction of a component
+    does *not* leave with the flow, so as volume drops around it, its
+    concentration rises. Sigma=1 means
     that component is fully retained (e.g. cells in perfusion; solutes in
     evaporation) and concentrates exactly in step with the volume loss.
 
@@ -139,9 +140,9 @@ def _apply_feed_dilution(
     # into negative volume.
     #
     # Detecting that belongs on ACCEPTED states, not here. `hybrax.train.physical_solve`
-    # checks the initial state and every post-sample state, but not yet the solver's
-    # accepted output states, so depletion driven purely by a continuous outflow
-    # mid-segment currently goes unreported.
+    # checks the initial state, every post-sample state, and every accepted solver
+    # step, so depletion driven purely by a continuous outflow mid-segment is
+    # reported as an error.
     V_safe = jnp.maximum(V, V_min)
 
     total_in = jnp.sum(u_controlled_Inflows) + jnp.sum(f_modeled_Inflows)  # >= 0
@@ -528,8 +529,8 @@ def _build_retention(
     """Build a ``(len(vc_names), len(RMCs))`` retention matrix.
 
     Each row is the per-component retention fraction (sigma in [0, 1]) of
-    the corresponding ``Outflow.retention``. Unlike ``_build_cin``,
-    a missing entry here is deliberately left at 0 (not an error). An
+    the corresponding `Outflow.retention`. As in `_build_cin`, a missing
+    entry is deliberately left at 0 (not an error). An
     empty/partial ``retention`` is the ordinary, correct state for
     the overwhelming majority of processes (no perfusion/evaporation
     modeling), not a data gap standing in for something unknown.

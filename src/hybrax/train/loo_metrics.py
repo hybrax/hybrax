@@ -5,15 +5,19 @@ Uses dense ``predictions.csv`` files produced when a LOO run explicitly sets
 MAE, and RMSE against the original measurements without reloading any model or
 rerunning the solver. Inputs:
 
-- ``<loo_output_dir>/folds/<parent>/predictions.csv`` — dense simulated
+- `<loo_output_dir>/folds/<slug>/predictions.csv`: dense simulated
   trajectory of each process for that fold.
-- ``<loo_output_dir>/folds/<parent>/trained_wrapper.meta.json`` — sidecar
+- `<loo_output_dir>/folds/<slug>/trained_wrapper.meta.json`: sidecar
   identifying which processes formed the holdout group for that fold.
-- ``prepared.json`` — source of truth for measurement timestamps and
+- `prepared.json`: source of truth for measurement timestamps and
   measured values per target.
 
-Predictions are linearly interpolated to measurement timestamps before the
-metrics are computed.
+`<slug>` is the parent name in classic leave-one-out; otherwise it is the
+sanitized fold name or `+`-joined test set, with `fold_NNN` as a fallback.
+
+Each measurement time must match a prediction-grid node (within `np.isclose`
+tolerance); predictions are then read with `np.interp`. Non-finite or
+truncated predictions score NaN.
 """
 
 from __future__ import annotations
@@ -244,8 +248,8 @@ def _require_measurement_nodes(
     rtol: float = 1e-4,
     atol: float = 1e-6,
 ) -> None:
-    """Fail-fast: every measurement time must be an exact node of the (sorted)
-    prediction grid ``pred_t``.
+    """Fail-fast: every measurement time must be a node (within tolerance) of the
+    (sorted) prediction grid `pred_t`.
 
     Otherwise ``np.interp`` would silently draw a straight ramp across any
     bolus/feed discontinuity that falls between two grid points. hybrax.train's export
@@ -307,7 +311,8 @@ def _evaluate_predictions_for_process(
     measurements: dict[str, tuple[np.ndarray, np.ndarray]],
     process: str = "?",
 ) -> dict[str, dict[str, float]]:
-    """Read predictions at measurement times (exact nodes) and compute metrics.
+    """Read predictions at measurement times (nodes within tolerance) and compute
+    metrics.
 
     A diverged or truncated prediction (see
     :func:`_prediction_unscoreable`) scores NaN and is skipped.
@@ -399,7 +404,7 @@ def compute_loo_metrics(
     """Compute per-fold/per-process/per-target R², NMAE, MAE, RMSE.
 
     Args:
-        loo_output_dir: directory containing ``folds/<parent>/`` produced
+        loo_output_dir: directory containing `folds/<slug>/` produced
             by ``hybrax loo``.
         prepared_json: path to ``prepared.json`` *or* an already-loaded
             :class:`BioProcessCollection`. Source of measured values.
@@ -834,11 +839,7 @@ def _gather_paired_arrays(
 
 
 def _is_augmented_process(proc: Any) -> bool:
-    """Detect AugmentedBioProcess without forcing the import at module top.
-
-    hybrax.format ships AugmentedBioProcess as a BioProcess subclass with a
-    ``parent_process`` attribute; we only need the structural test.
-    """
+    """Return whether `proc` is an `AugmentedBioProcess`."""
     try:
         from hybrax.format.dataclasses import AugmentedBioProcess
     except ImportError:
@@ -1018,7 +1019,7 @@ def _safe_call_metric(
 
 
 # ---------------------------------------------------------------------------
-# Pretty-print helpers (used by demo scripts; not strictly required)
+# Pretty-print helpers
 # ---------------------------------------------------------------------------
 
 

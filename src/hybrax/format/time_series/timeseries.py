@@ -101,11 +101,11 @@ class TimeSeries(eqx.Module):
     ) -> None:
         """Construct from discrete samples, a spline representation, or both.
 
-        Provide ``times``/``values`` (both or neither), and/or a spline via
-        ``poly`` or via ``breaks``/``coeffs``/``segment_start_piece_idx`` (all
-        three together). ``poly`` is shorthand for the latter three and must
-        agree with them when both are given. At least one representation is
-        required.
+        Provide `times`/`values` (both or neither), and/or a spline via
+        `breaks`/`coeffs` (or `poly` in their place) plus
+        `segment_start_piece_idx`. If `poly` and `breaks`/`coeffs` are both
+        given they must agree, and `poly.continuity_side` must equal
+        `continuity_side`. At least one representation is required.
         """
         # All floating-point fields are float64 (x64 enabled package-wide).
         dtype_resolved = jnp.dtype(jnp.float64)

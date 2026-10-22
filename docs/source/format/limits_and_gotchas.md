@@ -14,6 +14,7 @@ them, you need to know now rather than halfway through.
 | **Time-varying feed composition** | A `FeedMediumComponent` concentration may be a `TimeSeries` in the schema, but `build_rhs_ode` raises `NotImplementedError`. Use `StaticVariable`; split genuinely changing feeds into separate streams. |
 | **Declarative level-controlled outflow** | There is no built-in overflow or level-controller object that derives an `Outflow` from reactor volume. Store a known outflow as a controlled cumulative trace, or compute a modeled outflow rate in a custom reaction module. |
 | **Pseudobatch on a continuous `Outflow`** | `build_pseudobatch_transform` raises `NotImplementedError` for any continuous `Outflow` (perfusion, continuous harvest), retention or not. Its closed-form ADF assumes volume only grows from `Inflow`s. Only `Inflow` and discrete `Outflow` (sampling) are supported. See [The pseudobatch transform](pseudobatch_transform.md). |
+| **Filtered samples** | Every sample is a discrete `Outflow` that removes cells and liquid at the bulk concentration. Retention is only supported on continuous `Outflow`s, so a filtered sample (liquid removed, cells left behind) cannot be represented. |
 | **Rate inversion** | There is no facility for computing rates analytically from measured concentrations. Rates come from a model. |
 | **Unit conversion** | Units are free-form strings. Nothing is parsed and nothing is converted. |
 
@@ -22,9 +23,11 @@ supports, for example, cell retention in perfusion and solute retention during
 evaporation. Missing components have zero retention and leave at the well-mixed bulk
 concentration.
 
-The last one deserves emphasis: units are used for exactly two checks, that quantities
-you *add* in a `reaction_ode` expression share a unit, and that processes in a case
-study agree. `"g/L"` and `"g/l"` are different strings. Pick one spelling.
+The last one deserves emphasis: units are only ever compared as strings. The checks are
+that quantities you *add* in a `reaction_ode` expression share a unit, that each
+declared feed component uses its reactor component's unit, that every volume change
+uses the process volume unit, and that processes in a case study agree. `"g/L"` and
+`"g/l"` are different strings. Pick one spelling.
 
 ## Things that raise
 
@@ -56,16 +59,17 @@ alternative.
 
 ## Things that do not raise
 
-The dangerous category. None of these produce an error; all of them produce wrong
-numbers.
+The dangerous category. None of these produce an error; some of them can produce
+wrong results.
 
 - **`build_pseudobatch_transform` does not set `process.pseudobatch_transform`.** It
   writes `pseudobatch_concentration` onto each component in place and *returns* the
   bundle. If
   you ignore the return value, the components look transformed but the process has no
   transform attached.
-- **Feed composition omitting a species.** Only a validator catches it, and only if you
-  run the validator. A missing species means a missing dilution term.
+- **Feed composition omitting a species.** An omitted species is assumed to have zero
+  concentration in that feed. Dilution still applies. Declare any nonzero feed
+  concentration explicitly.
 - **Sample volume recorded as `0.0`.** That is an assertion that sampling removed nothing,
   which is different from "unknown". If it is unknown, say so; do not write a zero.
 - **Bounds are never enforced.** They are metadata for downstream consumers.

@@ -60,7 +60,7 @@ The checks that catch real bugs most often:
 | Check | The bug it catches |
 |---|---|
 | volume change sign | A feed recorded as negative, or a sample as positive. |
-| feed medium covers all species | A feed whose composition omits a reactor species: "absent" confused with "unrecorded". |
+| feed medium units | A feed with no feed medium, or a feed component whose unit differs from the reactor's. |
 | measurement / sampling alignment | An offline measurement timestamped just *after* its own sample draw, which corrupts every dilution correction built on it. |
 | biomass present | Auto-generated dynamics need a biomass component. |
 | additive unit consistency | `biomass - product` where one is `g/L` and the other `mg/L`. |

@@ -12,7 +12,8 @@ Julia DifferentialEquations.jl equivalents:
   ManifoldProjection   -> ManifoldProjection (project state after each event)
 
 Design principles:
-  - Pure functional: affect(y, t, args) -> new_y (no mutation)
+  - Pure functional: affect(y, t, args) -> new_y (preset and periodic affects also
+    take `preset_index`), no mutation
   - Equinox modules: proper pytree nodes, JIT/grad compatible
   - Composable: CallbackSet combines arbitrary callbacks
 """
@@ -41,10 +42,10 @@ class ContinuousCallback(eqx.Module):
         affect_fn: (y, t, args) -> new_y. Applied when event triggers.
         direction: "up" (neg->pos), "down" (pos->neg), or "both".
         root_finder: Optimistix root finder for exact event time.
-        repeat_nudge: Minimum time advance after an event before the same
-            condition can re-trigger. Prevents infinite loops when the affect
-            doesn't change the condition sign (e.g., bleed that doesn't reduce
-            biomass concentration). Default 1e-6.
+        repeat_nudge: Time advance after an event. The callback set uses the largest
+            `repeat_nudge` of its continuous callbacks after every continuous
+            event, without integrating the skipped interval. Prevents infinite
+            loops when the affect doesn't change the condition sign. Default 1e-6.
 
     Example:
         cb = ContinuousCallback(
@@ -103,8 +104,8 @@ class DiscreteCallback(eqx.Module):
     """Evaluated at each segment boundary (between events).
 
     Unlike Julia's DiscreteCallback which runs at every solver step, this
-    runs at each event boundary in the scan loop. For most practical purposes
-    (checking bounds, applying corrections), this is equivalent.
+    runs at each event boundary in the scan loop. Violations inside a segment can be
+    missed; use `StopConditionCallback` for checks at accepted solver steps.
 
     Args:
         condition_fn: (y, t, args) -> bool. Checked at segment boundaries.
@@ -150,8 +151,9 @@ class PresetTimeCallback(eqx.Module):
             neither is guaranteed bit-identical to the value in ``times``. Matching
             on ``times[preset_index]`` is exact by construction. Matching on ``t``
             with a tolerance instead makes any other node within that tolerance
-            re-trigger this preset — see ``hybrax.train.physical_solve.affect_fn``,
-            which used to need a parking guard for exactly that reason.
+            re-trigger this preset; see `affect_fn` in
+            `hybrax.train.physical_solve.solve_physical_states`, which used to need a
+            parking guard for exactly that reason.
 
     Example:
         cb = PresetTimeCallback(
@@ -181,7 +183,8 @@ class PeriodicCallback(eqx.Module):
             takes the same 4-argument contract; ``preset_index`` is the slot in the
             generated ``times``, or ``-1`` during speculative batched evaluation.
         t_start: First trigger time. Default: dt (skip t=0).
-        t_end: Last possible trigger time. Must be set for array pre-allocation.
+        t_end: Last possible trigger time, used to pre-allocate the times array.
+            Default: 100.0.
 
     Example:
         # Log state every 2 hours over a 48h fermentation
@@ -255,8 +258,9 @@ class CallbackSet(eqx.Module):
       3. PresetTimeCallbacks / PeriodicCallbacks — at exact times
       4. DiscreteCallbacks / ManifoldProjection — at segment boundaries
 
-    DiscreteCallbacks run AFTER every segment (including after continuous
-    and preset events).
+    DiscreteCallback effects apply AFTER each active segment (including after
+    continuous and preset events), unless a StopConditionCallback ends that
+    segment. Effects are discarded for already done or terminated lanes.
 
     Args:
         *callbacks: Any mix of callback types or nested CallbackSets.

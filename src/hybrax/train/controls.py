@@ -114,7 +114,9 @@ def _eval_ppoly_numpy(
 
     Power-basis pieces ``p(dt) = a + dt·(b + dt·(c + dt·d))`` with
     ``idx = searchsorted(breaks, t, side) - 1`` clamped to a valid piece. This
-    NumPy evaluator is used during preparation and scale estimation.
+    NumPy evaluator backs spline-based `SignalSource.values`,
+    `SignalSource.evaluator` and `SignalSource.derivative`; prepare uses the evaluator
+    for control diagnostics.
     """
     ts_arr = np.atleast_1d(_as_numpy(ts))
     idx = np.clip(np.searchsorted(breaks, ts_arr, side=side) - 1, 0, len(breaks) - 2)

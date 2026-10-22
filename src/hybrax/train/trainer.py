@@ -4,7 +4,7 @@
 every train step: it maps a single sample's ODE solve plus loss module
 evaluation (``evaluate_sample_with_loss_module``) across a batch, and
 ``evaluate_one_sample_loss`` provides the equivalent single-sample path used
-outside training (holdout evaluation, dense exports).
+by the device-sharded (pmap and GSPMD) training steps.
 """
 
 from __future__ import annotations
@@ -87,17 +87,19 @@ def _solve_measurement_save_outputs_on_grid(
 ) -> tuple[SaveOutputs, jax.Array]:
     """Solve measurement grid once; return save-time observables and ``fail_time``.
 
-    ``RAW_y0`` is the physical-layout initial state. The wrapper builds the
-    internal pseudobatch solver state. ``SaveOutputs.SCL_states`` stays in
-    physical public layout; rate fields are RAW. ``fail_time`` is the scalar time of
-    the first segment failure (``inf`` if the solve never bailed); the caller masks
-    measurements at ``t > fail_time`` out of the loss. Those rows carry a finite ``y0``
-    placeholder here (the loss-facing solve is sanitized), not a real prediction.
+    `RAW_y0` is the physical-layout initial state. `solve_physical_states`
+    returns RAW states (physical columns, then any latent block), which
+    `wrapper.physical_save_outputs` turns into `SaveOutputs`.
+    `SaveOutputs.SCL_states` stays in physical public layout; rate fields are
+    RAW. `fail_time` is the scalar time of the first segment failure (`inf` if
+    the solve never bailed); the caller masks measurements at `t > fail_time`
+    out of the loss. Those rows carry a finite `y0` placeholder here (the
+    loss-facing solve is sanitized), not a real prediction.
 
     ``n_linspace`` counts the evenly-spaced points ``build_union_time_grid``
     spliced into ``t_eval``; it only sizes the solver's per-segment output window.
-    ``None`` (a bare
-    measurement grid) leaves the solver to bound it from the grid length.
+    `None` (a bare measurement grid) leaves the solver to bound it from the grid
+    length.
     """
     # Bounded physical-state solve (manual jumps at events) — well-conditioned
     # gradient. Replaces the pseudobatch single-solve whose unbounded accumulator
@@ -136,10 +138,11 @@ def simulate_measurement_states(
     Convenience entry point for forward/export/plotting and tests: it points the
     wrapper at ``process_data``'s per-process controls and integrates from
     ``process_data.y0_measured`` with the discrete-jump callbacks solve
-    (:func:`physical_solve.solve_physical_states`). Returns the RAW physical state
-    ``[modeled_RMCs | V | modeled cumulative flows]`` at each padded
-    measurement time. (Replaces the pre-callbacks single-solve of the same name;
-    no ``jump_ts`` argument — the callbacks solve lands segment ends on the events.)
+    (:func:`physical_solve.solve_physical_states`). Returns RAW states
+    `[modeled_RMCs | modeled_PVs | V | modeled cumulative flows]` at the active
+    measurement times. Bolus and sample jumps are segment boundaries. This helper
+    passes no `jump_ts`, so `discrete_events` kinks are not given to the step-size
+    controller as they are in training.
 
     For a stateful model the returned width is the full integrated ``n_state``
     (physical columns followed by the trailing latent block); slice physical
@@ -512,8 +515,8 @@ def evaluate_one_sample_loss(
     ode_solver: diffrax.AbstractSolver = DEFAULT_SOLVER,
     step: int | jax.Array | None = None,
 ):
-    """One process -> ``(total_loss, per_target_loss, fail_time)``. Shared by the
-    vmap batched loss and the device-sharded (pmap) step. ``fail_time`` is ``+inf``
+    """One process -> `(total_loss, per_target_loss, fail_time)`. Used by the
+    device-sharded (pmap and GSPMD) training steps. `fail_time` is `+inf`
     for a clean solve, finite when a segment bailed. ``y0`` stays RAW physical;
     the callbacks solve (``physical_solve.solve_physical_states``) integrates it."""
     controls = _BatchIndexedControls(

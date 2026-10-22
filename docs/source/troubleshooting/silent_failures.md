@@ -147,17 +147,21 @@ process.pseudobatch_transform = build_pseudobatch_transform(process)
 
 ## 7. Feed composition with a species left out
 
-**The failure.** A feed medium that omits a reactor species. hybrax.format will not guess
-whether that means "absent" or "not recorded", so the dilution term for that species is
-simply not generated.
+**The failure.** A feed medium that omits a reactor species which the feed actually
+contains. hybrax.format treats an omitted species as having zero concentration in that
+feed, so the feed dilutes it but never adds any.
 
-**Why it is hard to spot.** The run integrates fine. One species is just never diluted by
-that feed, and the model absorbs the discrepancy into its rates, which then look
-physically wrong for reasons that are not obvious.
+**Why it is hard to spot.** The run integrates fine, and the model absorbs the missing
+addition into its rates, which then look physically wrong for reasons that are not
+obvious.
 
-**How to catch it.** `validate_process` reports it. Run it.
+**How to catch it.** Validation accepts omitted species, but building the `BioProcess`
+logs one INFO line per feed that lists its omitted species ("Assumption: feed medium
+... assuming 0."), and `hybrax prepare` shows these by default. Check those species
+against the source records.
 
-**Fix.** Declare every reactor species in every feed medium, including the zeros.
+**Fix.** Declare every nonzero feed concentration. Explicit zeros are optional but make
+it clear that a species is absent rather than unrecorded.
 
 ---
 

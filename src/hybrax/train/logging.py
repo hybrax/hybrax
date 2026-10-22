@@ -211,8 +211,8 @@ class RunLogger:
                 ``None`` to skip CSV output.
             metrics_jsonl: Path to write ``metrics.jsonl`` incrementally to,
                 or ``None`` to skip JSONL output.
-            log_decimals: Decimal places used when formatting loss/gradient
-                values in the console table.
+            log_decimals: Decimal places used when formatting loss values
+                in console output.
             logger_name: Name of the ``logging.Logger`` to emit console lines
                 through.
         """

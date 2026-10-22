@@ -9,7 +9,8 @@ Features:
   - PeriodicCallbacks: events every Δt
   - ManifoldProjection: constraint enforcement
   - evaluate_trajectory: reconstruct full trajectory at arbitrary time points
-  - Full differentiability through all event types
+  - Supports autodiff through ODE solves and differentiable state-changing callback
+    effects; boolean trigger and stop decisions are not differentiable
 """
 
 from __future__ import annotations
@@ -353,8 +354,8 @@ def diffeqsolve_with_callbacks(
             t_current + _dtype_tol(t_current, _STEP_TOL_FACTOR),
         )
 
-        # Once a lane has ``terminated`` (a prior segment bailed — e.g. hit
-        # ``max_steps_per_segment`` on a stiff blow-up) OR is ``done`` (a healthy
+        # Once a lane has `terminated` (a prior segment bailed, e.g. exhausted the
+        # `max_steps` budget on a stiff blow-up) OR is `done` (a healthy
         # lane that consumed every preset and reached ``t1``), collapse every later
         # segment to
         # zero length so the batched solve does ~0 steps for it. This is the vmap-safe
@@ -371,7 +372,7 @@ def diffeqsolve_with_callbacks(
         # accepted
         # step. Those steps are real: they cost a full 6-stage Tsit5 evaluation each AND
         # they accumulate into ``steps_used`` below, so they silently eat the
-        # ``max_steps_total`` budget. Measured on a 2023_bayer-shaped process: 38 ODE
+        # `max_steps` budget. Measured on a 2023_bayer-shaped process: 38 ODE
         # steps at ``max_events=25`` vs 27 at ``max_events=14``, for the same 10 real
         # segments.
         segment_t1 = jnp.where(terminated | done, t_current, segment_t1)

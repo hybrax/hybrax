@@ -607,7 +607,8 @@ def validate_rhs_ode_compatibility(
         candidate_rhs_ode: The RhsOde being checked for compatibility.
 
     Raises:
-        ValueError: If any of the two RhsOdes' name-tuple fields differ.
+        ValueError: If the two RhsOdes' name-tuple fields differ, or their Cin
+            or retention array shapes differ.
     """
     name_fields = (
         "name_modeled_RMCs",

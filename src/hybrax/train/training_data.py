@@ -378,7 +378,8 @@ class PerProcessTrainingData(eqx.Module):
     # for rows beyond ``n_measured`` and for cells where a target has no
     # measurement at that timestamp on the union grid.
     mask_measured: jax.Array
-    # Full physical initial state `[all_RMCs..., all_PVs..., V, modeled_cum...]`.
+    # Full physical initial state
+    # `[modeled_RMCs..., modeled_PVs..., V, modeled_cum...]`.
     y0_measured: jax.Array
     # This process's flow matrices. A wrapper's baked matrices belong to
     # whichever process supplied its template, so every solve substitutes all
@@ -441,8 +442,8 @@ class TrainingDataStore(eqx.Module):
     modeled Outflow cumulative...]``, where targets may be RMCs, PVs, or both.
     V is in the ODE state but not in the loss targets.
 
-    The y0 vector has layout ``[all RMCs..., all PVs..., V(0), modeled Inflow
-    cumulative..., modeled Outflow cumulative...]``, matching the physical ODE
+    The y0 vector has layout `[modeled RMCs..., modeled PVs..., V(0), modeled Inflow
+    cumulative..., modeled Outflow cumulative...]`, matching the physical ODE
     state order expected by the wrapper.
     """
 
@@ -479,8 +480,10 @@ class TrainingDataStore(eqx.Module):
     mask_measured: jax.Array
     # Active measurement counts per process.
     n_measured: jax.Array
-    # Initial state matrix `[n_processes, n_RMC + n_PV + 1 + n_modeled_flows]`
-    # where layout is `[all_RMCs_0..., all_PVs_0..., V(0), B_modeled_cum_0(0), ...]`.
+    # Initial state matrix
+    # `[n_processes, n_modeled_RMC + n_modeled_PV + 1 + n_modeled_flows]`,
+    # where layout is
+    # `[modeled_RMCs_0..., modeled_PVs_0..., V(0), B_modeled_cum_0(0), ...]`.
     y0_measured: jax.Array
 
     def __check_init__(self) -> None:

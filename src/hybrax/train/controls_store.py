@@ -311,8 +311,8 @@ def _control_partition(
 def derive_control_partition(collection: BioProcessCollection) -> ControlPartition:
     """Derive the canonical control layout from a collection's processes alone.
 
-    Used at the runtime-artifact trust boundary, where control arrays are loaded
-    straight from disk and therefore bypass ``ControlsStore.__post_init__``.
+    Used at the runtime-artifact trust boundary to check a stored split against its
+    parent collection, because `ControlsStore.__post_init__` validates structure only.
     """
     process_order = tuple(collection.processes)
     return _control_partition(
@@ -485,11 +485,12 @@ class PerProcessControls(eqx.Module):
 
     Column axis follows
     ``[name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]``
-    matching hybrax.format ``ControlSplines``. All columns are consumed by
-    ``eval_u(t)`` to build RhsOde's ``u`` argument. Discrete bolus/sample events
-    are NOT controls here — they are applied as state jumps by the callbacks
-    solve from the ``*_event_*`` arrays. ``jump_ts`` carries genuine vector-field
-    discontinuity times (``BioProcess.discrete_events``) for the adaptive solver.
+    matching hybrax.format `ControlSplines`. All columns are consumed through
+    the per-axis `eval_controlled_*` accessors, which the wrapper scales into
+    `ReactionInputs`. Discrete bolus/sample events are NOT controls here;
+    the callbacks solve applies them as state jumps from the `*_event_*`
+    arrays. `jump_ts` carries genuine vector-field discontinuity times
+    (`BioProcess.discrete_events`) for the adaptive solver.
 
     All non-array fields are ``eqx.field(static=True)`` so they live in
     the pytree treedef rather than as dynamic leaves.
@@ -816,8 +817,9 @@ class ControlsStore(eqx.Module):
 
     Column axis follows
     ``[name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]``
-    consistently across every process; the wrapper consumes the full
-    u-block via :meth:`PerProcessControls.eval_u`.
+    consistently across every process; the wrapper consumes it via the
+    per-axis `eval_controlled_*` accessors of `PerProcessControls` (one
+    process) or `BatchControls` (batched training).
     """
 
     # Canonical prepared process keys in stable collection order.
@@ -826,9 +828,9 @@ class ControlsStore(eqx.Module):
     name_controlled_Inflows: tuple[str, ...]
     name_controlled_Outflows: tuple[str, ...]
     name_controlled_PVs: tuple[str, ...]
-    # Padded max shapes. No runtime consumer today (only tests assert on it);
-    # kept because it may be wanted again. Static so that a pytree traversal of
-    # the store cannot silently rewrite the values, as it would for a leaf.
+    # Padded max shapes. Serialized into runtime artifacts and checked against the
+    # loaded array shapes; no solver path reads them. Static so that a pytree
+    # traversal of the store cannot silently rewrite the values, as it would for a leaf.
     shape_metadata: dict[str, Any] = eqx.field(static=True)
     spline_indices: tuple[int, ...] = eqx.field(static=True)
     linear_indices: tuple[int, ...] = eqx.field(static=True)

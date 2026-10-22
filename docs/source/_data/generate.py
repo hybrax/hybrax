@@ -381,8 +381,8 @@ def build_demo_fedbatch() -> None:
         density=1.0,
         density_unit="kg/L",
         components={
-            # Every reactor species needs an explicit feed concentration —
-            # "absent" and "unrecorded" must not be confusable.
+            # Omitted species would mean zero; declaring every species,
+            # zeros included, keeps "absent" and "unrecorded" apart.
             "glucose": hxf.FeedMediumComponent(
                 name="glucose",
                 unit="g/L",
