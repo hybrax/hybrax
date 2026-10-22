@@ -215,13 +215,16 @@ class CheckpointConfig(ConfigBase):
     ``bundle_prepared`` (default ``True``) includes prepared data so every
     checkpoint is self-contained; disable it to reduce repeated disk use.
 
-    ``keep_best=None`` keeps all checkpoints. Zero keeps latest only and
-    requires ``select_by`` to be omitted. Positive N keeps best N plus latest,
-    ranked by ``select_by``: holdout loss, last-batch training loss, or epoch
-    mean training loss. Epoch mean requires boundaries at epoch ends. Lower
-    wins; ties keep older checkpoints; nonfinite scores cannot enter best N.
+    ``keep_best=None`` keeps all checkpoints. Zero writes only the final
+    checkpoint and requires ``select_by`` to be omitted. Positive N keeps best
+    N plus the final checkpoint, ranked by ``select_by``: holdout loss,
+    last-batch training loss, or epoch mean training loss. Epoch mean requires
+    boundaries at epoch ends. Lower wins; ties keep older checkpoints;
+    nonfinite scores cannot enter best N. With retention, every boundary is
+    still evaluated and logged, but only boundaries entering the best N and
+    the final step are written, so `latest` is the newest written checkpoint.
     ``retention.json`` lists best checkpoints. Retention requires a fresh
-    checkpoint directory and does not reduce checkpoint write frequency.
+    checkpoint directory.
 
     Checkpointing re-exports predictions and re-writes the bundled data, so
     on a fast run it can dominate the wall clock — set it coarse enough
@@ -238,8 +241,8 @@ class CheckpointConfig(ConfigBase):
         """Allow three retention policies and their matching metric settings.
 
         ``keep_best=None`` keeps all checkpoints; omit ``select_by``.
-        ``keep_best=0`` keeps latest only; omit ``select_by``.
-        ``keep_best>0`` keeps best N plus latest; require ``select_by``.
+        ``keep_best=0`` writes only the final checkpoint; omit ``select_by``.
+        ``keep_best>0`` keeps best N plus the final checkpoint; require ``select_by``.
         """
         if self.keep_best is None and self.select_by is not None:
             raise ValueError("checkpoint.select_by requires checkpoint.keep_best")

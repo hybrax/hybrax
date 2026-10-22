@@ -140,7 +140,7 @@ The `loo` config section:
 | `per_fold_holdout_sets` | List of `{"name"?: ..., "test": [...], "train"?: [...]}` folds. `train` omitted → every process not in `test`; `name` (optional) labels the `folds/<slug>/` dir. Omit the whole key → classic leave-one-out (one fold per process). Holding out any member of an augmentation group excludes the whole group (parent + children) from `train`. |
 | `parallel_folds` | How many folds to train concurrently (default `1`, sequential). Worker processes are not CPU-pinned; the OS scheduler owns core placement. You set concurrency from what your RAM holds — there is no automatic RAM sizing. |
 | `devices_per_fold` | Optional positive JAX CPU-device count per fold. Omitted (`null`) → `n_cpu // parallel_folds`, additionally capped at the smallest fold's effective batch (a fold cannot expose more host devices than its `pmap` batch without deadlocking). |
-Each fold's holdout loss is evaluated whenever a checkpoint is written, including the mandatory final checkpoint.
+Each fold's holdout loss is evaluated at every checkpoint boundary, including the final step.
 
 A fresh LOO run requires the exact output directory not to exist. Use
 `--overwrite` to replace an existing directory or `--resume` to continue it.

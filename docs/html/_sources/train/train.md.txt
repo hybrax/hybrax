@@ -233,28 +233,34 @@ for additional predictions or plots.
 `keep_best` controls retention:
 
 - Omitted or `null`: retain every checkpoint, the default. Omit `select_by`.
-- `0`: retain latest only. Omit `select_by`; no ranking metric is needed.
-- Positive N: retain the best N scored checkpoints plus latest. Set `select_by`.
-  When latest is already among the best N, it is stored only once.
+- `0`: write only the final checkpoint. Omit `select_by`; no ranking metric is
+  needed.
+- Positive N: retain the best N scored checkpoints plus the final one. Set
+  `select_by`. When the final checkpoint is also among the best N, it is stored
+  only once.
 
-For example, `{ "every": 10, "keep_best": 0 }` replaces the previous checkpoint
-at every boundary. With `keep_best: 3`, at most four `step_*` directories remain
-once pruning completes. The new checkpoint is fully written and `latest` updated
-before old checkpoints are deleted, so allow space for one temporary extra
-checkpoint. On filesystems without symlinks, `latest` is a separate copy and uses
-another checkpoint's worth of space.
+With retention, every boundary is still evaluated and its scores are logged,
+but a checkpoint is written only when it enters the best N or is the final
+step. Boundaries that would be pruned right away write nothing. For example,
+`{ "every": 10, "keep_best": 0 }` evaluates the holdout every 10 epochs and
+writes one checkpoint at the end. With `keep_best: 3`, at most four `step_*`
+directories remain once pruning completes. A new checkpoint is fully written
+and `latest` updated before the checkpoint it displaces is deleted, so allow
+space for one temporary extra checkpoint. On filesystems without symlinks,
+`latest` is a separate copy and uses another checkpoint's worth of space.
 
-Every boundary still writes a full checkpoint. Retention limits stored disk
-space, not serialization or export work. Loss history retains scores for pruned
-steps. `checkpoints/retention.json` lists surviving best checkpoints in ascending
+Loss history retains scores for every boundary, including those never written.
+`checkpoints/retention.json` lists surviving best checkpoints in ascending
 score order and identifies latest. Each checkpoint's `train_state.json` records
 its selection metric and score. Equal scores retain the older checkpoint.
-Nonfinite scores produce a warning and cannot enter the best N, but their
-checkpoint remains while it is latest.
+Nonfinite scores produce a warning and cannot enter the best N; such a
+boundary is written only if it is the final step.
 
-`latest` always identifies the newest checkpoint. The completed run's `model/`
-and default loading from the run directory use the final model, even if another
-checkpoint scores better. To load a best checkpoint, use its directory from
+`latest` identifies the newest written checkpoint. With retention enabled,
+this can lag behind the newest evaluated boundary during training; after
+training it is the final checkpoint. The completed run's `model/` and default
+loading from the run directory use the final model, even if another checkpoint
+scores better. To load a best checkpoint, use its directory from
 `retention.json`; an explicit path to a pruned checkpoint no longer exists.
 
 With retention enabled, an output directory containing old `step_*` checkpoints

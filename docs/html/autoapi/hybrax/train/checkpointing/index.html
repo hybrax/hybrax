@@ -440,6 +440,26 @@ available) the run’s <code class="docutils literal notranslate"><span class="p
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.checkpointing.CheckpointWriter.would_save">
+<span class="sig-name descname"><span class="pre">would_save</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">step</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">score</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/checkpointing.html#CheckpointWriter.would_save"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.checkpointing.CheckpointWriter.would_save" title="Link to this definition">¶</a></dt>
+<dd><p>Return whether a checkpoint at <cite>step</cite> would enter the best N.</p>
+<p>Always true when every checkpoint is kept, never with <cite>keep_best=0</cite> or
+a nonfinite score. Callers skip <cite>write</cite> for rejected boundaries; the
+final checkpoint is always written regardless.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>step</strong> (<em>int</em>)</p></li>
+<li><p><strong>score</strong> (<em>float</em><em> | </em><em>None</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="hybrax.train.checkpointing.CheckpointWriter.write">
 <span class="sig-name descname"><span class="pre">write</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">step</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">samples_seen</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wrapper</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">opt_state</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mean_loss</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">holdout_loss</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">holdout_predictions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">score</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/checkpointing.html#CheckpointWriter.write"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.checkpointing.CheckpointWriter.write" title="Link to this definition">¶</a></dt>
 <dd><p>Write one checkpoint directory and point <code class="docutils literal notranslate"><span class="pre">latest</span></code> at it.</p>
@@ -550,6 +570,7 @@ but cannot enter the best set.</p></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li><a class="reference internal" href="#hybrax.train.checkpointing.CheckpointWriter"><code class="docutils literal notranslate"><span class="pre">CheckpointWriter</span></code></a><ul>
 <li><a class="reference internal" href="#hybrax.train.checkpointing.CheckpointWriter.check_retention_directory"><code class="docutils literal notranslate"><span class="pre">CheckpointWriter.check_retention_directory()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.checkpointing.CheckpointWriter.would_save"><code class="docutils literal notranslate"><span class="pre">CheckpointWriter.would_save()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.checkpointing.CheckpointWriter.write"><code class="docutils literal notranslate"><span class="pre">CheckpointWriter.write()</span></code></a></li>
 </ul>
 </li>

@@ -430,7 +430,8 @@
 <span class="sd">                ``prepared.json.gz`` into every checkpoint; omit to skip</span>
 <span class="sd">                bundling it.</span>
 <span class="sd">            keep_best: None keeps all; zero keeps latest only; positive N</span>
-<span class="sd">                keeps best N plus latest after each successful write.</span>
+<span class="sd">                keeps best N plus latest after each successful write. Use</span>
+<span class="sd">                `would_save` to skip writes that would be pruned at once.</span>
 <span class="sd">            select_by: Name of the score supplied to ``write``; required for</span>
 <span class="sd">                positive N, omitted for zero or None.</span>
 <span class="sd">        """</span>
@@ -536,6 +537,31 @@
         <span class="k">return</span> <span class="n">d</span></div>
 
 
+<div class="viewcode-block" id="CheckpointWriter.would_save">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/checkpointing/index.html#hybrax.train.checkpointing.CheckpointWriter.would_save">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">would_save</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">step</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">score</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Return whether a checkpoint at `step` would enter the best N.</span>
+
+<span class="sd">        Always true when every checkpoint is kept, never with `keep_best=0` or</span>
+<span class="sd">        a nonfinite score. Callers skip `write` for rejected boundaries; the</span>
+<span class="sd">        final checkpoint is always written regardless.</span>
+<span class="sd">        """</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_keep_best</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="n">score</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">math</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">score</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">False</span>
+        <span class="n">candidate</span> <span class="o">=</span> <span class="p">(</span><span class="n">score</span><span class="p">,</span> <span class="n">step</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">candidate</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">([</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">_best</span><span class="p">(),</span> <span class="n">candidate</span><span class="p">])[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_keep_best</span><span class="p">]</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_best</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">"""Return the best N finite retained `(score, step)` pairs, best first."""</span>
+        <span class="k">return</span> <span class="nb">sorted</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">saved_step</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">saved_step</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_retained</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">math</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="p">)[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_keep_best</span><span class="p">]</span>
+
     <span class="k">def</span><span class="w"> </span><span class="nf">_prune</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">step</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">score</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Keep top N finite scores and latest, after the new save succeeds."""</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_keep_best</span> <span class="ow">and</span> <span class="p">(</span><span class="n">score</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">math</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">score</span><span class="p">)):</span>
@@ -543,11 +569,7 @@
                 <span class="s2">"checkpoint step </span><span class="si">%d</span><span class="s2"> has invalid selection score </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">step</span><span class="p">,</span> <span class="n">score</span>
             <span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_retained</span><span class="p">[</span><span class="n">step</span><span class="p">]</span> <span class="o">=</span> <span class="n">score</span>
-        <span class="n">ranked</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span>
-            <span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">saved_step</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">saved_step</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_retained</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
-            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">math</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-        <span class="p">)[:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_keep_best</span><span class="p">]</span>
+        <span class="n">ranked</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_best</span><span class="p">()</span>
         <span class="n">keep</span> <span class="o">=</span> <span class="p">{</span><span class="n">saved_step</span> <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">saved_step</span> <span class="ow">in</span> <span class="n">ranked</span><span class="p">}</span> <span class="o">|</span> <span class="p">{</span><span class="n">step</span><span class="p">}</span>
         <span class="n">write_json</span><span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_dir</span> <span class="o">/</span> <span class="s2">"retention.json"</span><span class="p">,</span>

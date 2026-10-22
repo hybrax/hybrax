@@ -597,13 +597,16 @@
 <span class="sd">    ``bundle_prepared`` (default ``True``) includes prepared data so every</span>
 <span class="sd">    checkpoint is self-contained; disable it to reduce repeated disk use.</span>
 
-<span class="sd">    ``keep_best=None`` keeps all checkpoints. Zero keeps latest only and</span>
-<span class="sd">    requires ``select_by`` to be omitted. Positive N keeps best N plus latest,</span>
-<span class="sd">    ranked by ``select_by``: holdout loss, last-batch training loss, or epoch</span>
-<span class="sd">    mean training loss. Epoch mean requires boundaries at epoch ends. Lower</span>
-<span class="sd">    wins; ties keep older checkpoints; nonfinite scores cannot enter best N.</span>
+<span class="sd">    ``keep_best=None`` keeps all checkpoints. Zero writes only the final</span>
+<span class="sd">    checkpoint and requires ``select_by`` to be omitted. Positive N keeps best</span>
+<span class="sd">    N plus the final checkpoint, ranked by ``select_by``: holdout loss,</span>
+<span class="sd">    last-batch training loss, or epoch mean training loss. Epoch mean requires</span>
+<span class="sd">    boundaries at epoch ends. Lower wins; ties keep older checkpoints;</span>
+<span class="sd">    nonfinite scores cannot enter best N. With retention, every boundary is</span>
+<span class="sd">    still evaluated and logged, but only boundaries entering the best N and</span>
+<span class="sd">    the final step are written, so `latest` is the newest written checkpoint.</span>
 <span class="sd">    ``retention.json`` lists best checkpoints. Retention requires a fresh</span>
-<span class="sd">    checkpoint directory and does not reduce checkpoint write frequency.</span>
+<span class="sd">    checkpoint directory.</span>
 
 <span class="sd">    Checkpointing re-exports predictions and re-writes the bundled data, so</span>
 <span class="sd">    on a fast run it can dominate the wall clock — set it coarse enough</span>
@@ -620,8 +623,8 @@
 <span class="w">        </span><span class="sd">"""Allow three retention policies and their matching metric settings.</span>
 
 <span class="sd">        ``keep_best=None`` keeps all checkpoints; omit ``select_by``.</span>
-<span class="sd">        ``keep_best=0`` keeps latest only; omit ``select_by``.</span>
-<span class="sd">        ``keep_best&gt;0`` keeps best N plus latest; require ``select_by``.</span>
+<span class="sd">        ``keep_best=0`` writes only the final checkpoint; omit ``select_by``.</span>
+<span class="sd">        ``keep_best&gt;0`` keeps best N plus the final checkpoint; require ``select_by``.</span>
 <span class="sd">        """</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">keep_best</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">select_by</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"checkpoint.select_by requires checkpoint.keep_best"</span><span class="p">)</span>

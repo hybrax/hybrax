@@ -564,13 +564,16 @@ run. <code class="docutils literal notranslate"><span class="pre">0</span></code
 the end of training is always written regardless. Must be finite.</p>
 <p><code class="docutils literal notranslate"><span class="pre">bundle_prepared</span></code> (default <code class="docutils literal notranslate"><span class="pre">True</span></code>) includes prepared data so every
 checkpoint is self-contained; disable it to reduce repeated disk use.</p>
-<p><code class="docutils literal notranslate"><span class="pre">keep_best=None</span></code> keeps all checkpoints. Zero keeps latest only and
-requires <code class="docutils literal notranslate"><span class="pre">select_by</span></code> to be omitted. Positive N keeps best N plus latest,
-ranked by <code class="docutils literal notranslate"><span class="pre">select_by</span></code>: holdout loss, last-batch training loss, or epoch
-mean training loss. Epoch mean requires boundaries at epoch ends. Lower
-wins; ties keep older checkpoints; nonfinite scores cannot enter best N.
+<p><code class="docutils literal notranslate"><span class="pre">keep_best=None</span></code> keeps all checkpoints. Zero writes only the final
+checkpoint and requires <code class="docutils literal notranslate"><span class="pre">select_by</span></code> to be omitted. Positive N keeps best
+N plus the final checkpoint, ranked by <code class="docutils literal notranslate"><span class="pre">select_by</span></code>: holdout loss,
+last-batch training loss, or epoch mean training loss. Epoch mean requires
+boundaries at epoch ends. Lower wins; ties keep older checkpoints;
+nonfinite scores cannot enter best N. With retention, every boundary is
+still evaluated and logged, but only boundaries entering the best N and
+the final step are written, so <cite>latest</cite> is the newest written checkpoint.
 <code class="docutils literal notranslate"><span class="pre">retention.json</span></code> lists best checkpoints. Retention requires a fresh
-checkpoint directory and does not reduce checkpoint write frequency.</p>
+checkpoint directory.</p>
 <p>Checkpointing re-exports predictions and re-writes the bundled data, so
 on a fast run it can dominate the wall clock — set it coarse enough
 that it is not the bottleneck.</p>

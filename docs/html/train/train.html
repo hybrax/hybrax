@@ -580,26 +580,32 @@ for additional predictions or plots.</p>
 <p><code class="docutils literal notranslate"><span class="pre">keep_best</span></code> controls retention:</p>
 <ul class="simple">
 <li><p>Omitted or <code class="docutils literal notranslate"><span class="pre">null</span></code>: retain every checkpoint, the default. Omit <code class="docutils literal notranslate"><span class="pre">select_by</span></code>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">0</span></code>: retain latest only. Omit <code class="docutils literal notranslate"><span class="pre">select_by</span></code>; no ranking metric is needed.</p></li>
-<li><p>Positive N: retain the best N scored checkpoints plus latest. Set <code class="docutils literal notranslate"><span class="pre">select_by</span></code>.
-When latest is already among the best N, it is stored only once.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">0</span></code>: write only the final checkpoint. Omit <code class="docutils literal notranslate"><span class="pre">select_by</span></code>; no ranking metric is
+needed.</p></li>
+<li><p>Positive N: retain the best N scored checkpoints plus the final one. Set
+<code class="docutils literal notranslate"><span class="pre">select_by</span></code>. When the final checkpoint is also among the best N, it is stored
+only once.</p></li>
 </ul>
-<p>For example, <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">&quot;every&quot;:</span> <span class="pre">10,</span> <span class="pre">&quot;keep_best&quot;:</span> <span class="pre">0</span> <span class="pre">}</span></code> replaces the previous checkpoint
-at every boundary. With <code class="docutils literal notranslate"><span class="pre">keep_best:</span> <span class="pre">3</span></code>, at most four <code class="docutils literal notranslate"><span class="pre">step_*</span></code> directories remain
-once pruning completes. The new checkpoint is fully written and <code class="docutils literal notranslate"><span class="pre">latest</span></code> updated
-before old checkpoints are deleted, so allow space for one temporary extra
-checkpoint. On filesystems without symlinks, <code class="docutils literal notranslate"><span class="pre">latest</span></code> is a separate copy and uses
-another checkpoint’s worth of space.</p>
-<p>Every boundary still writes a full checkpoint. Retention limits stored disk
-space, not serialization or export work. Loss history retains scores for pruned
-steps. <code class="docutils literal notranslate"><span class="pre">checkpoints/retention.json</span></code> lists surviving best checkpoints in ascending
+<p>With retention, every boundary is still evaluated and its scores are logged,
+but a checkpoint is written only when it enters the best N or is the final
+step. Boundaries that would be pruned right away write nothing. For example,
+<code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">&quot;every&quot;:</span> <span class="pre">10,</span> <span class="pre">&quot;keep_best&quot;:</span> <span class="pre">0</span> <span class="pre">}</span></code> evaluates the holdout every 10 epochs and
+writes one checkpoint at the end. With <code class="docutils literal notranslate"><span class="pre">keep_best:</span> <span class="pre">3</span></code>, at most four <code class="docutils literal notranslate"><span class="pre">step_*</span></code>
+directories remain once pruning completes. A new checkpoint is fully written
+and <code class="docutils literal notranslate"><span class="pre">latest</span></code> updated before the checkpoint it displaces is deleted, so allow
+space for one temporary extra checkpoint. On filesystems without symlinks,
+<code class="docutils literal notranslate"><span class="pre">latest</span></code> is a separate copy and uses another checkpoint’s worth of space.</p>
+<p>Loss history retains scores for every boundary, including those never written.
+<code class="docutils literal notranslate"><span class="pre">checkpoints/retention.json</span></code> lists surviving best checkpoints in ascending
 score order and identifies latest. Each checkpoint’s <code class="docutils literal notranslate"><span class="pre">train_state.json</span></code> records
 its selection metric and score. Equal scores retain the older checkpoint.
-Nonfinite scores produce a warning and cannot enter the best N, but their
-checkpoint remains while it is latest.</p>
-<p><code class="docutils literal notranslate"><span class="pre">latest</span></code> always identifies the newest checkpoint. The completed run’s <code class="docutils literal notranslate"><span class="pre">model/</span></code>
-and default loading from the run directory use the final model, even if another
-checkpoint scores better. To load a best checkpoint, use its directory from
+Nonfinite scores produce a warning and cannot enter the best N; such a
+boundary is written only if it is the final step.</p>
+<p><code class="docutils literal notranslate"><span class="pre">latest</span></code> identifies the newest written checkpoint. With retention enabled,
+this can lag behind the newest evaluated boundary during training; after
+training it is the final checkpoint. The completed run’s <code class="docutils literal notranslate"><span class="pre">model/</span></code> and default
+loading from the run directory use the final model, even if another checkpoint
+scores better. To load a best checkpoint, use its directory from
 <code class="docutils literal notranslate"><span class="pre">retention.json</span></code>; an explicit path to a pruned checkpoint no longer exists.</p>
 <p>With retention enabled, an output directory containing old <code class="docutils literal notranslate"><span class="pre">step_*</span></code> checkpoints
 is rejected before training. Choose a fresh output directory to preserve the

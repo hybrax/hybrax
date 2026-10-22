@@ -37,6 +37,7 @@ from hybrax.format.dataclasses import (
 from hybrax.format.mechanistic import build_rhs_ode
 
 import hybrax.train.harness as harness_module
+from hybrax.train.checkpointing import CheckpointWriter
 from hybrax.train.controls_store import ControlsStore
 from hybrax.train.harness import (
     TrainHarnessConfig,
@@ -2045,6 +2046,44 @@ def test_checkpoint_selection_uses_requested_metric(tmp_path, metric):
         f"step_{best_step:05d}",
         "step_00006",
     }
+
+
+def test_keep_best_writes_only_new_bests_and_the_final_step(tmp_path, monkeypatch):
+    written_steps = []
+    write = CheckpointWriter.write
+
+    def record_write(self, **kwargs):
+        written_steps.append(kwargs["step"])
+        return write(self, **kwargs)
+
+    monkeypatch.setattr(CheckpointWriter, "write", record_write)
+    metrics = tmp_path / "metrics.csv"
+    train_from_collection(
+        _make_multi_process_collection(2),
+        config=TrainHarnessConfig(
+            process_names=("p1", "p2"),
+            target_variable_order=("biomass",),
+            target_source="reactor_components",
+            epochs=4,
+            batch_size=1,
+            shuffle_batches=False,
+            checkpoint_dir=tmp_path / "checkpoints",
+            checkpoint_every=0.5,
+            checkpoint_keep_best=1,
+            checkpoint_select_by="train_loss",
+            metrics_csv=str(metrics),
+        ),
+    )
+    rows = pd.read_csv(metrics)
+    losses = rows["mean_loss"].tolist()
+    new_bests = [
+        int(step)
+        for i, step in enumerate(rows["step"])
+        if all(losses[i] < earlier for earlier in losses[:i])
+    ]
+    # Batches alternate between processes, so some boundaries are not new bests.
+    assert len(new_bests) < len(rows) - 1
+    assert written_steps == sorted({*new_bests, len(rows)})
 
 
 def test_epoch_mean_selection_rejects_mid_epoch_checkpoint(tmp_path):

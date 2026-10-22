@@ -47,6 +47,16 @@ Module Contents
 
 
 
+   .. py:method:: would_save(step, score)
+
+      Return whether a checkpoint at `step` would enter the best N.
+
+      Always true when every checkpoint is kept, never with `keep_best=0` or
+      a nonfinite score. Callers skip `write` for rejected boundaries; the
+      final checkpoint is always written regardless.
+
+
+
    .. py:method:: write(*, step, samples_seen, wrapper, opt_state, mean_loss, holdout_loss, holdout_predictions = None, score = None)
 
       Write one checkpoint directory and point ``latest`` at it.

@@ -60,7 +60,8 @@ class CheckpointWriter:
                 ``prepared.json.gz`` into every checkpoint; omit to skip
                 bundling it.
             keep_best: None keeps all; zero keeps latest only; positive N
-                keeps best N plus latest after each successful write.
+                keeps best N plus latest after each successful write. Use
+                `would_save` to skip writes that would be pruned at once.
             select_by: Name of the score supplied to ``write``; required for
                 positive N, omitted for zero or None.
         """
@@ -160,6 +161,28 @@ class CheckpointWriter:
             self._prune(step, score)
         return d
 
+    def would_save(self, step: int, score: float | None) -> bool:
+        """Return whether a checkpoint at `step` would enter the best N.
+
+        Always true when every checkpoint is kept, never with `keep_best=0` or
+        a nonfinite score. Callers skip `write` for rejected boundaries; the
+        final checkpoint is always written regardless.
+        """
+        if self._keep_best is None:
+            return True
+        if score is None or not math.isfinite(score):
+            return False
+        candidate = (score, step)
+        return candidate in sorted([*self._best(), candidate])[: self._keep_best]
+
+    def _best(self) -> list[tuple[float, int]]:
+        """Return the best N finite retained `(score, step)` pairs, best first."""
+        return sorted(
+            (value, saved_step)
+            for saved_step, value in self._retained.items()
+            if value is not None and math.isfinite(value)
+        )[: self._keep_best]
+
     def _prune(self, step: int, score: float | None) -> None:
         """Keep top N finite scores and latest, after the new save succeeds."""
         if self._keep_best and (score is None or not math.isfinite(score)):
@@ -167,11 +190,7 @@ class CheckpointWriter:
                 "checkpoint step %d has invalid selection score %s", step, score
             )
         self._retained[step] = score
-        ranked = sorted(
-            (value, saved_step)
-            for saved_step, value in self._retained.items()
-            if value is not None and math.isfinite(value)
-        )[: self._keep_best]
+        ranked = self._best()
         keep = {saved_step for _, saved_step in ranked} | {step}
         write_json(
             self._dir / "retention.json",

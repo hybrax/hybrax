@@ -70,7 +70,7 @@ in.
   writes a console row and `metrics.csv` row with epoch, batch, and sample
   counters. Epoch mean loss and training-only duration appear on epoch-end rows.
   Every checkpoint refreshes the run-level loss and global gradient-norm curves.
-- **Holdout set (LOO only):** evaluated whenever a checkpoint is written. It is
+- **Holdout set (LOO only):** evaluated at every checkpoint boundary. It is
   diagnostic and never drives optimizer updates.
 
 ### Result

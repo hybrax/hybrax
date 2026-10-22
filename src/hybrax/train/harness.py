@@ -371,7 +371,7 @@ class TrainHarnessConfig:
     checkpoint_select_by: str | None = None
     prepared_path: Path | None = None
     bundle_prepared: bool = True
-    # Optional holdout set, evaluated whenever a checkpoint is written.
+    # Optional holdout set, evaluated at every checkpoint boundary.
     holdout_processes: tuple[str, ...] | None = None
     # Non-augmented holdout processes whose existing evaluation trajectories are
     # written with checkpoints.
@@ -1341,7 +1341,7 @@ def train_collection(
     if checkpoint_enabled and cfg.checkpoint_every is None:
         logger.info(
             "checkpoint_every is null; using sensible automatic default "
-            "every=%d epochs (%d checkpoints including final)",
+            "every=%d epochs (%d checkpoint boundaries including final)",
             resolved_checkpoint_every,
             len(checkpoint_boundaries),
         )
@@ -2245,24 +2245,34 @@ def train_collection(
                 epoch_training_seconds = 0.0
 
             if checkpoint_writer is not None and step in checkpoint_boundaries:
-                checkpoint_writer.write(
-                    step=step,
-                    samples_seen=step * effective_batch_size,
-                    wrapper=wrapper,
-                    opt_state=optimizer_state,
-                    mean_loss=float(loss),
-                    holdout_loss=holdout_loss,
-                    holdout_predictions=holdout_predictions,
-                    score=(
-                        {
-                            "holdout_loss": holdout_loss,
-                            "train_loss": float(loss),
-                            "epoch_mean_loss": epoch_mean_loss,
-                        }[policy.select_by]
-                        if policy.select_by is not None
-                        else None
-                    ),
+                score = (
+                    {
+                        "holdout_loss": holdout_loss,
+                        "train_loss": float(loss),
+                        "epoch_mean_loss": epoch_mean_loss,
+                    }[policy.select_by]
+                    if policy.select_by is not None
+                    else None
                 )
+                # Skip boundaries that would be pruned right away; the final
+                # checkpoint is always written.
+                if step == total_updates or checkpoint_writer.would_save(step, score):
+                    checkpoint_writer.write(
+                        step=step,
+                        samples_seen=step * effective_batch_size,
+                        wrapper=wrapper,
+                        opt_state=optimizer_state,
+                        mean_loss=float(loss),
+                        holdout_loss=holdout_loss,
+                        holdout_predictions=holdout_predictions,
+                        score=score,
+                    )
+                elif policy.keep_best and not math.isfinite(score):
+                    logger.warning(
+                        "skipping checkpoint step %d with invalid selection score %s",
+                        step,
+                        score,
+                    )
                 _write_training_plots(
                     history=run_log.snapshot(),
                     holdout_per_target_by_step=holdout_per_target_so_far,
@@ -2289,7 +2299,7 @@ def _write_training_plots(
     output_dir: Path,
     step: int,
 ) -> None:
-    """Refresh the run-level training plots after a checkpoint write."""
+    """Refresh the run-level training plots at a checkpoint boundary."""
     try:
         plot_loss_curve(
             history["mean_loss_by_step"],

@@ -408,7 +408,7 @@ directory without it cannot be loaded.</p></li>
 └── checkpoints/
     ├── step_NNNNN/      checkpoint params, optimizer, config, custom.py, data,
     │                   train_state.json, and optional holdout_predictions.csv
-    ├── latest          points to the newest checkpoint (copy if no symlinks)
+    ├── latest          points to the newest written checkpoint (copy if no symlinks)
     └── retention.json  best checkpoint ranking, when retention is enabled
 </pre></div>
 </div>
@@ -467,8 +467,8 @@ Restoring it automatically is outside the new-phase workflow. Checkpoint frequen
 </pre></div>
 </div>
 <p>To limit stored checkpoints, set <code class="docutils literal notranslate"><span class="pre">checkpoint.keep_best</span></code>. <code class="docutils literal notranslate"><span class="pre">null</span></code> keeps all,
-<code class="docutils literal notranslate"><span class="pre">0</span></code> keeps latest only without a metric, and positive N keeps best N plus latest
-using <code class="docutils literal notranslate"><span class="pre">checkpoint.select_by</span></code>. See <a class="reference internal" href="train.html#checkpoints-and-retention"><span class="std std-ref">Checkpoints and retention</span></a>
+<code class="docutils literal notranslate"><span class="pre">0</span></code> writes only the final checkpoint without a metric, and positive N keeps
+best N plus the final checkpoint using <code class="docutils literal notranslate"><span class="pre">checkpoint.select_by</span></code>. See <a class="reference internal" href="train.html#checkpoints-and-retention"><span class="std std-ref">Checkpoints and retention</span></a>
 for score timing, the ranked manifest, and output-directory requirements.
 Default run loading still uses the final model; load a best checkpoint by its
 explicit path from <code class="docutils literal notranslate"><span class="pre">checkpoints/retention.json</span></code>.</p>

@@ -21,7 +21,7 @@ from hybrax.format.dataclasses import (
     Volume,
 )
 
-from hybrax.train.checkpointing import CheckpointWriter
+from hybrax.train.checkpointing import CheckpointWriter, save_model
 from hybrax.train.harness import TrainHarnessConfig, train_collection
 from hybrax.train.model_api import (
     ReactionOutputs,
@@ -278,6 +278,7 @@ def _run_train(
     metrics_csv: str | None = None,
     prepared_path: Path | None = None,
     bundle_prepared: bool = True,
+    checkpoint_keep_best: int | None = None,
 ):
     collection = _make_collection()
     store = TrainingDataStore.from_collection(
@@ -299,6 +300,7 @@ def _run_train(
             metrics_csv=metrics_csv,
             prepared_path=prepared_path,
             bundle_prepared=bundle_prepared,
+            checkpoint_keep_best=checkpoint_keep_best,
         ),
     )
 
@@ -410,7 +412,7 @@ def test_automatic_checkpoint_cadence_is_logged(tmp_path: Path, caplog):
 
     assert (
         "checkpoint_every is null; using sensible automatic default "
-        "every=5 epochs (2 checkpoints including final)" in caplog.messages
+        "every=5 epochs (2 checkpoint boundaries including final)" in caplog.messages
     )
 
 
@@ -420,6 +422,26 @@ def test_checkpoint_every_zero_still_writes_final(tmp_path: Path):
     assert [p.name for p in checkpoints.glob("step_*")] == ["step_00003"]
     state = json.loads((checkpoints / "latest" / "train_state.json").read_text())
     assert state["samples_seen"] == 3
+
+
+def test_keep_best_zero_writes_only_the_final_checkpoint(monkeypatch, tmp_path):
+    saved_steps = []
+
+    def record_save(wrapper, path):
+        saved_steps.append(path.parent.name)
+        save_model(wrapper, path)
+
+    monkeypatch.setattr("hybrax.train.checkpointing.save_model", record_save)
+    checkpoints = tmp_path / "checkpoints"
+    _run_train(
+        checkpoint_dir=checkpoints,
+        checkpoint_every=1,
+        epochs=3,
+        checkpoint_keep_best=0,
+    )
+
+    assert saved_steps == ["step_00003"]
+    assert (checkpoints / "latest").resolve().name == "step_00003"
 
 
 def test_train_collection_checkpoint_params_reload(tmp_path: Path):
@@ -619,3 +641,27 @@ def test_failed_save_does_not_prune_previous_checkpoint(tmp_path, monkeypatch):
         )
     assert (tmp_path / "step_00001" / "params.eqx").is_file()
     assert (tmp_path / "latest").resolve().name == "step_00001"
+
+
+def test_would_save_ranks_against_the_best_n_only(tmp_path):
+    module = _TrainableModule()
+    writer = CheckpointWriter(tmp_path, keep_best=2, select_by="train_loss")
+    assert writer.would_save(1, 1.0)
+    assert not writer.would_save(1, float("inf"))
+    # Unconditional writes leave step 3 retained as latest outside the best two.
+    for step, score in enumerate([1.0, 2.0, 100.0], 1):
+        writer.write(
+            step=step,
+            samples_seen=step,
+            wrapper=module,
+            opt_state=_opt_state_for(module),
+            mean_loss=score,
+            holdout_loss=None,
+            score=score,
+        )
+    assert writer.would_save(4, 1.5)
+    assert not writer.would_save(4, 50.0)
+    assert not writer.would_save(4, 2.0)  # ties keep the older checkpoint
+    assert not writer.would_save(4, float("nan"))
+    assert CheckpointWriter(tmp_path / "all").would_save(1, None)
+    assert not CheckpointWriter(tmp_path / "zero", keep_best=0).would_save(1, 1.0)

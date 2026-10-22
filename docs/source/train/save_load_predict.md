@@ -36,7 +36,7 @@ run/
 └── checkpoints/
     ├── step_NNNNN/      checkpoint params, optimizer, config, custom.py, data,
     │                   train_state.json, and optional holdout_predictions.csv
-    ├── latest          points to the newest checkpoint (copy if no symlinks)
+    ├── latest          points to the newest written checkpoint (copy if no symlinks)
     └── retention.json  best checkpoint ranking, when retention is enabled
 ```
 
@@ -104,8 +104,8 @@ Restoring it automatically is outside the new-phase workflow. Checkpoint frequen
 ```
 
 To limit stored checkpoints, set `checkpoint.keep_best`. `null` keeps all,
-`0` keeps latest only without a metric, and positive N keeps best N plus latest
-using `checkpoint.select_by`. See [Checkpoints and retention](train.md#checkpoints-and-retention)
+`0` writes only the final checkpoint without a metric, and positive N keeps
+best N plus the final checkpoint using `checkpoint.select_by`. See [Checkpoints and retention](train.md#checkpoints-and-retention)
 for score timing, the ranked manifest, and output-directory requirements.
 Default run loading still uses the final model; load a best checkpoint by its
 explicit path from `checkpoints/retention.json`.
