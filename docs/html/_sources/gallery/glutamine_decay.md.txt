@@ -245,7 +245,7 @@ page's own executed run is at `./source/_data/out/runs/gallery_glutamine_decay/`
 ## References
 
 1. <a id="ref-ulonska"></a>Ulonska, S., Kroll, P., Fricke, J., Clemens, C., Voges,
-   R., Müller, M. M., & Herwig, C. (2018). Workflow for Target-Oriented
-   Parametrization of an Enhanced Mechanistic Cell Culture Model. *Biotechnology
+   R., Müller, M. M., & Herwig, C. (2018). Workflow for target-oriented
+   parametrization of an enhanced mechanistic cell culture model. *Biotechnology
    Journal*, 13(4), 1700395.
-   [https://doi.org/10.1002/biot.201700395](https://doi.org/10.1002/biot.201700395)
+   [doi:10.1002/biot.201700395](https://doi.org/10.1002/biot.201700395).

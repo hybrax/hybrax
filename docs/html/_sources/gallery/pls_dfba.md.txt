@@ -204,4 +204,4 @@ executed run is at `./source/_data/out/runs/gallery_pls_dfba/`.
    Ward, V., & Budman, H. (2026). Run-to-run optimization of CHO cell culture media
    using high-throughput microscale bioreactor system and a hybrid modeling
    approach. *Journal of Biotechnology*, 417, 274-286.
-   [https://doi.org/10.1016/j.jbiotec.2026.06.011](https://doi.org/10.1016/j.jbiotec.2026.06.011)
+   [doi:10.1016/j.jbiotec.2026.06.011](https://doi.org/10.1016/j.jbiotec.2026.06.011).

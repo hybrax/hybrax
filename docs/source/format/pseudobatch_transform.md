@@ -115,7 +115,7 @@ does this correctly; it matters if you build your own.
 ## References
 
 1. <a id="ref-pseudobatch"></a>Hesselberg-Thomsen, V., Groves, T., McCubbin, T.,
-   Martínez-Monge, I., de Mas, I. M., & Nielsen, L. K. (2024). Pseudo batch
+   Martínez-Monge, I., Marín de Mas, I., & Nielsen, L. K. (2024). Pseudo batch
    transformation: A novel method to correct for mass removal through sample
    withdrawal of fed-batch fermentations. *bioRxiv*.
-   [https://doi.org/10.1101/2024.05.27.596043](https://doi.org/10.1101/2024.05.27.596043)
+   [doi:10.1101/2024.05.27.596043](https://doi.org/10.1101/2024.05.27.596043).

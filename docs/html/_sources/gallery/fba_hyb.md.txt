@@ -227,8 +227,8 @@ executed run is at `./source/_data/out/runs/gallery_fba_hyb/`.
 
 1. <a id="ref-fbahyb"></a>Gotsmy, M., & Guillén-Gosálbez, G. (2026). Integrating
    metabolic networks into hybrid bioprocess models. *bioRxiv*.
-   [https://doi.org/10.64898/2026.04.22.720062v1](https://www.biorxiv.org/content/10.64898/2026.04.22.720062v1)
+   [doi:10.64898/2026.04.22.720062](https://doi.org/10.64898/2026.04.22.720062).
 2. <a id="ref-ecolicore"></a>Orth, J. D., Fleming, R. M. T., & Palsson, B. Ø.
    (2010). Reconstruction and use of microbial metabolic networks: the core
    *Escherichia coli* metabolic model as an educational guide. *EcoSal Plus*, 4(1).
-   [https://doi.org/10.1128/ecosalplus.10.2.1](https://doi.org/10.1128/ecosalplus.10.2.1)
+   [doi:10.1128/ecosalplus.10.2.1](https://doi.org/10.1128/ecosalplus.10.2.1).

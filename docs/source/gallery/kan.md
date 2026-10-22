@@ -362,17 +362,17 @@ executed run is at `./source/_data/out/runs/gallery_kan/`.
 ## References
 
 1. <a id="ref-srkan"></a>Bühler, M. A., & Guillén-Gosálbez, G. (2026). SR-KAN:
-   A Kolmogorov-Arnold Network guided symbolic regression framework.
-   *Computers and Chemical Engineering*, 213, 109721.
-   [https://doi.org/10.1016/j.compchemeng.2026.109721](https://doi.org/10.1016/j.compchemeng.2026.109721)
+   A Kolmogorov-Arnold network guided symbolic regression framework.
+   *Computers & Chemical Engineering*, 213, 109721.
+   [doi:10.1016/j.compchemeng.2026.109721](https://doi.org/10.1016/j.compchemeng.2026.109721).
 2. <a id="ref-kan"></a>Liu, Z., Wang, Y., Vaidya, S., Ruehle, F., Halverson, J.,
    Soljačić, M., Hou, T. Y., & Tegmark, M. (2024). KAN: Kolmogorov-Arnold
-   Networks. *arXiv*.
-   [https://arxiv.org/abs/2404.19756](https://arxiv.org/abs/2404.19756)
-3. <a id="ref-rbf"></a>Li, Z. (2024). Kolmogorov-Arnold Networks are Radial
-   Basis Function Networks. *arXiv*.
-   [https://arxiv.org/abs/2405.06721](https://arxiv.org/abs/2405.06721)
+   networks. *arXiv*.
+   [arXiv:2404.19756](https://arxiv.org/abs/2404.19756).
+3. <a id="ref-rbf"></a>Li, Z. (2024). Kolmogorov-Arnold networks are radial
+   basis function networks. *arXiv*.
+   [arXiv:2405.06721](https://arxiv.org/abs/2405.06721).
 4. <a id="ref-forster"></a>Forster, T., Vázquez, D., Müller, C., &
    Guillén-Gosálbez, G. (2024). Machine learning uncovers analytical kinetic
    models of bioprocesses. *Chemical Engineering Science*, 300, 120606.
-   [https://doi.org/10.1016/j.ces.2024.120606](https://doi.org/10.1016/j.ces.2024.120606)
+   [doi:10.1016/j.ces.2024.120606](https://doi.org/10.1016/j.ces.2024.120606).
