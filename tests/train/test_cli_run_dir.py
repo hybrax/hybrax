@@ -111,11 +111,15 @@ def test_train_cli_produces_fair_run_dir_and_model_load(tmp_path: Path):
     assert doc["inputs"]["prepared_input"]["content_hash"].startswith("sha256:")
     assert "jax" in doc["environment"]
 
-    # model_load reconstructs from the run dir alone (prepared.json via recorded path).
+    # model_load reconstructs from the run dir alone: prepared data is bundled.
+    assert (run_dir / "prepared.json.gz").is_file()
+    prepared.unlink()
     wrapper, config = hybrax.train.model_load(run_dir)
     assert wrapper is not None
     assert config.train.epochs == 4
-    # A re-prepared (byte-different but identical) prepared.json still loads.
+    # Without the bundled copy, the recorded path is used; a re-prepared
+    # (byte-different but identical) prepared.json still loads.
+    (run_dir / "prepared.json.gz").unlink()
     _write_prepared(prepared)
     hybrax.train.model_load(run_dir)
 
@@ -221,7 +225,12 @@ def test_model_load_integrity_guard_on_content_change(tmp_path: Path):
     config = _write_config(tmp_path / "config.json", prepared=prepared, run_dir=run_dir)
     assert main(["train", "--config", str(config)]) == 0
 
-    # Tamper the prepared.json *content* → content_hash mismatch → hard error.
+    # Tamper the bundled prepared *content* → content_hash mismatch → hard error.
+    _write_prepared(run_dir / "prepared.json.gz", biomass_values=(2.0, 1.5, 1.0))
+    with pytest.raises(ValueError, match="differs"):
+        hybrax.train.model_load(run_dir)
+    # Same for the recorded path once the bundled copy is gone.
+    (run_dir / "prepared.json.gz").unlink()
     _write_prepared(prepared, biomass_values=(2.0, 1.5, 1.0))
     with pytest.raises(ValueError, match="differs"):
         hybrax.train.model_load(run_dir)

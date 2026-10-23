@@ -121,7 +121,7 @@ type(wrapper).__name__
 
 `model_load` rebuilds the whole model: only the trainable parameters were saved, and
 everything else (the controls, the assembled ODE, the scales) is reconstructed from
-the `prepared.json` and `custom.py` bundled inside the run directory. That is why a run
+the `prepared.json.gz` and `custom.py` bundled inside the run directory. That is why a run
 directory is self-contained and why you can move it between machines.
 
 ```{code-cell} ipython3

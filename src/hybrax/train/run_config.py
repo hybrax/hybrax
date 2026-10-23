@@ -221,6 +221,7 @@ class CheckpointConfig(ConfigBase):
 
     ``bundle_prepared`` (default ``True``) includes prepared data so every
     checkpoint is self-contained; disable it to reduce repeated disk use.
+    The run directory always gets one copy of the prepared data.
 
     ``keep_best=None`` keeps all checkpoints. Zero writes only the final
     checkpoint and requires ``select_by`` to be omitted. Positive N keeps best
