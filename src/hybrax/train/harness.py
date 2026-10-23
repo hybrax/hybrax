@@ -2079,9 +2079,10 @@ def train_collection(
 
     def _evaluate_holdout(step: int):
         if not cfg.holdout_processes:
-            return None, None, None
+            return None, None, None, ()
         per_sample_total_parts = []
         per_sample_per_target_parts = []
+        failed_names: list[str] = []
         dense_exports: dict[str, DenseProcessExport] = {}
         for valid_names, outputs in _iter_batched_loss_outputs(
             wrapper,
@@ -2105,8 +2106,16 @@ def train_collection(
                 measurement_save_outputs,
                 measurement_prediction_valid,
                 *_,
+                per_sample_fail,
             ) = outputs
             valid = len(valid_names)
+            failed_names.extend(
+                name
+                for name, fail_time in zip(
+                    valid_names, np.asarray(per_sample_fail)[:valid].tolist()
+                )
+                if np.isfinite(fail_time)
+            )
             per_sample_total_parts.append(np.asarray(per_sample_total[:valid]))
             per_sample_per_target_parts.append(
                 np.asarray(per_sample_per_target[:valid])
@@ -2131,12 +2140,22 @@ def train_collection(
                         prediction_valid=measurement_prediction_valid[export_indices],
                     )
                 )
-        per_sample_total = np.concatenate(per_sample_total_parts)
         per_sample_per_target = np.concatenate(per_sample_per_target_parts)
+        holdout_loss = float(np.mean(np.concatenate(per_sample_total_parts)))
+        holdout_per_target = tuple(
+            float(value) for value in np.mean(per_sample_per_target, axis=0)
+        )
+        # A failed holdout solve drops its post-failure rows from the loss, which can
+        # leave a misleadingly small (even zero) score. Mark the evaluation invalid
+        # instead so checkpoint selection never ranks the candidate.
+        if failed_names:
+            holdout_loss = math.inf
+            holdout_per_target = (math.inf,) * len(holdout_per_target)
         return (
-            float(np.mean(per_sample_total)),
-            tuple(float(value) for value in np.mean(per_sample_per_target, axis=0)),
+            holdout_loss,
+            holdout_per_target,
             dense_exports or None,
+            tuple(failed_names),
         )
 
     with RunLogger(
@@ -2214,11 +2233,13 @@ def train_collection(
             )
 
             holdout_loss, holdout_per_target, holdout_predictions = (None, None, None)
+            failed_holdout_names: tuple[str, ...] = ()
             if step in checkpoint_boundaries:
                 (
                     holdout_loss,
                     holdout_per_target,
                     holdout_predictions,
+                    failed_holdout_names,
                 ) = _evaluate_holdout(step)
                 if holdout_loss is not None:
                     holdout_per_target_so_far[step] = holdout_per_target
@@ -2250,6 +2271,7 @@ def train_collection(
                     epoch_time_seconds=epoch_time_seconds,
                     grad_norm=float(grad_norm),
                     failed_process_names=failed_process_names,
+                    failed_holdout_names=failed_holdout_names,
                 )
             )
             if epoch_end:
@@ -2266,6 +2288,10 @@ def train_collection(
                     if policy.select_by is not None
                     else None
                 )
+                # Any failed holdout solve disqualifies the checkpoint, whichever
+                # metric ranks it.
+                if score is not None and failed_holdout_names:
+                    score = math.inf
                 # Skip boundaries that would be pruned right away; the final
                 # checkpoint is always written.
                 if step == total_updates or checkpoint_writer.would_save(step, score):

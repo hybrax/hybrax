@@ -2048,6 +2048,105 @@ def test_checkpoint_selection_uses_requested_metric(tmp_path, metric):
     }
 
 
+class _P2BlowUp(_LinearReactionModule):
+    """Explodes p2 (the only process starting above 1.05 L) after t=0.5, so its
+    solve fails before the t=1 measurement and only the t=0 row stays valid."""
+
+    def __call__(self, t, inputs):
+        state = inputs.SCL_modeled_RMCs[0]
+        blow_up = (t > 0.5) & (inputs.SCL_modeled_V > 1.05)
+        rate = jnp.where(blow_up, 1.0e4 * state, 0.0)
+        return ReactionOutputs(
+            SCL_modeled_ReactionOde_rates=jnp.asarray([rate], dtype=state.dtype),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=state.dtype),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
+        )
+
+
+def test_failed_holdout_solve_is_never_selected(tmp_path):
+    store = TrainingDataStore.from_collection(
+        _make_collection(),
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    metrics = tmp_path / "metrics.csv"
+    train_collection(
+        store,
+        reaction_module=_P2BlowUp(),
+        loss_module=_biomass_loss(),
+        config=TrainHarnessConfig(
+            process_names=("p1",),
+            holdout_processes=("p2",),
+            epochs=2,
+            batch_size=1,
+            solver_max_steps=512,
+            checkpoint_dir=tmp_path / "checkpoints",
+            checkpoint_every=1,
+            checkpoint_keep_best=1,
+            checkpoint_select_by="holdout_loss",
+            metrics_csv=str(metrics),
+        ),
+    )
+    rows = pd.read_csv(metrics)
+    # The masked loss would be zero (only the exact t=0 row is left), but the
+    # failed solve makes the evaluation invalid.
+    assert np.isinf(rows["holdout_loss"]).all()
+    assert rows["failed_holdout_processes"].tolist() == ["p2", "p2"]
+    assert (rows["n_failed_samples"] == 0).all()
+    manifest = json.loads((tmp_path / "checkpoints" / "retention.json").read_text())
+    assert manifest["best"] == []
+    # The final checkpoint is still written.
+    assert {p.name for p in (tmp_path / "checkpoints").glob("step_*")} == {
+        "step_00002"
+    }
+
+
+@pytest.mark.parametrize("metric", ["holdout_loss", "train_loss", "epoch_mean_loss"])
+def test_failed_holdout_checkpoint_does_not_displace_valid_best(
+    tmp_path, monkeypatch, metric
+):
+    iterate = harness_module._iter_batched_loss_outputs
+
+    def fail_at_step_6(*args, **kwargs):
+        for names, outputs in iterate(*args, **kwargs):
+            if int(kwargs["step"]) == 6:
+                # A finite fail_time with an otherwise unchanged (low) loss.
+                outputs = (*outputs[:-1], jnp.zeros_like(outputs[-1]))
+            yield names, outputs
+
+    monkeypatch.setattr(harness_module, "_iter_batched_loss_outputs", fail_at_step_6)
+    metrics = tmp_path / "metrics.csv"
+    train_from_collection(
+        _make_multi_process_collection(3),
+        config=TrainHarnessConfig(
+            process_names=("p1", "p2"),
+            holdout_processes=("p3",),
+            target_variable_order=("biomass",),
+            target_source="reactor_components",
+            epochs=4,
+            batch_size=1,
+            shuffle_batches=False,
+            checkpoint_dir=tmp_path / "checkpoints",
+            checkpoint_every=1,
+            checkpoint_keep_best=2,
+            checkpoint_select_by=metric,
+            metrics_csv=str(metrics),
+        ),
+    )
+    rows = pd.read_csv(metrics).set_index("step")
+    column = "mean_loss" if metric == "train_loss" else metric
+    assert np.isinf(rows.loc[6, "holdout_loss"])
+    assert rows.loc[6, "failed_holdout_processes"] == "p3"
+    assert np.isfinite(rows.loc[[2, 4, 8], "holdout_loss"]).all()
+    valid = rows.loc[[2, 4, 8], column]
+    manifest = json.loads((tmp_path / "checkpoints" / "retention.json").read_text())
+    # Step 6 keeps its low loss, so only the failure flag keeps it out.
+    assert {entry["step"] for entry in manifest["best"]} == set(
+        valid.nsmallest(2).index
+    )
+    assert not (tmp_path / "checkpoints" / "step_00006").exists()
+
+
 def test_keep_best_writes_only_new_bests_and_the_final_step(tmp_path, monkeypatch):
     written_steps = []
     write = CheckpointWriter.write

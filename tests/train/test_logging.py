@@ -127,6 +127,7 @@ def test_runlogger_csv_pins_exact_metrics_schema(tmp_path):
         "grad_norm",
         "n_failed_samples",
         "failed_processes",
+        "failed_holdout_processes",
     ]
 
 

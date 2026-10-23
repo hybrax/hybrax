@@ -44,6 +44,9 @@ class StepRecord:
     # (post-failure measurement points were dropped from the loss). Empty when the
     # whole batch solved cleanly; its length is the per-step failed-segment count.
     failed_process_names: tuple[str, ...] = ()
+    # Holdout processes whose ODE solve failed at this step's holdout evaluation. Any
+    # failure makes `holdout_loss` infinite, so the checkpoint is never selected.
+    failed_holdout_names: tuple[str, ...] = ()
 
 
 class _ConsoleTableFormatter:
@@ -179,6 +182,11 @@ def _row(record: StepRecord, *, strings: bool) -> dict[str, Any]:
             ";".join(record.failed_process_names)
             if strings
             else list(record.failed_process_names)
+        ),
+        "failed_holdout_processes": (
+            ";".join(record.failed_holdout_names)
+            if strings
+            else list(record.failed_holdout_names)
         ),
     }
 
@@ -321,6 +329,12 @@ class RunLogger:
                 len(record.failed_process_names),
                 len(record.process_names),
                 ", ".join(record.failed_process_names),
+            )
+        if record.failed_holdout_names:
+            self._logger.warning(
+                "step %d: holdout ODE solve failed for [%s]; holdout loss set to inf",
+                record.step,
+                ", ".join(record.failed_holdout_names),
             )
 
         self._formatter.emit(
