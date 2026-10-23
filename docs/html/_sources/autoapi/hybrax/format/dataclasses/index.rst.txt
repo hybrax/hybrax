@@ -5,8 +5,7 @@ hybrax.format.dataclasses
 
 .. autoapi-nested-parse::
 
-   Bioprocess Benchmarking Dataset Structure
-   JAX-compatible dataclasses for standardized bioprocess data
+   JAX-compatible data classes for standardized bioprocess data.
 
 
 

@@ -376,13 +376,13 @@
 <section class="tex2jax_ignore mathjax_ignore" id="overview">
 <h1>Overview<a class="headerlink" href="#overview" title="Link to this heading">¶</a></h1>
 <blockquote>
-<div><p><code class="docutils literal notranslate"><span class="pre">hybrax-format</span></code> collects your bioprocess data in a single <code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code> object and validates it for storing, sharing, and model training.</p>
+<div><p><code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> collects your bioprocess data in a single <code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code> object and validates it for storing, sharing, and model training.</p>
 </div></blockquote>
 <!-- UNLOCK -->
 <section id="under-the-hood">
 <h2>Under the hood<a class="headerlink" href="#under-the-hood" title="Link to this heading">¶</a></h2>
-<img class="theme-diagram diagram-light" src="../_static/diagram_format_pipeline_light.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, ReactionOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
-<img class="theme-diagram diagram-dark" src="../_static/diagram_format_pipeline_dark.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, ReactionOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
+<img class="theme-diagram diagram-light" src="../_static/diagram_format_pipeline_light.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, ReactionOde) feeds into hybrax.format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
+<img class="theme-diagram diagram-dark" src="../_static/diagram_format_pipeline_dark.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, ReactionOde) feeds into hybrax.format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
 <p>You write the left column once. The right column is generated, and is the single source
 of truth for layout everywhere downstream: <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> never re-derives it.</p>
 </section>
@@ -520,7 +520,7 @@ an amount balance. When something looks wrong, check the volume first.</p>
         <div class="bottom-of-page">
           <div class="left-details">
             <div class="copyright">
-                Copyright &#169; 2026, Bioprocess Modeling Collective
+                Copyright &#169; 2026, Mathias Gotsmy and Julian Libiseller-Egger
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
             
@@ -563,7 +563,7 @@ an amount balance. When something looks wrong, check the volume first.</p>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=95c291f4"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

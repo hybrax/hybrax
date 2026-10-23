@@ -5,9 +5,9 @@ from pathlib import Path
 
 _HERE = Path(__file__).parent
 
-project = "Bioprocess Modeling docs"
-author = "Bioprocess Modeling Collective"
-copyright = "2026, Bioprocess Modeling Collective"
+project = "Hybrax"
+author = "Mathias Gotsmy and Julian Libiseller-Egger"
+copyright = "2026, Mathias Gotsmy and Julian Libiseller-Egger"
 
 
 def _v(name: str) -> str:
@@ -151,8 +151,8 @@ intersphinx_mapping = {
 intersphinx_disabled_reftypes = ["*"]
 
 # --- Warning policy ---
-# `myst.xref_missing` is deliberately NOT suppressed any more: bp-docs owns all of
-# its own prose now, so a dead cross-reference is a real bug and -W should catch it.
+# `myst.xref_missing` is deliberately NOT suppressed any more: the docs own all
+# of their prose now, so a dead cross-reference is a real bug and -W should catch it.
 # What remains is third-party noise we cannot fix from here.
 #
 # `docutils` and `duplicate_object` are suppressed because every instance comes from

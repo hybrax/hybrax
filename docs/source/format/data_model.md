@@ -15,7 +15,7 @@ kernelspec:
 
 > Which object holds which measurement, and why the split is where it is.
 
-This page gives an overview of the `hybrax-format` data structure and the *decision* you have to make to import your bioprocess data into it. Exhaustive field lists for all data objects live in the [API reference](../autoapi/hybrax/format/dataclasses/index).
+This page gives an overview of the `hybrax.format` data structure and the *decision* you have to make to import your bioprocess data into it. Exhaustive field lists for all data objects live in the [API reference](../autoapi/hybrax/format/dataclasses/index).
 
 ## The Data Structure
 
@@ -53,7 +53,7 @@ Every time series you import gets asked the same three questions, in order: what
 
 ### The Physical Role
 
-The `hybrax-format` data format categorizes your measured process data depending on its physical role in the bioreactor. There are three major roles:
+The `hybrax.format` data model categorizes your measured process data depending on its physical role in the bioreactor. There are three major roles:
 
 | Measurement | Role | Why | Examples |
 |---|---|---|---|
@@ -168,7 +168,7 @@ a mismatch. Pick a spelling and stay with it.
 
 ## Where the Biology Goes
 
-`hybrax-format` guesses standard biology by default. If a species needs something more, an intracellular pool, a chemical decay, any mechanism the default doesn't cover, you write it out yourself in `reaction_ode`, algebraic relationships included:
+`hybrax.format` guesses standard biology by default. If a species needs something more, an intracellular pool, a chemical decay, any mechanism the default doesn't cover, you write it out yourself in `reaction_ode`, algebraic relationships included:
 
 
 ```python
@@ -203,14 +203,14 @@ is listed in the [API reference](../autoapi/hybrax/format/dataclasses/index).
 
 ### `pseudobatch_transform`
 
-`hybrax-format` builds this for you from `reactor_medium` and `volume` once you run the
+`hybrax.format` builds this for you from `reactor_medium` and `volume` once you run the
 transform; you never construct it yourself. See
 [The pseudobatch transform](pseudobatch_transform.md) for what it contains.
 
 ### `AugmentedBioProcess`
 
 A separate type, not a `BioProcess` field: a fixed shape that `hybrax.train`'s
-augmentation and LOO grouping rely on, though nothing in `hybrax-format` produces one
+augmentation and LOO grouping rely on, though nothing in `hybrax.format` produces one
 directly. See [Augmentation](../gallery/augmentation.md) if you are using it.
 
 <!-- UNLOCK -->

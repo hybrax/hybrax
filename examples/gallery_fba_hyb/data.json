@@ -1,7 +1,7 @@
 {
   "case_id": "demo_ecoli_fba",
   "organism": "Escherichia coli (core metabolism, Orth/Fleming/Palsson 2010)",
-  "citation": "Simulated via a surrogate-FBA forward model \u2014 bp-docs demo, not a real experiment.",
+  "citation": "Simulated via a surrogate-FBA forward model \u2014 Hybrax docs demo, not a real experiment.",
   "metadata": null,
   "processes": {
     "run_1": {

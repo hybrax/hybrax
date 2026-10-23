@@ -1,4 +1,4 @@
-"""Serialization utilities for bioprocess benchmarking dataset."""
+"""Serialization utilities for bioprocess data."""
 
 import gzip
 import json

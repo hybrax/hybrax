@@ -5,7 +5,7 @@ hybrax.format.serialization
 
 .. autoapi-nested-parse::
 
-   Serialization utilities for bioprocess benchmarking dataset.
+   Serialization utilities for bioprocess data.
 
 
 

@@ -1,7 +1,7 @@
 {
   "case_id": "demo_glutamine_decay",
   "organism": "CHO cell culture (Ulonska et al. 2018-inspired)",
-  "citation": "Simulated data \u2014 bp-docs demo, not a real experiment.",
+  "citation": "Simulated data \u2014 Hybrax docs demo, not a real experiment.",
   "metadata": null,
   "processes": {
     "run_1": {

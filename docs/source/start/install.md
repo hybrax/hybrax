@@ -15,7 +15,7 @@
 hybrax/
 ├── src/hybrax/
 │   ├── format/     the data model, mechanistic RHS
-│   └── train/      hybrid ODE training
+│   └── train/      hybrid model training
 ├── tests/
 ├── specs/          numbered technical design docs
 ├── examples/       runnable tutorial and gallery walkthroughs

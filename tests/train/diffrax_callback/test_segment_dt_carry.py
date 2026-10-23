@@ -3,7 +3,7 @@
 Every segment is a fresh ``diffeqsolve`` with no controller history, so seeding each one
 from the fixed ``dt0`` makes the step-size controller re-ramp from scratch. When the
 natural step is much larger than ``dt0`` that ramp is most of the segment's cost --
-measured 10-40% of all ODE steps on bp-bench training grids.
+measured 10-40% of all ODE steps on real bioprocess training grids.
 
 The carried value is floored at ``dt0``, which makes the policy **monotone**: it
 can only ever start larger than the fixed default, never smaller. That matters
@@ -54,7 +54,7 @@ def _steps(sol):
 
 def test_carry_beats_a_cold_restart_when_dt0_is_small_relative_to_a_segment():
     """The case the policy targets: long segments, tiny dt0. ``dt0 = span*1e-3`` is
-    1/100 of a 24 h segment here, which is exactly the bp-bench shape."""
+    1/100 of a 24 h segment here, which is typical of real bioprocess data."""
     sol = _solve(n_segments=10, dt0=_T1 * 1e-3)
     # A cold restart every segment needs several steps just to grow dt back; seeded from
     # the previous segment it should approach one step per segment.

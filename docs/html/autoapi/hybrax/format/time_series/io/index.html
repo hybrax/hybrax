@@ -374,7 +374,7 @@
         <article role="main" id="furo-main-content">
           <section id="module-hybrax.format.time_series.io">
 <span id="hybrax-format-time-series-io"></span><h1>hybrax.format.time_series.io<a class="headerlink" href="#module-hybrax.format.time_series.io" title="Link to this heading">¶</a></h1>
-<p>Serialization and input adapters for TimeSeries.</p>
+<p>Dict serialization for TimeSeries.</p>
 <section id="functions">
 <h2>Functions<a class="headerlink" href="#functions" title="Link to this heading">¶</a></h2>
 <div class="table-wrapper autosummary longtable docutils container">
@@ -382,12 +382,6 @@
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.time_series.io.timeseries_from_dict" title="hybrax.format.time_series.io.timeseries_from_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">timeseries_from_dict</span></code></a>(cls, data)</p></td>
 <td><p>Construct a TimeSeries from canonical dict form.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.time_series.io.timeseries_from_input_dict" title="hybrax.format.time_series.io.timeseries_from_input_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">timeseries_from_input_dict</span></code></a>(cls, input_data, ...)</p></td>
-<td><p>Build one TimeSeries from full input.json-like data.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.time_series.io.timeseries_from_process_state" title="hybrax.format.time_series.io.timeseries_from_process_state"><code class="xref py py-obj docutils literal notranslate"><span class="pre">timeseries_from_process_state</span></code></a>(cls, process_state, variable)</p></td>
-<td><p>Build one TimeSeries from metadata.hybrax-format.process_state for a variable.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.time_series.io.timeseries_to_dict" title="hybrax.format.time_series.io.timeseries_to_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">timeseries_to_dict</span></code></a>(series)</p></td>
 <td><p>Serialize a TimeSeries instance to canonical dict form.</p></td>
@@ -409,43 +403,6 @@
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>cls</strong> (<em>Any</em>)</p></li>
 <li><p><strong>data</strong> (<em>Mapping</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Any</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="hybrax.format.time_series.io.timeseries_from_input_dict">
-<span class="sig-prename descclassname"><span class="pre">hybrax.format.time_series.io.</span></span><span class="sig-name descname"><span class="pre">timeseries_from_input_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cls</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">process_key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variable</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../../_modules/hybrax/format/time_series/io.html#timeseries_from_input_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.time_series.io.timeseries_from_input_dict" title="Link to this definition">¶</a></dt>
-<dd><p>Build one TimeSeries from full input.json-like data.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>cls</strong> (<em>Any</em>)</p></li>
-<li><p><strong>input_data</strong> (<em>Mapping</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
-<li><p><strong>process_key</strong> (<em>str</em>)</p></li>
-<li><p><strong>variable</strong> (<em>str</em>)</p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Any</p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="hybrax.format.time_series.io.timeseries_from_process_state">
-<span class="sig-prename descclassname"><span class="pre">hybrax.format.time_series.io.</span></span><span class="sig-name descname"><span class="pre">timeseries_from_process_state</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cls</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">process_state</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">variable</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../../_modules/hybrax/format/time_series/io.html#timeseries_from_process_state"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.time_series.io.timeseries_from_process_state" title="Link to this definition">¶</a></dt>
-<dd><p>Build one TimeSeries from metadata.hybrax-format.process_state for a variable.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>cls</strong> (<em>Any</em>)</p></li>
-<li><p><strong>process_state</strong> (<em>Mapping</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
-<li><p><strong>variable</strong> (<em>str</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -500,7 +457,7 @@
         <div class="bottom-of-page">
           <div class="left-details">
             <div class="copyright">
-                Copyright &#169; 2026, Bioprocess Modeling Collective
+                Copyright &#169; 2026, Mathias Gotsmy and Julian Libiseller-Egger
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
             
@@ -530,8 +487,6 @@
 <li><a class="reference internal" href="#functions">Functions</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
 <li><a class="reference internal" href="#hybrax.format.time_series.io.timeseries_from_dict"><code class="docutils literal notranslate"><span class="pre">timeseries_from_dict()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.format.time_series.io.timeseries_from_input_dict"><code class="docutils literal notranslate"><span class="pre">timeseries_from_input_dict()</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.format.time_series.io.timeseries_from_process_state"><code class="docutils literal notranslate"><span class="pre">timeseries_from_process_state()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.time_series.io.timeseries_to_dict"><code class="docutils literal notranslate"><span class="pre">timeseries_to_dict()</span></code></a></li>
 </ul>
 </li>
@@ -546,7 +501,7 @@
       
     </aside>
   </div>
-</div><script src="../../../../../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../../../../../_static/documentation_options.js?v=95c291f4"></script>
     <script src="../../../../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../../../_static/scripts/furo.js?v=46bd48cc"></script>

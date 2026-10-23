@@ -217,7 +217,7 @@ def build_demo_batch() -> None:
     collection = hxf.BioProcessCollection(
         case_id="demo_batch",
         organism="Escherichia coli",
-        citation="Simulated data — bp-docs demo, not a real experiment.",
+        citation="Simulated data — Hybrax docs demo, not a real experiment.",
         processes=processes,
     )
     hxf.serialization.save_process_collection(collection, out / "data.json")
@@ -472,7 +472,7 @@ def build_demo_fedbatch() -> None:
     collection = hxf.BioProcessCollection(
         case_id="demo_fedbatch",
         organism="Chinese hamster ovary (CHO) cell line",
-        citation="Simulated data — bp-docs demo, not a real experiment.",
+        citation="Simulated data — Hybrax docs demo, not a real experiment.",
         processes={"fedbatch_1": process},
     )
     hxf.serialization.save_process_collection(collection, out / "data.json")
@@ -804,7 +804,7 @@ def build_demo_ecoli_fba() -> None:
         case_id="demo_ecoli_fba",
         organism="Escherichia coli (core metabolism, Orth/Fleming/Palsson 2010)",
         citation=(
-            "Simulated via a surrogate-FBA forward model — bp-docs demo, "
+            "Simulated via a surrogate-FBA forward model — Hybrax docs demo, "
             "not a real experiment."
         ),
         processes=processes,
@@ -884,7 +884,7 @@ def build_demo_ecoli_blend() -> None:
         case_id="demo_ecoli_blend",
         organism="Escherichia coli (core metabolism, Orth/Fleming/Palsson 2010)",
         citation=(
-            "Simulated via a surrogate-FBA forward model — bp-docs demo, "
+            "Simulated via a surrogate-FBA forward model — Hybrax docs demo, "
             "not a real experiment."
         ),
         processes=processes,
@@ -1035,7 +1035,7 @@ def build_demo_glutamine_decay() -> None:
     collection = hxf.BioProcessCollection(
         case_id="demo_glutamine_decay",
         organism="CHO cell culture (Ulonska et al. 2018-inspired)",
-        citation="Simulated data — bp-docs demo, not a real experiment.",
+        citation="Simulated data — Hybrax docs demo, not a real experiment.",
         processes=processes,
     )
     hxf.serialization.save_process_collection(collection, out / "data.json")
@@ -1203,7 +1203,7 @@ def build_demo_modeled_pv() -> None:
         organism=(
             "None (synthetic biomass + a glycosylation-fraction quality attribute)"
         ),
-        citation="Simulated data — bp-docs demo, not a real experiment.",
+        citation="Simulated data — Hybrax docs demo, not a real experiment.",
         processes=processes,
     )
     hxf.serialization.save_process_collection(collection, out / "data.json")
@@ -1338,7 +1338,7 @@ def build_demo_spline_jump() -> None:
     collection = hxf.BioProcessCollection(
         case_id="demo_spline_jump",
         organism="None (a physical decay process, not a cell culture)",
-        citation="Simulated data, bp-docs demo, not a real experiment.",
+        citation="Simulated data, Hybrax docs demo, not a real experiment.",
         processes={"run_1": process},
     )
     hxf.serialization.save_process_collection(collection, out / "data.json")

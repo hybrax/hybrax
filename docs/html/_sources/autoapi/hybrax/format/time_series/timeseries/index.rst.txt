@@ -56,16 +56,6 @@ Module Contents
 
 
 
-   .. py:method:: from_input_dict(input_data, process_key, variable)
-      :classmethod:
-
-
-
-   .. py:method:: from_process_state(process_state, variable)
-      :classmethod:
-
-
-
    .. py:method:: integrate(a, b)
 
       Integrate the spline representation from ``a`` to ``b``.

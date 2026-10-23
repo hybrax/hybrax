@@ -1,7 +1,4 @@
-"""
-Bioprocess Benchmarking Dataset Structure
-JAX-compatible dataclasses for standardized bioprocess data
-"""
+"""JAX-compatible data classes for standardized bioprocess data."""
 
 import contextlib
 from dataclasses import dataclass, field

@@ -249,18 +249,6 @@ class TimeSeries(eqx.Module):
 
         return timeseries_from_dict(cls, data)
 
-    @classmethod
-    def from_process_state(cls, process_state, variable):
-        from .io import timeseries_from_process_state
-
-        return timeseries_from_process_state(cls, process_state, variable)
-
-    @classmethod
-    def from_input_dict(cls, input_data, process_key, variable):
-        from .io import timeseries_from_input_dict
-
-        return timeseries_from_input_dict(cls, input_data, process_key, variable)
-
     def to_dict(self):
         from .io import timeseries_to_dict
 

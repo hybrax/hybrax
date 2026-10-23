@@ -413,7 +413,10 @@
     <span class="c1"># Names of processes in this batch whose ODE solve bailed mid-trajectory</span>
     <span class="c1"># (post-failure measurement points were dropped from the loss). Empty when the</span>
     <span class="c1"># whole batch solved cleanly; its length is the per-step failed-segment count.</span>
-    <span class="n">failed_process_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span></div>
+    <span class="n">failed_process_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+    <span class="c1"># Holdout processes whose ODE solve failed at this step's holdout evaluation. Any</span>
+    <span class="c1"># failure makes `holdout_loss` infinite, so the checkpoint is never selected.</span>
+    <span class="n">failed_holdout_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span></div>
 
 
 
@@ -550,6 +553,11 @@
             <span class="s2">";"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">failed_process_names</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">strings</span>
             <span class="k">else</span> <span class="nb">list</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">failed_process_names</span><span class="p">)</span>
+        <span class="p">),</span>
+        <span class="s2">"failed_holdout_processes"</span><span class="p">:</span> <span class="p">(</span>
+            <span class="s2">";"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">failed_holdout_names</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">strings</span>
+            <span class="k">else</span> <span class="nb">list</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">failed_holdout_names</span><span class="p">)</span>
         <span class="p">),</span>
     <span class="p">}</span>
 
@@ -703,6 +711,12 @@
                 <span class="nb">len</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">process_names</span><span class="p">),</span>
                 <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">failed_process_names</span><span class="p">),</span>
             <span class="p">)</span>
+        <span class="k">if</span> <span class="n">record</span><span class="o">.</span><span class="n">failed_holdout_names</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+                <span class="s2">"step </span><span class="si">%d</span><span class="s2">: holdout ODE solve failed for [</span><span class="si">%s</span><span class="s2">]; holdout loss set to inf"</span><span class="p">,</span>
+                <span class="n">record</span><span class="o">.</span><span class="n">step</span><span class="p">,</span>
+                <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">failed_holdout_names</span><span class="p">),</span>
+            <span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_formatter</span><span class="o">.</span><span class="n">emit</span><span class="p">(</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span><span class="p">,</span>
@@ -803,7 +817,7 @@
         <div class="bottom-of-page">
           <div class="left-details">
             <div class="copyright">
-                Copyright &#169; 2026, Bioprocess Modeling Collective
+                Copyright &#169; 2026, Mathias Gotsmy and Julian Libiseller-Egger
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
             
@@ -823,7 +837,7 @@
       
     </aside>
   </div>
-</div><script src="../../../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../../../_static/documentation_options.js?v=95c291f4"></script>
     <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>

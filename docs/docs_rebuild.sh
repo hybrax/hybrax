@@ -10,7 +10,7 @@ rm -rf "$OUT" "$SCRATCH/doctrees" "$JUPYTER_EXECUTE"
 # data files those cells load, so a data-generator change alone does not invalidate
 # it — clear it every time or "full clean build" silently serves stale plots/output.
 rm -rf "$SCRATCH/jupyter_cache"
-rm -rf "$SRC/narrative"             # legacy: bp-docs no longer copies hybrax's agent docs
+rm -rf "$SRC/narrative"             # legacy: the docs no longer copy hybrax's agent docs
 
 # Regenerate the demo datasets the tutorials/gallery execute against.
 $PYTHON "$SRC/_data/generate.py"

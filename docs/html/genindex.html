@@ -1109,6 +1109,8 @@
     <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/trainer/index.html#hybrax.train.trainer.SingleSampleResult.fail_time">fail_time (hybrax.train.trainer.SingleSampleResult attribute)</a>
 </li>
+        <li><a href="autoapi/hybrax/train/logging/index.html#hybrax.train.logging.StepRecord.failed_holdout_names">failed_holdout_names (hybrax.train.logging.StepRecord attribute)</a>
+</li>
         <li><a href="autoapi/hybrax/train/logging/index.html#hybrax.train.logging.StepRecord.failed_process_names">failed_process_names (hybrax.train.logging.StepRecord attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/format/splines/index.html#hybrax.format.splines.BacktransformSpline.fc_jump_times">fc_jump_times (hybrax.format.splines.BacktransformSpline attribute)</a>
@@ -1169,6 +1171,8 @@
           <li><a href="autoapi/hybrax/train/loo/index.html#hybrax.train.loo.TrainedFold.fold_dir">(hybrax.train.loo.TrainedFold attribute)</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/loo/index.html#hybrax.train.loo.LOOResult.fold_dirs">fold_dirs (hybrax.train.loo.LOOResult attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/loo/index.html#hybrax.train.loo.FoldResult.fold_seed">fold_seed (hybrax.train.loo.FoldResult attribute)</a>
@@ -1179,8 +1183,6 @@
           <li><a href="autoapi/hybrax/train/loo/index.html#hybrax.train.loo.TrainedFold.fold_seed">(hybrax.train.loo.TrainedFold attribute)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/loo/index.html#hybrax.train.loo.FoldGroup">FoldGroup (in module hybrax.train.loo)</a>
 </li>
         <li><a href="autoapi/hybrax/train/loo/index.html#hybrax.train.loo.FoldResult">FoldResult (class in hybrax.train.loo)</a>
@@ -1219,8 +1221,6 @@
         </ul></li>
         <li><a href="autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries.from_dict">from_dict() (hybrax.format.time_series.timeseries.TimeSeries class method)</a>
 </li>
-        <li><a href="autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries.from_input_dict">from_input_dict() (hybrax.format.time_series.timeseries.TimeSeries class method)</a>
-</li>
         <li><a href="autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.ControlsStore.from_json">from_json() (hybrax.train.controls_store.ControlsStore class method)</a>
 
         <ul>
@@ -1228,8 +1228,6 @@
 </li>
         </ul></li>
         <li><a href="autoapi/hybrax/train/wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper.from_process">from_process() (hybrax.train.wrapper.HybridOdeWrapper class method)</a>
-</li>
-        <li><a href="autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries.from_process_state">from_process_state() (hybrax.format.time_series.timeseries.TimeSeries class method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/runtime_artifact/index.html#hybrax.train.runtime_artifact.RhsNames.from_rhs_ode">from_rhs_ode() (hybrax.train.runtime_artifact.RhsNames class method)</a>
 
@@ -3445,13 +3443,9 @@
         </ul></li>
         <li><a href="autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries">TimeSeries (class in hybrax.format.time_series.timeseries)</a>
 </li>
-        <li><a href="autoapi/hybrax/format/time_series/io/index.html#hybrax.format.time_series.io.timeseries_from_dict">timeseries_from_dict() (in module hybrax.format.time_series.io)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
-        <li><a href="autoapi/hybrax/format/time_series/io/index.html#hybrax.format.time_series.io.timeseries_from_input_dict">timeseries_from_input_dict() (in module hybrax.format.time_series.io)</a>
-</li>
-        <li><a href="autoapi/hybrax/format/time_series/io/index.html#hybrax.format.time_series.io.timeseries_from_process_state">timeseries_from_process_state() (in module hybrax.format.time_series.io)</a>
+        <li><a href="autoapi/hybrax/format/time_series/io/index.html#hybrax.format.time_series.io.timeseries_from_dict">timeseries_from_dict() (in module hybrax.format.time_series.io)</a>
 </li>
         <li><a href="autoapi/hybrax/format/time_series/io/index.html#hybrax.format.time_series.io.timeseries_to_dict">timeseries_to_dict() (in module hybrax.format.time_series.io)</a>
 </li>
@@ -3773,7 +3767,7 @@
         <div class="bottom-of-page">
           <div class="left-details">
             <div class="copyright">
-                Copyright &#169; 2026, Bioprocess Modeling Collective
+                Copyright &#169; 2026, Mathias Gotsmy and Julian Libiseller-Egger
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
             
@@ -3793,7 +3787,7 @@
       
     </aside>
   </div>
-</div><script src="_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="_static/documentation_options.js?v=95c291f4"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="_static/scripts/furo.js?v=46bd48cc"></script>

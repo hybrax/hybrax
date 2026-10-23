@@ -378,7 +378,7 @@
 <blockquote>
 <div><p>Which object holds which measurement, and why the split is where it is.</p>
 </div></blockquote>
-<p>This page gives an overview of the <code class="docutils literal notranslate"><span class="pre">hybrax-format</span></code> data structure and the <em>decision</em> you have to make to import your bioprocess data into it. Exhaustive field lists for all data objects live in the <a class="reference internal" href="../autoapi/hybrax/format/dataclasses/index.html"><span class="doc std std-doc">API reference</span></a>.</p>
+<p>This page gives an overview of the <code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> data structure and the <em>decision</em> you have to make to import your bioprocess data into it. Exhaustive field lists for all data objects live in the <a class="reference internal" href="../autoapi/hybrax/format/dataclasses/index.html"><span class="doc std std-doc">API reference</span></a>.</p>
 <section id="the-data-structure">
 <h2>The Data Structure<a class="headerlink" href="#the-data-structure" title="Link to this heading">¶</a></h2>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>BioProcessCollection
@@ -413,7 +413,7 @@ different field entirely: a free-form dict for provenance, unrelated to
 (read from data, or produced by the ODE).</p>
 <section id="the-physical-role">
 <h3>The Physical Role<a class="headerlink" href="#the-physical-role" title="Link to this heading">¶</a></h3>
-<p>The <code class="docutils literal notranslate"><span class="pre">hybrax-format</span></code> data format categorizes your measured process data depending on its physical role in the bioreactor. There are three major roles:</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> data model categorizes your measured process data depending on its physical role in the bioreactor. There are three major roles:</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
 <thead>
@@ -548,7 +548,7 @@ a mismatch. Pick a spelling and stay with it.</p>
 </section>
 <section id="where-the-biology-goes">
 <h2>Where the Biology Goes<a class="headerlink" href="#where-the-biology-goes" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">hybrax-format</span></code> guesses standard biology by default. If a species needs something more, an intracellular pool, a chemical decay, any mechanism the default doesn’t cover, you write it out yourself in <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>, algebraic relationships included:</p>
+<p><code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> guesses standard biology by default. If a species needs something more, an intracellular pool, a chemical decay, any mechanism the default doesn’t cover, you write it out yourself in <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>, algebraic relationships included:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">ReactionOde</span><span class="p">(</span>
     <span class="n">algebraic</span><span class="o">=</span><span class="p">{</span><span class="s2">"X_active"</span><span class="p">:</span> <span class="s2">"biomass - product_intracellular"</span><span class="p">},</span>
     <span class="n">rates</span><span class="o">=</span><span class="p">{</span><span class="s2">"q_biomass"</span><span class="p">:</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span> <span class="s2">"q_glucose"</span><span class="p">:</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)},</span>
@@ -580,14 +580,14 @@ is listed in the <a class="reference internal" href="../autoapi/hybrax/format/da
 </section>
 <section id="pseudobatch-transform">
 <h3><code class="docutils literal notranslate"><span class="pre">pseudobatch_transform</span></code><a class="headerlink" href="#pseudobatch-transform" title="Link to this heading">¶</a></h3>
-<p><code class="docutils literal notranslate"><span class="pre">hybrax-format</span></code> builds this for you from <code class="docutils literal notranslate"><span class="pre">reactor_medium</span></code> and <code class="docutils literal notranslate"><span class="pre">volume</span></code> once you run the
+<p><code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> builds this for you from <code class="docutils literal notranslate"><span class="pre">reactor_medium</span></code> and <code class="docutils literal notranslate"><span class="pre">volume</span></code> once you run the
 transform; you never construct it yourself. See
 <a class="reference internal" href="pseudobatch_transform.html"><span class="std std-doc">The pseudobatch transform</span></a> for what it contains.</p>
 </section>
 <section id="augmentedbioprocess">
 <h3><code class="docutils literal notranslate"><span class="pre">AugmentedBioProcess</span></code><a class="headerlink" href="#augmentedbioprocess" title="Link to this heading">¶</a></h3>
 <p>A separate type, not a <code class="docutils literal notranslate"><span class="pre">BioProcess</span></code> field: a fixed shape that <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s
-augmentation and LOO grouping rely on, though nothing in <code class="docutils literal notranslate"><span class="pre">hybrax-format</span></code> produces one
+augmentation and LOO grouping rely on, though nothing in <code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> produces one
 directly. See <a class="reference internal" href="../gallery/augmentation.html"><span class="std std-doc">Augmentation</span></a> if you are using it.</p>
 <!-- UNLOCK -->
 </section>
@@ -633,7 +633,7 @@ directly. See <a class="reference internal" href="../gallery/augmentation.html">
         <div class="bottom-of-page">
           <div class="left-details">
             <div class="copyright">
-                Copyright &#169; 2026, Bioprocess Modeling Collective
+                Copyright &#169; 2026, Mathias Gotsmy and Julian Libiseller-Egger
             </div>
             Made with <a href="https://www.sphinx-doc.org/">Sphinx</a> and <a class="muted-link" href="https://pradyunsg.me">@pradyunsg</a>'s
             
@@ -690,7 +690,7 @@ directly. See <a class="reference internal" href="../gallery/augmentation.html">
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=95c291f4"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

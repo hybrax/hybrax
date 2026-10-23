@@ -385,9 +385,9 @@ def diffeqsolve_with_callbacks(
         # controller history, so starting each one from the fixed ``dt0`` makes the
         # controller re-ramp from scratch; when the natural step is much larger than
         # ``dt0`` that ramp is most of the segment's cost. Seeding from what the last
-        # segment actually sustained removes it (measured 10-40% fewer steps on bp-bench
-        # training grids). Still clamped to the segment length so the first step cannot
-        # overshoot the event.
+        # segment actually sustained removes it (measured 10-40% fewer steps on real
+        # bioprocess training grids). Still clamped to the segment length so the first
+        # step cannot overshoot the event.
         dt = jnp.minimum(dt_prev, segment_t1 - t_current)
 
         if has_output:

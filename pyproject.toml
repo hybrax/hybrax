@@ -5,15 +5,18 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hybrax"
 version = "0.1.0"
-description = "Bioprocess Benchmarking Dataset Structure - JAX-compatible framework for standardized bioprocess data"
+description = "Bioprocess hybrid models and data management in JAX"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Mathias Gotsmy" }, { name = "Julian Libiseller-Egger" }]
 keywords = [
     "bioprocess",
+    "fermentation",
+    "upstream modeling",
     "hybrid modeling",
     "jax",
+    "diffrax",
     "neural ODE",
     "UDE",
     "universal differential equations",
@@ -76,6 +79,7 @@ docs = [
 [project.urls]
 Homepage = "https://github.com/hybrax/hybrax"
 Repository = "https://github.com/hybrax/hybrax"
+Documentation = "https://hybrax.readthedocs.io"
 
 [tool.ruff.lint]
 extend-select = ["E501"]

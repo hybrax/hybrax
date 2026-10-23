@@ -80,8 +80,6 @@ All constructor arguments are keyword-only.
 | `integrate(a, b)` | Definite integral of the spline over `[a, b]`. |
 | `to_pd_series()` | Samples as a pandas `Series` indexed by time. |
 | `to_dict()` / `TimeSeries.from_dict(d)` | Canonical dict round trip. |
-| `TimeSeries.from_process_state(state, variable)` | Build from a `metadata.hybrax-format.process_state` payload. |
-| `TimeSeries.from_input_dict(data, process_key, variable)` | Same, from a full input JSON. |
 
 `evaluate*` raise if there is no spline; `lin_interp` and `to_pd_series` raise
 if there are no samples.
@@ -148,9 +146,9 @@ with `breaks` and `coeffs` and no measurement data.
 
 ### `io` — dict conversion
 
-`timeseries_to_dict`, `timeseries_from_dict`, `timeseries_from_process_state`,
-`timeseries_from_input_dict`. Reached through the `TimeSeries` class methods
-above; see [03_serialization.md](03_serialization.md) for the full dataset I/O.
+`timeseries_to_dict` and `timeseries_from_dict`. Reached through
+`TimeSeries.to_dict` and `TimeSeries.from_dict`; see
+[03_serialization.md](03_serialization.md) for the full dataset I/O.
 
 ### `constants` — numerical defaults
 

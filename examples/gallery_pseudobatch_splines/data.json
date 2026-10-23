@@ -1,7 +1,7 @@
 {
   "case_id": "demo_spline_jump",
   "organism": "None (a physical decay process, not a cell culture)",
-  "citation": "Simulated data, bp-docs demo, not a real experiment.",
+  "citation": "Simulated data, Hybrax docs demo, not a real experiment.",
   "metadata": null,
   "processes": {
     "run_1": {

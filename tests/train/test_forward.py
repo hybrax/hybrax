@@ -1717,7 +1717,7 @@ def test_dense_export_returns_physical_q_values():
 def test_dense_export_grid_includes_measurement_times():
     """Measurement times must be exact nodes in the exported grid.
 
-    The holdout scorers (``hybrax.train.loo_metrics``, ``bp_bench.metrics``) evaluate
+    Holdout scoring (``hybrax.train.loo_metrics`` and external scorers) evaluates
     predictions by ``np.interp(meas_t, pred_t, pred_y)``. If a measurement falls
     between two uniform grid points that straddle a bolus/feed discontinuity, the
     interpolant is a straight ramp across the jump. Splicing the measurement grid
@@ -1795,7 +1795,7 @@ def test_loo_scored_value_equals_training_framework_solve():
     # export now carries it as a node (same sample-grid value the loss module uses).
     train_val = float(c[node_mask][0])
     # LOO-metric value == np.interp over the exported grid (what
-    # hybrax.train.loo_metrics and bp_bench.metrics do). Identical, because the
+    # hybrax.train.loo_metrics and external scorers do). Identical, because the
     # measurement is now a node.
     loo_val = float(np.interp(0.7, export.t, c))
     assert loo_val == pytest.approx(train_val, rel=1e-6)

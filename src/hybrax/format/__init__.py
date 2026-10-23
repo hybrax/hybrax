@@ -1,4 +1,4 @@
-"""Bioprocess benchmarking data structures and utilities."""
+"""Bioprocess data structures, validation, serialization, and mechanistic modeling."""
 
 import importlib
 import os

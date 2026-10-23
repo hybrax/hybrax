@@ -1,7 +1,7 @@
 {
   "case_id": "demo_batch",
   "organism": "Escherichia coli",
-  "citation": "Simulated data \u2014 bp-docs demo, not a real experiment.",
+  "citation": "Simulated data \u2014 Hybrax docs demo, not a real experiment.",
   "metadata": {
     "hybrax.train": {
       "prepared_at": "2026-08-28T16:43:09.045924+00:00",

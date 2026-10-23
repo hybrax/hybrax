@@ -1,9 +1,12 @@
 # Hybrax
 
-A JAX-compatible framework for standardized bioprocess data management,
-mechanistic modeling, and hybrid ODE training.
+Bioprocess hybrid models and data management in JAX.
 
-Hybrax combines bioprocess data interchange and hybrid ODE training in one
+Hybrid models, also known as universal differential equations (UDEs) or
+grey-box models, embed learned components such as neural networks in a
+mechanistic ODE.
+
+Hybrax combines bioprocess data interchange and hybrid model training in one
 package. `hybrax.format` provides the data model, validation, serialization,
 and mechanistic right-hand side. `hybrax.train` provides preparation,
 augmentation, training, prediction, and leave-one-out cross-validation.
@@ -66,7 +69,7 @@ fig = bp.plot_process(process)
 | `hybrax.format.validate` | [specs/format/04](specs/format/04_validation.md) | Data integrity checks |
 | `hybrax.format.inspect` | [specs/format/05](specs/format/05_inspection.md) | Text printing and matplotlib visualization |
 | `hybrax.format.simulation` | [specs/format/09](specs/format/09_simulation.md) | Event bookkeeping for synthetic datasets |
-| `hybrax.train` | [specs/train](specs/train/README.md) | Preparation, hybrid ODE training, prediction, and cross-validation |
+| `hybrax.train` | [specs/train](specs/train/README.md) | Preparation, hybrid model training, prediction, and cross-validation |
 
 See the [`hybrax.format` documentation](specs/format/README.md) for the data
 structure and the [`hybrax.train` documentation](specs/train/README.md) for the

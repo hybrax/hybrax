@@ -12,14 +12,14 @@ kernelspec:
 <!-- LOCK -->
 # Overview
 
-> `hybrax-format` collects your bioprocess data in a single `BioProcessCollection` object and validates it for storing, sharing, and model training.
+> `hybrax.format` collects your bioprocess data in a single `BioProcessCollection` object and validates it for storing, sharing, and model training.
 
 <!-- UNLOCK -->
 
 ## Under the hood
 
-<img class="theme-diagram diagram-light" src="../_static/diagram_format_pipeline_light.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, ReactionOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
-<img class="theme-diagram diagram-dark" src="../_static/diagram_format_pipeline_dark.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, ReactionOde) feeds into hybrax-format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
+<img class="theme-diagram diagram-light" src="../_static/diagram_format_pipeline_light.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, ReactionOde) feeds into hybrax.format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
+<img class="theme-diagram diagram-dark" src="../_static/diagram_format_pipeline_dark.svg" alt="Your input (ReactorMediumComponent, Volume/Inflow/Outflow, ProcessVariable, ReactionOde) feeds into hybrax.format's derived objects: ProcessOrdering, ControlSplines, RhsOde, PseudobatchTransform.">
 
 You write the left column once. The right column is generated, and is the single source
 of truth for layout everywhere downstream: `hybrax.train` never re-derives it.

@@ -3,6 +3,10 @@
 **Import your fermentation data into the right format once, then fit different
 mechanistic and hybrid models to it with little extra code.**
 
+Hybrid models, also known as universal differential equations (UDEs) or
+grey-box models, embed learned components such as neural networks in a
+mechanistic ODE.
+
 One package, two halves:
 
 - **`hybrax.format`** is the data model. It describes a bioprocess run (what was

@@ -107,6 +107,12 @@ Module Contents
 
 
 
+   .. py:attribute:: failed_holdout_names
+      :type:  tuple[str, ...]
+      :value: ()
+
+
+
    .. py:attribute:: failed_process_names
       :type:  tuple[str, ...]
       :value: ()
