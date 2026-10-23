@@ -528,7 +528,9 @@ def _handle_train(args: argparse.Namespace) -> int:
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "model").mkdir(exist_ok=True)
     (run_dir / "checkpoints").mkdir(exist_ok=True)
-    _bundle_prepared_gz(Path(cfg.data.prepared), run_dir / "prepared.json.gz")
+    bundled_prepared = run_dir / "prepared.json.gz"
+    if not (bundled_prepared.exists() and bundled_prepared.samefile(cfg.data.prepared)):
+        _bundle_prepared_gz(Path(cfg.data.prepared), bundled_prepared)
     bundled_custom = None
     if cfg.custom_py is not None:
         shutil.copyfile(cfg.custom_py, run_dir / "custom.py")

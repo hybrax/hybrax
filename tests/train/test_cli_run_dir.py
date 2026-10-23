@@ -124,6 +124,18 @@ def test_train_cli_produces_fair_run_dir_and_model_load(tmp_path: Path):
     hybrax.train.model_load(run_dir)
 
 
+def test_train_cli_accepts_prepared_already_in_run_dir(tmp_path: Path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    prepared = _write_prepared(run_dir / "prepared.json.gz")
+    config = _write_config(
+        tmp_path / "config.json", prepared=prepared, run_dir=run_dir, epochs=1
+    )
+
+    assert main(["train", "--config", str(config)]) == 0
+    hybrax.train.model_load(run_dir)
+
+
 def test_train_cli_rerun_guard_and_overwrite(tmp_path: Path):
     prepared = _write_prepared(tmp_path / "prepared.json")
     run_dir = tmp_path / "run"
