@@ -76,7 +76,7 @@ def estimate_all_scales(runtime_data, target_names, config):
     def rate_scale_for(species):
         per_process = []
         for i in range(n_processes):
-            c_times, c_values = runtime_data.raw_state_trace(i, species)
+            _c_times, c_values = runtime_data.raw_state_trace(i, species)
             x_times, x_values = runtime_data.raw_state_trace(i, "biomass")
             exposure = np.trapezoid(x_values, x_times)
             per_process.append(abs(c_values[-1] - c_values[0]) / max(exposure, 1e-9))

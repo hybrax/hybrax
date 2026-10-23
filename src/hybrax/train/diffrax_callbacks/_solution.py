@@ -63,7 +63,7 @@ class CallbackSolution(eqx.Module):
     output_states: jnp.ndarray | None = None
     output_overflow: jnp.ndarray | None = None
 
-    def get_events(self, callback_index: int = None):
+    def get_events(self, callback_index: int | None = None):
         """Get event times and states, optionally filtered by callback index.
 
         Returns:
@@ -82,7 +82,9 @@ class CallbackSolution(eqx.Module):
         """Count events triggered by a specific callback."""
         return jnp.sum((self.event_types == callback_index).astype(jnp.int32))
 
-    def print_events(self, state_names: list[str] = None, callback_names: dict = None):
+    def print_events(
+        self, state_names: list[str] | None = None, callback_names: dict | None = None
+    ):
         """Pretty-print the event log.
 
         Args:

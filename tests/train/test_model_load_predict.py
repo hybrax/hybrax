@@ -324,7 +324,7 @@ def test_model_reload_returns_the_same_pair_as_model_load_and_always_warns(
 
 def test_model_reload_swaps_weights_but_keeps_the_static_half(trained_run):
     run_dir, _prepared = trained_run
-    wrapper, config = hybrax.train.model_load(run_dir)
+    wrapper, _config = hybrax.train.model_load(run_dir)
 
     # Perturb the trainable leaves, then reload them back from disk.
     perturbed = eqx.apply_updates(

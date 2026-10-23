@@ -1707,7 +1707,7 @@ def test_affine_state_offset_keeps_zero_rhs_stationary_through_forward():
 
 
 def test_dense_export_returns_physical_q_values():
-    collection, store, wrapper = _build_single_process_runtime(
+    _collection, store, wrapper = _build_single_process_runtime(
         q_scaled=1.5,
         q_scale=2.0,
     )
@@ -1729,7 +1729,7 @@ def test_dense_export_grid_includes_measurement_times():
     """
     # 0.7 is interior and lands strictly between linspace(0, 2, 11) nodes, so it can
     # only appear as a node because the measurement grid was spliced in.
-    collection, store, wrapper = _build_single_process_runtime(
+    _collection, store, wrapper = _build_single_process_runtime(
         q_scaled=0.5, biomass_times=[0.0, 0.7, 2.0]
     )
     export = _single_dense_export(store, wrapper, prediction_grid_n=11)
@@ -1786,7 +1786,7 @@ def test_loo_scored_value_equals_training_framework_solve():
     Biomass grows exponentially, so the old linspace-only interpolation lands ~6%
     off the true value; splicing the measurement in as a node makes np.interp exact.
     """
-    collection, store, wrapper = _build_single_process_runtime(
+    _collection, store, wrapper = _build_single_process_runtime(
         q_scaled=0.8, biomass_times=[0.0, 0.7, 2.0]
     )
     export = _single_dense_export(store, wrapper, prediction_grid_n=3)
@@ -1878,7 +1878,7 @@ def test_export_predictions_csv_preserves_modeled_flow_signs(tmp_path: Path):
 
 
 def test_export_predictions_csv_includes_auxiliary_columns(tmp_path: Path):
-    collection, store, wrapper = _build_single_process_runtime(
+    _collection, store, wrapper = _build_single_process_runtime(
         q_scaled=1.5,
         q_scale=2.0,
         auxiliary={

@@ -179,7 +179,7 @@ class TestValidateTimeSeriesShape:
 
     def test_single_point_is_valid(self):
         ts = _ts([0.0], [1.0])
-        ok, msg = validate_timeseries_shape(ts)
+        ok, _msg = validate_timeseries_shape(ts)
         assert ok is True
 
     def test_empty_timeseries_is_invalid(self):
@@ -394,7 +394,7 @@ class TestValidateVolumeChangeSign:
 
     def test_zero_values_are_positive(self):
         vc = self._feed_vc([0.0, 0.0])
-        ok, msg = validate_volume_change_sign(vc)
+        ok, _msg = validate_volume_change_sign(vc)
         assert ok is True
 
     @pytest.mark.parametrize("volume_change", ["feed", "sample"])
@@ -509,7 +509,7 @@ class TestValidateVolumeChangeStates:
             },
             volume_changes={"f": self._vc(self._feed_medium(["biomass", "glucose"]))},
         )
-        ok, msg = validate_volume_change_states(process)
+        ok, _msg = validate_volume_change_states(process)
         assert ok is True
 
     def test_missing_state_in_feed_means_zero(self):
@@ -523,7 +523,7 @@ class TestValidateVolumeChangeStates:
             },
         )
 
-        ok, msg = validate_volume_change_states(process)
+        ok, _msg = validate_volume_change_states(process)
 
         assert ok is True
 
@@ -567,7 +567,7 @@ class TestValidateVolumeChangeStates:
             },
             volume_changes={"sample": self._vc(self._feed_medium([]), positive=False)},
         )
-        ok, msg = validate_volume_change_states(process)
+        ok, _msg = validate_volume_change_states(process)
         assert ok is True
 
     def test_no_dynamic_states_skips_check(self):
@@ -578,7 +578,7 @@ class TestValidateVolumeChangeStates:
             },
             volume_changes={"f": self._vc(self._feed_medium([]))},
         )
-        ok, msg = validate_volume_change_states(process)
+        ok, _msg = validate_volume_change_states(process)
         assert ok is True
 
 
@@ -603,7 +603,7 @@ class TestValidateOutflowRetention:
             reactor_components={"biomass": self._reactor_comp("biomass")},
             volume_changes={"sample": self._outflow()},
         )
-        ok, msg = validate_outflow_retention(process)
+        ok, _msg = validate_outflow_retention(process)
         assert ok is True
 
     def test_in_range_retention_is_valid(self):
@@ -611,7 +611,7 @@ class TestValidateOutflowRetention:
             reactor_components={"biomass": self._reactor_comp("biomass")},
             volume_changes={"sample": self._outflow(retention={"biomass": 0.95})},
         )
-        ok, msg = validate_outflow_retention(process)
+        ok, _msg = validate_outflow_retention(process)
         assert ok is True
 
     def test_out_of_range_retention_rejected(self):
@@ -634,7 +634,7 @@ class TestValidateOutflowRetention:
             volume_changes={"sample": self._outflow()},
         )
         process.volume.volume_changes["sample"].retention = {"biomass": -0.1}
-        ok, msg = validate_outflow_retention(process)
+        ok, _msg = validate_outflow_retention(process)
         assert ok is False
 
     def test_unknown_component_rejected(self):
@@ -713,7 +713,7 @@ class TestValidateOutflowRetention:
                 ),
             },
         )
-        ok, msg = validate_outflow_retention(process)
+        ok, _msg = validate_outflow_retention(process)
         assert ok is True
 
 
@@ -738,7 +738,7 @@ class TestValidateBiomassInReactorMedium:
 
     def test_biomass_case_insensitive(self):
         process = _make_process(reactor_components={"Biomass": self._comp("Biomass")})
-        ok, msg = validate_biomass_in_reactor_medium(process)
+        ok, _msg = validate_biomass_in_reactor_medium(process)
         assert ok is True
 
     def test_biomass_missing(self):
@@ -749,7 +749,7 @@ class TestValidateBiomassInReactorMedium:
 
     def test_no_components(self):
         process = _make_process(reactor_components={})
-        ok, msg = validate_biomass_in_reactor_medium(process)
+        ok, _msg = validate_biomass_in_reactor_medium(process)
         assert ok is False
 
 
@@ -896,7 +896,7 @@ class TestValidateProcess:
         all_valid, results = validate_process(process)
 
         assert all_valid is False
-        ok_axis, msg_axis = _find(results, "start 11.0 is after end 10.0")
+        ok_axis, _msg_axis = _find(results, "start 11.0 is after end 10.0")
         assert ok_axis is False
         ok_bounds, msg_bounds = _find(results, "SKIP timestamp_bounds")
         assert ok_bounds is True
@@ -964,7 +964,7 @@ class TestValidateProcess:
                 ),
             },
         )
-        all_valid, results = validate_process(process)
+        all_valid, _results = validate_process(process)
         # biomass is present, no dynamic TS to fail -> should be valid
         assert all_valid is True
 
@@ -1183,7 +1183,7 @@ class TestValidateVolumeConsistency:
                 "bolus": (False, [2.0, 5.0], [0.5, 0.5], None),
             },
         )
-        ok, msg, delta = validate_volume_consistency(process, final_volume=2.0)
+        ok, _msg, delta = validate_volume_consistency(process, final_volume=2.0)
         assert ok is True
         assert abs(delta - 1.0) < 1e-6
 
@@ -1195,7 +1195,7 @@ class TestValidateVolumeConsistency:
                 "feed": (True, [0.0, 10.0], [0.0, 0.1], None),
             },
         )
-        ok, msg, delta = validate_volume_consistency(process, final_volume=3.0)
+        ok, msg, _delta = validate_volume_consistency(process, final_volume=3.0)
         assert ok is False
         assert msg.startswith("FAIL volume_consistency:")
 
@@ -1207,7 +1207,7 @@ class TestValidateVolumeConsistency:
                 "sample": (True, [0.0, 10.0], [0.0, -0.2], None),
             },
         )
-        ok, msg, delta = validate_volume_consistency(process, final_volume=1.8)
+        ok, _msg, _delta = validate_volume_consistency(process, final_volume=1.8)
         assert ok is True
 
 
@@ -1615,7 +1615,7 @@ class TestValidateMeasurementSamplingAlignment:
             },
             volume_changes={"sample": self._sample_vc(sample_times, sample_vals)},
         )
-        ok, msg = validate_measurement_sampling_alignment(process)
+        ok, _msg = validate_measurement_sampling_alignment(process)
         assert ok is True
 
     def test_no_sampling_events_skipped(self):
@@ -1777,7 +1777,7 @@ class TestValidateReactionOde:
         # the auto-generated block must always pass validation.
         p = _make_intra_process()
         assert p.reaction_ode is not None
-        ok, msg = validate_reaction_ode(p)
+        ok, _msg = validate_reaction_ode(p)
         assert ok is True
 
     def test_well_formed_block_passes(self):

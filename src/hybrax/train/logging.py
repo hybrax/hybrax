@@ -7,7 +7,7 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import pandas as pd
 
@@ -247,7 +247,7 @@ class RunLogger:
         }
         self._target_names: tuple[str, ...] = ()
 
-    def __enter__(self) -> RunLogger:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *exc: object) -> None:

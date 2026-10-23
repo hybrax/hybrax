@@ -418,7 +418,7 @@ def _process_with_incomplete_feed(silence=False):
 
 def test_missing_inflow_concentrations_remain_sparse_and_are_announced(caplog):
     with caplog.at_level(logging.INFO, logger="hybrax.format"):
-        process, fm = _process_with_incomplete_feed()
+        _process, fm = _process_with_incomplete_feed()
     assert set(fm.components) == {"glucose"}
     messages = [r.message for r in caplog.records]
     assert any("Assumption:" in m for m in messages)
@@ -546,7 +546,7 @@ def test_missing_feed_medium_entirely_is_not_filled():
 
 def test_silence_assumptions_suppresses_inflow_notice(caplog):
     with caplog.at_level(logging.INFO, logger="hybrax.format"):
-        process, fm = _process_with_incomplete_feed(silence=True)
+        _process, fm = _process_with_incomplete_feed(silence=True)
     assert set(fm.components) == {"glucose"}
     assert [r for r in caplog.records if r.name.startswith("hybrax.format")] == []
 

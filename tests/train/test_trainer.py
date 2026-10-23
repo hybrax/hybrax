@@ -615,7 +615,7 @@ def _build_batched_setup(
 
 
 def test_batched_loss_fn_runs_with_step_and_loss_module():
-    wrapper, batch, batch_controls, batched_cin, batched_cin_modeled = (
+    wrapper, batch, _batch_controls, batched_cin, batched_cin_modeled = (
         _build_batched_setup()
     )
     batched_loss_fn = build_batched_loss_fn()
@@ -638,7 +638,7 @@ def test_batched_loss_fn_runs_with_step_and_loss_module():
 
 
 def test_batched_loss_fn_preserves_none_jump_ts_branch():
-    wrapper, batch, batch_controls, batched_cin, batched_cin_modeled = (
+    wrapper, batch, _batch_controls, batched_cin, batched_cin_modeled = (
         _build_batched_setup()
     )
     batched_loss_fn = build_batched_loss_fn()

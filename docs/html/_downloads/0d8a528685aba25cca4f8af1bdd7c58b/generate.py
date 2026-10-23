@@ -725,7 +725,7 @@ def _ecoli_simulate(
         else:
             n_X, n_M, n_A, n_S = _ecoli_obj_weights_blend(t_grid[i - 1], t_end, blend)
         qG_raw = ECOLI_QG_MAX * max(G, 0.0) / (ECOLI_KM_GLC + max(G, 0.0))
-        q_glc, qX, qM, qA, qS = _ecoli_surrogate_fba(qG_raw, n_X, n_M, n_A, n_S)
+        q_glc, qX, _qM, qA, qS = _ecoli_surrogate_fba(qG_raw, n_X, n_M, n_A, n_S)
         X = max(X + dt * (qX * X), 0.0)
         G = max(G + dt * (q_glc * ECOLI_MW_GLC / 1000.0) * X, 0.0)
         A = max(A + dt * (qA * ECOLI_MW_ACE / 1000.0) * X, 0.0)

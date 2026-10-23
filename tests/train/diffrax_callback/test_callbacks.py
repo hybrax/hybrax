@@ -746,7 +746,7 @@ class TestGradients:
             return sol.y_final[2] * sol.y_final[3]
 
         params = jnp.array([0.1, 100.0])
-        value, grads = jax.value_and_grad(objective)(params)
+        _value, grads = jax.value_and_grad(objective)(params)
 
         # Verify with finite differences
         eps = 1e-5
@@ -783,7 +783,7 @@ class TestGradients:
             return sol.y_final[2] * sol.y_final[3]
 
         threshold = jnp.array(1.0)
-        value, grad = jax.value_and_grad(objective)(threshold)
+        _value, grad = jax.value_and_grad(objective)(threshold)
 
         eps = 1e-5
         fd = (objective(threshold + eps) - objective(threshold - eps)) / (2 * eps)
@@ -826,7 +826,7 @@ class TestGradients:
             return sol.y_final[2] * sol.y_final[3]
 
         feed_vol = jnp.array(0.1)
-        value, grad = jax.value_and_grad(objective)(feed_vol)
+        _value, grad = jax.value_and_grad(objective)(feed_vol)
         assert jnp.isfinite(grad)
 
 

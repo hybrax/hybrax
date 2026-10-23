@@ -25,6 +25,7 @@ import dataclasses
 import hashlib
 import json
 import logging
+import math
 import os
 import shutil
 import statistics
@@ -1344,11 +1345,7 @@ def _write_summary_and_aggregate(
         summary_rows.append(row)
 
     assert target_names is not None
-    nan_folds = [
-        folds[i].slug
-        for i, v in enumerate(holdout_totals)
-        if v != v  # NaN
-    ]
+    nan_folds = [folds[i].slug for i, v in enumerate(holdout_totals) if math.isnan(v)]
     if nan_folds:
         logger.warning(
             "LOO: %d fold(s) contributed no holdout loss and are excluded from "
@@ -1398,19 +1395,19 @@ def _write_summary_and_aggregate(
 
 
 def _mean(values: list[float]) -> float:
-    cleaned = [v for v in values if v == v]  # drop NaNs
+    cleaned = [v for v in values if not math.isnan(v)]
     return float(statistics.fmean(cleaned)) if cleaned else float("nan")
 
 
 def _std(values: list[float]) -> float:
     # Spread is undefined with fewer than two folds -> NaN (0.0 would read as
     # "no variance" rather than "not enough folds").
-    cleaned = [v for v in values if v == v]
+    cleaned = [v for v in values if not math.isnan(v)]
     if len(cleaned) < 2:
         return float("nan")
     return float(statistics.stdev(cleaned))
 
 
 def _median(values: list[float]) -> float:
-    cleaned = [v for v in values if v == v]
+    cleaned = [v for v in values if not math.isnan(v)]
     return float(statistics.median(cleaned)) if cleaned else float("nan")
