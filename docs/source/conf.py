@@ -1,6 +1,4 @@
 import os
-from importlib.metadata import PackageNotFoundError
-from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
 _HERE = Path(__file__).parent
@@ -10,15 +8,10 @@ author = "Mathias Gotsmy and Julian Libiseller-Egger"
 copyright = "2026, Mathias Gotsmy and Julian Libiseller-Egger"
 
 
-def _v(name: str) -> str:
-    try:
-        return _pkg_version(name)
-    except PackageNotFoundError:
-        return "unknown"
-
-
-# Read from the installed package (importlib.metadata — never imports it).
-release = version = f"hybrax {_v('hybrax')}"
+# Left empty on purpose: the docs are built before a release is tagged, so the
+# installed version would be a dev version, and stamping it would touch every page
+# on each rebuild. Read the Docs' version switcher shows the version instead.
+release = version = ""
 
 extensions = [
     "autoapi.extension",  # static API gen over hybrax — no import

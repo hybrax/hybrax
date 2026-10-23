@@ -59,18 +59,17 @@ fig = bp.plot_process(process)
 
 ## Modules
 
-| Module | Docs | Description |
-|--------|------|-------------|
-| `hybrax.format.dataclasses` | [specs/format/02](specs/format/02_data_model.md) | Hierarchical data structures (`BioProcessCollection`, `BioProcess`, etc.) |
-| `hybrax.format.time_series` | [specs/format/06](specs/format/06_time_series.md) | Time-series container with optional fitted spline coefficients (JAX pytree) |
-| `hybrax.format.splines` | [specs/format/07](specs/format/07_splines.md) | Pseudobatch transform, segmented spline fitting |
-| `hybrax.format.mechanistic` | [specs/format/08](specs/format/08_mechanistic.md) | ODE right-hand side and control splines (integration lives in `hybrax.train`) |
-| `hybrax.format.serialization` | [specs/format/03](specs/format/03_serialization.md) | JSON save/load for the full data hierarchy |
-| `hybrax.format.validate` | [specs/format/04](specs/format/04_validation.md) | Data integrity checks |
-| `hybrax.format.inspect` | [specs/format/05](specs/format/05_inspection.md) | Text printing and matplotlib visualization |
-| `hybrax.format.simulation` | [specs/format/09](specs/format/09_simulation.md) | Event bookkeeping for synthetic datasets |
-| `hybrax.train` | [specs/train](specs/train/README.md) | Preparation, hybrid model training, prediction, and cross-validation |
+| Module | Description |
+|--------|-------------|
+| `hybrax.format.dataclasses` | Hierarchical data structures (`BioProcessCollection`, `BioProcess`, etc.) |
+| `hybrax.format.time_series` | Time-series container with optional fitted spline coefficients (JAX pytree) |
+| `hybrax.format.splines` | Pseudobatch transform, segmented spline fitting |
+| `hybrax.format.mechanistic` | ODE right-hand side and control splines (integration lives in `hybrax.train`) |
+| `hybrax.format.serialization` | JSON save/load for the full data hierarchy |
+| `hybrax.format.validate` | Data integrity checks |
+| `hybrax.format.inspect` | Text printing and matplotlib visualization |
+| `hybrax.format.simulation` | Event bookkeeping for synthetic datasets |
+| `hybrax.train` | Preparation, hybrid model training, prediction, and cross-validation |
 
-See the [`hybrax.format` documentation](specs/format/README.md) for the data
-structure and the [`hybrax.train` documentation](specs/train/README.md) for the
-training workflow.
+See the [documentation](https://hybrax.readthedocs.io) for the data structure
+and the training workflow.

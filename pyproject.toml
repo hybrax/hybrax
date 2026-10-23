@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=64", "wheel"]
+requires = ["setuptools>=64", "setuptools-scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "hybrax"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Bioprocess hybrid models and data management in JAX"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -41,7 +41,7 @@ dependencies = [
     "diffrax>=0.7.2,<0.8",
     "sympy>=1.14.0,<1.15",
     "ijson>=3.5.1",
-    "matplotlib==3.11.1",
+    "matplotlib>=3.8",
     "optax>=0.2.8,<0.3",
     "optimistix>=0.1.0",
     "pydantic>=2.5.2",
@@ -74,6 +74,8 @@ docs = [
     "sphinx-design>=0.6",
     "jupyter-cache>=1.0",
     "ipykernel>=6.29",
+    # Pinned so the docs plots look the same on every rebuild.
+    "matplotlib==3.11.1",
 ]
 
 [project.urls]
@@ -91,6 +93,15 @@ exclude = ["*.md"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Version comes from the latest git tag (e.g. v0.2.0 -> 0.2.0).
+[tool.setuptools_scm]
+fallback_version = "0.0.0"
+
+# Rebuild the editable install when the commit or tags change, so the
+# reported version stays current.
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

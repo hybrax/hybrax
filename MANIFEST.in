@@ -1,0 +1,4 @@
+# Keep the sdist small: built docs and example data are not needed to
+# build or test the package.
+prune docs
+prune examples

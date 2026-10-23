@@ -11,7 +11,7 @@ os.environ["JAX_ENABLE_X64"] = "true"
 if "jax" in sys.modules:
     importlib.import_module("jax").config.update("jax_enable_x64", True)
 
-__version__ = "0.1.0"
+from hybrax import __version__
 
 if TYPE_CHECKING:
     from . import mechanistic, serialization, splines, validate  # noqa: F401

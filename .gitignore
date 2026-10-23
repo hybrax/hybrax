@@ -16,6 +16,7 @@ docs/_scratch/
 # hidden files
 .*
 # except for the below
+!.github/
 !.python-version
 !.readthedocs.yaml
 

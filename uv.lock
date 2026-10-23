@@ -1054,7 +1054,6 @@ wheels = [
 
 [[package]]
 name = "hybrax"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "clarabel" },
@@ -1092,6 +1091,7 @@ docs = [
     { name = "ipykernel" },
     { name = "jupyter-cache" },
     { name = "linkify-it-py" },
+    { name = "matplotlib" },
     { name = "myst-nb" },
     { name = "sphinx" },
     { name = "sphinx-autoapi" },
@@ -1116,7 +1116,8 @@ requires-dist = [
     { name = "jupyter", marker = "extra == 'dev'", specifier = ">=1.1.1" },
     { name = "jupyter-cache", marker = "extra == 'docs'", specifier = ">=1.0" },
     { name = "linkify-it-py", marker = "extra == 'docs'", specifier = ">=2.0" },
-    { name = "matplotlib", specifier = "==3.11.1" },
+    { name = "matplotlib", specifier = ">=3.8" },
+    { name = "matplotlib", marker = "extra == 'docs'", specifier = "==3.11.1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=0.950" },
     { name = "myst-nb", marker = "extra == 'docs'", specifier = ">=1.1" },
     { name = "numpy", specifier = ">=1.26" },
