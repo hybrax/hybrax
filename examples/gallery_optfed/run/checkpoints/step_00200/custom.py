@@ -34,15 +34,16 @@ BOUNDS = {
 NEUTRAL_INITIAL = {
     "uptake_max": 0.5,
     "glycerol_inhibition": 1.0,
-    "maintenance": 0.001,
+    "maintenance": 1e-3,
     "uptake_maintenance": 1.0,
     "product_maintenance": 1.0,
-    "production_max": 1e-09,
+    # Start below the substrate cap so production parameters receive gradients.
+    "production_max": 1e-9,
     "production_half_saturation": 1.0,
     "generation_inhibition": 1.0,
-    "activation_energy": 55000.0,
-    "inactivation_enthalpy": 1000000.0,
-    "equilibrium_temperature": 307.5
+    "activation_energy": 5.5e4,
+    "inactivation_enthalpy": 1e6,
+    "equilibrium_temperature": 307.5,
 }
 
 
@@ -110,8 +111,7 @@ class OptFedReactionModule(RateModule):
     def parameters(self):
         return _map_bounds(_from_raw, self.raw_parameters)
 
-    def __call__(self, t, inputs):
-        del t
+    def __call__(self, _t, inputs):
         states = self.unscale_modeled_RMCs(inputs.SCL_modeled_RMCs)
         biomass = jnp.maximum(states[self.i_biomass], 1e-8)
         glycerol = jnp.maximum(states[self.i_glycerol], 0.0)
@@ -183,16 +183,19 @@ def build_reaction_module(
     )
 
 
-def build_learning_rate(config, train_cfg, total_updates):
-    """Use a linear learning-rate schedule over all optimizer updates."""
+def build_solver(config):
+    """Use an implicit solver for the stiff glycerol balance near depletion."""
     del config
-    start, end = train_cfg.learning_rate, 1e-4
+    return diffrax.Kvaerno5()
 
-    def schedule(step):
-        fraction = step / (total_updates - 1)
-        return start + (end - start) * fraction
 
-    return schedule
+def build_learning_rate(config, train_cfg, total_updates):
+    """Linearly decay from the configured learning rate to 1e-4."""
+    del config
+    return lambda step: (
+        train_cfg.learning_rate
+        + (1e-4 - train_cfg.learning_rate) * step / (total_updates - 1)
+    )
 
 
 def estimate_all_scales(runtime_data, target_names, config):
@@ -234,9 +237,3 @@ def estimate_all_scales(runtime_data, target_names, config):
         SCALE_modeled_Inflows_rates=jnp.zeros(0),
         SCALE_modeled_Outflows_rates=jnp.zeros(0),
     )
-
-
-def build_solver(config):
-    """Preserve the Kvaerno5 solver used for this checkpoint."""
-    del config
-    return diffrax.Kvaerno5()

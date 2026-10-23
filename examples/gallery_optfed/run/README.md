@@ -1,12 +1,11 @@
 # Bundled OptFed checkpoint
 
 Selected step 200 from the completed 200-update fit with linear learning-rate
-decay from 0.05 to 0.0001. Training concentration NRMSE was 0.0811754143.
+decay from 0.05 to 0.0001. Training concentration NRMSE was 0.0817740066.
 The prepared data and model implementation are bundled for portable loading.
 
-The checkpoint predates the solver hook. Its bundled code adds `build_solver`
-and its configuration removes `solver.method` to retain Kvaerno5 with the
-current API. The fitted parameters and training data are unchanged.
+The fit used the current `data.json` and `custom.py` in this example and is the
+run shown on the OptFed gallery page.
 
 From `examples/gallery_optfed/`, run:
 
