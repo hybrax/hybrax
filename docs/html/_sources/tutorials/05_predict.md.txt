@@ -57,7 +57,7 @@ We start from a run directory trained exactly as in [Tutorial 4](04_your_first_c
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-print(f"./{(WORK / 'run').relative_to(WORK.parents[4])}")
+print(f"./{(WORK / 'run').relative_to(WORK.parents[5])}")
 ```
 
 Self-contained: `cp -r` it anywhere and keep working from the copy.
@@ -121,7 +121,7 @@ type(wrapper).__name__
 
 `model_load` rebuilds the whole model: only the trainable parameters were saved, and
 everything else (the controls, the assembled ODE, the scales) is reconstructed from
-the `prepared.json` and `custom.py` bundled inside the run directory. That is why a run
+the `prepared.json.gz` and `custom.py` bundled inside the run directory. That is why a run
 directory is self-contained and why you can move it between machines.
 
 ```{code-cell} ipython3
@@ -136,22 +136,28 @@ Each entry is a `DenseProcessExport`:
 ```{code-cell} ipython3
 export = predictions["run_1"]
 print("t          ", export.t.shape)
-print("c_species  ", export.c_species.shape, "  states, in the ProcessOrdering layout")
+print("c_species  ", export.c_species.shape, " ", wrapper.modeled_RMC_names + wrapper.modeled_PV_names)
 print("q_rates    ", export.q_rates.shape,   "  the inferred rates")
 print("v_real     ", export.v_real.shape)
 ```
 
-Which lets you do your own analysis: for example, checking a rate against the value the
-data was generated with:
+`c_species` holds the modeled reactor components followed by the modeled process
+variables (this dataset has none). Volume is not part of it: that is `v_real`.
+
+Which lets you do your own analysis: for example, checking the learned growth rate at
+`t = 0` against the Monod rate the data was generated with:
 
 ```{code-cell} ipython3
 import json
 import numpy as np
 
 truth = json.loads(Path("../../../examples/tutorial_05_predict/ground_truth.json").read_text())
+glucose_0 = float(collection.processes["run_1"].reactor_medium.components["glucose"]
+                  .concentration.values[0])
+true_mu = truth["mu_max"] * glucose_0 / (truth["Ks"] + glucose_0)  # Monod
 learned_mu = float(export.q_rates[0, 0])     # q_biomass at t = 0
 print(f"learned q_biomass(t=0) : {learned_mu:.3f} 1/h")
-print(f"true mu_max            : {truth['mu_max']:.3f} 1/h")
+print(f"true q_biomass(t=0)    : {true_mu:.3f} 1/h")
 ```
 
 And to plot it yourself. `run_1` is one of the three processes the model was **trained**
@@ -179,15 +185,20 @@ axes[0].legend();
 
 There are two ways to load a model, and they are not interchangeable:
 
-| | Rebuilds the static half from | Safe to use on |
+| | Takes the static half from | Use it to |
 |---|---|---|
-| `model_load(run_dir)` | the run directory's own bundled data | anything |
-| `model_reload(...)` | **whatever you pass it** | only the data it was trained on |
+| `model_load(run_dir)` | the run directory's own bundled data | load a saved model |
+| `model_reload(path, wrapper)` | **the wrapper you pass it** | swap in another checkpoint of the same run |
 
-`model_reload` keeps the static half (including the scales) from the object you hand
-it. Point it at a different dataset and it will load the weights into a *different scaled
+`model_reload` only replaces the trained weights and keeps the static half (including
+the scales) from the wrapper you hand it. Pass it a wrapper from a different run, or one
+built on a different dataset, and it will load the weights into a *different scaled
 space*, then predict confidently and wrongly. No exception, no NaN. See
 [Silent failures](../troubleshooting/silent_failures.md).
+
+Predicting *new* processes is a separate question, and fine: `model_predict` always
+uses the loaded model's own scales. Each new process needs a measurement at its first
+time point for every target the model was trained on.
 
 ## What you learned
 

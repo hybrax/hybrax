@@ -57,7 +57,7 @@ shutil.copy(EXAMPLE / "forward-config.json", WORK / "forward-config.json")
 ```{literalinclude} ../../../examples/gallery_mechanistic_rates/custom.py
 :language: python
 :linenos:
-:lines: 21-68
+:pyobject: MonodModule
 ```
 
 Three things worth noting.
@@ -88,7 +88,7 @@ hxt_cli("prepare", "--config", "prepare-config.json",
 out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
 lines = [l for l in out.splitlines() if "training complete" in l]
 print(lines[0] if lines else "training complete")
-print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
+print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[5])}")
 ```
 
 ```{code-cell} ipython3
@@ -144,40 +144,43 @@ true_combo = truth["alpha"] * truth["mu_max"] + truth["beta"]
 print(f"alpha*mu_max + beta   fitted={fitted_combo:.4f}   true={true_combo:.4f}")
 ```
 
-During the growth phase (where nearly every measurement sits), glucose is saturating, so
-`sigma ≈ 1` and the product rate collapses to `q_product ≈ alpha·mu_max + beta`: a single
-number. The data constrains *that combination* tightly; it says almost nothing about how
-much of it comes from `alpha` versus `beta` individually. Two different splits that sum to
-the same combination fit equally well, so the optimizer finds whichever split its
-initialisation happened to favour: this is a textbook **structural identifiability**
-problem baked into the data itself.
+Here `q_product = (alpha * mu_max + beta) * sigma` exactly, at every glucose
+concentration. These trajectories identify the combination, not `alpha` and `beta`
+separately. Different splits with the same combination fit equally well. This is a
+**structural identifiability** problem in the rate law itself.
 
-`Ks` is a milder version of the same story: `demo_batch` never lingers at low, resolving
-glucose concentrations (the culture consumes it and moves on) so there is little data
-constraining exactly where the saturation curve bends.
+`Ks` is weakly constrained for a different reason: `demo_batch` never lingers at low,
+resolving glucose concentrations (the culture consumes it and moves on) so there is
+little data constraining exactly where the saturation curve bends.
 
 That is the practical payoff of naming the rate law's terms explicitly: the ambiguity
 shows up as a number you can name, `alpha`, `beta`, `Ks`, rather than staying invisible
-inside unlabeled weights. You know exactly which two experiments would resolve it: a
-longer low-glucose tail for `Ks`, a run with product measured *after* growth stops for
-`alpha`/`beta`.
+inside unlabeled weights. More low-glucose measurements could help constrain `Ks`.
+A post-growth tail cannot separate `alpha` and `beta` under the current rate law:
+both contributions stop when `sigma` is zero. Separating them requires independent
+information or a rate law whose two contributions vary independently.
 
 ## Gotchas
 
 - **Positivity via `log`.** A `jnp.clip` on a rate is a dead gradient region;
   the log-parameterisation has none.
-- **Multiple valid initializations exist.** Try a few seeds if a parameter estimate looks
-  implausible: you may be seeing one identifiability trade-off rather than a wrong fit.
-- **Adding a state that *is* well constrained resolves the ambiguity.** If DO or another
-  process variable independently informs the split, adding it as a modeled PV changes the
-  identifiability picture. See [A Modeled Process Variable](modeled_pv.md) for what
-  declaring and training one actually looks like.
+- **Multiple valid initializations exist.** Try different starting guesses in
+  `MonodModule.__init__` if a parameter estimate looks implausible. Changing the seed
+  does not change these fixed initial values; several parameter combinations can
+  explain the same trajectories.
+- **Additional states need independent information about the parameters.** A modeled
+  process variable can help only if it independently constrains the split. See
+  [A Modeled Process Variable](modeled_pv.md) for how to declare and train one.
+  Its independent `glyco_frac` state does not constrain this example's `alpha`/`beta`
+  split.
 
 ## See Also
 
 The full, runnable example (`custom.py`, configs, data) lives in
 `examples/gallery_mechanistic_rates/` at the repo root, no docs build required. This
-page's own executed run is at `./source/_data/out/runs/gallery_mechanistic_rates/`.
+page uses `docs/source/_data/out/runs/gallery_structured_rates/` as its working
+directory and writes its model run to
+`docs/source/_data/out/runs/gallery_structured_rates/run/`.
 
 - [The Reaction Module](../train/reaction_module.md): the general SCL/RAW contract this
   module follows.

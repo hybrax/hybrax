@@ -1,7 +1,7 @@
 # Installation
 
-> Clone the repo, install it editable into a Python ≥ 3.12 environment, and check that
-> `hybrax --help` runs.
+> Install hybrax from PyPI into a Python ≥ 3.12 environment, or clone the repo for an
+> editable development install, and check that `hybrax --help` runs.
 
 ## Requirements
 
@@ -26,12 +26,22 @@ hybrax/
 ## Install
 
 ```bash
-python -m pip install -e ./hybrax
+python -m pip install hybrax
 ```
 
-Editable installs (`-e`) are the norm here: the package is under active development and
-deliberately ships breaking changes, so you want your checkout and your imports to be
-the same thing.
+This installs the latest release from [PyPI](https://pypi.org/project/hybrax/). The
+package is under active development and can ship breaking changes between releases, so
+pin the version in your own projects (for example `hybrax==0.1.0`).
+
+### Development install
+
+To work on hybrax itself, or to follow the examples in the repository, clone it and
+install it editable, so your checkout and your imports are the same thing:
+
+```bash
+git clone https://github.com/hybrax/hybrax.git
+python -m pip install -e ./hybrax
+```
 
 ### Optional extras
 

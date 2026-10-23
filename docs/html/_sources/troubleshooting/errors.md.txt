@@ -18,6 +18,8 @@ be a biomass to be specific to. The lookup is case-insensitive on the component 
 **Fix.** Either name your biomass component `biomass`, or write
 [`reaction_ode`](../format/bioprocess_ode.md#writing-your-own) yourself. A dataset with
 no biomass at all (a chemical process, an abiotic control) needs the explicit form.
+That only gets past construction: format validation and `hybrax.train` preparation
+still require a `biomass` reactor component.
 
 ### `Provide discrete samples and/or spline representation`
 
@@ -164,8 +166,8 @@ inside* the file is silent.
 Not one error, but the common cluster.
 
 1. Raise `solver.max_steps` (default 2048).
-2. Check `grad_norm_curve.png`, if it is pinned at `grad_clip_norm`, your step size is
-   not what you think.
+2. Check `grad_norm_curve.png`. If it stays above `grad_clip_norm`, most updates are
+   being clipped.
 3. **Suspect scaling before anything else.** Most apparent stiffness on these problems is
    an axis four orders of magnitude away from the others. See [Scaling](../train/scaling.md).
 

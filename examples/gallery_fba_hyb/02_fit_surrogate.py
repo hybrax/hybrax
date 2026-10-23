@@ -10,16 +10,18 @@ known):
     q_i = qG * (A1.n)(A2.n) / ( (pos(B1.n)+d) * (pos(B2.n)+d) )
     pos(B) = 0.5*(B + sqrt(B^2 + c)),  c = 1.5
 
-Every denominator factor is >= d > 0 for all inputs, by construction: the
-surrogate is pole-free, so it cannot blow up inside an ODE solver's adjoint
-however far the trained reaction module's own predictions wander. This
-script's boundedness certificate (below) checks that directly, over the full
-sampling box, before accepting a fit.
+Every denominator factor is >= d > 0 in exact arithmetic, so the rational
+form has no denominator poles. A separate screen checks flux overshoot at
+200,000 seeded random points in the sampling box. It is a sampled check, not a
+proof of boundedness throughout the box. Output files are written even if the
+screen fails; that failure gives exit code 1.
 
 n = (n_X, n_M, n_A, n_S). q_glc is analytic (= -qG exactly, by construction of
 01_generate_fba_data.py's glucose-bound fixing). Fitted fluxes: biomass, ATPM,
-EX_ac_e, EX_succ_e. Its output, 02_surrogate_body.txt, is the literal
-`surrogate_fba` body pasted into fba_hyb_custom.py and pls_dfba_custom.py.
+EX_ac_e, EX_succ_e. Transfer the expressions from `02_surrogate_body.txt` into
+`examples/gallery_fba_hyb/custom.py` and `examples/gallery_pls_dfba/custom.py`,
+keeping internal normalization and return shapes and using AVG_QG and AVG_N
+from the new `02_surrogate_params.npz`. See README.md for the transfer steps.
 """
 
 import sys
@@ -164,10 +166,8 @@ def main():
     print(f"rows={n_rows} train={tr.sum()} valid={va.sum()} AVG_QG={AVG_QG:.6f}")
 
     params = {}
-    for nm in FIT_FLUXES:
-        Z = fit_flux(
-            g, N, Y[nm], tr, DELTA[nm], N_RESTARTS, seed=abs(hash(nm)) % 997 + 1
-        )
+    for index, nm in enumerate(FIT_FLUXES):
+        Z = fit_flux(g, N, Y[nm], tr, DELTA[nm], N_RESTARTS, seed=index + 1)
         params[nm] = Z
         print(f"  fit {nm}")
 

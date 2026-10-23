@@ -186,7 +186,11 @@ for defaults you do not want to repeat in every config file.
 
 ## Gotchas
 
-- **`--overwrite` is required to reuse an output directory.** You will meet this on your
+- **`--overwrite` is required to reuse an output directory in some cases.** `train`
+  refuses a completed run (and an incomplete one with checkpoints when retention is
+  enabled), `forward` refuses existing forward results, `prepare` refuses an existing
+  `prepared.json`, and `loo` refuses any existing output directory unless you pass
+  `--resume`. You will meet this on your
   second run. It is deliberate.
 - **`--overwrite` deletes everything already in `--output-dir`**, regardless of what put it
   there, before writing fresh output, on every one of `prepare`/`train`/`forward`/`loo`.

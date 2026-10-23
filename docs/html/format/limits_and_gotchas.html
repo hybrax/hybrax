@@ -430,7 +430,9 @@ alternative.</p>
 <p><strong>At construction</strong></p>
 <ul class="simple">
 <li><p><strong>No <code class="docutils literal notranslate"><span class="pre">biomass</span></code> component</strong> and no explicit <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> → <code class="docutils literal notranslate"><span class="pre">BioProcess(...)</span></code> raises.
-Auto-generated rates are specific, so they need a biomass.</p></li>
+Auto-generated reactor-component rates are specific, so they need a biomass. An
+explicit <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> gets past construction, but validation and <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>
+preparation still require one.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> with neither samples nor spline</strong> → raises. So does <code class="docutils literal notranslate"><span class="pre">times</span></code> without
 <code class="docutils literal notranslate"><span class="pre">values</span></code>, non-increasing <code class="docutils literal notranslate"><span class="pre">times</span></code>, or a <code class="docutils literal notranslate"><span class="pre">coeffs</span></code>/<code class="docutils literal notranslate"><span class="pre">breaks</span></code> shape mismatch.</p></li>
 <li><p><strong>float32 input</strong> → raises rather than upcasting.</p></li>
@@ -581,7 +583,7 @@ this page’s middle section.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

@@ -161,7 +161,8 @@ TRUE_SCALE = {
 def eval_reaction_module(state_raw):
     scl = jnp.asarray(np.asarray(state_raw) / scale)
     h = kan.l1(scl)
-    return np.asarray(kan.l2(h) + kan.prod_a(h[0:1]) * kan.prod_b(h[1:2]))
+    out_scl = kan.l2(h) + kan.prod_a(h[0:1]) * kan.prod_b(h[1:2])
+    return np.asarray(kan.unscale_modeled_ReactionOde_rates(out_scl))
 
 
 pooled = {n: [] for n in names}

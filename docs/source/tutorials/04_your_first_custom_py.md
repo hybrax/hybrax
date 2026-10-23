@@ -94,14 +94,16 @@ time derivative, so one number per axis handles both states and rates.
 :::{admonition} The double-scaling trap
 :class: warning
 
-Your network reads `inputs.SCL_*` (already-scaled values) so whatever it emits is
-*already in SCL space*. Return it directly.
+`ReactionOutputs` always expects **SCL** rates; the wrapper unscales them on the way back
+to physical units. Your inputs (`inputs.SCL_*`) are SCL too, but that does not decide what
+your module computes in between.
 
-If you additionally call a `scale_*` helper on the output, it cancels against the
-wrapper's unscale step on the way back to physical units, and your rates end up off by
-the scale factor. Both conventions appear in the shipped examples depending on what the
-network is defined to emit, which is exactly why this catches people. Rule of thumb: **if
-the input was SCL, the output is SCL.**
+The MLP in this tutorial is trained to emit SCL rates, so it returns them directly. A
+module that computes physical rates (Monod kinetics in g/L, say) must convert them with
+`scale_modeled_ReactionOde_rates` before returning them. Converting twice, or forgetting
+to convert, leaves your rates off by the scale factor. Both conventions appear in the
+shipped examples depending on what the module computes, which is exactly why this catches
+people. Rule of thumb: **compute in whichever space you like, but return SCL.**
 :::
 
 ## The file
@@ -129,15 +131,21 @@ has no default for either; omitting one is a `TypeError` at the first solve, not
 
 State scales are easy: how big does this species get. Rate scales need one step of
 thought. The module emits an O(1) number; that number is multiplied by the rate scale to
-become a physical rate. You want the resulting *state change over the run* to be about
-the size of the state. For a specific rate, `d(c)/dt = q_c · biomass`, so
+become a physical rate. So the rate scale should be the typical size of the rate itself.
+For a specific rate, `d(c)/dt = q_c · biomass`; integrating over a run gives an average
 
 ```
-scale(q_c)  ~  scale(c) / (scale(biomass) · duration)
+q_c  ~  |c_end - c_start| / ∫ biomass dt
 ```
 
-which is the one line in the middle of the hook. Get this wrong in the optimistic
-direction and the concentrations blow up on the first solve, before any training happens.
+which `rate_scale_for` estimates for each process using trapezoidal integration of the
+biomass measurements, then keeps the largest estimate across processes. With exact
+measurements and an exact integral, the formula recovers the magnitude of a constant
+specific rate exactly. Peak biomass times duration is a simpler estimate of the
+integral; it gives a rate scale about half as large here, which is still suitable. The
+aim is the right order of magnitude. A rate scale far too large can amplify the
+untrained network's outputs enough to cause unrealistic concentrations or solver
+failure on the first solve.
 
 ## Train it
 
@@ -148,15 +156,18 @@ Point the config at the file: one extra key:
   "data": { "prepared": "prepared" },
   "custom_py": "custom.py",
   "train": { "epochs": 300, "seed": 0, "learning_rate": 0.01 },
-  "output": { "dir": "run_custom" }
+  "checkpoint": { "every": 0 },
+  "output": { "dir": "run_custom", "predictions": "parents" }
 }
 ```
 
-The learning rate is ten times the default's. That is deliberate, and the point of the
-comparison below: it is only *safe* to raise it because the state is scaled. Try the same
-learning rate on the unscaled defaults and the solve diverges to `inf` within the first
-few steps: conditioning is not a nice-to-have, it is what lets you use a normal
-optimizer setting at all.
+`"predictions": "parents"` writes the `predictions.csv` used for the comparison below
+(the default is `"none"`), and `"checkpoint": { "every": 0 }` turns off periodic
+checkpoints for this short run.
+
+The learning rate is ten times the default's `0.001`. Keep that in mind for the
+comparison below: the custom run changes the learning rate as well as the network and the
+scales.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -168,13 +179,13 @@ shutil.copy(EXAMPLE / "forward-config.json", WORK / "forward-config.json")
 
 ## Did it help?
 
-Same data, same seed, same epoch budget. Two things differ: this `custom.py`, and the
-learning rate it makes safe to use.
+Same data, same seed, same epoch budget. Two things differ: this `custom.py` (a bigger
+network plus data-driven scales), and the learning rate.
 
-Loss values are not the fair comparison here: the default run's loss lives in raw g/L,
-the scaled run's in relative units, and those are not the same number. The fair,
-scale-free comparison is **R² in physical space**, computed by re-interpolating each
-run's predictions back onto the actual measurement times:
+Loss values are not the fair comparison here: the default run's loss is a mean squared
+error in raw (g/L)², the scaled run's is relative to each target's scale, and those are
+not the same number. The fair, scale-free comparison is **R² in physical space**, computed
+by re-interpolating each run's predictions back onto the actual measurement times:
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -182,7 +193,7 @@ run's predictions back onto the actual measurement times:
 hxt_cli("train", "--config", "train-default.json", "--overwrite")
 hxt_cli("train", "--config", "train-custom.json", "--overwrite")
 
-root = WORK.parents[4]
+root = WORK.parents[5]
 print(f"run directories: ./{(WORK / 'run_default').relative_to(root)}"
       f" and ./{(WORK / 'run_custom').relative_to(root)}")
 print("both self-contained: cp -r either one anywhere and keep working from the copy")
@@ -196,16 +207,18 @@ for name in ("biomass", "glucose", "product"):
 ```
 
 Biomass and glucose are close either way (this dataset is small enough that the defaults
-already fit them well. **Product is where the two diverge.** It is the smallest-magnitude
-target (peaking around 0.5 g/L against glucose's 10 g/L), and with no scaling the loss is
-implicitly dominated by whichever axis has the largest raw magnitude) glucose. Product's
+already fit them well). **Product is where the two diverge.** It is the smallest-magnitude
+target (peaking below 1 g/L against glucose's 20 g/L), and with no scaling the loss is
+implicitly dominated by whichever axis has the largest raw magnitude: glucose. Product's
 error barely moves the unscaled loss, so the optimizer has little reason to fit it well.
-Once every axis is normalised to O(1), each target pulls equally, and product stops being
-the one that got left behind.
+Once each target's error is measured relative to its own scale, product's error counts
+as much as glucose's.
 
 That is the actual argument for scaling: not "converges faster" in general, but "every
-target gets a fair share of the gradient", which matters most for whichever quantity in
-your dataset happens to be smallest.
+target gets a fair share of the loss", which matters most for whichever quantity in your
+dataset happens to be smallest. This comparison also changes the network and the learning
+rate, so it does not isolate scaling: rerun the defaults with `"learning_rate": 0.01` to
+see how much of the gap comes from that alone.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -253,11 +266,11 @@ effect, check the spelling first. See
 ## What you learned
 
 - `custom.py` is plain Python; hooks are found by name, and missing ones use defaults.
-- The ODE is integrated in **SCL** space; if your input was SCL, your output is SCL.
+- The ODE is integrated in **SCL** space; your reaction module always returns SCL rates.
 - `trainable_field()` opts a field in; everything untagged is frozen.
-- Scaling is optional, has no error when omitted, and buys you two things: an optimizer
-  setting that would otherwise diverge, and a loss where your smallest-magnitude target
-  isn't drowned out by your largest.
+- Scaling is optional and has no error when omitted (every scale is then 1). It buys you a
+  better-conditioned solve and a loss where your smallest-magnitude target isn't drowned
+  out by your largest.
 - Compare runs by **R² in physical space**, not by raw loss: an unscaled and a scaled
   run don't share loss units.
 

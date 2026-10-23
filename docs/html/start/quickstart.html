@@ -439,10 +439,11 @@ INFO hybrax.format.serialization: Saved to ./prepared/prepared.json
 </div>
 </div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">prepare</span></code> reads your hybrax.format file and writes a <strong>prepared artifact</strong>: the dataset
-plus everything derived from it that training needs: the control splines, the state and
-control layout, which measured quantities are the fit targets. Training never touches
-the raw file again, so a prepared artifact is a reproducible starting point.</p>
+<p><code class="docutils literal notranslate"><span class="pre">prepare</span></code> reads your hybrax.format file, validates it, applies any preparation hooks,
+checks that every process has the controls training needs, and writes a <strong>prepared
+artifact</strong> with a record of how it was made. Training never touches the raw file again,
+so a prepared artifact is a reproducible starting point. Which measurements to fit is
+chosen later, by <code class="docutils literal notranslate"><span class="pre">train</span></code>.</p>
 <p>It also drops diagnostic plots in <code class="docutils literal notranslate"><span class="pre">prepared/prepare_diagnostics/</span></code> showing how it read
 each run’s controls. Worth a look the first time you prepare your own data.</p>
 </section>
@@ -511,7 +512,7 @@ true    mu_max           : 0.450 1/h
 <h2>6. What you got<a class="headerlink" href="#what-you-got" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>./source/_data/out/runs/quickstart/run
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>./docs/source/_data/out/runs/quickstart/run
 </pre></div>
 </div>
 </div>
@@ -539,6 +540,7 @@ metrics.csv
 model/
   opt_state.eqx
   params.eqx
+prepared.json.gz
 </pre></div>
 </div>
 </div>
@@ -572,7 +574,7 @@ model/
 </section>
 <section id="what-to-do-next">
 <h2>What to do next<a class="headerlink" href="#what-to-do-next" title="Link to this heading">¶</a></h2>
-<p>You can inspect this page’s files in <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/quickstart/</span></code>.</p>
+<p>You can inspect this page’s files in <code class="docutils literal notranslate"><span class="pre">./docs/source/_data/out/runs/quickstart/</span></code>.</p>
 <div class="tip admonition">
 <p class="admonition-title">This was a quick taste but there is a lot more</p>
 <p>This run used every default: a generic MLP for the rates, mean-squared error for the
@@ -665,7 +667,7 @@ data the scaling in particular matters a great deal: see
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

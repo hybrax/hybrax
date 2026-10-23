@@ -544,7 +544,7 @@ passes validation.</p>
 <span class="n">out</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">with</span> <span class="n">contextlib</span><span class="o">.</span><span class="n">redirect_stdout</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">StringIO</span><span class="p">()):</span>
     <span class="n">hxf</span><span class="o">.</span><span class="n">serialization</span><span class="o">.</span><span class="n">save_process_collection</span><span class="p">(</span><span class="n">collection</span><span class="p">,</span> <span class="n">out</span> <span class="o">/</span> <span class="s2">"data.json"</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"./</span><span class="si">{</span><span class="p">(</span><span class="n">out</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="s1">'data.json'</span><span class="p">)</span><span class="o">.</span><span class="n">relative_to</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">parents</span><span class="p">[</span><span class="mi">4</span><span class="p">])</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"./</span><span class="si">{</span><span class="p">(</span><span class="n">out</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="s1">'data.json'</span><span class="p">)</span><span class="o">.</span><span class="n">relative_to</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">parents</span><span class="p">[</span><span class="mi">5</span><span class="p">])</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 
 <span class="n">again</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">serialization</span><span class="o">.</span><span class="n">load_process_collection</span><span class="p">(</span><span class="n">out</span> <span class="o">/</span> <span class="s2">"data.json"</span><span class="p">)</span>
 <span class="n">before</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">[</span><span class="s2">"run_1"</span><span class="p">]</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="s2">"biomass"</span><span class="p">]</span><span class="o">.</span><span class="n">concentration</span>
@@ -555,7 +555,7 @@ passes validation.</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>./source/_data/out/runs/roundtrip/data.json
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>./docs/source/_data/out/runs/roundtrip/data.json
 values identical: True
 </pre></div>
 </div>
@@ -659,7 +659,7 @@ what makes files bigger than you expect.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

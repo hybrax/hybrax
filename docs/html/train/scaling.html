@@ -417,8 +417,10 @@ anything. It leaves SCL identical to RAW: the exact ill-conditioning the archite
 exists to prevent.</p>
 <p>Training still runs. The loss still goes down. It is just much worse than it should be,
 and nothing tells you. <a class="reference internal" href="../tutorials/04_your_first_custom_py.html#did-it-help"><span class="std std-ref">Tutorial 4</span></a>
-measures the gap on a small, well-behaved dataset: the initial loss alone differs by more
-than two orders of magnitude, before a single optimizer step.</p>
+compares the final physical-space R² of a default run and a run with <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> on a
+small, well-behaved dataset. The two losses are in different units and are not
+comparable, so R² is the fair measure. That run also changes the network and the
+learning rate, so it shows the effect of the whole customisation, not of scaling alone.</p>
 </div>
 </section>
 <section id="writing-one">
@@ -443,16 +445,27 @@ hybrax.format objects: <code class="docutils literal notranslate"><span class="p
 wrong. Your module emits an O(1) number, which is multiplied by the rate scale to become
 a physical rate. You want the resulting <em>state change over the run</em> to be about the size
 of the state.</p>
-<p>For a specific rate, <code class="docutils literal notranslate"><span class="pre">d(c)/dt</span> <span class="pre">=</span> <span class="pre">q_c</span> <span class="pre">·</span> <span class="pre">biomass</span></code>, so:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>scale(q_c)  ~  scale(c) / (scale(biomass) · duration)
+<p>For a specific rate, <code class="docutils literal notranslate"><span class="pre">d(c)/dt</span> <span class="pre">=</span> <span class="pre">q_c</span> <span class="pre">·</span> <span class="pre">biomass</span></code>, so the scale needs a biomass level
+and a time scale. A simple estimate uses peak biomass and the run duration:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>scale(q_c)  ~  scale(c) / (max biomass · duration)
 </pre></div>
 </div>
+<p>An alternative uses the concentration change and integrated biomass:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>scale(q_c)  ~  |c_end - c_start| / ∫ biomass dt
+</pre></div>
+</div>
+<p>For a constant specific rate, the second formula recovers its magnitude exactly if
+the measurements and integral are exact.</p>
+<p>In the tutorial data, peak biomass times duration is about twice the biomass
+integral. The simpler estimate gives a rate scale about half as large, so the module
+needs outputs about twice as large to represent the same physical rates. Both are
+suitable: the aim is the right order of magnitude.</p>
 <p>For a volumetric rate, <code class="docutils literal notranslate"><span class="pre">d(p)/dt</span> <span class="pre">=</span> <span class="pre">r_p</span></code> directly, so:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">scale</span><span class="p">(</span><span class="n">r_p</span><span class="p">)</span>  <span class="o">~</span>  <span class="n">scale</span><span class="p">(</span><span class="n">p</span><span class="p">)</span> <span class="o">/</span> <span class="n">duration</span>
 </pre></div>
 </div>
-<p>Get this wrong in the optimistic direction and the concentrations blow up on the very
-first solve, before anything is learned.</p>
+<p>A rate scale far too large can amplify the untrained network’s outputs enough to
+cause unrealistic concentrations or solver failure on the first solve.</p>
 <p><strong>Controlled axes</strong> come from the controls store, always reachable as
 <code class="docutils literal notranslate"><span class="pre">runtime_data.controls_store</span></code>, sampled over the run:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">estimate_all_scales</span><span class="p">(</span><span class="n">runtime_data</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
@@ -499,8 +512,7 @@ holds for a pure multiplication. Supplying an <code class="docutils literal notr
 order of magnitude or two of the data. A first-epoch loss of 10⁴ means the scales are
 wrong, not that the problem is hard.</p></li>
 <li><p><strong>Gradient norm.</strong> <code class="docutils literal notranslate"><span class="pre">grad_norm_curve.png</span></code> plots the <strong>raw</strong> norm, before clipping. If it
-sits permanently pinned at <code class="docutils literal notranslate"><span class="pre">grad_clip_norm</span></code>, your effective step size is not what the
-learning rate says it is.</p></li>
+stays above <code class="docutils literal notranslate"><span class="pre">grad_clip_norm</span></code>, most updates are being clipped.</p></li>
 <li><p><strong>The rate panels.</strong> Rates that saturate immediately or oscillate wildly usually mean a
 rate scale that is too large.</p></li>
 </ol>
@@ -607,7 +619,7 @@ before/after numbers.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

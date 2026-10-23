@@ -5,7 +5,8 @@ rational surrogate (fit offline against 10,000 real pFBA solves on
 e_coli_core.xml, Orth/Fleming/Palsson 2010, via the method from Gotsmy &
 Guillen-Gosalbez's FBA-Hyb, bioRxiv:10.64898/2026.04.22.720062v1, see
 01_generate_fba_data.py and 02_fit_surrogate.py) converts these into
-biomass/glucose/acetate specific rates. n_S (succinate weight) is fixed at 0:
+biomass/glucose/acetate specific rates. The n_i prescribe flux proportions in
+the offline combined-demand LP. n_S (succinate coefficient) is fixed at 0:
 this page has no deliberate product, only real E. coli overflow metabolism
 (growth vs. maintenance vs. acetate secretion). See pls_dfba.md for a
 product-forming, media-blend-aware version.
@@ -34,7 +35,10 @@ def _pos(B):
 
 
 def surrogate_fba(x):
-    """SCALED [qG, n_X, n_M, n_A, n_S] -> RAW [q_glc, qX, qM, qA], mmol/(gX.h).
+    """Physical [qG, n_X, n_M, n_A, n_S] -> physical [q_glc, qX, qM, qA].
+
+    Inputs are normalized internally. qX is in 1/h; exchange and maintenance
+    fluxes are in mmol/(gX.h).
 
     Validation R2 >= 0.999 on all four fitted fluxes; boundedness certificate
     passed (max overshoot 1.7x over the sampling box, min denominator

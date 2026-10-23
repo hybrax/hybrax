@@ -473,9 +473,11 @@ rate <code class="docutils literal notranslate"><span class="pre">r_p</span></co
 </ul>
 <div class="warning admonition">
 <p class="admonition-title">Auto-generation requires a component named <code class="docutils literal notranslate"><span class="pre">biomass</span></code></p>
-<p>Every generated rate is <em>specific</em> (per unit biomass) so there has to be a biomass to
+<p>Reactor-medium rates are <em>specific</em> (per unit biomass) so there has to be a biomass to
 be specific to. Without one (case-insensitive match), constructing the <code class="docutils literal notranslate"><span class="pre">BioProcess</span></code>
-raises immediately, and the message tells you to supply your own <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>.</p>
+with auto-generated dynamics raises immediately, and the message tells you to supply
+your own <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>. Supplying one only gets past construction: format validation
+and <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> preparation still require a <code class="docutils literal notranslate"><span class="pre">biomass</span></code> reactor component.</p>
 </div>
 </section>
 <section id="writing-your-own">
@@ -717,7 +719,7 @@ variable’s own rate, <code class="docutils literal notranslate"><span class="p
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

@@ -380,9 +380,9 @@
 <blockquote>
 <div><p>A Kolmogorov-Arnold Network (KAN) occupying the reaction module’s slot: each edge
 between two nodes carries its own learnable curve, instead of a neural network’s
-fixed activation with learned weights. After training, each edge’s curve is matched
-against a small shape library and checked against the real process that generated the
-training data.</p>
+fixed activation with learned weights. After training, the first layer’s edge curves
+are matched against a small shape library, and the full model’s rates are checked
+against the process that generated the training data.</p>
 </div></blockquote>
 <p>Inspired by Bühler &amp; Guillén-Gosálbez 2026 [<a href="#ref-srkan">1</a>], whose SR-KAN
 framework builds on Kolmogorov-Arnold Networks [<a href="#ref-kan">2</a>] to recover
@@ -391,8 +391,8 @@ page’s own biomass, glucose, and product data. This page reproduces the core i
 learnable curves on edges in place of a neural network’s fixed activations, as a single
 reaction module trained directly inside <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s own loop rather than the
 paper’s own two-stage pipeline. It also reuses the paper’s post-training step of
-matching each learned edge against a small library of simple curves, stopping short of
-the paper’s further step of composing those matches into one closed-form rate law.</p>
+matching the first layer’s learned edges against a small library of simple curves,
+stopping short of composing those matches into one closed-form rate law.</p>
 <p>The walkthrough below shows the file in pieces, next to the reasoning for each one.</p>
 <section id="the-kan-layer">
 <h2>The KAN Layer<a class="headerlink" href="#the-kan-layer" title="Link to this heading">¶</a></h2>
@@ -418,13 +418,14 @@ the paper’s further step of composing those matches into one closed-form rate 
 </pre></div>
 </div>
 <p>Per edge <code class="docutils literal notranslate"><span class="pre">(i,</span> <span class="pre">o)</span></code>: <code class="docutils literal notranslate"><span class="pre">base_w[o,i]·SiLU(x_i)</span></code> plus <code class="docutils literal notranslate"><span class="pre">Σ_g</span> <span class="pre">spline_c[o,i,g]·rbf_g(x_i)</span></code>, a
-small Gaussian radial-basis expansion centered on a fixed grid
+small Gaussian radial-basis expansion centered on a learned grid
 [<a href="#ref-rbf">3</a>]. A node’s output is the sum over its incoming edges’
 curves, <code class="docutils literal notranslate"><span class="pre">Σ_i</span> <span class="pre">φ_oi(x_i)</span></code>, the defining property that makes this a KAN
 [<a href="#ref-kan">2</a>] rather than an MLP: the learnable function lives on
-the edge, separate from a fixed node activation. <code class="docutils literal notranslate"><span class="pre">x</span></code> is <code class="docutils literal notranslate"><span class="pre">tanh</span></code>-bounded before
-hitting the grid, so every edge’s spline term always sees an input inside the
-range it was actually fit over.</p>
+the edge, separate from a fixed node activation. Each layer applies <code class="docutils literal notranslate"><span class="pre">tanh</span></code> before
+evaluating its edge functions, bounding the transformed inputs to <code class="docutils literal notranslate"><span class="pre">[-1,</span> <span class="pre">1]</span></code>. This does
+not guarantee that a new input lies within the range seen during training or within
+the learned centers’ range.</p>
 </section>
 <section id="the-reaction-module">
 <h2>The Reaction Module<a class="headerlink" href="#the-reaction-module" title="Link to this heading">¶</a></h2>
@@ -439,11 +440,11 @@ range it was actually fit over.</p>
 <span class="linenos"> 9</span>        <span class="n">n_in</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_RMCs</span>
 <span class="linenos">10</span>        <span class="n">n_out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_modeled_ReactionOde_rates</span>
 <span class="linenos">11</span>        <span class="n">k1</span><span class="p">,</span> <span class="n">k2</span><span class="p">,</span> <span class="n">ka</span><span class="p">,</span> <span class="n">kb</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
-<span class="linenos">12</span>        <span class="c1"># Hidden layer full-scale; output layer near-zero so the ODE starts flat</span>
-<span class="linenos">13</span>        <span class="c1"># yet both layers receive gradient at step 0 (avoids an all-zero cold start).</span>
+<span class="linenos">12</span>        <span class="c1"># l2 starts at zero. Initial rates come entirely from the nonzero product</span>
+<span class="linenos">13</span>        <span class="c1"># branches, which also let gradients reach l1 at the first update.</span>
 <span class="linenos">14</span>        <span class="bp">self</span><span class="o">.</span><span class="n">l1</span> <span class="o">=</span> <span class="n">KANLayer</span><span class="p">(</span><span class="n">n_in</span><span class="p">,</span> <span class="n">hidden</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">k1</span><span class="p">,</span> <span class="n">out_scale</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
 <span class="linenos">15</span>        <span class="bp">self</span><span class="o">.</span><span class="n">l2</span> <span class="o">=</span> <span class="n">KANLayer</span><span class="p">(</span><span class="n">hidden</span><span class="p">,</span> <span class="n">n_out</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">k2</span><span class="p">,</span> <span class="n">out_scale</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
-<span class="linenos">16</span>        <span class="c1"># One small multiplicative term per rate, prod_a(h0) * prod_b(h1), added</span>
+<span class="linenos">16</span>        <span class="c1"># One multiplicative term per rate, prod_a(h0) * prod_b(h1), added</span>
 <span class="linenos">17</span>        <span class="c1"># on top of l2's sum. h0/h1 are the first two of l1's hidden units,</span>
 <span class="linenos">18</span>        <span class="c1"># picked arbitrarily since none of l1's hidden units carry individual</span>
 <span class="linenos">19</span>        <span class="c1"># meaning. Ordinary non-zero start (unlike l2): a product started at</span>
@@ -466,10 +467,10 @@ range it was actually fit over.</p>
 anywhere in between. The input is just the raw <code class="docutils literal notranslate"><span class="pre">SCL_modeled_RMCs</span></code>
 (biomass, glucose, product): no hand-engineered saturation term is fed in
 alongside it, so any Monod-like or threshold shape the model ends up using has
-to be discovered from state alone. <code class="docutils literal notranslate"><span class="pre">l2</span></code>’s near-zero initialization keeps the ODE
-flat at the very first step while <code class="docutils literal notranslate"><span class="pre">l1</span></code> still receives real gradient, the same
-cold-start pattern other reaction modules in this gallery use.</p>
-<p>Each of the three output rates also gets one small multiplicative term,
+to be discovered from state alone. <code class="docutils literal notranslate"><span class="pre">l2</span></code> starts at zero, so the initial rates
+come entirely from <code class="docutils literal notranslate"><span class="pre">prod_a(h0)</span> <span class="pre">*</span> <span class="pre">prod_b(h1)</span></code>. These nonzero branches also let
+gradients reach <code class="docutils literal notranslate"><span class="pre">l1</span></code> at the first update.</p>
+<p>Each of the three output rates also gets one multiplicative term,
 <code class="docutils literal notranslate"><span class="pre">prod_a(h0)</span> <span class="pre">*</span> <span class="pre">prod_b(h1)</span></code>, added on top of <code class="docutils literal notranslate"><span class="pre">l2</span></code>’s sum. <code class="docutils literal notranslate"><span class="pre">h0</span></code> and <code class="docutils literal notranslate"><span class="pre">h1</span></code> are the
 first two of <code class="docutils literal notranslate"><span class="pre">l1</span></code>’s eight hidden units, picked arbitrarily since none of them
 carry individual meaning. SR-KAN’s own bioprocess case study states plainly
@@ -493,7 +494,7 @@ starting point the way addition does not.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.235398 last_mean_loss=0.000211724 delta=-0.235187
-run directory: ./source/_data/out/runs/gallery_kan/run
+run directory: ./docs/source/_data/out/runs/gallery_kan/run
 </pre></div>
 </div>
 </div>
@@ -562,18 +563,22 @@ combinations of the three inputs, picked to isolate one input at a time, and see
 whether its own behavior matches.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Biomass and product together move each rate by at most 17.1% of what glucose does.
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Varying biomass or product alone moves a rate by at most 17.1% of what glucose does.
 
-q_biomass   learned: +2.835 * S / (0.943 + S)   true: +0.450 * S / (0.050 + S)
-q_glucose   learned: -2.182 * S / (0.616 + S)   true: -1.020 * S / (0.050 + S)
-q_product   learned: +2.294 * S / (0.684 + S)   true: +0.042 * S / (0.050 + S)
+q_biomass   learned: +0.431 * S / (0.943 + S) +0.057   true: +0.450 * S / (0.050 + S) + 0
+q_glucose   learned: -0.760 * S / (0.616 + S) -0.235   true: -1.020 * S / (0.050 + S) + 0
+q_product   learned: +0.034 * S / (0.684 + S) +0.008   true: +0.042 * S / (0.050 + S) + 0
 </pre></div>
 </div>
 </div>
 </div>
-<p>Biomass and product barely move any rate, matching the real process. Glucose alone
-traces a clean saturating curve for all three rates, the right shape. The learned
-scale and half-saturation numbers above land only roughly near the real ones.</p>
+<p>Glucose is the strongest input in these sweeps, and all three glucose responses match a
+saturating curve. The learned model also keeps a product effect on glucose uptake, about
+17% of glucose’s effect, which the generating process does not have. Fitted amplitudes
+and offsets are in physical rate units; half-saturation constants are in g/L. The
+amplitudes differ from the true values, the half-saturation constants are much larger than <code class="docutils literal notranslate"><span class="pre">0.05</span> <span class="pre">g/L</span></code>, and
+the fitted offsets are nonzero. Matching the shape does not recover the true
+parameters here.</p>
 <p>That gap is expected. Training sees only 3
 processes here (15 timepoints each, <code class="docutils literal notranslate"><span class="pre">BATCH_RUNS</span></code> in <code class="docutils literal notranslate"><span class="pre">generate.py</span></code>), and the
 sweep above evaluates the model at input combinations that never occur
@@ -591,30 +596,26 @@ hyperparameter-tuned pipeline.</p>
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><strong>Inputs are <code class="docutils literal notranslate"><span class="pre">tanh</span></code>-bounded before hitting the RBF grid.</strong> An untransformed
-input that wandered past the fitted centers’ range would extrapolate through
-only the base <code class="docutils literal notranslate"><span class="pre">SiLU</span></code> term, silently losing the spline’s local detail.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">centers</span></code> is a <code class="docutils literal notranslate"><span class="pre">frozen_field()</span></code>, never trained.</strong> The grid is fixed; only
-<code class="docutils literal notranslate"><span class="pre">base_w</span></code> and <code class="docutils literal notranslate"><span class="pre">spline_c</span></code>, the edge functions’ actual shape, move under
-gradient descent.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">l2</span></code>’s near-zero initialization is what keeps the ODE flat at step 0.</strong>
-Removing it does not error, it just starts training from a wild, effectively
-random rate prediction.</p></li>
+<li><p><strong>Inputs are <code class="docutils literal notranslate"><span class="pre">tanh</span></code>-bounded before hitting the RBF grid.</strong> Far from the learned
+centers, the Gaussian contributions become small and the base <code class="docutils literal notranslate"><span class="pre">SiLU</span></code> term
+dominates. Bounding inputs does not guarantee training coverage.</p></li>
+<li><p><strong>The grids are trainable in this module.</strong> Each containing layer has
+<code class="docutils literal notranslate"><span class="pre">trainable_field()</span></code>, which overrides its <code class="docutils literal notranslate"><span class="pre">centers</span></code> field’s <code class="docutils literal notranslate"><span class="pre">frozen_field()</span></code>.
+The centers move along with <code class="docutils literal notranslate"><span class="pre">base_w</span></code> and <code class="docutils literal notranslate"><span class="pre">spline_c</span></code> during training.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">l2</span></code> starts at zero, but the product branches do not.</strong> Initial rates
+come entirely from their product, which bypasses <code class="docutils literal notranslate"><span class="pre">l2</span></code>. Zeroing <code class="docutils literal notranslate"><span class="pre">l2</span></code> does
+not guarantee flat or small initial rates.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">hidden</span></code> and <code class="docutils literal notranslate"><span class="pre">grid</span></code> are real capacity knobs</strong>, exactly like a network’s
 width. Too few edges or basis functions and the model cannot represent the
 trajectory; too many and every edge pays for a wider, mostly redundant
 radial-basis expansion.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">prod_a</span></code>/<code class="docutils literal notranslate"><span class="pre">prod_b</span></code> break perfectly-flat-at-step-0 for all three rates</strong>,
-since every rate reads through <code class="docutils literal notranslate"><span class="pre">l2</span></code>’s shared sum. They start non-zero on
-purpose (see above), so each rate starts very close to flat rather than
-exactly flat.</p></li>
 </ul>
 </section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
 <code class="docutils literal notranslate"><span class="pre">examples/gallery_kan/</span></code> at the repo root, no docs build required. This page’s own
-executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_kan/</span></code>.</p>
+executed run is at <code class="docutils literal notranslate"><span class="pre">./docs/source/_data/out/runs/gallery_kan/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: <code class="docutils literal notranslate"><span class="pre">auxiliary</span></code>, and
 everything else a <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> can return.</p></li>
@@ -719,7 +720,7 @@ models of bioprocesses. <em>Chemical Engineering Science</em>, 300, 120606.
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

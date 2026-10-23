@@ -16,9 +16,9 @@ kernelspec:
 
 > A Kolmogorov-Arnold Network (KAN) occupying the reaction module's slot: each edge
 > between two nodes carries its own learnable curve, instead of a neural network's
-> fixed activation with learned weights. After training, each edge's curve is matched
-> against a small shape library and checked against the real process that generated the
-> training data.
+> fixed activation with learned weights. After training, the first layer's edge curves
+> are matched against a small shape library, and the full model's rates are checked
+> against the process that generated the training data.
 
 Inspired by Bühler & Guillén-Gosálbez 2026 [<a href="#ref-srkan">1</a>], whose SR-KAN
 framework builds on Kolmogorov-Arnold Networks [<a href="#ref-kan">2</a>] to recover
@@ -27,8 +27,8 @@ page's own biomass, glucose, and product data. This page reproduces the core ide
 learnable curves on edges in place of a neural network's fixed activations, as a single
 reaction module trained directly inside `hybrax.train`'s own loop rather than the
 paper's own two-stage pipeline. It also reuses the paper's post-training step of
-matching each learned edge against a small library of simple curves, stopping short of
-the paper's further step of composing those matches into one closed-form rate law.
+matching the first layer's learned edges against a small library of simple curves,
+stopping short of composing those matches into one closed-form rate law.
 
 The walkthrough below shows the file in pieces, next to the reasoning for each one.
 
@@ -99,13 +99,14 @@ def r2_by_target(run_dir):
 ```
 
 Per edge `(i, o)`: `base_w[o,i]·SiLU(x_i)` plus `Σ_g spline_c[o,i,g]·rbf_g(x_i)`, a
-small Gaussian radial-basis expansion centered on a fixed grid
+small Gaussian radial-basis expansion centered on a learned grid
 [<a href="#ref-rbf">3</a>]. A node's output is the sum over its incoming edges'
 curves, `Σ_i φ_oi(x_i)`, the defining property that makes this a KAN
 [<a href="#ref-kan">2</a>] rather than an MLP: the learnable function lives on
-the edge, separate from a fixed node activation. `x` is `tanh`-bounded before
-hitting the grid, so every edge's spline term always sees an input inside the
-range it was actually fit over.
+the edge, separate from a fixed node activation. Each layer applies `tanh` before
+evaluating its edge functions, bounding the transformed inputs to `[-1, 1]`. This does
+not guarantee that a new input lies within the range seen during training or within
+the learned centers' range.
 
 ## The Reaction Module
 
@@ -119,11 +120,11 @@ Two stacked `KANLayer`s, both genuinely KAN-shaped, no plain linear or MLP layer
 anywhere in between. The input is just the raw `SCL_modeled_RMCs`
 (biomass, glucose, product): no hand-engineered saturation term is fed in
 alongside it, so any Monod-like or threshold shape the model ends up using has
-to be discovered from state alone. `l2`'s near-zero initialization keeps the ODE
-flat at the very first step while `l1` still receives real gradient, the same
-cold-start pattern other reaction modules in this gallery use.
+to be discovered from state alone. `l2` starts at zero, so the initial rates
+come entirely from `prod_a(h0) * prod_b(h1)`. These nonzero branches also let
+gradients reach `l1` at the first update.
 
-Each of the three output rates also gets one small multiplicative term,
+Each of the three output rates also gets one multiplicative term,
 `prod_a(h0) * prod_b(h1)`, added on top of `l2`'s sum. `h0` and `h1` are the
 first two of `l1`'s eight hidden units, picked arbitrarily since none of them
 carry individual meaning. SR-KAN's own bioprocess case study states plainly
@@ -154,7 +155,7 @@ hxt_cli("prepare", "--config", "prepare-config.json",
 out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
 lines = [l for l in out.splitlines() if "training complete" in l]
 print(lines[0] if lines else "training complete")
-print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
+print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[5])}")
 ```
 
 ```{code-cell} ipython3
@@ -269,7 +270,8 @@ TRUE_SCALE = {
 def eval_reaction_module(state_raw):
     scl = jnp.asarray(np.asarray(state_raw) / scale)
     h = kan.l1(scl)
-    return np.asarray(kan.l2(h) + kan.prod_a(h[0:1]) * kan.prod_b(h[1:2]))
+    out_scl = kan.l2(h) + kan.prod_a(h[0:1]) * kan.prod_b(h[1:2])
+    return np.asarray(kan.unscale_modeled_ReactionOde_rates(out_scl))
 
 pooled = {n: [] for n in names}
 for process in _collection.processes.values():
@@ -298,21 +300,25 @@ for out_idx, rate in enumerate(["q_biomass", "q_glucose", "q_product"]):
         other_effect.append(rel)
     fit = sweeps["glucose"][2]
     if fit["closest"] == "saturating":
-        a_fit, k_fit, _ = fit["fits"]["saturating"]["params"]
+        a_fit, k_fit, c_fit = fit["fits"]["saturating"]["params"]
         a_true, k_true = TRUE_SCALE[rate], TRUE["Ks"]
         equations.append(
-            f"{rate:10s}  learned: {a_fit:+.3f} * S / ({k_fit:.3f} + S)"
-            f"   true: {a_true:+.3f} * S / ({k_true:.3f} + S)"
+            f"{rate:10s}  learned: {a_fit:+.3f} * S / ({k_fit:.3f} + S) {c_fit:+.3f}"
+            f"   true: {a_true:+.3f} * S / ({k_true:.3f} + S) + 0"
         )
 
-print(f"Biomass and product together move each rate by at most "
+print("Varying biomass or product alone moves a rate by at most "
       f"{max(other_effect) * 100:.1f}% of what glucose does.\n")
 print("\n".join(equations))
 ```
 
-Biomass and product barely move any rate, matching the real process. Glucose alone
-traces a clean saturating curve for all three rates, the right shape. The learned
-scale and half-saturation numbers above land only roughly near the real ones.
+Glucose is the strongest input in these sweeps, and all three glucose responses match a
+saturating curve. The learned model also keeps a product effect on glucose uptake, about
+17% of glucose's effect, which the generating process does not have. Fitted amplitudes
+and offsets are in physical rate units; half-saturation constants are in g/L. The
+amplitudes differ from the true values, the half-saturation constants are much larger than `0.05 g/L`, and
+the fitted offsets are nonzero. Matching the shape does not recover the true
+parameters here.
 
 That gap is expected. Training sees only 3
 processes here (15 timepoints each, `BATCH_RUNS` in `generate.py`), and the
@@ -330,29 +336,25 @@ hyperparameter-tuned pipeline.
 
 ## Gotchas
 
-- **Inputs are `tanh`-bounded before hitting the RBF grid.** An untransformed
-  input that wandered past the fitted centers' range would extrapolate through
-  only the base `SiLU` term, silently losing the spline's local detail.
-- **`centers` is a `frozen_field()`, never trained.** The grid is fixed; only
-  `base_w` and `spline_c`, the edge functions' actual shape, move under
-  gradient descent.
-- **`l2`'s near-zero initialization is what keeps the ODE flat at step 0.**
-  Removing it does not error, it just starts training from a wild, effectively
-  random rate prediction.
+- **Inputs are `tanh`-bounded before hitting the RBF grid.** Far from the learned
+  centers, the Gaussian contributions become small and the base `SiLU` term
+  dominates. Bounding inputs does not guarantee training coverage.
+- **The grids are trainable in this module.** Each containing layer has
+  `trainable_field()`, which overrides its `centers` field's `frozen_field()`.
+  The centers move along with `base_w` and `spline_c` during training.
+- **`l2` starts at zero, but the product branches do not.** Initial rates
+  come entirely from their product, which bypasses `l2`. Zeroing `l2` does
+  not guarantee flat or small initial rates.
 - **`hidden` and `grid` are real capacity knobs**, exactly like a network's
   width. Too few edges or basis functions and the model cannot represent the
   trajectory; too many and every edge pays for a wider, mostly redundant
   radial-basis expansion.
-- **`prod_a`/`prod_b` break perfectly-flat-at-step-0 for all three rates**,
-  since every rate reads through `l2`'s shared sum. They start non-zero on
-  purpose (see above), so each rate starts very close to flat rather than
-  exactly flat.
 
 ## See Also
 
 The full, runnable example (`custom.py`, configs, data) lives in
 `examples/gallery_kan/` at the repo root, no docs build required. This page's own
-executed run is at `./source/_data/out/runs/gallery_kan/`.
+executed run is at `./docs/source/_data/out/runs/gallery_kan/`.
 
 - [The Reaction Module](../train/reaction_module.md): `auxiliary`, and
   everything else a `RateModule` can return.

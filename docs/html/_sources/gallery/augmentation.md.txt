@@ -57,7 +57,8 @@ files it produced.
 ## Configuration
 
 `prepare.augmentation` is most of it: how many synthetic children per parent, how many
-resampled timepoints each has, and a relative noise level per state.
+resampled timepoints each has, and an additive Gaussian noise standard deviation
+per state, expressed in that state's units. Here, `0.05` means 0.05 g/L.
 
 ```json
 {
@@ -67,22 +68,23 @@ resampled timepoints each has, and a relative noise level per state.
 }
 ```
 
-Only states named in `noise_std` are touched. `n_time_points` need not match the
-parent's own sampling: children are resampled onto new timepoints.
+Only states named in `noise_std` receive noise. Other modeled states with fitted
+splines are resampled without noise; states without splines are copied unchanged.
+`n_time_points` need not match the parent's own sampling.
 
 ## Splines First
 
 ```{literalinclude} ../../../examples/gallery_augmentation/custom.py
 :language: python
 :linenos:
-:lines: 21-27
+:pyobject: transform_process_collection
 ```
 
-Augmentation resamples each modeled state onto new timepoints, and that needs a fitted
-spline. A freshly loaded hybrax.format file has none:
-without this hook, `prepare` fails fast with `"modeled state 'biomass' requires a
-spline"` rather than guessing. `custom_py` must be set at the top level of the config
-(not inside `prepare`) for `prepare` to pick this hook up at all.
+Every state named in `noise_std` needs a fitted spline. This example's raw
+`data.json` has none, so the hook fits them before augmentation. Files can also
+contain splines saved earlier. Without this hook, `prepare` fails fast with
+`"modeled state 'biomass' requires a spline"`. Set `custom_py` at the top level
+of the config to load the hook.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -111,21 +113,22 @@ wrong here will look wrong in every downstream fit too.
 `glucose` crashes to near zero and stays there for most of the run (the same shape as
 [Fed-batch](fed_batch.md)), and the warning above is exactly that: the fitted spline
 dips slightly negative between two closely-spaced near-zero measurements. Augmentation
-clips every reactor-medium child value to `≥ 0` afterward, so this does not produce a
-physically invalid concentration, but it is a real sign to look at the plot rather than
-trust the config blindly.
+clips resampled reactor-medium values to `≥ 0` before `augment_state_values`.
+This example's running maximum preserves nonnegativity; replacement hooks must
+preserve it themselves. Check the diagnostic plot before training.
 
-## Fixing What Default Noise Gets Wrong
+## A Custom Shape Constraint
 
 ```{literalinclude} ../../../examples/gallery_augmentation/custom.py
 :language: python
 :linenos:
-:lines: 30-36
+:pyobject: augment_state_values
 ```
 
-`product` accumulates and should never decrease, but independent Gaussian noise per
-timepoint does not know that. The hook receives the noised values *after* the default
-transform and can repair them: here, a running maximum.
+For this hook demonstration, we impose a nondecreasing `product` trajectory on the
+resampled observations with a running maximum. Product concentration is not
+generally monotone in fed-batch: feeding can dilute it. The hook receives the
+noised values after clipping and applies this chosen shape constraint.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -197,25 +200,26 @@ the time `train` runs, the synthetic children are just more processes in the sto
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-root = WORK.parents[4]
+root = WORK.parents[5]
 print(f"run directory: ./{(WORK / 'run').relative_to(root)}")
 print(f"prepared augmentation diagnostic: ./{(WORK / 'prepared/augmented-data.png').relative_to(root)}")
 ```
 
 ## Gotchas
 
-- **Augmentation needs a fitted spline on every state it touches.** Fit one in
-  `transform_process_collection` before augmenting; a freshly loaded file has none.
-- **`custom_py` is a top-level config key.** Nesting it inside `prepare` silently means
-  no hooks are found (`prepare hooks default: transform_process_collection,
-  augment_state_values` in the log is the tell).
-- **Only states named in `noise_std` are generated with noise**; everything else is
-  copied from the parent's resampled trajectory unchanged.
+- **Every state named in `noise_std` needs a fitted spline.** This example's raw
+  `data.json` has none, so `transform_process_collection` fits them. Loading a file
+  with saved splines restores them.
+- **`custom_py` is a top-level config key.** Nesting it inside `prepare` raises
+  a validation error for an extra field.
+- **Only states named in `noise_std` receive noise.** Other modeled states with
+  fitted splines are resampled without noise; states without splines are copied
+  unchanged. Resampled reactor-medium values are clipped before the hook.
 - **`augment_state_values` runs after the default noise**: it receives `augmented_values`
   already populated, so it adjusts rather than replaces them outright.
 - **A spline can dip below zero between measurements**, especially near sharp features
-  like a near-zero glucose plateau. Reactor-medium children are clipped to `≥ 0`
-  afterward, but check the diagnostic plot for any state where this matters.
+  like a near-zero glucose plateau. Reactor-medium values are clipped to `≥ 0`
+  before the hook. Replacement hooks must preserve nonnegativity themselves.
 - **Cross-validation must stay group-aware.** A parent and its synthetic children carry
   the same information; splitting them across train and holdout leaks the answer. Use
   `hybrax.train`'s LOO ([worked example](loo.md)), which handles this for you.
@@ -226,7 +230,7 @@ print(f"prepared augmentation diagnostic: ./{(WORK / 'prepared/augmented-data.pn
 
 The full, runnable example (`custom.py`, configs, data) lives in
 `examples/gallery_augmentation/` at the repo root, no docs build required. This page's
-own executed run is at `./source/_data/out/runs/gallery_augmentation/`.
+own executed run is at `./docs/source/_data/out/runs/gallery_augmentation/`.
 
 - [Prepare](../train/prepare.md#augmentation): the config reference.
 - [Cross-Validation, Worked](loo.md): why augmented data needs group-aware folds.

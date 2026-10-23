@@ -400,13 +400,15 @@ fixes that, and because the scaling is linear the <em>same</em> factor converts 
 time derivative, so one number per axis handles both states and rates.</p>
 <div class="warning admonition">
 <p class="admonition-title">The double-scaling trap</p>
-<p>Your network reads <code class="docutils literal notranslate"><span class="pre">inputs.SCL_*</span></code> (already-scaled values) so whatever it emits is
-<em>already in SCL space</em>. Return it directly.</p>
-<p>If you additionally call a <code class="docutils literal notranslate"><span class="pre">scale_*</span></code> helper on the output, it cancels against the
-wrapper’s unscale step on the way back to physical units, and your rates end up off by
-the scale factor. Both conventions appear in the shipped examples depending on what the
-network is defined to emit, which is exactly why this catches people. Rule of thumb: <strong>if
-the input was SCL, the output is SCL.</strong></p>
+<p><code class="docutils literal notranslate"><span class="pre">ReactionOutputs</span></code> always expects <strong>SCL</strong> rates; the wrapper unscales them on the way back
+to physical units. Your inputs (<code class="docutils literal notranslate"><span class="pre">inputs.SCL_*</span></code>) are SCL too, but that does not decide what
+your module computes in between.</p>
+<p>The MLP in this tutorial is trained to emit SCL rates, so it returns them directly. A
+module that computes physical rates (Monod kinetics in g/L, say) must convert them with
+<code class="docutils literal notranslate"><span class="pre">scale_modeled_ReactionOde_rates</span></code> before returning them. Converting twice, or forgetting
+to convert, leaves your rates off by the scale factor. Both conventions appear in the
+shipped examples depending on what the module computes, which is exactly why this catches
+people. Rule of thumb: <strong>compute in whichever space you like, but return SCL.</strong></p>
 </div>
 </section>
 <section id="the-file">
@@ -459,80 +461,77 @@ the input was SCL, the output is SCL.</strong></p>
 <span class="linenos"> 46</span>
 <span class="linenos"> 47</span>    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">ReactionInputs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOutputs</span><span class="p">:</span>
 <span class="linenos"> 48</span>        <span class="k">del</span> <span class="n">t</span>  <span class="c1"># this model has no explicit time dependence</span>
-<span class="linenos"> 49</span>        <span class="c1"># The network reads SCL inputs, so its output is ALREADY in SCL space.</span>
-<span class="linenos"> 50</span>        <span class="c1"># Emit it directly: do not re-apply scale_*, or it cancels on the</span>
-<span class="linenos"> 51</span>        <span class="c1"># wrapper's unscale round trip. See the note in the tutorial text.</span>
-<span class="linenos"> 52</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
-<span class="linenos"> 53</span>            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mlp</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">),</span>
-<span class="linenos"> 54</span>            <span class="c1"># demo_batch has no modeled feeds, but the field is still required.</span>
-<span class="linenos"> 55</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos"> 56</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
-<span class="linenos"> 57</span>        <span class="p">)</span>
+<span class="linenos"> 49</span>        <span class="c1"># ReactionOutputs always expects SCL rates. This MLP is trained to emit</span>
+<span class="linenos"> 50</span>        <span class="c1"># SCL rates, so return them directly. See the note in the tutorial text.</span>
+<span class="linenos"> 51</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
+<span class="linenos"> 52</span>            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mlp</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">),</span>
+<span class="linenos"> 53</span>            <span class="c1"># demo_batch has no modeled feeds, but the field is still required.</span>
+<span class="linenos"> 54</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+<span class="linenos"> 55</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+<span class="linenos"> 56</span>        <span class="p">)</span>
+<span class="linenos"> 57</span>
 <span class="linenos"> 58</span>
-<span class="linenos"> 59</span>
-<span class="linenos"> 60</span><span class="k">def</span><span class="w"> </span><span class="nf">build_reaction_module</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">seed</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<span class="linenos"> 61</span>    <span class="n">scale_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"SCALE_"</span><span class="p">)}</span>
-<span class="linenos"> 62</span>    <span class="k">return</span> <span class="n">BatchReactionModule</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">key</span><span class="p">(</span><span class="n">seed</span><span class="p">),</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
+<span class="linenos"> 59</span><span class="k">def</span><span class="w"> </span><span class="nf">build_reaction_module</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">seed</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="linenos"> 60</span>    <span class="n">scale_kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"SCALE_"</span><span class="p">)}</span>
+<span class="linenos"> 61</span>    <span class="k">return</span> <span class="n">BatchReactionModule</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">key</span><span class="p">(</span><span class="n">seed</span><span class="p">),</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">)</span>
+<span class="linenos"> 62</span>
 <span class="linenos"> 63</span>
-<span class="linenos"> 64</span>
-<span class="linenos"> 65</span><span class="c1"># --------------------------------------------------------------------------</span>
-<span class="linenos"> 66</span><span class="c1"># 2. Scale estimation: make every axis O(1)</span>
-<span class="linenos"> 67</span><span class="c1"># --------------------------------------------------------------------------</span>
-<span class="linenos"> 68</span><span class="k">def</span><span class="w"> </span><span class="nf">estimate_all_scales</span><span class="p">(</span><span class="n">runtime_data</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
-<span class="linenos"> 69</span>    <span class="k">del</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span>
-<span class="linenos"> 70</span>    <span class="n">rhs</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">rhs_ode</span>
-<span class="linenos"> 71</span>    <span class="n">n_processes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
-<span class="linenos"> 72</span>
-<span class="linenos"> 73</span>    <span class="c1"># A state scale is just "how big does this species get, anywhere in the data".</span>
-<span class="linenos"> 74</span>    <span class="k">def</span><span class="w"> </span><span class="nf">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
-<span class="linenos"> 75</span>        <span class="n">best</span> <span class="o">=</span> <span class="mf">0.0</span>
-<span class="linenos"> 76</span>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">):</span>
-<span class="linenos"> 77</span>            <span class="n">_</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
-<span class="linenos"> 78</span>            <span class="k">if</span> <span class="n">values</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
-<span class="linenos"> 79</span>                <span class="n">best</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">values</span><span class="p">))))</span>
-<span class="linenos"> 80</span>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">)</span>  <span class="c1"># floor: never divide by zero</span>
-<span class="linenos"> 81</span>
-<span class="linenos"> 82</span>    <span class="n">rmc_scale</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">}</span>
-<span class="linenos"> 83</span>
-<span class="linenos"> 84</span>    <span class="c1"># Rate scales are estimated from the data too. The average specific rate of a</span>
-<span class="linenos"> 85</span>    <span class="c1"># species is its total change divided by the integrated biomass exposure,</span>
-<span class="linenos"> 86</span>    <span class="c1"># which is exactly what "specific" means. Do NOT use max(biomass): biomass</span>
-<span class="linenos"> 87</span>    <span class="c1"># grows by two orders of magnitude over a batch, so dividing by its peak</span>
-<span class="linenos"> 88</span>    <span class="c1"># underestimates the rate several-fold.</span>
-<span class="linenos"> 89</span>    <span class="k">def</span><span class="w"> </span><span class="nf">rate_scale_for</span><span class="p">(</span><span class="n">species</span><span class="p">):</span>
-<span class="linenos"> 90</span>        <span class="n">per_process</span> <span class="o">=</span> <span class="p">[]</span>
-<span class="linenos"> 91</span>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">):</span>
-<span class="linenos"> 92</span>            <span class="n">_c_times</span><span class="p">,</span> <span class="n">c_values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">species</span><span class="p">)</span>
-<span class="linenos"> 93</span>            <span class="n">x_times</span><span class="p">,</span> <span class="n">x_values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="s2">"biomass"</span><span class="p">)</span>
-<span class="linenos"> 94</span>            <span class="n">exposure</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trapezoid</span><span class="p">(</span><span class="n">x_values</span><span class="p">,</span> <span class="n">x_times</span><span class="p">)</span>
-<span class="linenos"> 95</span>            <span class="n">per_process</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">c_values</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">c_values</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">exposure</span><span class="p">,</span> <span class="mf">1e-9</span><span class="p">))</span>
-<span class="linenos"> 96</span>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">per_process</span><span class="p">),</span> <span class="mf">1e-9</span><span class="p">)</span>
-<span class="linenos"> 97</span>
-<span class="linenos"> 98</span>    <span class="n">rate_scale</span> <span class="o">=</span> <span class="p">[</span><span class="n">rate_scale_for</span><span class="p">(</span><span class="n">name</span><span class="p">[</span><span class="mi">2</span><span class="p">:])</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_rates</span><span class="p">]</span>
-<span class="linenos"> 99</span>
-<span class="linenos">100</span>    <span class="n">empty</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>  <span class="c1"># demo_batch has no feeds and no process variables</span>
-<span class="linenos">101</span>    <span class="k">return</span> <span class="n">EstimatedScales</span><span class="p">(</span>
-<span class="linenos">102</span>        <span class="n">SCALE_modeled_RMCs</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">rmc_scale</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">]),</span>
-<span class="linenos">103</span>        <span class="n">SCALE_modeled_ReactionOde_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rate_scale</span><span class="p">),</span>
-<span class="linenos">104</span>        <span class="n">SCALE_V_in_cumulative</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
-<span class="linenos">105</span>            <span class="nb">max</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">initial_volume</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">))</span>
-<span class="linenos">106</span>        <span class="p">),</span>
-<span class="linenos">107</span>        <span class="n">SCALE_modeled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">108</span>        <span class="n">SCALE_modeled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">109</span>        <span class="n">SCALE_modeled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">110</span>        <span class="n">SCALE_modeled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">111</span>        <span class="n">SCALE_controlled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">112</span>        <span class="n">SCALE_controlled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">113</span>        <span class="n">SCALE_controlled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">114</span>        <span class="n">SCALE_controlled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">115</span>        <span class="n">SCALE_controlled_PVs</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
-<span class="linenos">116</span>        <span class="n">SCALE_controlled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos">117</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
+<span class="linenos"> 64</span><span class="c1"># --------------------------------------------------------------------------</span>
+<span class="linenos"> 65</span><span class="c1"># 2. Scale estimation: make every axis O(1)</span>
+<span class="linenos"> 66</span><span class="c1"># --------------------------------------------------------------------------</span>
+<span class="linenos"> 67</span><span class="k">def</span><span class="w"> </span><span class="nf">estimate_all_scales</span><span class="p">(</span><span class="n">runtime_data</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
+<span class="linenos"> 68</span>    <span class="k">del</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span>
+<span class="linenos"> 69</span>    <span class="n">rhs</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">rhs_ode</span>
+<span class="linenos"> 70</span>    <span class="n">n_processes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">process_order</span><span class="p">)</span>
+<span class="linenos"> 71</span>
+<span class="linenos"> 72</span>    <span class="c1"># A state scale is just "how big does this species get, anywhere in the data".</span>
+<span class="linenos"> 73</span>    <span class="k">def</span><span class="w"> </span><span class="nf">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+<span class="linenos"> 74</span>        <span class="n">best</span> <span class="o">=</span> <span class="mf">0.0</span>
+<span class="linenos"> 75</span>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">):</span>
+<span class="linenos"> 76</span>            <span class="n">_</span><span class="p">,</span> <span class="n">values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+<span class="linenos"> 77</span>            <span class="k">if</span> <span class="n">values</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
+<span class="linenos"> 78</span>                <span class="n">best</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">values</span><span class="p">))))</span>
+<span class="linenos"> 79</span>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">best</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">)</span>  <span class="c1"># floor: never divide by zero</span>
+<span class="linenos"> 80</span>
+<span class="linenos"> 81</span>    <span class="n">rmc_scale</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">max_abs_state</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">}</span>
+<span class="linenos"> 82</span>
+<span class="linenos"> 83</span>    <span class="c1"># Rate scales are estimated from the data too: concentration change divided</span>
+<span class="linenos"> 84</span>    <span class="c1"># by the trapezoidal biomass integral, keeping the largest estimate across</span>
+<span class="linenos"> 85</span>    <span class="c1"># runs. Peak biomass times duration is also a suitable simple estimate here.</span>
+<span class="linenos"> 86</span>    <span class="k">def</span><span class="w"> </span><span class="nf">rate_scale_for</span><span class="p">(</span><span class="n">species</span><span class="p">):</span>
+<span class="linenos"> 87</span>        <span class="n">per_process</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="linenos"> 88</span>        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">):</span>
+<span class="linenos"> 89</span>            <span class="n">_c_times</span><span class="p">,</span> <span class="n">c_values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">species</span><span class="p">)</span>
+<span class="linenos"> 90</span>            <span class="n">x_times</span><span class="p">,</span> <span class="n">x_values</span> <span class="o">=</span> <span class="n">runtime_data</span><span class="o">.</span><span class="n">raw_state_trace</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="s2">"biomass"</span><span class="p">)</span>
+<span class="linenos"> 91</span>            <span class="n">exposure</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">trapezoid</span><span class="p">(</span><span class="n">x_values</span><span class="p">,</span> <span class="n">x_times</span><span class="p">)</span>
+<span class="linenos"> 92</span>            <span class="n">per_process</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">c_values</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">c_values</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">/</span> <span class="nb">max</span><span class="p">(</span><span class="n">exposure</span><span class="p">,</span> <span class="mf">1e-9</span><span class="p">))</span>
+<span class="linenos"> 93</span>        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">per_process</span><span class="p">),</span> <span class="mf">1e-9</span><span class="p">)</span>
+<span class="linenos"> 94</span>
+<span class="linenos"> 95</span>    <span class="n">rate_scale</span> <span class="o">=</span> <span class="p">[</span><span class="n">rate_scale_for</span><span class="p">(</span><span class="n">name</span><span class="p">[</span><span class="mi">2</span><span class="p">:])</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_rates</span><span class="p">]</span>
+<span class="linenos"> 96</span>
+<span class="linenos"> 97</span>    <span class="n">empty</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>  <span class="c1"># demo_batch has no feeds and no process variables</span>
+<span class="linenos"> 98</span>    <span class="k">return</span> <span class="n">EstimatedScales</span><span class="p">(</span>
+<span class="linenos"> 99</span>        <span class="n">SCALE_modeled_RMCs</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">rmc_scale</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">]),</span>
+<span class="linenos">100</span>        <span class="n">SCALE_modeled_ReactionOde_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rate_scale</span><span class="p">),</span>
+<span class="linenos">101</span>        <span class="n">SCALE_V_in_cumulative</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
+<span class="linenos">102</span>            <span class="nb">max</span><span class="p">(</span><span class="n">runtime_data</span><span class="o">.</span><span class="n">initial_volume</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_processes</span><span class="p">))</span>
+<span class="linenos">103</span>        <span class="p">),</span>
+<span class="linenos">104</span>        <span class="n">SCALE_modeled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
+<span class="linenos">105</span>        <span class="n">SCALE_modeled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
+<span class="linenos">106</span>        <span class="n">SCALE_modeled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
+<span class="linenos">107</span>        <span class="n">SCALE_modeled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
+<span class="linenos">108</span>        <span class="n">SCALE_controlled_Inflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
+<span class="linenos">109</span>        <span class="n">SCALE_controlled_Inflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
+<span class="linenos">110</span>        <span class="n">SCALE_controlled_Outflows_cumulative</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
+<span class="linenos">111</span>        <span class="n">SCALE_controlled_Outflows_rates</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
+<span class="linenos">112</span>        <span class="n">SCALE_controlled_PVs</span><span class="o">=</span><span class="n">empty</span><span class="p">,</span>
+<span class="linenos">113</span>        <span class="n">SCALE_controlled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
+<span class="linenos">114</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
+<span class="linenos">115</span>        <span class="p">),</span>
+<span class="linenos">116</span>        <span class="n">SCALE_modeled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
+<span class="linenos">117</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
 <span class="linenos">118</span>        <span class="p">),</span>
-<span class="linenos">119</span>        <span class="n">SCALE_modeled_Inflows_Cin</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span>
-<span class="linenos">120</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">rhs</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span><span class="p">)),</span> <span class="mf">1.0</span>
-<span class="linenos">121</span>        <span class="p">),</span>
-<span class="linenos">122</span>    <span class="p">)</span>
+<span class="linenos">119</span>    <span class="p">)</span>
 </pre></div>
 </div>
 <p>Three things to notice.</p>
@@ -549,13 +548,19 @@ has no default for either; omitting one is a <code class="docutils literal notra
 <h3>What <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code> is actually doing<a class="headerlink" href="#what-estimate-all-scales-is-actually-doing" title="Link to this heading">¶</a></h3>
 <p>State scales are easy: how big does this species get. Rate scales need one step of
 thought. The module emits an O(1) number; that number is multiplied by the rate scale to
-become a physical rate. You want the resulting <em>state change over the run</em> to be about
-the size of the state. For a specific rate, <code class="docutils literal notranslate"><span class="pre">d(c)/dt</span> <span class="pre">=</span> <span class="pre">q_c</span> <span class="pre">·</span> <span class="pre">biomass</span></code>, so</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>scale(q_c)  ~  scale(c) / (scale(biomass) · duration)
+become a physical rate. So the rate scale should be the typical size of the rate itself.
+For a specific rate, <code class="docutils literal notranslate"><span class="pre">d(c)/dt</span> <span class="pre">=</span> <span class="pre">q_c</span> <span class="pre">·</span> <span class="pre">biomass</span></code>; integrating over a run gives an average</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>q_c  ~  |c_end - c_start| / ∫ biomass dt
 </pre></div>
 </div>
-<p>which is the one line in the middle of the hook. Get this wrong in the optimistic
-direction and the concentrations blow up on the first solve, before any training happens.</p>
+<p>which <code class="docutils literal notranslate"><span class="pre">rate_scale_for</span></code> estimates for each process using trapezoidal integration of the
+biomass measurements, then keeps the largest estimate across processes. With exact
+measurements and an exact integral, the formula recovers the magnitude of a constant
+specific rate exactly. Peak biomass times duration is a simpler estimate of the
+integral; it gives a rate scale about half as large here, which is still suitable. The
+aim is the right order of magnitude. A rate scale far too large can amplify the
+untrained network’s outputs enough to cause unrealistic concentrations or solver
+failure on the first solve.</p>
 </section>
 </section>
 <section id="train-it">
@@ -565,27 +570,29 @@ direction and the concentrations blow up on the first solve, before any training
 <span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"prepared"</span><span class="p">:</span><span class="w"> </span><span class="s2">"prepared"</span><span class="w"> </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"custom_py"</span><span class="p">:</span><span class="w"> </span><span class="s2">"custom.py"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"epochs"</span><span class="p">:</span><span class="w"> </span><span class="mi">300</span><span class="p">,</span><span class="w"> </span><span class="nt">"seed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="nt">"learning_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.01</span><span class="w"> </span><span class="p">},</span>
-<span class="w">  </span><span class="nt">"output"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"dir"</span><span class="p">:</span><span class="w"> </span><span class="s2">"run_custom"</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="nt">"checkpoint"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"every"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"output"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"dir"</span><span class="p">:</span><span class="w"> </span><span class="s2">"run_custom"</span><span class="p">,</span><span class="w"> </span><span class="nt">"predictions"</span><span class="p">:</span><span class="w"> </span><span class="s2">"parents"</span><span class="w"> </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
 </div>
-<p>The learning rate is ten times the default’s. That is deliberate, and the point of the
-comparison below: it is only <em>safe</em> to raise it because the state is scaled. Try the same
-learning rate on the unscaled defaults and the solve diverges to <code class="docutils literal notranslate"><span class="pre">inf</span></code> within the first
-few steps: conditioning is not a nice-to-have, it is what lets you use a normal
-optimizer setting at all.</p>
+<p><code class="docutils literal notranslate"><span class="pre">&quot;predictions&quot;:</span> <span class="pre">&quot;parents&quot;</span></code> writes the <code class="docutils literal notranslate"><span class="pre">predictions.csv</span></code> used for the comparison below
+(the default is <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code>), and <code class="docutils literal notranslate"><span class="pre">&quot;checkpoint&quot;:</span> <span class="pre">{</span> <span class="pre">&quot;every&quot;:</span> <span class="pre">0</span> <span class="pre">}</span></code> turns off periodic
+checkpoints for this short run.</p>
+<p>The learning rate is ten times the default’s <code class="docutils literal notranslate"><span class="pre">0.001</span></code>. Keep that in mind for the
+comparison below: the custom run changes the learning rate as well as the network and the
+scales.</p>
 </section>
 <section id="did-it-help">
 <h2>Did it help?<a class="headerlink" href="#did-it-help" title="Link to this heading">¶</a></h2>
-<p>Same data, same seed, same epoch budget. Two things differ: this <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, and the
-learning rate it makes safe to use.</p>
-<p>Loss values are not the fair comparison here: the default run’s loss lives in raw g/L,
-the scaled run’s in relative units, and those are not the same number. The fair,
-scale-free comparison is <strong>R² in physical space</strong>, computed by re-interpolating each
-run’s predictions back onto the actual measurement times:</p>
+<p>Same data, same seed, same epoch budget. Two things differ: this <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> (a bigger
+network plus data-driven scales), and the learning rate.</p>
+<p>Loss values are not the fair comparison here: the default run’s loss is a mean squared
+error in raw (g/L)², the scaled run’s is relative to each target’s scale, and those are
+not the same number. The fair, scale-free comparison is <strong>R² in physical space</strong>, computed
+by re-interpolating each run’s predictions back onto the actual measurement times:</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>run directories: ./source/_data/out/runs/tutorial_04/run_default and ./source/_data/out/runs/tutorial_04/run_custom
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>run directories: ./docs/source/_data/out/runs/tutorial_04/run_default and ./docs/source/_data/out/runs/tutorial_04/run_custom
 both self-contained: cp -r either one anywhere and keep working from the copy
 target       defaults  custom.py
 biomass        0.9936     0.9962
@@ -596,15 +603,17 @@ product        0.9859     0.9987
 </div>
 </div>
 <p>Biomass and glucose are close either way (this dataset is small enough that the defaults
-already fit them well. <strong>Product is where the two diverge.</strong> It is the smallest-magnitude
-target (peaking around 0.5 g/L against glucose’s 10 g/L), and with no scaling the loss is
-implicitly dominated by whichever axis has the largest raw magnitude) glucose. Product’s
+already fit them well). <strong>Product is where the two diverge.</strong> It is the smallest-magnitude
+target (peaking below 1 g/L against glucose’s 20 g/L), and with no scaling the loss is
+implicitly dominated by whichever axis has the largest raw magnitude: glucose. Product’s
 error barely moves the unscaled loss, so the optimizer has little reason to fit it well.
-Once every axis is normalised to O(1), each target pulls equally, and product stops being
-the one that got left behind.</p>
+Once each target’s error is measured relative to its own scale, product’s error counts
+as much as glucose’s.</p>
 <p>That is the actual argument for scaling: not “converges faster” in general, but “every
-target gets a fair share of the gradient”, which matters most for whichever quantity in
-your dataset happens to be smallest.</p>
+target gets a fair share of the loss”, which matters most for whichever quantity in your
+dataset happens to be smallest. This comparison also changes the network and the learning
+rate, so it does not isolate scaling: rerun the defaults with <code class="docutils literal notranslate"><span class="pre">&quot;learning_rate&quot;:</span> <span class="pre">0.01</span></code> to
+see how much of the gap comes from that alone.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <img alt="../_images/bb34f5b72281157891fb85404a40b4d518d23f3df5d2e3261aa94c10fa552e42.png" src="../_images/bb34f5b72281157891fb85404a40b4d518d23f3df5d2e3261aa94c10fa552e42.png" />
@@ -721,11 +730,11 @@ effect, check the spelling first. See
 <h2>What you learned<a class="headerlink" href="#what-you-learned" title="Link to this heading">¶</a></h2>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">custom.py</span></code> is plain Python; hooks are found by name, and missing ones use defaults.</p></li>
-<li><p>The ODE is integrated in <strong>SCL</strong> space; if your input was SCL, your output is SCL.</p></li>
+<li><p>The ODE is integrated in <strong>SCL</strong> space; your reaction module always returns SCL rates.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">trainable_field()</span></code> opts a field in; everything untagged is frozen.</p></li>
-<li><p>Scaling is optional, has no error when omitted, and buys you two things: an optimizer
-setting that would otherwise diverge, and a loss where your smallest-magnitude target
-isn’t drowned out by your largest.</p></li>
+<li><p>Scaling is optional and has no error when omitted (every scale is then 1). It buys you a
+better-conditioned solve and a loss where your smallest-magnitude target isn’t drowned
+out by your largest.</p></li>
 <li><p>Compare runs by <strong>R² in physical space</strong>, not by raw loss: an unscaled and a scaled
 run don’t share loss units.</p></li>
 </ul>
@@ -819,7 +828,7 @@ run don’t share loss units.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

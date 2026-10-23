@@ -86,10 +86,11 @@ def dense_diagnostics(run_dir):
     curvature = {"q_biomass": [], "q_glucose": []}
     for _, proc_df in df.groupby("process"):
         t = proc_df["t"].to_numpy()
-        dt = t[1] - t[0]
+        h = np.diff(t)
         for rate in curvature:
             y = proc_df[rate].to_numpy()
-            d2 = (y[2:] - 2 * y[1:-1] + y[:-2]) / dt**2
+            slopes = np.diff(y) / h
+            d2 = 2 * np.diff(slopes) / (h[1:] + h[:-1])
             curvature[rate].append(float(np.sqrt(np.mean(d2**2))))
     return min_glucose, {k: float(np.mean(v)) for k, v in curvature.items()}
 ```
@@ -105,7 +106,7 @@ hook:
 ```{literalinclude} ../../../examples/gallery_dense_loss/custom.py
 :language: python
 :linenos:
-:lines: 118-125
+:pyobject: transform_process_collection
 ```
 
 This is exactly the use hybrax.format's docs describe for `Bounds`: *"pure metadata (not
@@ -116,7 +117,7 @@ automatically: the loss module below reads them itself, once, at construction:
 ```{literalinclude} ../../../examples/gallery_dense_loss/custom.py
 :language: python
 :linenos:
-:lines: 198-219
+:pyobject: build_loss_module
 ```
 
 ## 2. The Hinge Penalty, on the Dense Grid
@@ -124,7 +125,7 @@ automatically: the loss module below reads them itself, once, at construction:
 ```{literalinclude} ../../../examples/gallery_dense_loss/custom.py
 :language: python
 :linenos:
-:lines: 163-177
+:lines: 170-188
 ```
 
 `-inf`/`+inf` for an unbounded side falls straight out of the `clip`, so there is no
@@ -138,7 +139,7 @@ grid's own post-solver-failure mask.
 ```{literalinclude} ../../../examples/gallery_dense_loss/custom.py
 :language: python
 :linenos:
-:lines: 179-189
+:lines: 190-202
 ```
 
 The curvature is a plain central second difference; `dense_t` is a uniform linspace, so a
@@ -149,12 +150,11 @@ triple_mask = all_triple(valid) & dense_triple_mask_away_from_jumps(
     inputs.dense_t, inputs.jump_ts, jump_epsilon_h=2.0 * dt)
 ```
 
-A bolus creates a real, physical kink in concentration (and therefore in the inferred
-rate). Penalising curvature there would fight the data. `dense_triple_mask_away_from_jumps`
-is shipped by `hybrax.train` for exactly this: it excludes any three-point window whose span
-straddles a jump time, so smoothness is only asked for where the process is actually
-smooth. `demo_batch` has no events, so this mask is a no-op here; see
-[Fed-batch](fed_batch.md) for where it matters.
+`dense_triple_mask_away_from_jumps` excludes three-point windows that straddle
+the supplied jump times, with the specified padding. Here it masks declared control
+discontinuities from `LossInputs.jump_ts`. Bolus and sample times are separate;
+include them explicitly before reusing this curvature penalty on a process with
+state jumps. `demo_batch` has no events, so this mask is a no-op here.
 
 ## Training
 
@@ -166,7 +166,7 @@ hxt_cli("prepare", "--config", "prepare-config.json",
 out = hxt_cli("train", "--config", "train-full.json", "--overwrite")
 lines = [l for l in out.splitlines() if "training complete" in l]
 print(lines[0] if lines else "training complete")
-print(f"run directory: ./{(WORK / 'run_full').relative_to(WORK.parents[4])}")
+print(f"run directory: ./{(WORK / 'run_full').relative_to(WORK.parents[5])}")
 ```
 
 ## Did It Cost Anything?
@@ -197,7 +197,7 @@ shutil.copy(EXAMPLE / "data.json", WORK / "data_base.json")
 shutil.copy(EXAMPLE / "base.py", WORK / "base.py")
 shutil.copy(EXAMPLE / "train-base.json", WORK / "train-base.json")
 hxt_cli("train", "--config", "train-base.json", "--overwrite")
-print(f"comparison run directory: ./{(WORK / 'run_base').relative_to(WORK.parents[4])}")
+print(f"comparison run directory: ./{(WORK / 'run_base').relative_to(WORK.parents[5])}")
 
 r2_base = r2_by_target("run_base")
 min_glucose_base, curvature_base = dense_diagnostics("run_base")
@@ -211,12 +211,10 @@ print(f"{'curv(q_X)':10s} {curvature_base['q_biomass']:12.4f} {curvature['q_biom
 print(f"{'curv(q_S)':10s} {curvature_base['q_glucose']:12.4f} {curvature['q_glucose']:14.4f}")
 ```
 
-Fit quality is essentially unchanged: every R² moves by less than a percentage point.
-What changed is what happens *between* measurements: the worst glucose excursion goes
-from clearly negative to essentially zero, and both rate trajectories are visibly less
-wiggly. This is the actual case for dense-grid penalties: they are close to free when the
-constraint is compatible with the data, and they catch exactly the failure mode that
-measurement-only losses cannot see.
+The diagnostic uses a nonuniform-grid second derivative because `predictions.csv`
+contains the union of measurement and prediction times. Compare the R² values,
+minimum glucose and RMS rate curvature above to assess the effect of the penalties.
+The loss itself uses the separate, uniform `dense_t` grid.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -231,11 +229,11 @@ Image(filename=str(WORK / "run_full/forward/plots/run_1.png"))
 
 The full, runnable example (`custom.py`, configs, data) lives in
 `examples/gallery_dense_loss/` at the repo root, no docs build required. This page's own
-executed run is at `./source/_data/out/runs/gallery_dense_loss/`.
+executed run is at `./docs/source/_data/out/runs/gallery_dense_loss/`.
 
 - [The Loss Module](../train/loss_module.md#the-dense-grid): `dense_grid_n` and every
   `dense_*` field.
 - [Tutorial 4](../tutorials/04_your_first_custom_py.md): the reaction module and scales
   this builds on.
-- [Fed-batch](fed_batch.md): a process with real jumps, where the away-from-jumps
-  masking actually does something.
+- [Fed-batch](fed_batch.md): a process with bolus and sample events. Include those
+  times explicitly when adapting this curvature penalty.

@@ -1,6 +1,6 @@
 """Gallery: PLS-dFBA.
 
-FBA-Hyb's surrogate, extended with a real PLS-shaped component (linear,
+FBA-Hyb's surrogate, extended with a PLS-inspired component (linear,
 low-rank latent-variable regression) that reads media composition alongside
 state, so a controllable recipe choice (media_blend_fraction) measurably
 shifts the predicted metabolic corridor.

@@ -116,29 +116,30 @@ Image(filename=str(WORK / "recovery.png"))
 ```
 
 ```{code-cell} ipython3
-# Error only where a segment actually has data on both sides. Evaluating a
-# 2-point segment beyond its own last measurement is pure extrapolation.
+# Compare the intervals away from the jump and the full plotted grid.
 pre = np.linspace(0.0, SJ_T_JUMP - 1.0, 200)
 post = np.linspace(SJ_T_JUMP + 1.0, SJ_T_END, 200)
-for label, grid in [("pre-jump [0, 9]", pre), ("post-jump [11, 17]", post)]:
+for label, grid in [
+    ("pre-jump [0, 9]", pre),
+    ("post-jump [11, 17]", post),
+    ("full plotted grid [0, 17]", dense_t),
+]:
     rec = np.asarray(back(grid))
     rel = np.abs(rec - spline_jump_truth(grid)) / spline_jump_truth(grid)
     print(f"{label}: max relative error {rel.max() * 100:4.1f}%   "
           f"mean {rel.mean() * 100:4.1f}%")
 ```
 
-A real, honest fit: within roughly 14% of the true curve at its worst, both before and
-after the jump, from 5 points total. The dashed curve tracks the true decay's shape
-closely, including its curvature between the two endpoints.
+Maximum relative error is about 14% on `[0, 9]` and `[11, 17]`. On the full plotted
+grid it reaches about 22% near the jump.
 
-:::{admonition} Why the post-jump segment is the weaker fit
+:::{admonition} One fit through all five transformed measurements
 :class: note
-The pre-jump segment has 3 measurements (0, 4, 9 h); the post-jump segment has only 2
-(11, 17 h). `fit_timeseries_spline` needs at least 4 points per segment for its smoothing
-B-spline path, so both segments here fall back to natural cubic interpolation, and 2
-points pin a natural cubic down to very nearly a straight line. That line still tracks
-an honestly-curved exponential decay to within ~14% here, and the weaker half is the
-2-point one for exactly that reason.
+The transform fits one cubic B-spline through all five transformed measurements,
+with zero smoothing. The backtransform restores the physical bolus jump using the
+ADF and feed correction. Evaluating between 9 h and 11 h is interpolation within
+this fit, but measurements are sparse near the jump, so accuracy there must be
+checked separately.
 :::
 
 ## What Made This Example Different
@@ -146,18 +147,14 @@ an honestly-curved exponential decay to within ~14% here, and the weaker half is
 - **No reaction module, no `custom.py`, no training.** The pseudobatch transform and
   spline fitting are hybrax.format's own, and stop being useful to demonstrate the moment
   `hybrax.train` enters the picture.
-- **A closed-form ground truth.** Every other demo dataset in this site is simulated
-  with RK4 and compared to noisy measurements of itself. This one has an exact answer to
-  check the fit against, because that is the whole point of the page.
-- **5 points is a tight budget.** One of the two segments this jump creates
-  is forced into the 2-point, near-linear fallback. That the fit still tracks a real,
-  curved decay to ~14% is the actual demonstration.
+- **A closed-form ground truth.** It lets us check interpolation error between the
+  sparse measurements, including near the bolus.
 
 ## See Also
 
 The full example (configs, data) lives in `examples/gallery_pseudobatch_splines/` at the
 repo root, no docs build required. This page's own executed run is at
-`./source/_data/out/runs/gallery_pseudobatch_splines/`.
+`./docs/source/_data/out/runs/gallery_pseudobatch_splines/`.
 
 - [The pseudobatch transform](../format/pseudobatch_transform.md): what
   `build_pseudobatch_transform` and `build_backtransform_spline` actually compute.

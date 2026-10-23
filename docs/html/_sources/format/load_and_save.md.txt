@@ -151,7 +151,7 @@ out = Path("../_data/out/runs/roundtrip").resolve()
 out.mkdir(parents=True, exist_ok=True)
 with contextlib.redirect_stdout(io.StringIO()):
     hxf.serialization.save_process_collection(collection, out / "data.json")
-print(f"./{(out / 'data.json').relative_to(out.parents[4])}")
+print(f"./{(out / 'data.json').relative_to(out.parents[5])}")
 
 again = hxf.serialization.load_process_collection(out / "data.json")
 before = collection.processes["run_1"].reactor_medium.components["biomass"].concentration

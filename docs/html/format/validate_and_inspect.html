@@ -379,11 +379,14 @@
 <div><p>Make the package report what it understood, before you spend a day training against a
 misdescribed dataset. The cheapest page in the guide to read.</p>
 </div></blockquote>
-<section id="validation-is-non-raising-and-exhaustive">
-<h2>Validation is non-raising and exhaustive<a class="headerlink" href="#validation-is-non-raising-and-exhaustive" title="Link to this heading">¶</a></h2>
-<p>Every validator returns <code class="docutils literal notranslate"><span class="pre">(ok,</span> <span class="pre">message)</span></code> rather than throwing. That is deliberate: it lets
-the aggregate collect <strong>all</strong> problems in one pass, so you fix a dataset once instead of
-discovering issues one failed run at a time.</p>
+<section id="validation-collects-data-quality-problems-instead-of-raising">
+<h2>Validation collects data-quality problems instead of raising<a class="headerlink" href="#validation-collects-data-quality-problems-instead-of-raising" title="Link to this heading">¶</a></h2>
+<p>For data-quality problems, validators return <code class="docutils literal notranslate"><span class="pre">(ok,</span> <span class="pre">message)</span></code> rather than throwing. That is
+deliberate: it lets the aggregate collect <strong>all</strong> problems in one pass, so you fix a
+dataset once instead of discovering issues one failed run at a time. Passing the wrong
+object type is the exception: <code class="docutils literal notranslate"><span class="pre">validate_process</span></code> needs a <code class="docutils literal notranslate"><span class="pre">BioProcess</span></code> and
+<code class="docutils literal notranslate"><span class="pre">validate_for_publication</span></code> a <code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code>, and both raise <code class="docutils literal notranslate"><span class="pre">TypeError</span></code>
+otherwise.</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">hybrax.format</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">hxf</span>
@@ -427,9 +430,11 @@ discovering issues one failed run at a time.</p>
 </div>
 </div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">validate_for_publication</span></code> runs the same per-process checks and adds cross-process
-ones: principally that every run has the same structure, so a model trained on one can
-be applied to another.</p>
+<p><code class="docutils literal notranslate"><span class="pre">validate_for_publication</span></code> runs the same per-process checks on every run and adds
+cross-process checks that all runs share one structure: the same components, process
+variables and units, and the same time-axis unit and reference (start and end may
+differ). Training checks more on top of this, for example that
+every run declares the same <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>.</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">ok</span><span class="p">,</span> <span class="n">per_process</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">validate_for_publication</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
@@ -549,7 +554,8 @@ Volume Changes: ['glucose_feed', 'glucose_bolus', 'sampling']
 </div>
 </div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">verbosity</span></code> runs 1 to 3: 1 is one line per object, 3 prints values.
+<p><code class="docutils literal notranslate"><span class="pre">verbosity</span></code> runs 1 to 3: 1 lists just the variable names, 2 adds data types and sizes,
+and 3 adds units, bounds and the time and value range of each series.
 <code class="docutils literal notranslate"><span class="pre">print_collection_structure</span></code> does the same across a whole collection.</p>
 </section>
 <section id="as-plots">
@@ -690,7 +696,7 @@ than a data-quality issue.</p></li>
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">Validating and inspecting</a><ul>
-<li><a class="reference internal" href="#validation-is-non-raising-and-exhaustive">Validation is non-raising and exhaustive</a></li>
+<li><a class="reference internal" href="#validation-collects-data-quality-problems-instead-of-raising">Validation collects data-quality problems instead of raising</a></li>
 <li><a class="reference internal" href="#what-each-check-is-actually-protecting-you-from">What each check is actually protecting you from</a><ul>
 <li><a class="reference internal" href="#the-one-that-is-not-in-the-aggregate">The one that is not in the aggregate</a></li>
 </ul>
@@ -714,7 +720,7 @@ than a data-quality issue.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

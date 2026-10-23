@@ -9,15 +9,19 @@ hybrax prepare --config prepare-config.json [--output-dir DIR] [--overwrite]
 
 ## Why it is a separate command
 
-Because it is expensive, deterministic, and shared. Prepare resolves everything that is a
-property of *the dataset* rather than *the model*:
+Because it is deterministic and shared. Prepare handles what is a property of *the
+dataset* rather than *the model*:
 
-- which measured quantities are the fit **targets**;
-- the canonical **state and control layout** (from hybrax.format's `ProcessOrdering`);
-- **control splines**: the continuous inputs, fitted once so the solver can evaluate them
-  at arbitrary `t`;
-- **discrete events**: bolus and sample times and their jumps;
-- **validation** of both hybrax.format structure and prepared-artifact semantics.
+- **validation** of the raw dataset, and again after the hooks below, under the stricter
+  training rules;
+- your **preparation hooks**: `transform_process_collection` and, if configured,
+  augmentation;
+- the **controls**: which inflows, outflows and process variables drive each process,
+  checked against `prepare.required_control_names` and, by default, across processes;
+- **provenance**: input and `custom.py` hashes, package versions and a content hash.
+
+Which measurements are fit targets is not decided here: `train` picks them from
+`data.target_source` and `data.targets`.
 
 Once written, training reads only `prepared/prepared.json`. Twenty models fitted against
 the same prepared artifact start from a byte-identical problem, which is what makes

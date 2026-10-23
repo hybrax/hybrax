@@ -371,10 +371,11 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Sequence</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
@@ -417,6 +418,13 @@
 
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_mean_std</span><span class="p">(</span>
+    <span class="n">exports</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">DenseProcessExport</span><span class="p">],</span> <span class="n">attr</span><span class="p">:</span> <span class="nb">str</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+    <span class="n">stacked</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="nb">getattr</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">attr</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">exports</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">stacked</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">stacked</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+
 <div class="viewcode-block" id="aggregate_dense_exports">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/postprocessing/index.html#hybrax.train.postprocessing.aggregate_dense_exports">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">aggregate_dense_exports</span><span class="p">(</span>
@@ -442,17 +450,12 @@
         <span class="n">prediction_valid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">logical_and</span><span class="o">.</span><span class="n">reduce</span><span class="p">(</span>
             <span class="p">[</span><span class="n">export</span><span class="o">.</span><span class="n">prediction_valid</span> <span class="k">for</span> <span class="n">export</span> <span class="ow">in</span> <span class="n">exports</span><span class="p">]</span>
         <span class="p">)</span>
-
-        <span class="k">def</span><span class="w"> </span><span class="nf">_mean_std</span><span class="p">(</span><span class="n">attr</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
-            <span class="n">stacked</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="nb">getattr</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="n">attr</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">exports</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">stacked</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">stacked</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-
-        <span class="n">c_m</span><span class="p">,</span> <span class="n">c_s</span> <span class="o">=</span> <span class="n">_mean_std</span><span class="p">(</span><span class="s2">"c_species"</span><span class="p">)</span>
-        <span class="n">v_m</span><span class="p">,</span> <span class="n">v_s</span> <span class="o">=</span> <span class="n">_mean_std</span><span class="p">(</span><span class="s2">"v_real"</span><span class="p">)</span>
-        <span class="n">b_m</span><span class="p">,</span> <span class="n">b_s</span> <span class="o">=</span> <span class="n">_mean_std</span><span class="p">(</span><span class="s2">"b_modeled_cum"</span><span class="p">)</span>
-        <span class="n">q_m</span><span class="p">,</span> <span class="n">q_s</span> <span class="o">=</span> <span class="n">_mean_std</span><span class="p">(</span><span class="s2">"q_rates"</span><span class="p">)</span>
-        <span class="n">inflow_m</span><span class="p">,</span> <span class="n">inflow_s</span> <span class="o">=</span> <span class="n">_mean_std</span><span class="p">(</span><span class="s2">"modeled_Inflow_rates"</span><span class="p">)</span>
-        <span class="n">outflow_m</span><span class="p">,</span> <span class="n">outflow_s</span> <span class="o">=</span> <span class="n">_mean_std</span><span class="p">(</span><span class="s2">"modeled_Outflow_rates"</span><span class="p">)</span>
+        <span class="n">c_m</span><span class="p">,</span> <span class="n">c_s</span> <span class="o">=</span> <span class="n">_mean_std</span><span class="p">(</span><span class="n">exports</span><span class="p">,</span> <span class="s2">"c_species"</span><span class="p">)</span>
+        <span class="n">v_m</span><span class="p">,</span> <span class="n">v_s</span> <span class="o">=</span> <span class="n">_mean_std</span><span class="p">(</span><span class="n">exports</span><span class="p">,</span> <span class="s2">"v_real"</span><span class="p">)</span>
+        <span class="n">b_m</span><span class="p">,</span> <span class="n">b_s</span> <span class="o">=</span> <span class="n">_mean_std</span><span class="p">(</span><span class="n">exports</span><span class="p">,</span> <span class="s2">"b_modeled_cum"</span><span class="p">)</span>
+        <span class="n">q_m</span><span class="p">,</span> <span class="n">q_s</span> <span class="o">=</span> <span class="n">_mean_std</span><span class="p">(</span><span class="n">exports</span><span class="p">,</span> <span class="s2">"q_rates"</span><span class="p">)</span>
+        <span class="n">inflow_m</span><span class="p">,</span> <span class="n">inflow_s</span> <span class="o">=</span> <span class="n">_mean_std</span><span class="p">(</span><span class="n">exports</span><span class="p">,</span> <span class="s2">"modeled_Inflow_rates"</span><span class="p">)</span>
+        <span class="n">outflow_m</span><span class="p">,</span> <span class="n">outflow_s</span> <span class="o">=</span> <span class="n">_mean_std</span><span class="p">(</span><span class="n">exports</span><span class="p">,</span> <span class="s2">"modeled_Outflow_rates"</span><span class="p">)</span>
         <span class="n">aux_keys</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">exports</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">auxiliary</span> <span class="ow">or</span> <span class="p">{})</span>
         <span class="n">aux_m</span> <span class="o">=</span> <span class="p">{</span>
             <span class="n">k</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">e</span><span class="o">.</span><span class="n">auxiliary</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">exports</span><span class="p">])</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">aux_keys</span>
@@ -484,6 +487,13 @@
         <span class="p">)</span>
     <span class="k">return</span> <span class="n">mean_out</span><span class="p">,</span> <span class="n">std_out</span></div>
 
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_mask_invalid</span><span class="p">(</span><span class="n">values</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">valid</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Set rows (leading axis) of `values` where `valid` is false to NaN."""</span>
+    <span class="n">values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+    <span class="n">valid</span> <span class="o">=</span> <span class="n">valid</span><span class="o">.</span><span class="n">reshape</span><span class="p">((</span><span class="o">-</span><span class="mi">1</span><span class="p">,)</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span><span class="p">,)</span> <span class="o">*</span> <span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">ndim</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">valid</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
 
 
 <div class="viewcode-block" id="dense_exports_from_save_outputs">
@@ -539,11 +549,6 @@
         <span class="n">sel</span> <span class="o">=</span> <span class="n">order</span><span class="p">[</span><span class="n">keep</span><span class="p">]</span>
         <span class="n">valid_i</span> <span class="o">=</span> <span class="n">prediction_valid_np</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">sel</span><span class="p">]</span>
 
-        <span class="k">def</span><span class="w"> </span><span class="nf">_mask_invalid</span><span class="p">(</span><span class="n">values</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-            <span class="n">values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
-            <span class="n">valid</span> <span class="o">=</span> <span class="n">valid_i</span><span class="o">.</span><span class="n">reshape</span><span class="p">((</span><span class="o">-</span><span class="mi">1</span><span class="p">,)</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span><span class="p">,)</span> <span class="o">*</span> <span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">ndim</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
-            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">valid</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span>
-
         <span class="n">aux_i</span> <span class="o">=</span> <span class="p">(</span>
             <span class="kc">None</span>
             <span class="k">if</span> <span class="n">auxiliary</span> <span class="ow">is</span> <span class="kc">None</span>
@@ -552,14 +557,14 @@
         <span class="n">exports</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">DenseProcessExport</span><span class="p">(</span>
             <span class="n">t</span><span class="o">=</span><span class="n">t_i</span><span class="p">[</span><span class="n">sel</span><span class="p">],</span>
             <span class="n">prediction_valid</span><span class="o">=</span><span class="n">valid_i</span><span class="p">,</span>
-            <span class="n">c_species</span><span class="o">=</span><span class="n">_mask_invalid</span><span class="p">(</span><span class="n">RAW_states</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">sel</span><span class="p">,</span> <span class="p">:</span><span class="n">n_species</span><span class="p">]),</span>
-            <span class="n">v_real</span><span class="o">=</span><span class="n">_mask_invalid</span><span class="p">(</span><span class="n">v_real_np</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">sel</span><span class="p">]),</span>
+            <span class="n">c_species</span><span class="o">=</span><span class="n">_mask_invalid</span><span class="p">(</span><span class="n">RAW_states</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">sel</span><span class="p">,</span> <span class="p">:</span><span class="n">n_species</span><span class="p">],</span> <span class="n">valid_i</span><span class="p">),</span>
+            <span class="n">v_real</span><span class="o">=</span><span class="n">_mask_invalid</span><span class="p">(</span><span class="n">v_real_np</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">sel</span><span class="p">],</span> <span class="n">valid_i</span><span class="p">),</span>
             <span class="n">b_modeled_cum</span><span class="o">=</span><span class="n">_mask_invalid</span><span class="p">(</span>
-                <span class="n">RAW_states</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">sel</span><span class="p">,</span> <span class="n">n_species</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">n_species</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">n_modeled</span><span class="p">]</span>
+                <span class="n">RAW_states</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">sel</span><span class="p">,</span> <span class="n">n_species</span> <span class="o">+</span> <span class="mi">1</span> <span class="p">:</span> <span class="n">n_species</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">n_modeled</span><span class="p">],</span> <span class="n">valid_i</span>
             <span class="p">),</span>
-            <span class="n">q_rates</span><span class="o">=</span><span class="n">_mask_invalid</span><span class="p">(</span><span class="n">q_np</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">sel</span><span class="p">]),</span>
-            <span class="n">modeled_Inflow_rates</span><span class="o">=</span><span class="n">_mask_invalid</span><span class="p">(</span><span class="n">inflow_rates_np</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">sel</span><span class="p">]),</span>
-            <span class="n">modeled_Outflow_rates</span><span class="o">=</span><span class="n">_mask_invalid</span><span class="p">(</span><span class="n">outflow_rates_np</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">sel</span><span class="p">]),</span>
+            <span class="n">q_rates</span><span class="o">=</span><span class="n">_mask_invalid</span><span class="p">(</span><span class="n">q_np</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">sel</span><span class="p">],</span> <span class="n">valid_i</span><span class="p">),</span>
+            <span class="n">modeled_Inflow_rates</span><span class="o">=</span><span class="n">_mask_invalid</span><span class="p">(</span><span class="n">inflow_rates_np</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">sel</span><span class="p">],</span> <span class="n">valid_i</span><span class="p">),</span>
+            <span class="n">modeled_Outflow_rates</span><span class="o">=</span><span class="n">_mask_invalid</span><span class="p">(</span><span class="n">outflow_rates_np</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">sel</span><span class="p">],</span> <span class="n">valid_i</span><span class="p">),</span>
             <span class="n">auxiliary</span><span class="o">=</span><span class="n">aux_i</span><span class="p">,</span>
         <span class="p">)</span>
     <span class="k">return</span> <span class="n">exports</span></div>
@@ -1173,7 +1178,7 @@
       
     </aside>
   </div>
-</div><script src="../../../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../../../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>

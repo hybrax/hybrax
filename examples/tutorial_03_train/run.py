@@ -1,7 +1,8 @@
 """Tutorial 3: fit a hybrid ODE to demo_batch using every default.
 
 Runs prepare -> train -> forward via the hybrax CLI, in this directory, then
-prints the per-epoch metrics and the final rows of forward's loss report.
+prints a few rows of the training metrics and the paths to the loss curve and
+forward plot.
 
 See docs/source/tutorials/03_train.md for the narrated version.
 """
@@ -57,7 +58,7 @@ hxt_cli(
 metrics = pd.read_csv(HERE / "run/metrics.csv")
 print("columns:", ", ".join(metrics.columns))
 for i in (0, len(metrics) // 2, len(metrics) - 1):
-    print(metrics.iloc[i, :4].to_dict())
+    print(metrics.iloc[i][["epoch", "mean_loss", "grad_norm"]].to_dict())
 
 print(f"loss curve: {HERE / 'run/loss_curve.png'}")
 print(f"forward plot: {HERE / 'run/forward/plots/run_1.png'}")

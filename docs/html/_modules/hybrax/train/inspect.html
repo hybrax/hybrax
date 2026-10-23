@@ -586,8 +586,8 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_reaction_schema_rows</span><span class="p">(</span>
-    <span class="n">rhs_ode</span><span class="p">:</span> <span class="s2">"RhsOde"</span><span class="p">,</span>
-    <span class="n">controls</span><span class="p">:</span> <span class="s2">"PerProcessControls"</span><span class="p">,</span>
+    <span class="n">rhs_ode</span><span class="p">:</span> <span class="n">RhsOde</span><span class="p">,</span>
+    <span class="n">controls</span><span class="p">:</span> <span class="n">PerProcessControls</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span>
     <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]],</span>
     <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]],</span>
@@ -769,8 +769,8 @@
 <div class="viewcode-block" id="format_reaction_schema">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/inspect/index.html#hybrax.train.inspect.format_reaction_schema">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">format_reaction_schema</span><span class="p">(</span>
-    <span class="n">rhs_ode</span><span class="p">:</span> <span class="s2">"RhsOde"</span><span class="p">,</span>
-    <span class="n">controls</span><span class="p">:</span> <span class="s2">"PerProcessControls"</span><span class="p">,</span>
+    <span class="n">rhs_ode</span><span class="p">:</span> <span class="n">RhsOde</span><span class="p">,</span>
+    <span class="n">controls</span><span class="p">:</span> <span class="n">PerProcessControls</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Return labeled tables for ReactionInputs + ReactionOutputs axes.</span>
 
@@ -796,7 +796,7 @@
 
 <div class="viewcode-block" id="print_reaction_schema">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/inspect/index.html#hybrax.train.inspect.print_reaction_schema">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">print_reaction_schema</span><span class="p">(</span><span class="n">wrapper</span><span class="p">:</span> <span class="s2">"HybridOdeWrapper"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">print_reaction_schema</span><span class="p">(</span><span class="n">wrapper</span><span class="p">:</span> <span class="n">HybridOdeWrapper</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Print the labeled ReactionInputs / ReactionOutputs tables.</span>
 
 <span class="sd">    Sources names from `wrapper.rhs_ode`.</span>
@@ -835,7 +835,7 @@
       
     </aside>
   </div>
-</div><script src="../../../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../../../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>

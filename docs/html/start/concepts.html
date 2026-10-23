@@ -404,8 +404,8 @@ BioProcess                ONE experimental run
 </pre></div>
 </div>
 <p>Set <code class="docutils literal notranslate"><span class="pre">case_id</span></code>/<code class="docutils literal notranslate"><span class="pre">organism</span></code>/<code class="docutils literal notranslate"><span class="pre">citation</span></code> when the data belongs to one publication or
-campaign: <code class="docutils literal notranslate"><span class="pre">case_id</span></code> is also the natural grouping for cross-validation. Leave them
-unset (the default) for raw or intermediate data that is not a full case study yet.
+campaign. Leave them unset (the default) for raw or intermediate data that is not a
+full case study yet.
 Either way it’s the same <code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code>, holding the same <code class="docutils literal notranslate"><span class="pre">BioProcess</span></code>
 objects.</p>
 </section>
@@ -567,7 +567,7 @@ It is a <code class="docutils literal notranslate"><span class="pre">hybrax.form
 </thead>
 <tbody>
 <tr class="row-even"><td><p><strong>prepared artifact</strong></p></td>
-<td><p>The output of <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">prepare</span></code>: your dataset plus everything derived from it that training needs (control splines, layouts, target selection). Training reads this, never the raw file.</p></td>
+<td><p>The output of <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">prepare</span></code>: your dataset after validation and any preparation hooks, plus a record of its controls and how it was made. Training reads this, never the raw file.</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>target</strong></p></td>
 <td><p>A measured quantity the loss is computed against.</p></td>
@@ -741,7 +741,7 @@ the product, not just the parameter.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

@@ -505,11 +505,12 @@ not a dict, not a <code class="docutils literal notranslate"><span class="pre">(
 <section id="the-scl-raw-convention">
 <h2>The SCL/RAW convention<a class="headerlink" href="#the-scl-raw-convention" title="Link to this heading">¶</a></h2>
 <p>The one thing to get right.</p>
-<p><strong>Your network reads <code class="docutils literal notranslate"><span class="pre">SCL_*</span></code> inputs, so what it emits is already in SCL space. Return it
-directly.</strong></p>
+<p><strong><code class="docutils literal notranslate"><span class="pre">ReactionOutputs</span></code> always expects SCL rates. Compute in whichever space you like, but
+return SCL.</strong></p>
 <p>The wrapper unscales your output by <code class="docutils literal notranslate"><span class="pre">SCALE_modeled_*_rates</span></code> on the way back to physical
-units. If you <em>also</em> call a <code class="docutils literal notranslate"><span class="pre">scale_*</span></code> helper on the output, the two cancel and your rates
-are off by the scale factor: with no error, just a model that will not fit.</p>
+units. A network trained to emit SCL rates returns them directly; if you <em>also</em> call a
+<code class="docutils literal notranslate"><span class="pre">scale_*</span></code> helper on that output, your rates are off by the scale factor: with no error,
+just a model that will not fit.</p>
 <p>When you <em>do</em> need physical units (a Monod term with a real <code class="docutils literal notranslate"><span class="pre">K_s</span></code> in g/L, say) unscale
 the inputs, compute in RAW, then scale the result back:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">):</span>
@@ -712,7 +713,7 @@ and <code class="docutils literal notranslate"><span class="pre">SCL_modeled_PVs
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

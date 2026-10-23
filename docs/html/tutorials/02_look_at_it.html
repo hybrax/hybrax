@@ -395,9 +395,9 @@ network. This tutorial is four function calls that catch that early.</p>
 </div>
 <section id="validate">
 <h2>2.1 Validate<a class="headerlink" href="#validate" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">validate_process</span></code> returns <code class="docutils literal notranslate"><span class="pre">(ok,</span> <span class="pre">messages)</span></code> and (importantly) <strong>collects every issue
-in one pass</strong> rather than raising on the first one. You get a full report, not a
-whack-a-mole session.</p>
+<p>For a <code class="docutils literal notranslate"><span class="pre">BioProcess</span></code>, <code class="docutils literal notranslate"><span class="pre">validate_process</span></code> returns <code class="docutils literal notranslate"><span class="pre">(ok,</span> <span class="pre">messages)</span></code> and collects the
+checks’ results instead of raising on the first failed check. Passing the wrong
+object type to either validator raises <code class="docutils literal notranslate"><span class="pre">TypeError</span></code>.</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">ok</span><span class="p">,</span> <span class="n">messages</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">validate_process</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
@@ -426,23 +426,34 @@ whack-a-mole session.</p>
 </div>
 </div>
 </div>
-<p>Across a whole collection, <code class="docutils literal notranslate"><span class="pre">validate_for_publication</span></code> adds cross-process checks, that
-every run has the same structure, so a model trained on one can be applied to another:</p>
+<p>Across a whole collection, <code class="docutils literal notranslate"><span class="pre">validate_for_publication</span></code> runs the same checks on every run
+and adds cross-process checks that all runs share one structure: the same components,
+process variables and units, and the same time-axis unit and reference (start and end
+may differ). Training checks more on top of this, for example
+that every run declares the same <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>.</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">ok</span><span class="p">,</span> <span class="n">per_process</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">validate_for_publication</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">ok</span><span class="p">,</span> <span class="n">report</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">validate_for_publication</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="s2">"ok:"</span><span class="p">,</span> <span class="n">ok</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="s2">"checked:"</span><span class="p">,</span> <span class="nb">list</span><span class="p">(</span><span class="n">per_process</span><span class="p">))</span>
+<span class="k">for</span> <span class="n">section</span><span class="p">,</span> <span class="n">results</span> <span class="ow">in</span> <span class="n">report</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="k">for</span> <span class="n">check_ok</span><span class="p">,</span> <span class="n">message</span> <span class="ow">in</span> <span class="n">results</span><span class="p">:</span>
+        <span class="c1"># Print every failure, plus the cross-process results even when they pass.</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">check_ok</span> <span class="ow">or</span> <span class="n">section</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"__"</span><span class="p">):</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"  </span><span class="si">{</span><span class="n">section</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">message</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>ok: True
-checked: ['run_1', 'run_2', 'run_3', '__consistency__', '__augmented__']
+  __consistency__: PASS cross_process_consistency: structure matches 'run_1' across 3 processes
+  __augmented__: PASS augmented_parent_refs: 0 augmented process(es) have valid parent references
 </pre></div>
 </div>
 </div>
 </div>
+<p>The report has one section per run and two extra ones: <code class="docutils literal notranslate"><span class="pre">__consistency__</span></code> holds the
+cross-process checks, and <code class="docutils literal notranslate"><span class="pre">__augmented__</span></code> checks that augmented runs point to existing
+parents.</p>
 <p>The checks that catch real bugs most often:</p>
 <div class="table-wrapper colwidths-auto docutils container">
 <table class="docutils align-default">
@@ -501,7 +512,8 @@ Volume: 1.0
 </div>
 </div>
 </div>
-<p>Raise <code class="docutils literal notranslate"><span class="pre">verbosity</span></code> to 3 for every value; drop to 1 for a one-line-per-object summary.</p>
+<p>Raise <code class="docutils literal notranslate"><span class="pre">verbosity</span></code> to 3 to add units, bounds and the time and value range of each series;
+drop to 1 for just the variable names.</p>
 </section>
 <section id="plot-a-process">
 <h2>2.3 Plot a process<a class="headerlink" href="#plot-a-process" title="Link to this heading">¶</a></h2>
@@ -564,7 +576,8 @@ feed metadata is wrong.</p>
 <section id="what-you-learned">
 <h2>What you learned<a class="headerlink" href="#what-you-learned" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p>Validation is non-raising and exhaustive: run it, read all of it.</p></li>
+<li><p>Validation collects data-quality failures in a report. Passing the wrong object
+type raises <code class="docutils literal notranslate"><span class="pre">TypeError</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">print_rhs_ode</span></code> shows the boundary between “what you must model” and “what is already
 handled”.</p></li>
 <li><p>Four calls, before any training: validate, print, plot, print the ODE.</p></li>
@@ -655,7 +668,7 @@ handled”.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

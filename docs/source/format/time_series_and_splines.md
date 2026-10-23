@@ -161,10 +161,11 @@ does not.
 A real fed-batch trace is not smooth: a bolus makes it jump. Fitting one polynomial
 across a discontinuity produces a spline that is wrong on both sides.
 
-So splines are fitted **per segment**, with boundaries at discrete events. The helpers
-`detect_discrete_state_events`, `make_segment_boundaries` and `split_timeseries` build
-those boundaries from the process's own volume changes, and `fit_timeseries_spline`
-accepts them via `boundaries=`.
+So when you pass explicit `boundaries=` to `fit_timeseries_spline`, it fits **per
+segment**. The helpers `detect_discrete_state_events`, `make_segment_boundaries` and
+`split_timeseries` build such boundaries from the process's own volume changes. The
+pseudobatch path does not segment: it transforms the measurements so the jump is
+removed, then fits one spline to all of them, and the backtransform restores the jump.
 
 ## Gotchas
 

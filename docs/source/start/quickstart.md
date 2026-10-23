@@ -130,10 +130,11 @@ tail(hxt_cli("prepare", "--config", "prepare-config.json",
               "--output-dir", "prepared", "--overwrite"), n=3)
 ```
 
-`prepare` reads your hybrax.format file and writes a **prepared artifact**: the dataset
-plus everything derived from it that training needs: the control splines, the state and
-control layout, which measured quantities are the fit targets. Training never touches
-the raw file again, so a prepared artifact is a reproducible starting point.
+`prepare` reads your hybrax.format file, validates it, applies any preparation hooks,
+checks that every process has the controls training needs, and writes a **prepared
+artifact** with a record of how it was made. Training never touches the raw file again,
+so a prepared artifact is a reproducible starting point. Which measurements to fit is
+chosen later, by `train`.
 
 It also drops diagnostic plots in `prepared/prepare_diagnostics/` showing how it read
 each run's controls. Worth a look the first time you prepare your own data.
@@ -208,7 +209,7 @@ print( "true    mu_max           : 0.450 1/h")
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-print(f"./{(WORK / 'run').relative_to(WORK.parents[4])}")
+print(f"./{(WORK / 'run').relative_to(WORK.parents[5])}")
 ```
 
 Everything below is a real directory on disk, self-contained: `cp -r` it anywhere and
@@ -234,7 +235,7 @@ for path in sorted((WORK / "run").rglob("*")):
 
 ## What to do next
 
-You can inspect this page's files in `./source/_data/out/runs/quickstart/`.
+You can inspect this page's files in `./docs/source/_data/out/runs/quickstart/`.
 
 :::{admonition} This was a quick taste but there is a lot more
 :class: tip

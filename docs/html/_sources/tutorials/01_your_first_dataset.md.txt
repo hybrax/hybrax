@@ -25,7 +25,7 @@ changes. However, the `Hybrax` data format is designed to accomodate a diverse s
 * [feeds, boluses and sampling volume changes](../gallery/fed_batch.md),
 <!-- UNLOCK -->
 * [chemical degradation rates](../gallery/glutamine_decay.md), and
-* [modeled process variables](../gallery/glutamine_decay.md).
+* [modeled process variables](../gallery/modeled_pv.md).
 
 
 ```{code-cell} ipython3
@@ -94,9 +94,10 @@ biomass
 :class: note
 - Each measured species is its own `TimeSeries` naturally enabling irregular sampling.
 - The `times` vector must be **strictly increasing**.
-- `jump_times` (optional) represent discontinuities in the data (e.g. volume
-  jump due to bolus feed). This is important for `hybrax.train` later as it
-  tells the ODE solver where to split the integration into continuous segments.
+- `jump_times` (optional) records where this series is discontinuous. It is
+  metadata only: interpolation and spline fitting do not split at it. Bolus
+  feeds and sampling are declared on `Volume.volume_changes` instead; see
+  [Volume, feeds and events](../format/volume_feeds_events.md).
 - For a quantity that genuinely does not change, use `hxf.StaticVariable(value)` instead.
 :::
 
@@ -135,7 +136,7 @@ pprint(reactor_medium.components)
 
 :::{admonition} Notes
 :class: note
-- The `bounds` are metadata, not constraints. Nothing in `Hybrax` enforces bounds per default. They are recorded so downstream consumers (`hybrax.train`'s loss module, for instance) can build soft penalties from them.
+- The `bounds` declare the valid range of a quantity. Validation flags measurements outside it, but nothing clamps model predictions and the default training loss ignores bounds. The optional `hybrax.train.BoundsViolationLossModule` turns them into soft penalties.
 - The units are explicitly required. This avoids ambiguity and enables validation downstream.
 :::
 
@@ -191,18 +192,20 @@ Each species gets a specific rate `q_<species>`, and its derivative is
 
 :::{admonition} This is why a component must be called `biomass`
 :class: warning
-Auto-generation makes every rate *specific* (per unit biomass) so it needs to know
-which component the biomass is. Without one, constructing the `BioProcess` raises
-immediately. If your data has no biomass, or you want different dynamics, write
-`reaction_ode` yourself: [The Bioprocess ODE](../format/bioprocess_ode.md).
+Auto-generation gives every reactor-medium component a specific rate (per unit
+biomass), so it needs a component named `biomass`. Without one, constructing a
+`BioProcess` with auto-generated dynamics raises immediately.
+To construct a `BioProcess` without biomass, supply an explicit `reaction_ode`.
+Current validation and `hybrax.train` preparation still require a `biomass`
+reactor component. You can also supply an explicit `reaction_ode` to replace
+the default dynamics. See [The Bioprocess ODE](../format/bioprocess_ode.md).
 :::
 
 ## 1.6 Collect and save
 
 Setting `case_id`/`organism`/`citation` on a `BioProcessCollection` marks it as
 a full case study, i.e. all experiments pertaining to a certain publication or
-process development campaign. `case_id` is also the natural grouping for
-cross-validation later. Leaving those unset (the default) is fine too: this
+process development campaign. Leaving those unset (the default) is fine too: this
 means raw or intermediate data with no case-study identity yet, the same
 container either way.
 
@@ -217,7 +220,7 @@ collection = hxf.BioProcessCollection(
 out = Path("../_data/out/runs/tutorial_01").resolve()
 out.mkdir(parents=True, exist_ok=True)
 hxf.serialization.save_process_collection(collection, out / "data.json")
-print(f"./{(out / 'data.json').relative_to(out.parents[4])}")
+print(f"./{(out / 'data.json').relative_to(out.parents[5])}")
 ```
 
 Note: save/load functions live on `hxf.serialization`, not on the package root.

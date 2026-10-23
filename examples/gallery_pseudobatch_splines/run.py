@@ -45,7 +45,8 @@ def spline_jump_truth(t) -> np.ndarray:
     m_after = m_at_jump + SJ_DELTA_V_BOLUS * SJ_C_FEED
     pre = SJ_C0 * np.exp(-SJ_K * t)
     post = (m_after / v_after) * np.exp(-SJ_K * (t - SJ_T_JUMP))
-    return np.where(t < SJ_T_JUMP, pre, post)
+    # Events are left-sided: the bolus applies for t > SJ_T_JUMP.
+    return np.where(t <= SJ_T_JUMP, pre, post)
 
 
 dense_t = np.linspace(0.0, SJ_T_END, 400)
@@ -89,7 +90,11 @@ print(f"wrote {out / 'recovery.png'}")
 
 pre = np.linspace(0.0, SJ_T_JUMP - 1.0, 200)
 post = np.linspace(SJ_T_JUMP + 1.0, SJ_T_END, 200)
-for label, grid in [("pre-jump [0, 9]", pre), ("post-jump [11, 17]", post)]:
+for label, grid in [
+    ("pre-jump [0, 9]", pre),
+    ("post-jump [11, 17]", post),
+    ("full plotted grid [0, 17]", dense_t),
+]:
     rec = np.asarray(back(grid))
     rel = np.abs(rec - spline_jump_truth(grid)) / spline_jump_truth(grid)
     print(

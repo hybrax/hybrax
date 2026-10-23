@@ -384,16 +384,19 @@ reused by every model you fit against it.</p>
 </div>
 <section id="why-it-is-a-separate-command">
 <h2>Why it is a separate command<a class="headerlink" href="#why-it-is-a-separate-command" title="Link to this heading">¶</a></h2>
-<p>Because it is expensive, deterministic, and shared. Prepare resolves everything that is a
-property of <em>the dataset</em> rather than <em>the model</em>:</p>
+<p>Because it is deterministic and shared. Prepare handles what is a property of <em>the
+dataset</em> rather than <em>the model</em>:</p>
 <ul class="simple">
-<li><p>which measured quantities are the fit <strong>targets</strong>;</p></li>
-<li><p>the canonical <strong>state and control layout</strong> (from hybrax.format’s <code class="docutils literal notranslate"><span class="pre">ProcessOrdering</span></code>);</p></li>
-<li><p><strong>control splines</strong>: the continuous inputs, fitted once so the solver can evaluate them
-at arbitrary <code class="docutils literal notranslate"><span class="pre">t</span></code>;</p></li>
-<li><p><strong>discrete events</strong>: bolus and sample times and their jumps;</p></li>
-<li><p><strong>validation</strong> of both hybrax.format structure and prepared-artifact semantics.</p></li>
+<li><p><strong>validation</strong> of the raw dataset, and again after the hooks below, under the stricter
+training rules;</p></li>
+<li><p>your <strong>preparation hooks</strong>: <code class="docutils literal notranslate"><span class="pre">transform_process_collection</span></code> and, if configured,
+augmentation;</p></li>
+<li><p>the <strong>controls</strong>: which inflows, outflows and process variables drive each process,
+checked against <code class="docutils literal notranslate"><span class="pre">prepare.required_control_names</span></code> and, by default, across processes;</p></li>
+<li><p><strong>provenance</strong>: input and <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> hashes, package versions and a content hash.</p></li>
 </ul>
+<p>Which measurements are fit targets is not decided here: <code class="docutils literal notranslate"><span class="pre">train</span></code> picks them from
+<code class="docutils literal notranslate"><span class="pre">data.target_source</span></code> and <code class="docutils literal notranslate"><span class="pre">data.targets</span></code>.</p>
 <p>Once written, training reads only <code class="docutils literal notranslate"><span class="pre">prepared/prepared.json</span></code>. Twenty models fitted against
 the same prepared artifact start from a byte-identical problem, which is what makes
 comparisons between them meaningful.</p>
@@ -614,7 +617,7 @@ first, then <code class="docutils literal notranslate"><span class="pre">prepare
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

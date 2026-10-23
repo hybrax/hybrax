@@ -385,7 +385,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.json_io</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_json</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_process_collection</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">.checkpointing</span><span class="w"> </span><span class="kn">import</span> <span class="n">CheckpointWriter</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.checkpointing</span><span class="w"> </span><span class="kn">import</span> <span class="n">CheckpointWriter</span><span class="p">,</span> <span class="n">_bundle_prepared_gz</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.forward_plotting</span><span class="w"> </span><span class="kn">import</span> <span class="n">plot_forward_predictions</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.harness</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">ForwardConfig</span><span class="p">,</span>
@@ -897,6 +897,9 @@
     <span class="n">run_dir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="p">(</span><span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"model"</span><span class="p">)</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="p">(</span><span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"checkpoints"</span><span class="p">)</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">bundled_prepared</span> <span class="o">=</span> <span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"prepared.json.gz"</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">bundled_prepared</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="ow">and</span> <span class="n">bundled_prepared</span><span class="o">.</span><span class="n">samefile</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">prepared</span><span class="p">)):</span>
+        <span class="n">_bundle_prepared_gz</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">prepared</span><span class="p">),</span> <span class="n">bundled_prepared</span><span class="p">)</span>
     <span class="n">bundled_custom</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">shutil</span><span class="o">.</span><span class="n">copyfile</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">custom_py</span><span class="p">,</span> <span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"custom.py"</span><span class="p">)</span>
@@ -1714,7 +1717,7 @@
       
     </aside>
   </div>
-</div><script src="../../../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../../../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>

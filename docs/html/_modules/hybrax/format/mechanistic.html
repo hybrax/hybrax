@@ -385,7 +385,8 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Tuple</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
@@ -405,7 +406,6 @@
     <span class="n">make_cubic_ppoly</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.time_series</span><span class="w"> </span><span class="kn">import</span> <span class="n">PPoly</span>
-
 
 <span class="c1"># ---------------------------------------------------------------------------</span>
 <span class="c1"># Spline helpers</span>
@@ -464,7 +464,7 @@
     <span class="n">retention_modeled_Outflows</span><span class="p">:</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
     <span class="n">n_RMCs</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">V_min</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">=</span> <span class="n">_MIN_REACTOR_VOLUME</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">"""Reactor-component mass balance from feed/sample flows + ``dV/dt``.</span>
 
 <span class="sd">    Convention: every flow-rate vector carries the storage sign of its</span>
@@ -545,7 +545,7 @@
 <span class="c1"># ---------------------------------------------------------------------------</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_lambdify_with_array_arg</span><span class="p">(</span><span class="n">expr</span><span class="p">,</span> <span class="n">ordered_names</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_lambdify_with_array_arg</span><span class="p">(</span><span class="n">expr</span><span class="p">,</span> <span class="n">ordered_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Return ``f(args)`` that evaluates *expr* with the symbol values</span>
 <span class="sd">    supplied as a flat 1-D array indexed by *ordered_names*.</span>
 
@@ -564,7 +564,7 @@
     <span class="k">return</span> <span class="n">fn</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_topo_sort_algebraic</span><span class="p">(</span><span class="n">algebraic_exprs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_topo_sort_algebraic</span><span class="p">(</span><span class="n">algebraic_exprs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">"""Topologically sort algebraic names by mutual dependencies. Assumes</span>
 <span class="sd">    expressions have already been parsed (sympy)."""</span>
     <span class="n">algebraic_names</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">algebraic_exprs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
@@ -572,7 +572,7 @@
         <span class="n">name</span><span class="p">:</span> <span class="p">{</span><span class="nb">str</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">expr</span><span class="o">.</span><span class="n">free_symbols</span><span class="p">}</span> <span class="o">&amp;</span> <span class="n">algebraic_names</span>
         <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">expr</span> <span class="ow">in</span> <span class="n">algebraic_exprs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
     <span class="p">}</span>
-    <span class="n">order</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="n">remaining</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">algebraic_names</span><span class="p">)</span>
     <span class="k">while</span> <span class="n">remaining</span><span class="p">:</span>
         <span class="n">ready</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">n</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">remaining</span> <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">deps</span><span class="p">[</span><span class="n">n</span><span class="p">]</span> <span class="o">&amp;</span> <span class="n">remaining</span><span class="p">))</span>
@@ -589,7 +589,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">_parse_reaction_ode_expressions</span><span class="p">(</span>
     <span class="n">bo</span><span class="p">,</span>
     <span class="n">allowed_names</span><span class="p">:</span> <span class="nb">set</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
 <span class="w">    </span><span class="sd">"""Sympify ``ReactionOde.algebraic`` and ``derivatives`` strings.</span>
 
 <span class="sd">    Returns ``(algebraic_exprs, derivative_exprs)`` keyed by name. Raises</span>
@@ -599,7 +599,7 @@
 
     <span class="n">symbol_table</span> <span class="o">=</span> <span class="p">{</span><span class="n">n</span><span class="p">:</span> <span class="n">sympy</span><span class="o">.</span><span class="n">Symbol</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">allowed_names</span><span class="p">}</span>
 
-    <span class="n">algebraic_exprs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">algebraic_exprs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">expr_str</span> <span class="ow">in</span> <span class="n">bo</span><span class="o">.</span><span class="n">algebraic</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="n">algebraic_exprs</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">sympy</span><span class="o">.</span><span class="n">sympify</span><span class="p">(</span><span class="n">expr_str</span><span class="p">,</span> <span class="nb">locals</span><span class="o">=</span><span class="n">symbol_table</span><span class="p">)</span>
@@ -608,7 +608,7 @@
                 <span class="sa">f</span><span class="s2">"reaction_ode.algebraic[</span><span class="si">{</span><span class="n">name</span><span class="si">!r}</span><span class="s2">] failed to parse: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span>
             <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
 
-    <span class="n">derivative_exprs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">derivative_exprs</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">expr_str</span> <span class="ow">in</span> <span class="n">bo</span><span class="o">.</span><span class="n">derivatives</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="n">derivative_exprs</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">sympy</span><span class="o">.</span><span class="n">sympify</span><span class="p">(</span><span class="n">expr_str</span><span class="p">,</span> <span class="nb">locals</span><span class="o">=</span><span class="n">symbol_table</span><span class="p">)</span>
@@ -706,7 +706,7 @@
         <span class="n">vc</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">volume_changes</span><span class="p">[</span><span class="n">vc_name</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">vc</span><span class="o">.</span><span class="n">feed_medium</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Inflow </span><span class="si">{</span><span class="n">vc_name</span><span class="si">!r}</span><span class="s2"> has no feed_medium defined."</span><span class="p">)</span>
-        <span class="n">unknown</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">vc</span><span class="o">.</span><span class="n">feed_medium</span><span class="o">.</span><span class="n">components</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">if</span> <span class="n">c</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">rmc_set</span><span class="p">]</span>
+        <span class="n">unknown</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">vc</span><span class="o">.</span><span class="n">feed_medium</span><span class="o">.</span><span class="n">components</span> <span class="k">if</span> <span class="n">c</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">rmc_set</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
                 <span class="sa">f</span><span class="s2">"Inflow </span><span class="si">{</span><span class="n">vc_name</span><span class="si">!r}</span><span class="s2"> references unknown reactor "</span>
@@ -730,8 +730,8 @@
     <span class="c1"># ---- Reaction ODE: rates (insertion order) and algebraic (topo-sorted)</span>
     <span class="n">bo</span> <span class="o">=</span> <span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span>
     <span class="k">if</span> <span class="n">bo</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">name_modeled_rates</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
-        <span class="n">name_modeled_algebraic</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+        <span class="n">name_modeled_rates</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+        <span class="n">name_modeled_algebraic</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">name_modeled_rates</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">bo</span><span class="o">.</span><span class="n">rates</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
         <span class="c1"># Need parsed algebraic expressions for topo-sort. Build a minimal</span>
@@ -759,8 +759,8 @@
         <span class="s2">"name_modeled_rates"</span><span class="p">:</span> <span class="n">name_modeled_rates</span><span class="p">,</span>
         <span class="s2">"name_modeled_algebraic"</span><span class="p">:</span> <span class="n">name_modeled_algebraic</span><span class="p">,</span>
     <span class="p">}</span>
-    <span class="n">seen</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
-    <span class="n">duplicates</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">seen</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">duplicates</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">group_name</span><span class="p">,</span> <span class="n">names</span> <span class="ow">in</span> <span class="n">groups</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">names</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">seen</span><span class="p">:</span>
@@ -834,7 +834,7 @@
 <a class="viewcode-back" href="../../../autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.get_control_splines">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_control_splines</span><span class="p">(</span>
     <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
-    <span class="n">ordering</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ProcessOrdering</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ordering</span><span class="p">:</span> <span class="n">ProcessOrdering</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ControlSplines</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Build a :class:`ControlSplines` module for *process*.</span>
 
@@ -874,8 +874,8 @@
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_build_cin</span><span class="p">(</span>
     <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
-    <span class="n">vc_names</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
-    <span class="n">name_modeled_RMCs</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">vc_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">name_modeled_RMCs</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Build a ``(len(vc_names), len(RMCs))`` feed-composition matrix.</span>
 
@@ -884,7 +884,7 @@
 <span class="sd">    sparse feed mapping remain zero in the preinitialized row.</span>
 <span class="sd">    """</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">cell</span><span class="p">(</span><span class="n">vc</span><span class="p">:</span> <span class="n">Inflow</span><span class="p">,</span> <span class="n">vc_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">sp_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cell</span><span class="p">(</span><span class="n">vc</span><span class="p">:</span> <span class="n">Inflow</span><span class="p">,</span> <span class="n">vc_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">sp_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">vc</span><span class="o">.</span><span class="n">feed_medium</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">sp_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">vc</span><span class="o">.</span><span class="n">feed_medium</span><span class="o">.</span><span class="n">components</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
         <span class="n">conc</span> <span class="o">=</span> <span class="n">vc</span><span class="o">.</span><span class="n">feed_medium</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="n">sp_name</span><span class="p">]</span><span class="o">.</span><span class="n">concentration</span>
@@ -901,8 +901,8 @@
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_build_retention</span><span class="p">(</span>
     <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
-    <span class="n">vc_names</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
-    <span class="n">name_modeled_RMCs</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">vc_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">name_modeled_RMCs</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Build a ``(len(vc_names), len(RMCs))`` retention matrix.</span>
 
@@ -914,7 +914,7 @@
 <span class="sd">    modeling), not a data gap standing in for something unknown.</span>
 <span class="sd">    """</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">cell</span><span class="p">(</span><span class="n">vc</span><span class="p">:</span> <span class="n">Outflow</span><span class="p">,</span> <span class="n">vc_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">sp_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cell</span><span class="p">(</span><span class="n">vc</span><span class="p">:</span> <span class="n">Outflow</span><span class="p">,</span> <span class="n">vc_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">sp_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">sp_name</span> <span class="ow">in</span> <span class="n">vc</span><span class="o">.</span><span class="n">retention</span><span class="p">:</span>
             <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">vc</span><span class="o">.</span><span class="n">retention</span><span class="p">[</span><span class="n">sp_name</span><span class="p">])</span>
         <span class="k">return</span> <span class="kc">None</span>
@@ -924,10 +924,10 @@
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_build_vc_matrix</span><span class="p">(</span>
     <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
-    <span class="n">vc_names</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
-    <span class="n">name_modeled_RMCs</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">vc_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">name_modeled_RMCs</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
     <span class="n">vc_type</span><span class="p">:</span> <span class="nb">type</span><span class="p">,</span>
-    <span class="n">cell_value</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">Any</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]],</span>
+    <span class="n">cell_value</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">Any</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span><span class="p">],</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Shared ``(len(vc_names), len(RMCs))`` matrix builder.</span>
 
@@ -1080,7 +1080,7 @@
 <a class="viewcode-back" href="../../../autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.build_rhs_ode">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">build_rhs_ode</span><span class="p">(</span>
     <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
-    <span class="n">ordering</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ProcessOrdering</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">ordering</span><span class="p">:</span> <span class="n">ProcessOrdering</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RhsOde</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Build a :class:`RhsOde` from a process whose ``reaction_ode`` is</span>
 <span class="sd">    set (auto-generated in :meth:`BioProcess.__post_init__` when not</span>
@@ -1099,7 +1099,7 @@
     <span class="c1"># Canonical args order: every lambdified expression consumes a single</span>
     <span class="c1"># flat array indexed in this exact order. Must match the concatenation</span>
     <span class="c1"># order in RhsOde.__call__.</span>
-    <span class="n">args_order</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="n">args_order</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
         <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_RMCs</span>
         <span class="o">+</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_PVs</span>
         <span class="o">+</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_controlled_PVs</span>
@@ -1166,8 +1166,8 @@
 <a class="viewcode-back" href="../../../autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.build_algebraic_func">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">build_algebraic_func</span><span class="p">(</span>
     <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
-    <span class="n">ordering</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ProcessOrdering</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]:</span>
+    <span class="n">ordering</span><span class="p">:</span> <span class="n">ProcessOrdering</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]:</span>
 <span class="w">    </span><span class="sd">"""Build a callable that evaluates the ``reaction_ode.algebraic``</span>
 <span class="sd">    quantities from concrete ``(state_values, ctrl_pv_values, rates)``</span>
 <span class="sd">    arrays.</span>
@@ -1211,7 +1211,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">extract_discrete_events</span><span class="p">(</span>
     <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
     <span class="n">ordering</span><span class="p">:</span> <span class="n">ProcessOrdering</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
 <span class="w">    </span><span class="sd">"""Extract sampling and bolus-feed events from *process*.</span>
 
 <span class="sd">    Each event dict carries:</span>
@@ -1226,7 +1226,7 @@
 <span class="sd">    Events are sorted by time; sampling precedes bolus feeds at the same</span>
 <span class="sd">    timestamp. At most one sample and one bolus per timestamp.</span>
 <span class="sd">    """</span>
-    <span class="n">events</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">events</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
 
     <span class="k">for</span> <span class="n">vc_name</span><span class="p">,</span> <span class="n">vc</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">volume</span><span class="o">.</span><span class="n">volume_changes</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="k">if</span> <span class="n">vc</span><span class="o">.</span><span class="n">is_continuous</span><span class="p">:</span>
@@ -1251,23 +1251,23 @@
                     <span class="mi">0</span>
                 <span class="p">]</span>
                 <span class="n">events</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-                    <span class="nb">dict</span><span class="p">(</span>
-                        <span class="n">t</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">t_event</span><span class="p">),</span>
-                        <span class="n">kind</span><span class="o">=</span><span class="s2">"bolus_feed"</span><span class="p">,</span>
-                        <span class="n">dV</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">dV_event</span><span class="p">),</span>
-                        <span class="n">Cin</span><span class="o">=</span><span class="n">Cin_event</span><span class="p">,</span>
-                        <span class="n">source</span><span class="o">=</span><span class="n">vc_name</span><span class="p">,</span>
-                    <span class="p">)</span>
+                    <span class="p">{</span>
+                        <span class="s2">"t"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">t_event</span><span class="p">),</span>
+                        <span class="s2">"kind"</span><span class="p">:</span> <span class="s2">"bolus_feed"</span><span class="p">,</span>
+                        <span class="s2">"dV"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">dV_event</span><span class="p">),</span>
+                        <span class="s2">"Cin"</span><span class="p">:</span> <span class="n">Cin_event</span><span class="p">,</span>
+                        <span class="s2">"source"</span><span class="p">:</span> <span class="n">vc_name</span><span class="p">,</span>
+                    <span class="p">}</span>
                 <span class="p">)</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">events</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-                    <span class="nb">dict</span><span class="p">(</span>
-                        <span class="n">t</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">t_event</span><span class="p">),</span>
-                        <span class="n">kind</span><span class="o">=</span><span class="s2">"sample"</span><span class="p">,</span>
-                        <span class="n">dV</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">dV_event</span><span class="p">),</span>
-                        <span class="n">Cin</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-                        <span class="n">source</span><span class="o">=</span><span class="n">vc_name</span><span class="p">,</span>
-                    <span class="p">)</span>
+                    <span class="p">{</span>
+                        <span class="s2">"t"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">t_event</span><span class="p">),</span>
+                        <span class="s2">"kind"</span><span class="p">:</span> <span class="s2">"sample"</span><span class="p">,</span>
+                        <span class="s2">"dV"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">dV_event</span><span class="p">),</span>
+                        <span class="s2">"Cin"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+                        <span class="s2">"source"</span><span class="p">:</span> <span class="n">vc_name</span><span class="p">,</span>
+                    <span class="p">}</span>
                 <span class="p">)</span>
 
     <span class="n">events</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span>
@@ -1278,7 +1278,7 @@
     <span class="p">)</span>
 
     <span class="c1"># At a single timestamp at most one sample and one bolus.</span>
-    <span class="n">per_time_counts</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">per_time_counts</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">for</span> <span class="n">ev</span> <span class="ow">in</span> <span class="n">events</span><span class="p">:</span>
         <span class="n">t</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">ev</span><span class="p">[</span><span class="s2">"t"</span><span class="p">])</span>
         <span class="n">kind</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">ev</span><span class="p">[</span><span class="s2">"kind"</span><span class="p">])</span>
@@ -1399,7 +1399,7 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">build_state_splines</span><span class="p">(</span>
     <span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">,</span>
     <span class="n">ordering</span><span class="p">:</span> <span class="n">ProcessOrdering</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">"""Build state splines from stored TimeSeries spline state.</span>
 
 <span class="sd">    Pseudobatch-transformed reactor components (identified through the</span>
@@ -1411,7 +1411,7 @@
 <span class="sd">    Returns ``{state_name: spline_callable}`` for every non-volume state</span>
 <span class="sd">    in ``ordering.name_modeled_RMCs + ordering.name_modeled_PVs``.</span>
 <span class="sd">    """</span>
-    <span class="n">state_splines</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">state_splines</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="n">pseudobatch_transform</span> <span class="o">=</span> <span class="n">_validate_process_pseudobatch_transform</span><span class="p">(</span><span class="n">process</span><span class="p">,</span> <span class="n">ordering</span><span class="p">)</span>
 
     <span class="k">for</span> <span class="n">sp_name</span> <span class="ow">in</span> <span class="n">ordering</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">:</span>
@@ -1474,7 +1474,7 @@
       
     </aside>
   </div>
-</div><script src="../../../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../../../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>

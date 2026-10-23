@@ -118,12 +118,13 @@ Nothing enforces it. A feed pump cannot run backwards, so apply your own
 
 The one thing to get right.
 
-**Your network reads `SCL_*` inputs, so what it emits is already in SCL space. Return it
-directly.**
+**`ReactionOutputs` always expects SCL rates. Compute in whichever space you like, but
+return SCL.**
 
 The wrapper unscales your output by `SCALE_modeled_*_rates` on the way back to physical
-units. If you *also* call a `scale_*` helper on the output, the two cancel and your rates
-are off by the scale factor: with no error, just a model that will not fit.
+units. A network trained to emit SCL rates returns them directly; if you *also* call a
+`scale_*` helper on that output, your rates are off by the scale factor: with no error,
+just a model that will not fit.
 
 When you *do* need physical units (a Monod term with a real `K_s` in g/L, say) unscale
 the inputs, compute in RAW, then scale the result back:

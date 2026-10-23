@@ -20,15 +20,17 @@ The bundled XML input and output CSV are resolved relative to this script.
 Solving 10,000 linear programs takes a couple of minutes. run.py also runs this
 generator, but docs_rebuild.sh uses the frozen surrogate without regenerating it.
 
-The output, 01_obj_fba_data.csv.gz, feeds 02_fit_surrogate.py. Its fitted
-surrogate_fba body must be copied into custom.py in gallery_fba_hyb and
-gallery_pls_dfba to update the frozen coefficients used during training.
+The output, 01_obj_fba_data.csv.gz, feeds 02_fit_surrogate.py. Transfer its
+fitted expressions into surrogate_fba in both gallery examples' custom.py files,
+keeping each function's internal input normalization and return shape and using
+AVG_QG and AVG_N from the new 02_surrogate_params.npz. See README.md for the
+transfer steps. Sampling and optimizer restarts use fixed seeds.
 
-Combined objective: max  n_X*biomass + n_M*ATPM + n_A*acetate_secretion
-                         + n_S*succinate_secretion
-at fixed glucose uptake qG. Samples (qG, n_X, n_M, n_A, n_S) via Latin Hypercube,
-solves pFBA for each. n_S is included for both pages (page 1's reaction module
-will simply never query it), avoiding duplicate offline LP-solving.
+Maximize a combined-demand flux at fixed glucose uptake qG. Artificial-metabolite
+balances enforce v_i = n_i * v_combined for biomass, ATPM, acetate secretion and
+succinate secretion. Sample (qG, n_X, n_M, n_A, n_S) via Latin Hypercube and
+solve pFBA for each. FBA-Hyb fixes n_S to zero, while PLS-dFBA learns it, so
+both pages share one offline dataset.
 
 Mirrors the pattern in Gotsmy & Guillen-Gosalbez's FBA-Hyb method
 (bioRxiv:10.64898/2026.04.22.720062v1), adapted to e_coli_core (Orth, Fleming
@@ -58,7 +60,7 @@ def load_model():
 
     # Glucose as the sole carbon source; uptake bound is set per-sample below.
     model.reactions.get_by_id(GLC_RID).bounds = (-1000, 0)
-    # Relax ATPM's hard lower bound (8.39) so the maintenance objective weight
+    # Relax ATPM's hard lower bound (8.39) so the maintenance coefficient
     # n_M actually has room to move the LP solution, matching
     # vibrio_slim's "remove the ATPM constraint" step.
     model.reactions.get_by_id(ATPM_RID).bounds = (0, 1000)

@@ -551,10 +551,11 @@ does not.</p>
 <h2>Segmentation at events<a class="headerlink" href="#segmentation-at-events" title="Link to this heading">¶</a></h2>
 <p>A real fed-batch trace is not smooth: a bolus makes it jump. Fitting one polynomial
 across a discontinuity produces a spline that is wrong on both sides.</p>
-<p>So splines are fitted <strong>per segment</strong>, with boundaries at discrete events. The helpers
-<code class="docutils literal notranslate"><span class="pre">detect_discrete_state_events</span></code>, <code class="docutils literal notranslate"><span class="pre">make_segment_boundaries</span></code> and <code class="docutils literal notranslate"><span class="pre">split_timeseries</span></code> build
-those boundaries from the process’s own volume changes, and <code class="docutils literal notranslate"><span class="pre">fit_timeseries_spline</span></code>
-accepts them via <code class="docutils literal notranslate"><span class="pre">boundaries=</span></code>.</p>
+<p>So when you pass explicit <code class="docutils literal notranslate"><span class="pre">boundaries=</span></code> to <code class="docutils literal notranslate"><span class="pre">fit_timeseries_spline</span></code>, it fits <strong>per
+segment</strong>. The helpers <code class="docutils literal notranslate"><span class="pre">detect_discrete_state_events</span></code>, <code class="docutils literal notranslate"><span class="pre">make_segment_boundaries</span></code> and
+<code class="docutils literal notranslate"><span class="pre">split_timeseries</span></code> build such boundaries from the process’s own volume changes. The
+pseudobatch path does not segment: it transforms the measurements so the jump is
+removed, then fits one spline to all of them, and the backtransform restores the jump.</p>
 </section>
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
@@ -656,7 +657,7 @@ built on the spline machinery above.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

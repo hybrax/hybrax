@@ -152,9 +152,9 @@ base feeds. Both endpoints are preserved, keeping the total added feed
 unchanged. Hybrax evaluates their derivatives as feed rates. Smoothing reduces
 noise and abrupt rate changes that an adaptive ODE solver can miss. Temperature
 uses a cubic interpolating spline with `s=0`, matching OptFed's preprocessing.
-The importer fits complete traces first, then keeps the curve from induction
-through the last concentration sample. The retained curve is unchanged by this
-trimming.
+Temperature is fitted to the complete online trace, then restricted to induction
+through the last concentration sample without refitting. Feed measurements are
+clipped and rebased to that interval before the monotone splines are fitted.
 
 ````
 

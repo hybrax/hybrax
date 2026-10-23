@@ -85,9 +85,15 @@ print("q_rates    ", export.q_rates.shape)
 print("v_real     ", export.v_real.shape)
 
 truth = json.loads((HERE / "ground_truth.json").read_text())
-learned_mu = float(export.q_rates[0, 0])
+glucose_0 = float(
+    collection.processes["run_1"]
+    .reactor_medium.components["glucose"]
+    .concentration.values[0]
+)
+true_mu = truth["mu_max"] * glucose_0 / (truth["Ks"] + glucose_0)  # Monod
+learned_mu = float(export.q_rates[0, 0])  # q_biomass at t = 0
 print(f"learned q_biomass(t=0) : {learned_mu:.3f} 1/h")
-print(f"true mu_max            : {truth['mu_max']:.3f} 1/h")
+print(f"true q_biomass(t=0)    : {true_mu:.3f} 1/h")
 
 measured = collection.processes["run_1"].reactor_medium.components
 fig, axes = plt.subplots(1, 3, figsize=(12, 3.2), constrained_layout=True)

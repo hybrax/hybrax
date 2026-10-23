@@ -64,8 +64,7 @@ BioProcessCollection
 ```
 
 - **BioProcessCollection** carries `case_id`/`organism`/`citation` when it represents
-  one publication or experimental campaign (`case_id` is then the natural grouping for
-  leave-one-process-out cross-validation), or leaves them `None` for raw or
+  one publication or experimental campaign, or leaves them `None` for raw or
   intermediate data that is not yet a full-fledged case study. Either way it's the
   same type, the same file shape, the same save/load functions: `CaseStudy` and
   `BioProcessCollection` used to be two separate classes with this exact split; they

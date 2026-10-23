@@ -371,8 +371,8 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
@@ -381,15 +381,16 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.interpolate</span><span class="w"> </span><span class="kn">import</span> <span class="n">PPoly</span> <span class="k">as</span> <span class="n">SciPyPPoly</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.interpolate</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_splrep</span>
 
-<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">grid_utils</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">spline_ops</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">grid_utils</span><span class="p">,</span> <span class="n">spline_ops</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.constants</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">APPROX_ABS_FLOOR</span><span class="p">,</span>
+    <span class="n">APPROX_INITIAL_S</span><span class="p">,</span>
+    <span class="n">APPROX_MAX_REFIT_ATTEMPTS</span><span class="p">,</span>
+    <span class="n">APPROX_REL_ERR_TARGET</span><span class="p">,</span>
+    <span class="n">APPROX_S_REDUCTION_FACTOR</span><span class="p">,</span>
+    <span class="n">DIVISION_NEAR_ZERO_THRESHOLD</span><span class="p">,</span>
+<span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.ppoly</span><span class="w"> </span><span class="kn">import</span> <span class="n">PPoly</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">APPROX_ABS_FLOOR</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">APPROX_INITIAL_S</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">APPROX_MAX_REFIT_ATTEMPTS</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">APPROX_REL_ERR_TARGET</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">APPROX_S_REDUCTION_FACTOR</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">DIVISION_NEAR_ZERO_THRESHOLD</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_as_float_array</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">dtype</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">ndim</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
@@ -808,7 +809,7 @@
             <span class="n">metadata</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">metadata</span><span class="p">,</span>
         <span class="p">)</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_binary_discrete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="s2">"TimeSeries"</span><span class="p">,</span> <span class="n">op</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"TimeSeries"</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_binary_discrete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="n">TimeSeries</span><span class="p">,</span> <span class="n">op</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TimeSeries</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Combine via linear interpolation on a merged time grid; drops any spline."""</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dtype</span> <span class="o">!=</span> <span class="n">other</span><span class="o">.</span><span class="n">dtype</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"TimeSeries dtype mismatch: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">dtype</span><span class="si">}</span><span class="s2"> vs </span><span class="si">{</span><span class="n">other</span><span class="o">.</span><span class="n">dtype</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
@@ -861,7 +862,7 @@
             <span class="n">metadata</span><span class="o">=</span><span class="p">{</span><span class="s2">"source"</span><span class="p">:</span> <span class="s2">"discrete_binary_op"</span><span class="p">,</span> <span class="s2">"op"</span><span class="p">:</span> <span class="n">op</span><span class="p">},</span>
         <span class="p">)</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_binary_exact</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="s2">"TimeSeries"</span><span class="p">,</span> <span class="n">op</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"TimeSeries"</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_binary_exact</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="n">TimeSeries</span><span class="p">,</span> <span class="n">op</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TimeSeries</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Add or subtract two splines exactly on a merged breakpoint grid.</span>
 
 <span class="sd">        Add and subtract are linear in the power-basis coefficients, so this</span>
@@ -926,7 +927,7 @@
             <span class="n">metadata</span><span class="o">=</span><span class="p">{</span><span class="s2">"source"</span><span class="p">:</span> <span class="s2">"exact_binary_op"</span><span class="p">,</span> <span class="s2">"op"</span><span class="p">:</span> <span class="n">op</span><span class="p">},</span>
         <span class="p">)</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_binary_approx</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="s2">"TimeSeries"</span><span class="p">,</span> <span class="n">op</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"TimeSeries"</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_binary_approx</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">:</span> <span class="n">TimeSeries</span><span class="p">,</span> <span class="n">op</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TimeSeries</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""Multiply or divide two splines by refitting a new spline to the result.</span>
 
 <span class="sd">        Multiply and divide are not closed under the power-basis</span>
@@ -978,23 +979,25 @@
 
         <span class="n">out_times</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="n">out_values</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">times</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">values</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">other</span><span class="o">.</span><span class="n">times</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">other</span><span class="o">.</span><span class="n">values</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">out_times</span> <span class="o">=</span> <span class="n">grid_utils</span><span class="o">.</span><span class="n">merge_times_with_tolerance</span><span class="p">(</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">times</span>
-                <span class="p">)</span>
-                <span class="n">left_discrete</span> <span class="o">=</span> <span class="n">grid_utils</span><span class="o">.</span><span class="n">linear_interpolate_samples</span><span class="p">(</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">out_times</span>
-                <span class="p">)</span>
-                <span class="n">right_discrete</span> <span class="o">=</span> <span class="n">grid_utils</span><span class="o">.</span><span class="n">linear_interpolate_samples</span><span class="p">(</span>
-                    <span class="n">other</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">out_times</span>
-                <span class="p">)</span>
-                <span class="k">if</span> <span class="n">op</span> <span class="o">==</span> <span class="s2">"mul"</span><span class="p">:</span>
-                    <span class="n">out_values</span> <span class="o">=</span> <span class="n">left_discrete</span> <span class="o">*</span> <span class="n">right_discrete</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="k">if</span> <span class="n">jnp</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">right_discrete</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">DIVISION_NEAR_ZERO_THRESHOLD</span><span class="p">):</span>
-                        <span class="k">raise</span> <span class="ne">ZeroDivisionError</span><span class="p">(</span><span class="s2">"discrete denominator near zero"</span><span class="p">)</span>
-                    <span class="n">out_values</span> <span class="o">=</span> <span class="n">left_discrete</span> <span class="o">/</span> <span class="n">right_discrete</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">times</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">values</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="n">other</span><span class="o">.</span><span class="n">times</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="n">other</span><span class="o">.</span><span class="n">values</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="p">):</span>
+            <span class="n">out_times</span> <span class="o">=</span> <span class="n">grid_utils</span><span class="o">.</span><span class="n">merge_times_with_tolerance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">times</span><span class="p">)</span>
+            <span class="n">left_discrete</span> <span class="o">=</span> <span class="n">grid_utils</span><span class="o">.</span><span class="n">linear_interpolate_samples</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">out_times</span>
+            <span class="p">)</span>
+            <span class="n">right_discrete</span> <span class="o">=</span> <span class="n">grid_utils</span><span class="o">.</span><span class="n">linear_interpolate_samples</span><span class="p">(</span>
+                <span class="n">other</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">out_times</span>
+            <span class="p">)</span>
+            <span class="k">if</span> <span class="n">op</span> <span class="o">==</span> <span class="s2">"mul"</span><span class="p">:</span>
+                <span class="n">out_values</span> <span class="o">=</span> <span class="n">left_discrete</span> <span class="o">*</span> <span class="n">right_discrete</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">jnp</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">right_discrete</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">DIVISION_NEAR_ZERO_THRESHOLD</span><span class="p">):</span>
+                    <span class="k">raise</span> <span class="ne">ZeroDivisionError</span><span class="p">(</span><span class="s2">"discrete denominator near zero"</span><span class="p">)</span>
+                <span class="n">out_values</span> <span class="o">=</span> <span class="n">left_discrete</span> <span class="o">/</span> <span class="n">right_discrete</span>
 
         <span class="n">out_jumps</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span>
             <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
@@ -1089,7 +1092,7 @@
       
     </aside>
   </div>
-</div><script src="../../../../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../../../../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../../_static/scripts/furo.js?v=46bd48cc"></script>

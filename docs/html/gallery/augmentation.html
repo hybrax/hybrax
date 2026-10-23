@@ -390,7 +390,8 @@ files it produced.</p>
 <section id="configuration">
 <h2>Configuration<a class="headerlink" href="#configuration" title="Link to this heading">¶</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">prepare.augmentation</span></code> is most of it: how many synthetic children per parent, how many
-resampled timepoints each has, and a relative noise level per state.</p>
+resampled timepoints each has, and an additive Gaussian noise standard deviation
+per state, expressed in that state’s units. Here, <code class="docutils literal notranslate"><span class="pre">0.05</span></code> means 0.05 g/L.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">"n_children_per_process"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"n_time_points"</span><span class="p">:</span><span class="w"> </span><span class="mi">11</span><span class="p">,</span>
@@ -398,8 +399,9 @@ resampled timepoints each has, and a relative noise level per state.</p>
 <span class="p">}</span>
 </pre></div>
 </div>
-<p>Only states named in <code class="docutils literal notranslate"><span class="pre">noise_std</span></code> are touched. <code class="docutils literal notranslate"><span class="pre">n_time_points</span></code> need not match the
-parent’s own sampling: children are resampled onto new timepoints.</p>
+<p>Only states named in <code class="docutils literal notranslate"><span class="pre">noise_std</span></code> receive noise. Other modeled states with fitted
+splines are resampled without noise; states without splines are copied unchanged.
+<code class="docutils literal notranslate"><span class="pre">n_time_points</span></code> need not match the parent’s own sampling.</p>
 </section>
 <section id="splines-first">
 <h2>Splines First<a class="headerlink" href="#splines-first" title="Link to this heading">¶</a></h2>
@@ -410,12 +412,14 @@ parent’s own sampling: children are resampled onto new timepoints.</p>
 <span class="linenos">5</span>            <span class="n">component</span><span class="o">.</span><span class="n">concentration</span> <span class="o">=</span> <span class="n">fit_timeseries_spline</span><span class="p">(</span>
 <span class="linenos">6</span>                <span class="n">component</span><span class="o">.</span><span class="n">concentration</span><span class="p">,</span> <span class="n">smoothing_s</span><span class="o">=</span><span class="mf">0.0</span>
 <span class="linenos">7</span>            <span class="p">)</span>
+<span class="linenos">8</span>    <span class="k">return</span> <span class="n">collection</span>
 </pre></div>
 </div>
-<p>Augmentation resamples each modeled state onto new timepoints, and that needs a fitted
-spline. A freshly loaded hybrax.format file has none:
-without this hook, <code class="docutils literal notranslate"><span class="pre">prepare</span></code> fails fast with <code class="docutils literal notranslate"><span class="pre">&quot;modeled</span> <span class="pre">state</span> <span class="pre">'biomass'</span> <span class="pre">requires</span> <span class="pre">a</span> <span class="pre">spline&quot;</span></code> rather than guessing. <code class="docutils literal notranslate"><span class="pre">custom_py</span></code> must be set at the top level of the config
-(not inside <code class="docutils literal notranslate"><span class="pre">prepare</span></code>) for <code class="docutils literal notranslate"><span class="pre">prepare</span></code> to pick this hook up at all.</p>
+<p>Every state named in <code class="docutils literal notranslate"><span class="pre">noise_std</span></code> needs a fitted spline. This example’s raw
+<code class="docutils literal notranslate"><span class="pre">data.json</span></code> has none, so the hook fits them before augmentation. Files can also
+contain splines saved earlier. Without this hook, <code class="docutils literal notranslate"><span class="pre">prepare</span></code> fails fast with
+<code class="docutils literal notranslate"><span class="pre">&quot;modeled</span> <span class="pre">state</span> <span class="pre">'biomass'</span> <span class="pre">requires</span> <span class="pre">a</span> <span class="pre">spline&quot;</span></code>. Set <code class="docutils literal notranslate"><span class="pre">custom_py</span></code> at the top level
+of the config to load the hook.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>UserWarning: fedbatch_1: spline for reactor-medium component 'glucose' evaluated below zero during augmentation
@@ -438,24 +442,26 @@ wrong here will look wrong in every downstream fit too.</p>
 <p><code class="docutils literal notranslate"><span class="pre">glucose</span></code> crashes to near zero and stays there for most of the run (the same shape as
 <a class="reference internal" href="fed_batch.html"><span class="std std-doc">Fed-batch</span></a>), and the warning above is exactly that: the fitted spline
 dips slightly negative between two closely-spaced near-zero measurements. Augmentation
-clips every reactor-medium child value to <code class="docutils literal notranslate"><span class="pre">≥</span> <span class="pre">0</span></code> afterward, so this does not produce a
-physically invalid concentration, but it is a real sign to look at the plot rather than
-trust the config blindly.</p>
+clips resampled reactor-medium values to <code class="docutils literal notranslate"><span class="pre">≥</span> <span class="pre">0</span></code> before <code class="docutils literal notranslate"><span class="pre">augment_state_values</span></code>.
+This example’s running maximum preserves nonnegativity; replacement hooks must
+preserve it themselves. Check the diagnostic plot before training.</p>
 </section>
-<section id="fixing-what-default-noise-gets-wrong">
-<h2>Fixing What Default Noise Gets Wrong<a class="headerlink" href="#fixing-what-default-noise-gets-wrong" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">1</span>
-<span class="linenos">2</span><span class="k">def</span><span class="w"> </span><span class="nf">augment_state_values</span><span class="p">(</span>
-<span class="linenos">3</span>    <span class="o">*</span><span class="p">,</span> <span class="n">parent_name</span><span class="p">,</span> <span class="n">child_name</span><span class="p">,</span> <span class="n">state_name</span><span class="p">,</span> <span class="n">times</span><span class="p">,</span> <span class="n">base_values</span><span class="p">,</span> <span class="n">augmented_values</span><span class="p">,</span> <span class="n">config</span>
-<span class="linenos">4</span><span class="p">):</span>
-<span class="linenos">5</span>    <span class="k">del</span> <span class="n">parent_name</span><span class="p">,</span> <span class="n">child_name</span><span class="p">,</span> <span class="n">times</span><span class="p">,</span> <span class="n">base_values</span><span class="p">,</span> <span class="n">config</span>
-<span class="linenos">6</span>    <span class="k">if</span> <span class="n">state_name</span> <span class="o">!=</span> <span class="s2">"product"</span><span class="p">:</span>
-<span class="linenos">7</span>        <span class="k">return</span> <span class="n">augmented_values</span>
+<section id="a-custom-shape-constraint">
+<h2>A Custom Shape Constraint<a class="headerlink" href="#a-custom-shape-constraint" title="Link to this heading">¶</a></h2>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">1</span><span class="k">def</span><span class="w"> </span><span class="nf">augment_state_values</span><span class="p">(</span>
+<span class="linenos">2</span>    <span class="o">*</span><span class="p">,</span> <span class="n">parent_name</span><span class="p">,</span> <span class="n">child_name</span><span class="p">,</span> <span class="n">state_name</span><span class="p">,</span> <span class="n">times</span><span class="p">,</span> <span class="n">base_values</span><span class="p">,</span> <span class="n">augmented_values</span><span class="p">,</span> <span class="n">config</span>
+<span class="linenos">3</span><span class="p">):</span>
+<span class="linenos">4</span>    <span class="k">del</span> <span class="n">parent_name</span><span class="p">,</span> <span class="n">child_name</span><span class="p">,</span> <span class="n">times</span><span class="p">,</span> <span class="n">base_values</span><span class="p">,</span> <span class="n">config</span>
+<span class="linenos">5</span>    <span class="k">if</span> <span class="n">state_name</span> <span class="o">!=</span> <span class="s2">"product"</span><span class="p">:</span>
+<span class="linenos">6</span>        <span class="k">return</span> <span class="n">augmented_values</span>
+<span class="linenos">7</span>    <span class="c1"># Apply the demonstration's shape constraint after noise and clipping.</span>
+<span class="linenos">8</span>    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="o">.</span><span class="n">accumulate</span><span class="p">(</span><span class="n">augmented_values</span><span class="p">)</span>
 </pre></div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">product</span></code> accumulates and should never decrease, but independent Gaussian noise per
-timepoint does not know that. The hook receives the noised values <em>after</em> the default
-transform and can repair them: here, a running maximum.</p>
+<p>For this hook demonstration, we impose a nondecreasing <code class="docutils literal notranslate"><span class="pre">product</span></code> trajectory on the
+resampled observations with a running maximum. Product concentration is not
+generally monotone in fed-batch: feeding can dilute it. The hook receives the
+noised values after clipping and applies this chosen shape constraint.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>UserWarning: fedbatch_1: spline for reactor-medium component 'glucose' evaluated below zero during augmentation
@@ -481,8 +487,8 @@ transform and can repair them: here, a running maximum.</p>
 the time <code class="docutils literal notranslate"><span class="pre">train</span></code> runs, the synthetic children are just more processes in the store.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>run directory: ./source/_data/out/runs/gallery_augmentation/run
-prepared augmentation diagnostic: ./source/_data/out/runs/gallery_augmentation/prepared/augmented-data.png
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>run directory: ./docs/source/_data/out/runs/gallery_augmentation/run
+prepared augmentation diagnostic: ./docs/source/_data/out/runs/gallery_augmentation/prepared/augmented-data.png
 </pre></div>
 </div>
 </div>
@@ -491,17 +497,19 @@ prepared augmentation diagnostic: ./source/_data/out/runs/gallery_augmentation/p
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><strong>Augmentation needs a fitted spline on every state it touches.</strong> Fit one in
-<code class="docutils literal notranslate"><span class="pre">transform_process_collection</span></code> before augmenting; a freshly loaded file has none.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">custom_py</span></code> is a top-level config key.</strong> Nesting it inside <code class="docutils literal notranslate"><span class="pre">prepare</span></code> silently means
-no hooks are found (<code class="docutils literal notranslate"><span class="pre">prepare</span> <span class="pre">hooks</span> <span class="pre">default:</span> <span class="pre">transform_process_collection,</span> <span class="pre">augment_state_values</span></code> in the log is the tell).</p></li>
-<li><p><strong>Only states named in <code class="docutils literal notranslate"><span class="pre">noise_std</span></code> are generated with noise</strong>; everything else is
-copied from the parent’s resampled trajectory unchanged.</p></li>
+<li><p><strong>Every state named in <code class="docutils literal notranslate"><span class="pre">noise_std</span></code> needs a fitted spline.</strong> This example’s raw
+<code class="docutils literal notranslate"><span class="pre">data.json</span></code> has none, so <code class="docutils literal notranslate"><span class="pre">transform_process_collection</span></code> fits them. Loading a file
+with saved splines restores them.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">custom_py</span></code> is a top-level config key.</strong> Nesting it inside <code class="docutils literal notranslate"><span class="pre">prepare</span></code> raises
+a validation error for an extra field.</p></li>
+<li><p><strong>Only states named in <code class="docutils literal notranslate"><span class="pre">noise_std</span></code> receive noise.</strong> Other modeled states with
+fitted splines are resampled without noise; states without splines are copied
+unchanged. Resampled reactor-medium values are clipped before the hook.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">augment_state_values</span></code> runs after the default noise</strong>: it receives <code class="docutils literal notranslate"><span class="pre">augmented_values</span></code>
 already populated, so it adjusts rather than replaces them outright.</p></li>
 <li><p><strong>A spline can dip below zero between measurements</strong>, especially near sharp features
-like a near-zero glucose plateau. Reactor-medium children are clipped to <code class="docutils literal notranslate"><span class="pre">≥</span> <span class="pre">0</span></code>
-afterward, but check the diagnostic plot for any state where this matters.</p></li>
+like a near-zero glucose plateau. Reactor-medium values are clipped to <code class="docutils literal notranslate"><span class="pre">≥</span> <span class="pre">0</span></code>
+before the hook. Replacement hooks must preserve nonnegativity themselves.</p></li>
 <li><p><strong>Cross-validation must stay group-aware.</strong> A parent and its synthetic children carry
 the same information; splitting them across train and holdout leaks the answer. Use
 <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s LOO (<a class="reference internal" href="loo.html"><span class="std std-doc">worked example</span></a>), which handles this for you.</p></li>
@@ -513,7 +521,7 @@ for an experiment you have not run.</p></li>
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
 <code class="docutils literal notranslate"><span class="pre">examples/gallery_augmentation/</span></code> at the repo root, no docs build required. This page’s
-own executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_augmentation/</span></code>.</p>
+own executed run is at <code class="docutils literal notranslate"><span class="pre">./docs/source/_data/out/runs/gallery_augmentation/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../train/prepare.html#augmentation"><span class="std std-ref">Prepare</span></a>: the config reference.</p></li>
 <li><p><a class="reference internal" href="loo.html"><span class="std std-doc">Cross-Validation, Worked</span></a>: why augmented data needs group-aware folds.</p></li>
@@ -581,7 +589,7 @@ own executed run is at <code class="docutils literal notranslate"><span class="p
 <li><a class="reference internal" href="#configuration">Configuration</a></li>
 <li><a class="reference internal" href="#splines-first">Splines First</a></li>
 <li><a class="reference internal" href="#what-got-generated">What Got Generated</a></li>
-<li><a class="reference internal" href="#fixing-what-default-noise-gets-wrong">Fixing What Default Noise Gets Wrong</a></li>
+<li><a class="reference internal" href="#a-custom-shape-constraint">A Custom Shape Constraint</a></li>
 <li><a class="reference internal" href="#training-on-the-enlarged-dataset">Training on the Enlarged Dataset</a></li>
 <li><a class="reference internal" href="#gotchas">Gotchas</a></li>
 <li><a class="reference internal" href="#see-also">See Also</a></li>
@@ -596,7 +604,7 @@ own executed run is at <code class="docutils literal notranslate"><span class="p
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

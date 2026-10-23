@@ -390,7 +390,7 @@ changes. However, the <code class="docutils literal notranslate"><span class="pr
 <!-- UNLOCK -->
 <ul class="simple">
 <li><p><a class="reference internal" href="../gallery/glutamine_decay.html"><span class="std std-doc">chemical degradation rates</span></a>, and</p></li>
-<li><p><a class="reference internal" href="../gallery/glutamine_decay.html"><span class="std std-doc">modeled process variables</span></a>.</p></li>
+<li><p><a class="reference internal" href="../gallery/modeled_pv.html"><span class="std std-doc">modeled process variables</span></a>.</p></li>
 </ul>
 <section id="example-data">
 <h2>1.1 Example data<a class="headerlink" href="#example-data" title="Link to this heading">¶</a></h2>
@@ -478,9 +478,10 @@ run_1,4.0,0.6045,9.4939,0.0465
 <ul class="simple">
 <li><p>Each measured species is its own <code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> naturally enabling irregular sampling.</p></li>
 <li><p>The <code class="docutils literal notranslate"><span class="pre">times</span></code> vector must be <strong>strictly increasing</strong>.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">jump_times</span></code> (optional) represent discontinuities in the data (e.g. volume
-jump due to bolus feed). This is important for <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> later as it
-tells the ODE solver where to split the integration into continuous segments.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">jump_times</span></code> (optional) records where this series is discontinuous. It is
+metadata only: interpolation and spline fitting do not split at it. Bolus
+feeds and sampling are declared on <code class="docutils literal notranslate"><span class="pre">Volume.volume_changes</span></code> instead; see
+<a class="reference internal" href="../format/volume_feeds_events.html"><span class="std std-doc">Volume, feeds and events</span></a>.</p></li>
 <li><p>For a quantity that genuinely does not change, use <code class="docutils literal notranslate"><span class="pre">hxf.StaticVariable(value)</span></code> instead.</p></li>
 </ul>
 </div>
@@ -541,7 +542,7 @@ consistent.</p>
 <div class="note admonition">
 <p class="admonition-title">Notes</p>
 <ul class="simple">
-<li><p>The <code class="docutils literal notranslate"><span class="pre">bounds</span></code> are metadata, not constraints. Nothing in <code class="docutils literal notranslate"><span class="pre">Hybrax</span></code> enforces bounds per default. They are recorded so downstream consumers (<code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s loss module, for instance) can build soft penalties from them.</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">bounds</span></code> declare the valid range of a quantity. Validation flags measurements outside it, but nothing clamps model predictions and the default training loss ignores bounds. The optional <code class="docutils literal notranslate"><span class="pre">hybrax.train.BoundsViolationLossModule</span></code> turns them into soft penalties.</p></li>
 <li><p>The units are explicitly required. This avoids ambiguity and enables validation downstream.</p></li>
 </ul>
 </div>
@@ -610,18 +611,20 @@ derivatives: {'biomass': 'q_biomass * biomass', 'glucose': 'q_glucose * biomass'
 <code class="docutils literal notranslate"><span class="pre">q_&lt;species&gt;</span> <span class="pre">*</span> <span class="pre">biomass</span></code>. Those rates are exactly what a model will predict later.</p>
 <div class="warning admonition">
 <p class="admonition-title">This is why a component must be called <code class="docutils literal notranslate"><span class="pre">biomass</span></code></p>
-<p>Auto-generation makes every rate <em>specific</em> (per unit biomass) so it needs to know
-which component the biomass is. Without one, constructing the <code class="docutils literal notranslate"><span class="pre">BioProcess</span></code> raises
-immediately. If your data has no biomass, or you want different dynamics, write
-<code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> yourself: <a class="reference internal" href="../format/bioprocess_ode.html"><span class="std std-doc">The Bioprocess ODE</span></a>.</p>
+<p>Auto-generation gives every reactor-medium component a specific rate (per unit
+biomass), so it needs a component named <code class="docutils literal notranslate"><span class="pre">biomass</span></code>. Without one, constructing a
+<code class="docutils literal notranslate"><span class="pre">BioProcess</span></code> with auto-generated dynamics raises immediately.
+To construct a <code class="docutils literal notranslate"><span class="pre">BioProcess</span></code> without biomass, supply an explicit <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>.
+Current validation and <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> preparation still require a <code class="docutils literal notranslate"><span class="pre">biomass</span></code>
+reactor component. You can also supply an explicit <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code> to replace
+the default dynamics. See <a class="reference internal" href="../format/bioprocess_ode.html"><span class="std std-doc">The Bioprocess ODE</span></a>.</p>
 </div>
 </section>
 <section id="collect-and-save">
 <h2>1.6 Collect and save<a class="headerlink" href="#collect-and-save" title="Link to this heading">¶</a></h2>
 <p>Setting <code class="docutils literal notranslate"><span class="pre">case_id</span></code>/<code class="docutils literal notranslate"><span class="pre">organism</span></code>/<code class="docutils literal notranslate"><span class="pre">citation</span></code> on a <code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code> marks it as
 a full case study, i.e. all experiments pertaining to a certain publication or
-process development campaign. <code class="docutils literal notranslate"><span class="pre">case_id</span></code> is also the natural grouping for
-cross-validation later. Leaving those unset (the default) is fine too: this
+process development campaign. Leaving those unset (the default) is fine too: this
 means raw or intermediate data with no case-study identity yet, the same
 container either way.</p>
 <div class="cell docutils container">
@@ -636,12 +639,12 @@ container either way.</p>
 <span class="n">out</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">"../_data/out/runs/tutorial_01"</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span>
 <span class="n">out</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="n">hxf</span><span class="o">.</span><span class="n">serialization</span><span class="o">.</span><span class="n">save_process_collection</span><span class="p">(</span><span class="n">collection</span><span class="p">,</span> <span class="n">out</span> <span class="o">/</span> <span class="s2">"data.json"</span><span class="p">)</span>
-<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"./</span><span class="si">{</span><span class="p">(</span><span class="n">out</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="s1">'data.json'</span><span class="p">)</span><span class="o">.</span><span class="n">relative_to</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">parents</span><span class="p">[</span><span class="mi">4</span><span class="p">])</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"./</span><span class="si">{</span><span class="p">(</span><span class="n">out</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="s1">'data.json'</span><span class="p">)</span><span class="o">.</span><span class="n">relative_to</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">parents</span><span class="p">[</span><span class="mi">5</span><span class="p">])</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
 </div>
 </div>
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>./source/_data/out/runs/tutorial_01/data.json
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>./docs/source/_data/out/runs/tutorial_01/data.json
 </pre></div>
 </div>
 </div>
@@ -984,7 +987,7 @@ way you meant it.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

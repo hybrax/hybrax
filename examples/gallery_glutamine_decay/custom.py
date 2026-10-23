@@ -1,7 +1,7 @@
-"""Glutamine degradation rate law: three constant specific rates, no kinetic
-structure at all. The point of this page is entirely in the dataset's own
-reaction_ode block (one shared rate feeding two derivatives), not in this
-reaction module.
+"""Glutamine degradation rate law: two constant biomass-specific rates and
+one constant first-order degradation rate. The kinetic structure is in the
+dataset's `reaction_ode` block, where one shared rate feeds two derivatives.
+This reaction module returns only the three constants.
 """
 
 import jax

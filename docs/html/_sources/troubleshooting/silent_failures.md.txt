@@ -44,29 +44,33 @@ is identical to RAW space, and the entire scaled-integration design is inert.
 converges. On real data it produces a model that trains badly for reasons that look like
 stiffness, bad architecture or a bad learning rate: anything except the actual cause.
 
-**How to catch it.** Look at the **initial** loss, before any learning has happened. A
-well-scaled model starts within an order of magnitude or two of the data.
-[Tutorial 4](../tutorials/04_your_first_custom_py.md#did-it-help) measures the gap on the
-demo dataset: two orders of magnitude in initial loss, on data that is deliberately easy.
+**How to catch it.** Check whether your `custom.py` defines `estimate_all_scales`. Do not
+compare loss values between a scaled and an unscaled run: their losses are in different
+units. Compare physical-space R² per target instead.
+[Tutorial 4](../tutorials/04_your_first_custom_py.md#did-it-help) does this on the demo
+dataset; there the smallest-magnitude target (product) is the one that improves. That run
+also changes the network and learning rate, so it does not isolate scaling.
 
-Also check `grad_norm_curve.png`. A raw gradient norm pinned at `grad_clip_norm` for the
-whole run means your effective step size is not the learning rate.
+Also check `grad_norm_curve.png`. A raw gradient norm that stays above `grad_clip_norm`
+for the whole run means most updates are being clipped.
 
 **Fix.** [Scaling](../train/scaling.md).
 
 ---
 
-## 3. `model_reload` across datasets
+## 3. `model_reload` with the wrong wrapper
 
-**The failure.** `model_reload` reuses the static half (including every `SCALE_*`) from
-whatever you hand it, instead of rebuilding it from the run directory. Point it at a
-different dataset and the trained weights are loaded into a **different scaled space**.
+**The failure.** `model_reload` only replaces the trained weights. It keeps the static
+half (including every `SCALE_*`) from the wrapper you pass it, instead of rebuilding it
+from the run directory. Pass it a wrapper from a different run, or one built on a
+different dataset, and the trained weights are loaded into a **different scaled space**.
 
 **Why it is hard to spot.** No exception, no shape mismatch, no `NaN`. The predictions are
 smooth, plausible, and wrong by a scale factor per axis.
 
 **Fix.** Use `model_load(run_dir)`, which rebuilds everything from the directory's own
-bundled data. Reach for `model_reload` only when you specifically know why.
+bundled data. Reach for `model_reload` only to swap in another checkpoint of the same
+run, using the wrapper that run produced.
 
 ---
 
@@ -103,24 +107,25 @@ shared file other runs also point at.
 
 ## 5. Double-scaling in the reaction module
 
-**The failure.** Your network reads `inputs.SCL_*`, so its output is already in SCL space.
-If you also apply a `scale_*` helper to that output, it cancels against the wrapper's
-unscale step and your rates are off by the scale factor.
+**The failure.** `ReactionOutputs` always expects SCL rates; the wrapper unscales them on
+the way back to physical units. If your module computes physical rates and returns them
+unconverted, or converts rates that were already SCL with a `scale_*` helper, your rates
+are off by the scale factor.
 
 **Why it is hard to spot.** Both conventions appear in the shipped examples, correctly,
-because they depend on what the network is defined to emit:
+because they depend on what the module computes:
 
-- `examples/00_e2e_sim/custom.py` emits SCL directly and its comments warn against
-  re-scaling;
-- `tests/fixtures/martens_single/custom.py` computes in RAW and *does* call
-  `scale_modeled_ReactionOde_rates`.
+- `examples/tutorial_04_your_first_custom_py/custom.py` has an MLP trained to emit SCL
+  rates, so it returns them directly;
+- `examples/gallery_mechanistic_rates/custom.py` computes Monod kinetics in RAW and
+  *does* call `scale_modeled_ReactionOde_rates`.
 
 A beginner comparing the two concludes the code is inconsistent. It is not: they are
 answering different questions.
 
 **The rule.**
 
-> **If the input was SCL, the output is SCL.**
+> **Compute in whichever space you like, but return SCL.**
 > If you unscaled the inputs to compute in physical units, scale the output back.
 
 Never mix. Ask "what space is this number in?" at every line of `__call__`. See

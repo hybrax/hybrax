@@ -600,7 +600,11 @@ for defaults you do not want to repeat in every config file.</p>
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> is required to reuse an output directory.</strong> You will meet this on your
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> is required to reuse an output directory in some cases.</strong> <code class="docutils literal notranslate"><span class="pre">train</span></code>
+refuses a completed run (and an incomplete one with checkpoints when retention is
+enabled), <code class="docutils literal notranslate"><span class="pre">forward</span></code> refuses existing forward results, <code class="docutils literal notranslate"><span class="pre">prepare</span></code> refuses an existing
+<code class="docutils literal notranslate"><span class="pre">prepared.json</span></code>, and <code class="docutils literal notranslate"><span class="pre">loo</span></code> refuses any existing output directory unless you pass
+<code class="docutils literal notranslate"><span class="pre">--resume</span></code>. You will meet this on your
 second run. It is deliberate.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> deletes everything already in <code class="docutils literal notranslate"><span class="pre">--output-dir</span></code></strong>, regardless of what put it
 there, before writing fresh output, on every one of <code class="docutils literal notranslate"><span class="pre">prepare</span></code>/<code class="docutils literal notranslate"><span class="pre">train</span></code>/<code class="docutils literal notranslate"><span class="pre">forward</span></code>/<code class="docutils literal notranslate"><span class="pre">loo</span></code>.
@@ -701,7 +705,7 @@ use it.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

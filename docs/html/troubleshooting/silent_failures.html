@@ -410,24 +410,28 @@ is identical to RAW space, and the entire scaled-integration design is inert.</p
 <p><strong>Why it is hard to spot.</strong> Nothing errors. On a small, well-conditioned dataset it even
 converges. On real data it produces a model that trains badly for reasons that look like
 stiffness, bad architecture or a bad learning rate: anything except the actual cause.</p>
-<p><strong>How to catch it.</strong> Look at the <strong>initial</strong> loss, before any learning has happened. A
-well-scaled model starts within an order of magnitude or two of the data.
-<a class="reference internal" href="../tutorials/04_your_first_custom_py.html#did-it-help"><span class="std std-ref">Tutorial 4</span></a> measures the gap on the
-demo dataset: two orders of magnitude in initial loss, on data that is deliberately easy.</p>
-<p>Also check <code class="docutils literal notranslate"><span class="pre">grad_norm_curve.png</span></code>. A raw gradient norm pinned at <code class="docutils literal notranslate"><span class="pre">grad_clip_norm</span></code> for the
-whole run means your effective step size is not the learning rate.</p>
+<p><strong>How to catch it.</strong> Check whether your <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> defines <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code>. Do not
+compare loss values between a scaled and an unscaled run: their losses are in different
+units. Compare physical-space R² per target instead.
+<a class="reference internal" href="../tutorials/04_your_first_custom_py.html#did-it-help"><span class="std std-ref">Tutorial 4</span></a> does this on the demo
+dataset; there the smallest-magnitude target (product) is the one that improves. That run
+also changes the network and learning rate, so it does not isolate scaling.</p>
+<p>Also check <code class="docutils literal notranslate"><span class="pre">grad_norm_curve.png</span></code>. A raw gradient norm that stays above <code class="docutils literal notranslate"><span class="pre">grad_clip_norm</span></code>
+for the whole run means most updates are being clipped.</p>
 <p><strong>Fix.</strong> <a class="reference internal" href="../train/scaling.html"><span class="std std-doc">Scaling</span></a>.</p>
 </section>
 <hr class="docutils" />
-<section id="model-reload-across-datasets">
-<h2>3. <code class="docutils literal notranslate"><span class="pre">model_reload</span></code> across datasets<a class="headerlink" href="#model-reload-across-datasets" title="Link to this heading">¶</a></h2>
-<p><strong>The failure.</strong> <code class="docutils literal notranslate"><span class="pre">model_reload</span></code> reuses the static half (including every <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code>) from
-whatever you hand it, instead of rebuilding it from the run directory. Point it at a
-different dataset and the trained weights are loaded into a <strong>different scaled space</strong>.</p>
+<section id="model-reload-with-the-wrong-wrapper">
+<h2>3. <code class="docutils literal notranslate"><span class="pre">model_reload</span></code> with the wrong wrapper<a class="headerlink" href="#model-reload-with-the-wrong-wrapper" title="Link to this heading">¶</a></h2>
+<p><strong>The failure.</strong> <code class="docutils literal notranslate"><span class="pre">model_reload</span></code> only replaces the trained weights. It keeps the static
+half (including every <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code>) from the wrapper you pass it, instead of rebuilding it
+from the run directory. Pass it a wrapper from a different run, or one built on a
+different dataset, and the trained weights are loaded into a <strong>different scaled space</strong>.</p>
 <p><strong>Why it is hard to spot.</strong> No exception, no shape mismatch, no <code class="docutils literal notranslate"><span class="pre">NaN</span></code>. The predictions are
 smooth, plausible, and wrong by a scale factor per axis.</p>
 <p><strong>Fix.</strong> Use <code class="docutils literal notranslate"><span class="pre">model_load(run_dir)</span></code>, which rebuilds everything from the directory’s own
-bundled data. Reach for <code class="docutils literal notranslate"><span class="pre">model_reload</span></code> only when you specifically know why.</p>
+bundled data. Reach for <code class="docutils literal notranslate"><span class="pre">model_reload</span></code> only to swap in another checkpoint of the same
+run, using the wrapper that run produced.</p>
 </section>
 <hr class="docutils" />
 <section id="forward-needs-a-working-custom-py-model-predict-does-not">
@@ -474,22 +478,23 @@ shared file other runs also point at.</p>
 <hr class="docutils" />
 <section id="double-scaling-in-the-reaction-module">
 <h2>5. Double-scaling in the reaction module<a class="headerlink" href="#double-scaling-in-the-reaction-module" title="Link to this heading">¶</a></h2>
-<p><strong>The failure.</strong> Your network reads <code class="docutils literal notranslate"><span class="pre">inputs.SCL_*</span></code>, so its output is already in SCL space.
-If you also apply a <code class="docutils literal notranslate"><span class="pre">scale_*</span></code> helper to that output, it cancels against the wrapper’s
-unscale step and your rates are off by the scale factor.</p>
+<p><strong>The failure.</strong> <code class="docutils literal notranslate"><span class="pre">ReactionOutputs</span></code> always expects SCL rates; the wrapper unscales them on
+the way back to physical units. If your module computes physical rates and returns them
+unconverted, or converts rates that were already SCL with a <code class="docutils literal notranslate"><span class="pre">scale_*</span></code> helper, your rates
+are off by the scale factor.</p>
 <p><strong>Why it is hard to spot.</strong> Both conventions appear in the shipped examples, correctly,
-because they depend on what the network is defined to emit:</p>
+because they depend on what the module computes:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">examples/00_e2e_sim/custom.py</span></code> emits SCL directly and its comments warn against
-re-scaling;</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">tests/fixtures/martens_single/custom.py</span></code> computes in RAW and <em>does</em> call
-<code class="docutils literal notranslate"><span class="pre">scale_modeled_ReactionOde_rates</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">examples/tutorial_04_your_first_custom_py/custom.py</span></code> has an MLP trained to emit SCL
+rates, so it returns them directly;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">examples/gallery_mechanistic_rates/custom.py</span></code> computes Monod kinetics in RAW and
+<em>does</em> call <code class="docutils literal notranslate"><span class="pre">scale_modeled_ReactionOde_rates</span></code>.</p></li>
 </ul>
 <p>A beginner comparing the two concludes the code is inconsistent. It is not: they are
 answering different questions.</p>
 <p><strong>The rule.</strong></p>
 <blockquote>
-<div><p><strong>If the input was SCL, the output is SCL.</strong>
+<div><p><strong>Compute in whichever space you like, but return SCL.</strong>
 If you unscaled the inputs to compute in physical units, scale the output back.</p>
 </div></blockquote>
 <p>Never mix. Ask “what space is this number in?” at every line of <code class="docutils literal notranslate"><span class="pre">__call__</span></code>. See
@@ -624,7 +629,7 @@ sampling. Anything else that moves is a bookkeeping bug, found before you fit an
 <li><a class="reference internal" href="#">Silent failures</a><ul>
 <li><a class="reference internal" href="#a-misspelled-hook-name">1. A misspelled hook name</a></li>
 <li><a class="reference internal" href="#no-estimate-all-scales">2. No <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code></a></li>
-<li><a class="reference internal" href="#model-reload-across-datasets">3. <code class="docutils literal notranslate"><span class="pre">model_reload</span></code> across datasets</a></li>
+<li><a class="reference internal" href="#model-reload-with-the-wrong-wrapper">3. <code class="docutils literal notranslate"><span class="pre">model_reload</span></code> with the wrong wrapper</a></li>
 <li><a class="reference internal" href="#forward-needs-a-working-custom-py-model-predict-does-not">4. <code class="docutils literal notranslate"><span class="pre">forward</span></code> needs a working <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>; <code class="docutils literal notranslate"><span class="pre">model_predict</span></code> does not</a></li>
 <li><a class="reference internal" href="#double-scaling-in-the-reaction-module">5. Double-scaling in the reaction module</a></li>
 <li><a class="reference internal" href="#build-pseudobatch-transform-does-not-attach-itself">6. <code class="docutils literal notranslate"><span class="pre">build_pseudobatch_transform</span></code> does not attach itself</a></li>
@@ -644,7 +649,7 @@ sampling. Anything else that moves is a bookkeeping bug, found before you fit an
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

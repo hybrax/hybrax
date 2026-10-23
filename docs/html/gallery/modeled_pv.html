@@ -495,6 +495,9 @@ lump event.</p>
 <span class="linenos">20</span>            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_ReactionOde_rates</span><span class="p">(</span>
 <span class="linenos">21</span>                <span class="n">RAW_rates</span>
 <span class="linenos">22</span>            <span class="p">),</span>
+<span class="linenos">23</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+<span class="linenos">24</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+<span class="linenos">25</span>        <span class="p">)</span>
 </pre></div>
 </div>
 <p>Two log-parameterized scalars, no kinetic structure, no state read at all: <code class="docutils literal notranslate"><span class="pre">__call__</span></code>
@@ -506,7 +509,7 @@ page’s actual complexity lives in the derivative strings and the bolus event a
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.0918845 last_mean_loss=0.00022645 delta=-0.091658
-run directory: ./source/_data/out/runs/gallery_modeled_pv/run
+run directory: ./docs/source/_data/out/runs/gallery_modeled_pv/run
 </pre></div>
 </div>
 </div>
@@ -572,22 +575,23 @@ touches the RMC slice of the state, with the same reasoning either way: a proces
 variable is treated as intensive, a ratio or an observable, with no dissolved mass
 in a volume to dilute.</p></li>
 <li><p><strong>Every process still needs a <code class="docutils literal notranslate"><span class="pre">biomass</span></code> reactor component</strong>, even on a page whose
-point is a process variable: <code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> expects one on every process, so
-<code class="docutils literal notranslate"><span class="pre">biomass</span></code> does double duty here as both the mandatory component and the diluted half
-of the contrast.</p></li>
+point is a process variable: auto-generating the default reaction ODE, format
+validation and <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> preparation all require one, so <code class="docutils literal notranslate"><span class="pre">biomass</span></code> does double
+duty here as both the mandatory component and the diluted half of the contrast.</p></li>
 </ul>
 </section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
 <code class="docutils literal notranslate"><span class="pre">examples/gallery_modeled_pv/</span></code> at the repo root, no docs build required. This page’s
-own executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_modeled_pv/</span></code>.</p>
+own executed run is at <code class="docutils literal notranslate"><span class="pre">./docs/source/_data/out/runs/gallery_modeled_pv/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../format/bioprocess_ode.html"><span class="std std-doc">The Bioprocess ODE</span></a>: <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>, <code class="docutils literal notranslate"><span class="pre">rates</span></code>,
 <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>, and writing your own expressions.</p></li>
-<li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic Models</span></a>: its own Gotchas section raises this
-exact idea (a well-constrained process variable resolving an identifiability
-problem) without building it; this page is that example.</p></li>
+<li><p><a class="reference internal" href="mechanistic_rates.html"><span class="std std-doc">Mechanistic Models</span></a>: discusses how an independently
+informative process variable could change identifiability. This page shows how
+to declare and train a modeled process variable; its independent <code class="docutils literal notranslate"><span class="pre">glyco_frac</span></code>
+state does not resolve that example’s parameter ambiguity.</p></li>
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: <code class="docutils literal notranslate"><span class="pre">trainable_field</span></code> and
 everything else a <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> can return, including <code class="docutils literal notranslate"><span class="pre">SCALE_modeled_PVs</span></code>.</p></li>
 <li><p><a class="reference internal" href="../train/config.html"><span class="std std-doc">Configuration</span></a>: <code class="docutils literal notranslate"><span class="pre">target_source</span></code> and the rest of the config
@@ -669,7 +673,7 @@ schema.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

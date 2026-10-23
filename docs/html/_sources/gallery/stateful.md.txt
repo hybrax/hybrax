@@ -25,9 +25,10 @@ the solve, so the rates can depend on the whole history of where the process has
 `hybrax.train` does not run a discrete recurrent network beside the ODE solver. It **turns the
 recurrent cell into a continuous-time ODE**: the latent state `h` is an extra integrated
 dimension, and its derivative is the discrepancy between `h` and whatever the cell would
-have jumped to next: `d(h)/dt = cell(input, h) - h`. As training pulls the residual to
-zero, `h` tracks the same trajectory the discrete cell would have taken, but now it is a
-proper flow that Diffrax can integrate and differentiate through like any other state.
+have jumped to next: `d(h)/dt = cell(input, h) - h`. Diffrax integrates this continuous
+relaxation alongside the physical states. Training adjusts its parameters to fit the
+measured trajectories; it does not enforce agreement with the trajectory of a discrete
+recurrent network.
 
 `hybrax.train` provides this pattern directly: `DefaultGruReactionModule` and
 `DefaultLstmReactionModule` are built-in stateful defaults. The latter stores
@@ -129,7 +130,7 @@ shutil.copy(EXAMPLE / "forward-config.json", WORK / "forward-config.json")
 out = hxt_cli("train", "--config", "train.json", "--overwrite")
 lines = [l for l in out.splitlines() if "training complete" in l]
 print(lines[0] if lines else "training complete")
-print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
+print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[5])}")
 ```
 
 ```{code-cell} ipython3
@@ -183,7 +184,7 @@ to reach for this.
 
 The full, runnable example (`custom.py`, configs, data) lives in
 `examples/gallery_stateful/` at the repo root, no docs build required. This page's own
-executed run is at `./source/_data/out/runs/gallery_stateful/`.
+executed run is at `./docs/source/_data/out/runs/gallery_stateful/`.
 
 - [The Reaction Module](../train/reaction_module.md): the general contract this module
   follows.

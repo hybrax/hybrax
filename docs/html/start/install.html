@@ -376,8 +376,8 @@
           <section class="tex2jax_ignore mathjax_ignore" id="installation">
 <h1>Installation<a class="headerlink" href="#installation" title="Link to this heading">¶</a></h1>
 <blockquote>
-<div><p>Clone the repo, install it editable into a Python ≥ 3.12 environment, and check that
-<code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">--help</span></code> runs.</p>
+<div><p>Install hybrax from PyPI into a Python ≥ 3.12 environment, or clone the repo for an
+editable development install, and check that <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">--help</span></code> runs.</p>
 </div></blockquote>
 <section id="requirements">
 <h2>Requirements<a class="headerlink" href="#requirements" title="Link to this heading">¶</a></h2>
@@ -403,12 +403,21 @@ these docs are built against.</p></li>
 </section>
 <section id="install">
 <h2>Install<a class="headerlink" href="#install" title="Link to this heading">¶</a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>./hybrax
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>hybrax
 </pre></div>
 </div>
-<p>Editable installs (<code class="docutils literal notranslate"><span class="pre">-e</span></code>) are the norm here: the package is under active development and
-deliberately ships breaking changes, so you want your checkout and your imports to be
-the same thing.</p>
+<p>This installs the latest release from <a class="reference external" href="https://pypi.org/project/hybrax/">PyPI</a>. The
+package is under active development and can ship breaking changes between releases, so
+pin the version in your own projects (for example <code class="docutils literal notranslate"><span class="pre">hybrax==0.1.0</span></code>).</p>
+<section id="development-install">
+<h3>Development install<a class="headerlink" href="#development-install" title="Link to this heading">¶</a></h3>
+<p>To work on hybrax itself, or to follow the examples in the repository, clone it and
+install it editable, so your checkout and your imports are the same thing:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/hybrax/hybrax.git
+python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>./hybrax
+</pre></div>
+</div>
+</section>
 <section id="optional-extras">
 <h3>Optional extras<a class="headerlink" href="#optional-extras" title="Link to this heading">¶</a></h3>
 <div class="table-wrapper colwidths-auto docutils container">
@@ -549,6 +558,7 @@ iteration.</p>
 <li><a class="reference internal" href="#requirements">Requirements</a></li>
 <li><a class="reference internal" href="#layout">Layout</a></li>
 <li><a class="reference internal" href="#install">Install</a><ul>
+<li><a class="reference internal" href="#development-install">Development install</a></li>
 <li><a class="reference internal" href="#optional-extras">Optional extras</a></li>
 </ul>
 </li>
@@ -567,7 +577,7 @@ iteration.</p>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

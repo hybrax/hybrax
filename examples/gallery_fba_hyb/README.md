@@ -1,7 +1,7 @@
 # Gallery: FBA-Hyb
 
 A hybrid dynamic-FBA reaction module: two small MLPs predict a glucose-uptake
-rate and an FBA objective from the current state; a frozen, pole-free
+rate and combined-demand coefficients from the current state; a frozen, pole-free
 surrogate converts that into real metabolic rates. No LP solve ever happens
 during training.
 
@@ -16,8 +16,8 @@ uv run --extra dev python examples/gallery_fba_hyb/run.py
 Run from the repository root. Requires uv. First regenerates
 `01_obj_fba_data.csv.gz` using an isolated environment with Cobra and GLPK.
 Then trains with the frozen surrogate, prints R², and writes
-`out/objective_weights.png` (the model's inferred FBA objective weights over
-the batch). Outputs land beside this script in `run/` and `out/`.
+`out/objective_weights.png` (the model's inferred combined-demand coefficients
+over the batch). Outputs land beside this script in `run/` and `out/`.
 
 ## Optional: regenerating the surrogate
 
@@ -43,5 +43,11 @@ To refit the surrogate against the CSV, run from this directory:
 uv run --extra dev python 02_fit_surrogate.py
 ```
 
-Copy the resulting `02_surrogate_body.txt` into `surrogate_fba` in both
-`gallery_fba_hyb/custom.py` and `gallery_pls_dfba/custom.py` to use the new fit.
+Transfer the fitted expressions from `02_surrogate_body.txt` into
+`surrogate_fba` in `gallery_fba_hyb/custom.py` and `gallery_pls_dfba/custom.py`.
+Keep each function's internal input normalization and return shape, and use
+`AVG_QG` and `AVG_N` from the new `02_surrogate_params.npz`; do not copy the
+generated input assignments over the normalization. FBA-Hyb returns
+`q_glc, qX, qM, qA`; PLS-dFBA also returns `qS`. Sampling and optimizer restarts
+use fixed seeds. A refit can differ from the bundled surrogate; validate it
+before replacing the frozen fit.

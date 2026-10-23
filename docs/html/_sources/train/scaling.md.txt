@@ -49,8 +49,10 @@ exists to prevent.
 
 Training still runs. The loss still goes down. It is just much worse than it should be,
 and nothing tells you. [Tutorial 4](../tutorials/04_your_first_custom_py.md#did-it-help)
-measures the gap on a small, well-behaved dataset: the initial loss alone differs by more
-than two orders of magnitude, before a single optimizer step.
+compares the final physical-space R² of a default run and a run with `custom.py` on a
+small, well-behaved dataset. The two losses are in different units and are not
+comparable, so R² is the fair measure. That run also changes the network and the
+learning rate, so it shows the effect of the whole customisation, not of scaling alone.
 :::
 
 ## Writing one
@@ -79,11 +81,26 @@ wrong. Your module emits an O(1) number, which is multiplied by the rate scale t
 a physical rate. You want the resulting *state change over the run* to be about the size
 of the state.
 
-For a specific rate, `d(c)/dt = q_c · biomass`, so:
+For a specific rate, `d(c)/dt = q_c · biomass`, so the scale needs a biomass level
+and a time scale. A simple estimate uses peak biomass and the run duration:
 
 ```
-scale(q_c)  ~  scale(c) / (scale(biomass) · duration)
+scale(q_c)  ~  scale(c) / (max biomass · duration)
 ```
+
+An alternative uses the concentration change and integrated biomass:
+
+```
+scale(q_c)  ~  |c_end - c_start| / ∫ biomass dt
+```
+
+For a constant specific rate, the second formula recovers its magnitude exactly if
+the measurements and integral are exact.
+
+In the tutorial data, peak biomass times duration is about twice the biomass
+integral. The simpler estimate gives a rate scale about half as large, so the module
+needs outputs about twice as large to represent the same physical rates. Both are
+suitable: the aim is the right order of magnitude.
 
 For a volumetric rate, `d(p)/dt = r_p` directly, so:
 
@@ -91,8 +108,8 @@ For a volumetric rate, `d(p)/dt = r_p` directly, so:
 scale(r_p)  ~  scale(p) / duration
 ```
 
-Get this wrong in the optimistic direction and the concentrations blow up on the very
-first solve, before anything is learned.
+A rate scale far too large can amplify the untrained network's outputs enough to
+cause unrealistic concentrations or solver failure on the first solve.
 
 **Controlled axes** come from the controls store, always reachable as
 `runtime_data.controls_store`, sampled over the run:
@@ -145,8 +162,7 @@ Three signals, in order of usefulness:
    order of magnitude or two of the data. A first-epoch loss of 10⁴ means the scales are
    wrong, not that the problem is hard.
 2. **Gradient norm.** `grad_norm_curve.png` plots the **raw** norm, before clipping. If it
-   sits permanently pinned at `grad_clip_norm`, your effective step size is not what the
-   learning rate says it is.
+   stays above `grad_clip_norm`, most updates are being clipped.
 3. **The rate panels.** Rates that saturate immediately or oscillate wildly usually mean a
    rate scale that is too large.
 

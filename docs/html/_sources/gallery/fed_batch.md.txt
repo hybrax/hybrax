@@ -64,8 +64,8 @@ for name, vc in process.volume.volume_changes.items():
     print(f"{name:15s} {type(vc).__name__:20s} continuous={vc.is_continuous}")
 ```
 
-One continuous feed starting at t = 6 h, two boluses at t = 10 h and t = 16 h, and
-sampling at every offline measurement. See the assembled ODE:
+One continuous feed starting at t = 48 h, two boluses at t = 120 h and t = 192 h,
+and an 8 mL sample at each offline measurement after t = 0. See the assembled ODE:
 
 ```{code-cell} ipython3
 hxf.print_rhs_ode(process)
@@ -82,7 +82,7 @@ inputs beyond the state:
 ```{literalinclude} ../../../examples/gallery_fed_batch/custom.py
 :language: python
 :linenos:
-:lines: 25-51
+:pyobject: FedBatchModule
 ```
 
 `SCL_controlled_Inflows_rates` (the feed) and `SCL_controlled_PVs` (dissolved oxygen) are
@@ -96,7 +96,7 @@ concentrations.
 ```{literalinclude} ../../../examples/gallery_fed_batch/custom.py
 :language: python
 :linenos:
-:lines: 59-65
+:lines: 94-117
 ```
 
 `runtime_data.controls_store` is always reachable from `estimate_all_scales`, no
@@ -114,7 +114,7 @@ hxt_cli("prepare", "--config", "prepare-config.json",
 out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
 lines = [l for l in out.splitlines() if "training complete" in l]
 print(lines[0] if lines else "training complete")
-print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
+print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[5])}")
 ```
 
 ```{code-cell} ipython3
@@ -150,7 +150,7 @@ epoch budget); glucose and product are markedly easier.
 
 The full, runnable example (`custom.py`, configs, data) lives in
 `examples/gallery_fed_batch/` at the repo root, no docs build required. This page's own
-executed run is at `./source/_data/out/runs/gallery_fed_batch/`.
+executed run is at `./docs/source/_data/out/runs/gallery_fed_batch/`.
 
 - [Volume, feeds and events](../format/volume_feeds_events.md): the concepts behind this
   dataset.

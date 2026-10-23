@@ -116,16 +116,12 @@ trusting a long run to it.
 
 The encoder above was never trained: it is a fixed random projection. For comparison,
 here is the identical architecture with `encoder` also tagged `trainable_field()`,
-otherwise byte-for-byte the same file, same seed, same epochs:
+with the same seed and epochs:
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
 
-unfrozen_src = (WORK / "custom.py").read_text().replace(
-    "encoder: eqx.nn.MLP = frozen_field()",
-    "encoder: eqx.nn.MLP = trainable_field()",
-)
-(WORK / "custom_unfrozen.py").write_text(unfrozen_src)
+shutil.copy(EXAMPLE / "custom_unfrozen.py", WORK / "custom_unfrozen.py")
 shutil.copy(EXAMPLE / "train-config-unfrozen.json", WORK / "train-config-unfrozen.json")
 ```
 
@@ -161,7 +157,7 @@ page freezes). Freezing arbitrary, never-trained weights just removes capacity.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-root = WORK.parents[4]
+root = WORK.parents[5]
 print(f"run directory: ./{(WORK / 'run').relative_to(root)}")
 print(f"comparison run: ./{(WORK / 'run_unfrozen').relative_to(root)}")
 ```
@@ -182,7 +178,7 @@ print(f"comparison run: ./{(WORK / 'run_unfrozen').relative_to(root)}")
 
 The full, runnable example (`custom.py`, configs, data) lives in
 `examples/gallery_freezing/` at the repo root, no docs build required. This page's own
-executed run is at `./source/_data/out/runs/gallery_freezing/`.
+executed run is at `./docs/source/_data/out/runs/gallery_freezing/`.
 
 - [The Reaction Module](../train/reaction_module.md): the general contract every
   reaction module follows, including the field-tag rules in full.

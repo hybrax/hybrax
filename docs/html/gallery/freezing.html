@@ -494,7 +494,7 @@ trusting a long run to it.</p>
 <h2>What Freezing Costs<a class="headerlink" href="#what-freezing-costs" title="Link to this heading">¶</a></h2>
 <p>The encoder above was never trained: it is a fixed random projection. For comparison,
 here is the identical architecture with <code class="docutils literal notranslate"><span class="pre">encoder</span></code> also tagged <code class="docutils literal notranslate"><span class="pre">trainable_field()</span></code>,
-otherwise byte-for-byte the same file, same seed, same epochs:</p>
+with the same seed and epochs:</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.229268 last_mean_loss=0.000243853 delta=-0.229024
@@ -521,8 +521,8 @@ page freezes). Freezing arbitrary, never-trained weights just removes capacity.<
 <h2>Everything This Produced<a class="headerlink" href="#everything-this-produced" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>run directory: ./source/_data/out/runs/gallery_freezing/run
-comparison run: ./source/_data/out/runs/gallery_freezing/run_unfrozen
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>run directory: ./docs/source/_data/out/runs/gallery_freezing/run
+comparison run: ./docs/source/_data/out/runs/gallery_freezing/run_unfrozen
 </pre></div>
 </div>
 </div>
@@ -546,7 +546,7 @@ frozen sub-module still costs capacity.</p></li>
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
 <code class="docutils literal notranslate"><span class="pre">examples/gallery_freezing/</span></code> at the repo root, no docs build required. This page’s own
-executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_freezing/</span></code>.</p>
+executed run is at <code class="docutils literal notranslate"><span class="pre">./docs/source/_data/out/runs/gallery_freezing/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: the general contract every
 reaction module follows, including the field-tag rules in full.</p></li>
@@ -632,7 +632,7 @@ constants instead of a frozen random projection.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

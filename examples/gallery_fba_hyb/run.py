@@ -1,7 +1,7 @@
 """Gallery: FBA-Hyb.
 
 A hybrid dynamic-FBA reaction module: two small MLPs predict a glucose-uptake
-rate and an FBA objective from the current state, a frozen, pole-free
+rate and combined-demand coefficients from the current state, a frozen, pole-free
 surrogate (fit offline against 10,000 real pFBA solves on e_coli_core.xml,
 see 01_generate_fba_data.py / 02_fit_surrogate.py) converts that into real
 metabolic rates. This script regenerates the FBA CSV in an isolated uv
@@ -105,7 +105,7 @@ fig, ax = plt.subplots(figsize=(7, 3.5))
 for i, label in enumerate(("n_X (biomass)", "n_M (maintenance)", "n_A (acetate)")):
     ax.plot(t, run_1[f"aux_n_weights_{i}"].to_numpy(), label=label)
 ax.set_xlabel("t (h)")
-ax.set_ylabel("predicted FBA objective weight")
+ax.set_ylabel("predicted combined-demand coefficient")
 ax.legend(fontsize=8)
 fig.tight_layout()
 out = HERE / "out"

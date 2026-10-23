@@ -406,10 +406,10 @@ INFO hybrax.format.serialization: Saved to ./prepared/prepared.json
 </div>
 </div>
 </div>
-<p><code class="docutils literal notranslate"><span class="pre">prepare</span></code> is a separate step for a reason: it is where the dataset stops being <em>data</em>
-and becomes <em>a training problem</em>. It resolves which measurements are targets, fits the
-control splines, fixes the state and control layout, and writes all of it to
-<code class="docutils literal notranslate"><span class="pre">prepared/prepared.json</span></code>. Training reads only that.</p>
+<p><code class="docutils literal notranslate"><span class="pre">prepare</span></code> is a separate step for a reason: it validates the dataset, applies any
+preparation hooks, checks that every process has the controls training needs, and writes
+the result, with a record of how it was made, to <code class="docutils literal notranslate"><span class="pre">prepared/prepared.json</span></code>. Training
+reads only that. Which measurements to fit is chosen later, by <code class="docutils literal notranslate"><span class="pre">train</span></code>.</p>
 <p>Because it is separated, you can prepare once and train twenty models against an
 identical, reproducible starting point.</p>
 <div class="cell tag_remove-input docutils container">
@@ -425,10 +425,13 @@ identical, reproducible starting point.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"prepared"</span><span class="p">:</span><span class="w"> </span><span class="s2">"prepared"</span><span class="w"> </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"epochs"</span><span class="p">:</span><span class="w"> </span><span class="mi">300</span><span class="p">,</span><span class="w"> </span><span class="nt">"seed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"checkpoint"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"every"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"output"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"dir"</span><span class="p">:</span><span class="w"> </span><span class="s2">"run"</span><span class="w"> </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
 </div>
+<p><code class="docutils literal notranslate"><span class="pre">&quot;every&quot;:</span> <span class="pre">0</span></code> turns off periodic checkpoints for this short run. Training still writes a
+final one.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=38.6222 last_mean_loss=0.0552837 delta=-38.5669
@@ -474,21 +477,22 @@ identical, reproducible starting point.</p>
 <h2>3.3 Read the output<a class="headerlink" href="#read-the-output" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>./source/_data/out/runs/tutorial_03/run
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>./docs/source/_data/out/runs/tutorial_03/run
 </pre></div>
 </div>
 </div>
 </div>
 <p>Everything below lives in that directory, self-contained: <code class="docutils literal notranslate"><span class="pre">cp</span> <span class="pre">-r</span></code> it anywhere and
 keep working from the copy.</p>
-<p>The per-epoch record:</p>
+<p>The training record, one row per optimizer step (with full batching, one step is one
+epoch):</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>columns: step, total_updates, epoch, batch_in_epoch, samples_seen, mean_loss, per_target_loss, per_process_loss, target_names, process_names, step_dt, rebuild_count, holdout_loss, holdout_label, epoch_mean_loss, epoch_time_seconds, grad_norm, n_failed_samples, failed_processes, failed_holdout_processes
 
-{'step': 1, 'total_updates': 300, 'epoch': 1, 'batch_in_epoch': 1}
-{'step': 151, 'total_updates': 300, 'epoch': 151, 'batch_in_epoch': 1}
-{'step': 300, 'total_updates': 300, 'epoch': 300, 'batch_in_epoch': 1}
+{'epoch': 1, 'mean_loss': 38.62217501, 'grad_norm': 11.24562125}
+{'epoch': 151, 'mean_loss': 0.1700058854, 'grad_norm': 2.323699028}
+{'epoch': 300, 'mean_loss': 0.05528367888, 'grad_norm': 0.7928153863}
 </pre></div>
 </div>
 </div>
@@ -520,19 +524,20 @@ that shows up.</p></li>
 </ol>
 <div class="tip admonition">
 <p class="admonition-title">Gradient norms are worth a glance</p>
-<p><code class="docutils literal notranslate"><span class="pre">grad_norm_curve.png</span></code> shows the <strong>raw</strong> gradient norm, before clipping. If it sits
-permanently at the clip threshold (<code class="docutils literal notranslate"><span class="pre">grad_clip_norm</span></code>, default 1000), your effective step
-size is not what you think it is, and that is usually a scaling problem, which is
+<p><code class="docutils literal notranslate"><span class="pre">grad_norm_curve.png</span></code> shows the <strong>raw</strong> gradient norm, before clipping. If it stays
+above the clip threshold (<code class="docutils literal notranslate"><span class="pre">train.grad_clip_norm</span></code>, default 1000), most updates are being
+clipped, and that is usually a scaling problem, which is
 <a class="reference internal" href="04_your_first_custom_py.html"><span class="std std-doc">Tutorial 4</span></a>.</p>
 </div>
 </section>
 </section>
 <section id="second-runs">
 <h2>3.4 Second runs<a class="headerlink" href="#second-runs" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> is required to reuse an output directory. You will hit this immediately on
-your second run; it is deliberate, so a long training run cannot be silently destroyed.</p>
+<p><code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> is required to replace a completed training run. It is also required
+for an incomplete run with existing <code class="docutils literal notranslate"><span class="pre">step_*</span></code> checkpoints when checkpoint retention is
+enabled. The flag clears the previous output before starting fresh.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="w"> </span>train-config.json<span class="w"> </span>--overwrite
-hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="w"> </span>train-config.json<span class="w"> </span>--epochs<span class="w"> </span><span class="m">50</span><span class="w">    </span><span class="c1"># flags beat the config file</span>
+hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="w"> </span>train-config.json<span class="w"> </span>--overwrite<span class="w"> </span>--epochs<span class="w"> </span><span class="m">50</span><span class="w">   </span><span class="c1"># flags beat the config file</span>
 </pre></div>
 </div>
 </section>
@@ -634,7 +639,7 @@ and measure the difference.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

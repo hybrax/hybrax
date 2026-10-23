@@ -462,11 +462,11 @@ glutamine’s own decline <em>and</em> NH4’s rise, from the same number.</p>
 and the Volume block just confirms <code class="docutils literal notranslate"><span class="pre">V</span></code> stays constant.</p>
 <p>That reuse is also why the page’s units matter: <code class="docutils literal notranslate"><span class="pre">Gln</span></code> and <code class="docutils literal notranslate"><span class="pre">NH4</span></code> both being <code class="docutils literal notranslate"><span class="pre">mol/L</span></code>
 means <code class="docutils literal notranslate"><span class="pre">r_Gln</span> <span class="pre">*</span> <span class="pre">Gln</span></code> is already in the right units for both derivatives, mol/(L·h) for
-<code class="docutils literal notranslate"><span class="pre">Gln</span></code>’s loss and mol/(L·h) for <code class="docutils literal notranslate"><span class="pre">NH4</span></code>’s gain. Mixing a <code class="docutils literal notranslate"><span class="pre">g/L</span></code> state and a <code class="docutils literal notranslate"><span class="pre">mol/L</span></code> state
-inside one additive expression is rejected outright, <em>unless</em> each term is
-individually scaled by its own declared rate: <code class="docutils literal notranslate"><span class="pre">-q_Gln</span> <span class="pre">*</span> <span class="pre">biomass</span> <span class="pre">-</span> <span class="pre">r_Gln</span> <span class="pre">*</span> <span class="pre">Gln</span></code> is fine
-even though <code class="docutils literal notranslate"><span class="pre">biomass</span></code> is <code class="docutils literal notranslate"><span class="pre">g/L</span></code> and <code class="docutils literal notranslate"><span class="pre">Gln</span></code> is <code class="docutils literal notranslate"><span class="pre">mol/L</span></code>, because <code class="docutils literal notranslate"><span class="pre">q_Gln</span></code> and <code class="docutils literal notranslate"><span class="pre">r_Gln</span></code> are
-each trusted to carry whatever unit bridges their own term. See
+<code class="docutils literal notranslate"><span class="pre">Gln</span></code>’s loss and mol/(L·h) for <code class="docutils literal notranslate"><span class="pre">NH4</span></code>’s gain. In each additive subexpression,
+bare state terms must share a unit. Terms containing a declared rate are exempt
+from this check, because rates are trusted to bridge units. For example,
+<code class="docutils literal notranslate"><span class="pre">-q_Gln</span> <span class="pre">*</span> <span class="pre">biomass</span> <span class="pre">-</span> <span class="pre">r_Gln</span> <span class="pre">*</span> <span class="pre">Gln</span></code> passes even though <code class="docutils literal notranslate"><span class="pre">biomass</span></code> is <code class="docutils literal notranslate"><span class="pre">g/L</span></code> and
+<code class="docutils literal notranslate"><span class="pre">Gln</span></code> is <code class="docutils literal notranslate"><span class="pre">mol/L</span></code>. See
 <a class="reference internal" href="../format/bioprocess_ode.html#writing-your-own"><span class="std std-ref">The Bioprocess ODE</span></a> for the general rule.</p>
 </section>
 <section id="the-reaction-module">
@@ -496,6 +496,9 @@ each trusted to carry whatever unit bridges their own term. See
 <span class="linenos">23</span>            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_ReactionOde_rates</span><span class="p">(</span>
 <span class="linenos">24</span>                <span class="n">RAW_rates</span>
 <span class="linenos">25</span>            <span class="p">),</span>
+<span class="linenos">26</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+<span class="linenos">27</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+<span class="linenos">28</span>        <span class="p">)</span>
 </pre></div>
 </div>
 <p>Three log-parameterized scalars, no kinetic structure, no state read at all:
@@ -507,7 +510,7 @@ All of this page’s actual complexity is in the derivative strings above.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.378586 last_mean_loss=0.000245517 delta=-0.37834
-run directory: ./source/_data/out/runs/gallery_glutamine_decay/run
+run directory: ./docs/source/_data/out/runs/gallery_glutamine_decay/run
 </pre></div>
 </div>
 </div>
@@ -551,10 +554,11 @@ everything above it is setup.</p>
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><strong>Different-unit states can only be added if each is individually scaled by its
-own declared rate.</strong> A bare <code class="docutils literal notranslate"><span class="pre">biomass</span> <span class="pre">-</span> <span class="pre">Gln</span></code> (no rate on either side) is rejected;
-<code class="docutils literal notranslate"><span class="pre">-q_Gln</span> <span class="pre">*</span> <span class="pre">biomass</span> <span class="pre">-</span> <span class="pre">r_Gln</span> <span class="pre">*</span> <span class="pre">Gln</span></code> is not, because each term’s own rate is trusted to
-carry whatever unit bridges it. See <a class="reference internal" href="../format/bioprocess_ode.html#writing-your-own"><span class="std std-ref">The Bioprocess ODE</span></a>.</p></li>
+<li><p><strong>Bare state terms in an additive subexpression must share a unit.</strong> Terms
+containing a declared rate are exempt. A bare <code class="docutils literal notranslate"><span class="pre">biomass</span> <span class="pre">-</span> <span class="pre">Gln</span></code> is rejected;
+<code class="docutils literal notranslate"><span class="pre">-q_Gln</span> <span class="pre">*</span> <span class="pre">biomass</span> <span class="pre">-</span> <span class="pre">r_Gln</span> <span class="pre">*</span> <span class="pre">Gln</span></code> and <code class="docutils literal notranslate"><span class="pre">-q_Gln</span> <span class="pre">*</span> <span class="pre">biomass</span> <span class="pre">-</span> <span class="pre">Gln</span></code> pass this check.
+This check does not establish full dimensional consistency. See
+<a class="reference internal" href="../format/bioprocess_ode.html#writing-your-own"><span class="std std-ref">The Bioprocess ODE</span></a>.</p></li>
 <li><p><strong>A slow rate needs a long enough window to be identifiable.</strong> <code class="docutils literal notranslate"><span class="pre">r_Gln</span></code>’s ~8-day
 half-life would leave almost no visible trace over a 10-15 h batch window; this
 page’s 120 h duration exists specifically so the effect is separable from noise,
@@ -573,7 +577,7 @@ own value, which is the entire verification this page is built around.</p></li>
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
 <code class="docutils literal notranslate"><span class="pre">examples/gallery_glutamine_decay/</span></code> at the repo root, no docs build required. This
-page’s own executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_glutamine_decay/</span></code>.</p>
+page’s own executed run is at <code class="docutils literal notranslate"><span class="pre">./docs/source/_data/out/runs/gallery_glutamine_decay/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../format/bioprocess_ode.html"><span class="std std-doc">The Bioprocess ODE</span></a>: <code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code>, <code class="docutils literal notranslate"><span class="pre">rates</span></code>,
 <code class="docutils literal notranslate"><span class="pre">derivatives</span></code>, and the unit-consistency rule this page relies on.</p></li>
@@ -671,7 +675,7 @@ Journal</em>, 13(4), 1700395.
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

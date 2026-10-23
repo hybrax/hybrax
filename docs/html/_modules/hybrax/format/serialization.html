@@ -373,7 +373,6 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">copy</span><span class="w"> </span><span class="kn">import</span> <span class="n">deepcopy</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
@@ -381,33 +380,33 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">._logging</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_logger</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">AugmentedBioProcess</span><span class="p">,</span>
-    <span class="n">ReactionOde</span><span class="p">,</span>
-    <span class="n">BioProcessCollection</span><span class="p">,</span>
-    <span class="n">BioProcess</span><span class="p">,</span>
-    <span class="n">Bounds</span><span class="p">,</span>
     <span class="n">_DEFAULT_RMC_BOUNDS</span><span class="p">,</span>
-    <span class="n">TimeSeries</span><span class="p">,</span>
-    <span class="n">TimeAxis</span><span class="p">,</span>
+    <span class="n">AugmentedBioProcess</span><span class="p">,</span>
+    <span class="n">BioProcess</span><span class="p">,</span>
+    <span class="n">BioProcessCollection</span><span class="p">,</span>
+    <span class="n">BioProcessMetadata</span><span class="p">,</span>
+    <span class="n">Bounds</span><span class="p">,</span>
     <span class="n">DiscreteEvents</span><span class="p">,</span>
     <span class="n">FeedMedium</span><span class="p">,</span>
     <span class="n">FeedMediumComponent</span><span class="p">,</span>
-    <span class="n">StaticVariable</span><span class="p">,</span>
-    <span class="n">BioProcessMetadata</span><span class="p">,</span>
-    <span class="n">Volume</span><span class="p">,</span>
     <span class="n">Inflow</span><span class="p">,</span>
     <span class="n">Outflow</span><span class="p">,</span>
+    <span class="n">ProcessVariable</span><span class="p">,</span>
     <span class="n">PseudobatchTransform</span><span class="p">,</span>
+    <span class="n">ReactionOde</span><span class="p">,</span>
     <span class="n">ReactorMedium</span><span class="p">,</span>
     <span class="n">ReactorMediumComponent</span><span class="p">,</span>
-    <span class="n">ProcessVariable</span><span class="p">,</span>
+    <span class="n">StaticVariable</span><span class="p">,</span>
+    <span class="n">TimeAxis</span><span class="p">,</span>
+    <span class="n">TimeSeries</span><span class="p">,</span>
+    <span class="n">Volume</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.json_io</span><span class="w"> </span><span class="kn">import</span> <span class="n">_kvitems</span><span class="p">,</span> <span class="n">_parse</span><span class="p">,</span> <span class="n">load_json</span>
 
 <span class="n">_logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_bounds_to_dict</span><span class="p">(</span><span class="n">bounds</span><span class="p">:</span> <span class="n">Bounds</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_bounds_to_dict</span><span class="p">(</span><span class="n">bounds</span><span class="p">:</span> <span class="n">Bounds</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Serialize bounds; return ``None`` when both sides are unbounded so the</span>
 <span class="sd">    JSON stays clean for the common default."""</span>
     <span class="k">if</span> <span class="n">bounds</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="p">(</span><span class="n">bounds</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
@@ -415,14 +414,14 @@
     <span class="k">return</span> <span class="p">{</span><span class="s2">"lower"</span><span class="p">:</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s2">"upper"</span><span class="p">:</span> <span class="n">bounds</span><span class="p">[</span><span class="mi">1</span><span class="p">]}</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_bounds</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Bounds</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_bounds</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Bounds</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Deserialize bounds; missing or null → ``(None, None)``."""</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">data</span><span class="p">:</span>
         <span class="k">return</span> <span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
     <span class="k">return</span> <span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"lower"</span><span class="p">),</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"upper"</span><span class="p">))</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_reaction_ode_to_dict</span><span class="p">(</span><span class="n">ode</span><span class="p">:</span> <span class="n">ReactionOde</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_reaction_ode_to_dict</span><span class="p">(</span><span class="n">ode</span><span class="p">:</span> <span class="n">ReactionOde</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Convert ReactionOde to dictionary."""</span>
     <span class="k">return</span> <span class="p">{</span>
         <span class="s2">"algebraic"</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="n">ode</span><span class="o">.</span><span class="n">algebraic</span><span class="p">),</span>
@@ -431,7 +430,7 @@
     <span class="p">}</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_reaction_ode</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOde</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_reaction_ode</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactionOde</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Reconstruct ReactionOde from dictionary."""</span>
     <span class="k">return</span> <span class="n">ReactionOde</span><span class="p">(</span>
         <span class="n">algebraic</span><span class="o">=</span><span class="nb">dict</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"algebraic"</span><span class="p">,</span> <span class="p">{})),</span>
@@ -499,7 +498,7 @@
     <span class="k">return</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">mode</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_save_json</span><span class="p">(</span><span class="n">data_dict</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">json_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_save_json</span><span class="p">(</span><span class="n">data_dict</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">json_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Write a serialized data dict to a `.json` / `.json.gz` file."""</span>
     <span class="n">json_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">json_path</span><span class="p">)</span>
     <span class="n">json_path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
@@ -530,7 +529,7 @@
     <span class="k">return</span> <span class="n">obj</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_load_json</span><span class="p">(</span><span class="n">json_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_load_json</span><span class="p">(</span><span class="n">json_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Read a `.json` / `.json.gz` file and restore JAX arrays."""</span>
     <span class="n">json_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">json_path</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_restore_arrays</span><span class="p">(</span><span class="n">load_json</span><span class="p">(</span><span class="n">json_path</span><span class="p">))</span>
@@ -548,10 +547,10 @@
 
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_read_collection_header</span><span class="p">(</span><span class="n">json_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_read_collection_header</span><span class="p">(</span><span class="n">json_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Stream-read the top-level scalar/metadata fields of a collection JSON</span>
 <span class="sd">    (case_id, organism, citation, metadata) without materializing `processes`."""</span>
-    <span class="n">header</span><span class="p">:</span> <span class="n">Dict</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">header</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{</span>
         <span class="s2">"case_id"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
         <span class="s2">"organism"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
         <span class="s2">"citation"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
@@ -681,9 +680,9 @@
 <span class="c1"># ============================================================</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_process_collection_to_dict</span><span class="p">(</span><span class="n">collection</span><span class="p">:</span> <span class="n">BioProcessCollection</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_process_collection_to_dict</span><span class="p">(</span><span class="n">collection</span><span class="p">:</span> <span class="n">BioProcessCollection</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Convert BioProcessCollection to nested dictionary."""</span>
-    <span class="n">result</span><span class="p">:</span> <span class="n">Dict</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">result</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">if</span> <span class="n">collection</span><span class="o">.</span><span class="n">case_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">result</span><span class="p">[</span><span class="s2">"case_id"</span><span class="p">]</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">case_id</span>
     <span class="k">if</span> <span class="n">collection</span><span class="o">.</span><span class="n">organism</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -698,7 +697,7 @@
     <span class="k">return</span> <span class="n">result</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_process_to_dict</span><span class="p">(</span><span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_process_to_dict</span><span class="p">(</span><span class="n">process</span><span class="p">:</span> <span class="n">BioProcess</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Convert BioProcess to dictionary."""</span>
     <span class="n">result</span> <span class="o">=</span> <span class="p">{</span>
         <span class="s2">"metadata"</span><span class="p">:</span> <span class="n">_process_metadata_to_dict</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">metadata</span><span class="p">),</span>
@@ -740,7 +739,7 @@
     <span class="k">return</span> <span class="n">result</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_process_metadata_to_dict</span><span class="p">(</span><span class="n">metadata</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">BioProcessMetadata</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_process_metadata_to_dict</span><span class="p">(</span><span class="n">metadata</span><span class="p">:</span> <span class="n">BioProcessMetadata</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Convert BioProcessMetadata to dictionary."""</span>
     <span class="k">if</span> <span class="n">metadata</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">None</span>
@@ -751,7 +750,7 @@
     <span class="p">}</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_reactor_medium_to_dict</span><span class="p">(</span><span class="n">reactor_medium</span><span class="p">:</span> <span class="n">ReactorMedium</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_reactor_medium_to_dict</span><span class="p">(</span><span class="n">reactor_medium</span><span class="p">:</span> <span class="n">ReactorMedium</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Convert ReactorMedium to dictionary."""</span>
     <span class="k">return</span> <span class="p">{</span>
         <span class="s2">"name"</span><span class="p">:</span> <span class="n">reactor_medium</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
@@ -764,7 +763,7 @@
     <span class="p">}</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_reactor_component_to_dict</span><span class="p">(</span><span class="n">comp</span><span class="p">:</span> <span class="n">ReactorMediumComponent</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_reactor_component_to_dict</span><span class="p">(</span><span class="n">comp</span><span class="p">:</span> <span class="n">ReactorMediumComponent</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Convert ReactorMediumComponent to dictionary."""</span>
     <span class="n">result</span> <span class="o">=</span> <span class="p">{</span>
         <span class="s2">"name"</span><span class="p">:</span> <span class="n">comp</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
@@ -781,7 +780,7 @@
     <span class="k">return</span> <span class="n">result</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_process_variable_to_dict</span><span class="p">(</span><span class="n">pv</span><span class="p">:</span> <span class="n">ProcessVariable</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_process_variable_to_dict</span><span class="p">(</span><span class="n">pv</span><span class="p">:</span> <span class="n">ProcessVariable</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Convert ProcessVariable to dictionary."""</span>
     <span class="n">result</span> <span class="o">=</span> <span class="p">{</span>
         <span class="s2">"name"</span><span class="p">:</span> <span class="n">pv</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
@@ -795,7 +794,7 @@
     <span class="k">return</span> <span class="n">result</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_pseudobatch_transform_to_dict</span><span class="p">(</span><span class="n">transform</span><span class="p">:</span> <span class="n">PseudobatchTransform</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_pseudobatch_transform_to_dict</span><span class="p">(</span><span class="n">transform</span><span class="p">:</span> <span class="n">PseudobatchTransform</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Convert PseudobatchTransform to dictionary."""</span>
     <span class="n">result</span> <span class="o">=</span> <span class="p">{</span>
         <span class="s2">"adf"</span><span class="p">:</span> <span class="n">_timeseries_to_dict_payload</span><span class="p">(</span><span class="n">transform</span><span class="o">.</span><span class="n">adf</span><span class="p">,</span> <span class="n">include_type</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span>
@@ -818,7 +817,7 @@
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_timeseries_to_dict_payload</span><span class="p">(</span>
     <span class="n">value</span><span class="p">:</span> <span class="n">TimeSeries</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">include_type</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Serialize TimeSeries using canonical keys."""</span>
     <span class="n">times</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="s2">"times"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
 
@@ -846,17 +845,17 @@
     <span class="k">return</span> <span class="n">payload</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_timeseries_or_static_to_dict</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">TimeSeries</span><span class="p">,</span> <span class="n">StaticVariable</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_timeseries_or_static_to_dict</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="n">TimeSeries</span> <span class="o">|</span> <span class="n">StaticVariable</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Convert TimeSeries or StaticVariable to dictionary."""</span>
     <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">TimeSeries</span><span class="p">):</span>
         <span class="k">return</span> <span class="n">_timeseries_to_dict_payload</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">include_type</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">StaticVariable</span><span class="p">):</span>
         <span class="k">return</span> <span class="p">{</span><span class="s2">"type"</span><span class="p">:</span> <span class="s2">"StaticVariable"</span><span class="p">,</span> <span class="s2">"value"</span><span class="p">:</span> <span class="n">value</span><span class="o">.</span><span class="n">value</span><span class="p">}</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Unknown value type: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Unknown value type: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">value</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_volume_to_dict</span><span class="p">(</span><span class="n">volume</span><span class="p">:</span> <span class="n">Volume</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_volume_to_dict</span><span class="p">(</span><span class="n">volume</span><span class="p">:</span> <span class="n">Volume</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Convert Volume to dictionary."""</span>
     <span class="n">result</span> <span class="o">=</span> <span class="p">{</span>
         <span class="s2">"initial_volume"</span><span class="p">:</span> <span class="n">volume</span><span class="o">.</span><span class="n">initial_volume</span><span class="p">,</span>
@@ -877,7 +876,7 @@
     <span class="k">return</span> <span class="n">result</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_volume_change_to_dict</span><span class="p">(</span><span class="n">vc</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_volume_change_to_dict</span><span class="p">(</span><span class="n">vc</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Convert Inflow or Outflow to dictionary."""</span>
     <span class="n">result</span> <span class="o">=</span> <span class="p">{</span>
         <span class="s2">"name"</span><span class="p">:</span> <span class="n">vc</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
@@ -899,12 +898,12 @@
         <span class="n">result</span><span class="p">[</span><span class="s2">"type"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"Outflow"</span>
         <span class="n">result</span><span class="p">[</span><span class="s2">"retention"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">vc</span><span class="o">.</span><span class="n">retention</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Unknown volume change type: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">vc</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Unknown volume change type: </span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">vc</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">result</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_feed_medium_to_dict</span><span class="p">(</span><span class="n">feed</span><span class="p">:</span> <span class="n">FeedMedium</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_feed_medium_to_dict</span><span class="p">(</span><span class="n">feed</span><span class="p">:</span> <span class="n">FeedMedium</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Convert FeedMedium to dictionary."""</span>
     <span class="k">return</span> <span class="p">{</span>
         <span class="s2">"name"</span><span class="p">:</span> <span class="n">feed</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
@@ -917,7 +916,7 @@
     <span class="p">}</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_feed_component_to_dict</span><span class="p">(</span><span class="n">comp</span><span class="p">:</span> <span class="n">FeedMediumComponent</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_feed_component_to_dict</span><span class="p">(</span><span class="n">comp</span><span class="p">:</span> <span class="n">FeedMediumComponent</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Convert FeedMediumComponent to dictionary."""</span>
     <span class="k">return</span> <span class="p">{</span>
         <span class="s2">"name"</span><span class="p">:</span> <span class="n">comp</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
@@ -927,7 +926,7 @@
     <span class="p">}</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_process_collection</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BioProcessCollection</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_process_collection</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BioProcessCollection</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Reconstruct BioProcessCollection from dictionary."""</span>
     <span class="k">return</span> <span class="n">BioProcessCollection</span><span class="p">(</span>
         <span class="n">case_id</span><span class="o">=</span><span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"case_id"</span><span class="p">),</span>
@@ -941,7 +940,7 @@
     <span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_process</span><span class="p">(</span><span class="n">p_data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BioProcess</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_process</span><span class="p">(</span><span class="n">p_data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BioProcess</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Reconstruct BioProcess from dictionary."""</span>
     <span class="c1"># Reconstruct metadata</span>
     <span class="n">metadata</span> <span class="o">=</span> <span class="kc">None</span>
@@ -1026,14 +1025,14 @@
     <span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_require_mapping</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">context</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_require_mapping</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">context</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Return a dict-like payload or raise a clear loader error."""</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">context</span><span class="si">}</span><span class="s2"> must be a dictionary."</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">value</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_require_keys</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">required</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">context</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_require_keys</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">required</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="n">context</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Validate required keys for a strict serialized payload."""</span>
     <span class="n">missing</span> <span class="o">=</span> <span class="p">[</span><span class="n">key</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">required</span> <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">data</span><span class="p">]</span>
     <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
@@ -1041,7 +1040,7 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">context</span><span class="si">}</span><span class="s2"> missing required key(s): </span><span class="si">{</span><span class="n">missing_keys</span><span class="si">}</span><span class="s2">."</span><span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_pseudobatch_transform</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PseudobatchTransform</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_pseudobatch_transform</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">PseudobatchTransform</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Reconstruct PseudobatchTransform from dictionary."""</span>
     <span class="n">data</span> <span class="o">=</span> <span class="n">_require_mapping</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="s2">"pseudobatch_transform"</span><span class="p">)</span>
     <span class="n">_require_keys</span><span class="p">(</span>
@@ -1089,13 +1088,13 @@
     <span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_pseudobatch_timeseries</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">context</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TimeSeries</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_pseudobatch_timeseries</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">context</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TimeSeries</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Reconstruct one strict TimeSeries payload in a pseudobatch bundle."""</span>
     <span class="n">data</span> <span class="o">=</span> <span class="n">_require_mapping</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">context</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_timeseries_from_dict_payload</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_reactor_medium</span><span class="p">(</span><span class="n">rm_data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactorMedium</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_reactor_medium</span><span class="p">(</span><span class="n">rm_data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactorMedium</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Reconstruct ReactorMedium from dictionary."""</span>
     <span class="n">components</span> <span class="o">=</span> <span class="p">{</span>
         <span class="n">name</span><span class="p">:</span> <span class="n">_dict_to_reactor_component</span><span class="p">(</span><span class="n">comp_data</span><span class="p">)</span>
@@ -1110,7 +1109,7 @@
     <span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_reactor_component</span><span class="p">(</span><span class="n">comp_data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactorMediumComponent</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_reactor_component</span><span class="p">(</span><span class="n">comp_data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReactorMediumComponent</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Reconstruct ReactorMediumComponent from dictionary."""</span>
     <span class="n">_reject_legacy_interpolator_payload</span><span class="p">(</span>
         <span class="n">comp_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"interpolator"</span><span class="p">),</span> <span class="s2">"ReactorMediumComponent"</span>
@@ -1132,7 +1131,7 @@
     <span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_process_variable</span><span class="p">(</span><span class="n">pv_data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessVariable</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_process_variable</span><span class="p">(</span><span class="n">pv_data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ProcessVariable</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Reconstruct ProcessVariable from dictionary."""</span>
     <span class="n">_reject_legacy_interpolator_payload</span><span class="p">(</span><span class="n">pv_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"interpolator"</span><span class="p">),</span> <span class="s2">"ProcessVariable"</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">ProcessVariable</span><span class="p">(</span>
@@ -1144,14 +1143,14 @@
     <span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_timeseries_from_dict_payload</span><span class="p">(</span><span class="n">value_data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TimeSeries</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_timeseries_from_dict_payload</span><span class="p">(</span><span class="n">value_data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TimeSeries</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Reconstruct TimeSeries from a typed or untyped serialized payload."""</span>
     <span class="n">times</span> <span class="o">=</span> <span class="n">value_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"times"</span><span class="p">)</span>
     <span class="n">values</span> <span class="o">=</span> <span class="n">value_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"values"</span><span class="p">)</span>
     <span class="n">metadata</span> <span class="o">=</span> <span class="n">value_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"metadata"</span><span class="p">)</span>
     <span class="n">_reject_nested_pseudobatch_metadata</span><span class="p">(</span><span class="n">metadata</span><span class="p">)</span>
 
-    <span class="n">kwargs</span><span class="p">:</span> <span class="n">Dict</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"values"</span><span class="p">:</span> <span class="n">values</span><span class="p">}</span>
+    <span class="n">kwargs</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"values"</span><span class="p">:</span> <span class="n">values</span><span class="p">}</span>
     <span class="k">if</span> <span class="n">values</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">times</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
@@ -1178,8 +1177,8 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_timeseries_or_static</span><span class="p">(</span>
-    <span class="n">value_data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">TimeSeries</span><span class="p">,</span> <span class="n">StaticVariable</span><span class="p">]:</span>
+    <span class="n">value_data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TimeSeries</span> <span class="o">|</span> <span class="n">StaticVariable</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Reconstruct TimeSeries or StaticVariable from dictionary."""</span>
     <span class="k">if</span> <span class="n">value_data</span><span class="p">[</span><span class="s2">"type"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"TimeSeries"</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_timeseries_from_dict_payload</span><span class="p">(</span><span class="n">value_data</span><span class="p">)</span>
@@ -1189,7 +1188,7 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Unknown value type: </span><span class="si">{</span><span class="n">value_data</span><span class="p">[</span><span class="s1">'type'</span><span class="p">]</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_volume</span><span class="p">(</span><span class="n">vol_data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Volume</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_volume</span><span class="p">(</span><span class="n">vol_data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Volume</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Reconstruct Volume from dictionary."""</span>
     <span class="n">volume_changes</span> <span class="o">=</span> <span class="p">{</span>
         <span class="n">name</span><span class="p">:</span> <span class="n">_dict_to_volume_change</span><span class="p">(</span><span class="n">vc_data</span><span class="p">)</span>
@@ -1209,7 +1208,7 @@
     <span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_volume_change</span><span class="p">(</span><span class="n">vc_data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_volume_change</span><span class="p">(</span><span class="n">vc_data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Reconstruct Inflow or Outflow from dictionary."""</span>
     <span class="n">vc_type</span> <span class="o">=</span> <span class="n">vc_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"type"</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">vc_type</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -1225,13 +1224,13 @@
         <span class="p">)</span>
     <span class="n">values</span> <span class="o">=</span> <span class="n">_timeseries_from_dict_payload</span><span class="p">(</span><span class="n">vc_data</span><span class="p">[</span><span class="s2">"values"</span><span class="p">])</span>
 
-    <span class="n">common</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
-        <span class="n">name</span><span class="o">=</span><span class="n">vc_data</span><span class="p">[</span><span class="s2">"name"</span><span class="p">],</span>
-        <span class="n">unit</span><span class="o">=</span><span class="n">vc_data</span><span class="p">[</span><span class="s2">"unit"</span><span class="p">],</span>
-        <span class="n">is_controlled</span><span class="o">=</span><span class="n">vc_data</span><span class="p">[</span><span class="s2">"is_controlled"</span><span class="p">],</span>
-        <span class="n">is_continuous</span><span class="o">=</span><span class="n">vc_data</span><span class="p">[</span><span class="s2">"is_continuous"</span><span class="p">],</span>
-        <span class="n">values</span><span class="o">=</span><span class="n">values</span><span class="p">,</span>
-    <span class="p">)</span>
+    <span class="n">common</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">"name"</span><span class="p">:</span> <span class="n">vc_data</span><span class="p">[</span><span class="s2">"name"</span><span class="p">],</span>
+        <span class="s2">"unit"</span><span class="p">:</span> <span class="n">vc_data</span><span class="p">[</span><span class="s2">"unit"</span><span class="p">],</span>
+        <span class="s2">"is_controlled"</span><span class="p">:</span> <span class="n">vc_data</span><span class="p">[</span><span class="s2">"is_controlled"</span><span class="p">],</span>
+        <span class="s2">"is_continuous"</span><span class="p">:</span> <span class="n">vc_data</span><span class="p">[</span><span class="s2">"is_continuous"</span><span class="p">],</span>
+        <span class="s2">"values"</span><span class="p">:</span> <span class="n">values</span><span class="p">,</span>
+    <span class="p">}</span>
 
     <span class="n">_reject_legacy_interpolator_payload</span><span class="p">(</span><span class="n">vc_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"interpolator"</span><span class="p">),</span> <span class="s2">"VolumeChange"</span><span class="p">)</span>
 
@@ -1252,7 +1251,7 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Unknown volume change type: </span><span class="si">{</span><span class="n">vc_type</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_reject_legacy_interpolator_payload</span><span class="p">(</span><span class="n">interpolator_data</span><span class="p">:</span> <span class="n">Dict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">owner</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_reject_legacy_interpolator_payload</span><span class="p">(</span><span class="n">interpolator_data</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">owner</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Reject legacy sibling ``interpolator`` payloads loudly."""</span>
     <span class="k">if</span> <span class="n">interpolator_data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
@@ -1275,7 +1274,7 @@
         <span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_feed_medium</span><span class="p">(</span><span class="n">feed_data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">FeedMedium</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_feed_medium</span><span class="p">(</span><span class="n">feed_data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">FeedMedium</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Reconstruct FeedMedium from dictionary."""</span>
     <span class="n">components</span> <span class="o">=</span> <span class="p">{</span>
         <span class="n">name</span><span class="p">:</span> <span class="n">_dict_to_feed_component</span><span class="p">(</span><span class="n">comp_data</span><span class="p">)</span>
@@ -1290,7 +1289,7 @@
     <span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_feed_component</span><span class="p">(</span><span class="n">comp_data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">FeedMediumComponent</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_feed_component</span><span class="p">(</span><span class="n">comp_data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">FeedMediumComponent</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Reconstruct FeedMediumComponent from dictionary."""</span>
     <span class="k">return</span> <span class="n">FeedMediumComponent</span><span class="p">(</span>
         <span class="n">name</span><span class="o">=</span><span class="n">comp_data</span><span class="p">[</span><span class="s2">"name"</span><span class="p">],</span>
@@ -1305,7 +1304,7 @@
 <span class="c1"># ============================================================</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_discrete_events_to_dict</span><span class="p">(</span><span class="n">de</span><span class="p">:</span> <span class="n">DiscreteEvents</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_discrete_events_to_dict</span><span class="p">(</span><span class="n">de</span><span class="p">:</span> <span class="n">DiscreteEvents</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Convert DiscreteEvents to dictionary."""</span>
     <span class="k">return</span> <span class="p">{</span>
         <span class="s2">"times"</span><span class="p">:</span> <span class="n">de</span><span class="o">.</span><span class="n">times</span><span class="p">,</span>
@@ -1314,7 +1313,7 @@
     <span class="p">}</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_discrete_events</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="n">Dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DiscreteEvents</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_dict_to_discrete_events</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DiscreteEvents</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Reconstruct DiscreteEvents from dictionary."""</span>
     <span class="n">times</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s2">"times"</span><span class="p">]</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">times</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
@@ -1405,7 +1404,7 @@
       
     </aside>
   </div>
-</div><script src="../../../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../../../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>

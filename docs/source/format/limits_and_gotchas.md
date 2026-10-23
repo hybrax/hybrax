@@ -37,7 +37,9 @@ alternative.
 **At construction**
 
 - **No `biomass` component** and no explicit `reaction_ode` → `BioProcess(...)` raises.
-  Auto-generated rates are specific, so they need a biomass.
+  Auto-generated reactor-component rates are specific, so they need a biomass. An
+  explicit `reaction_ode` gets past construction, but validation and `hybrax.train`
+  preparation still require one.
 - **`TimeSeries` with neither samples nor spline** → raises. So does `times` without
   `values`, non-increasing `times`, or a `coeffs`/`breaks` shape mismatch.
 - **float32 input** → raises rather than upcasting.

@@ -40,8 +40,8 @@ point neither spine shape can carry.
 ``demo_spline_jump``
     One species, first-order decay, one feed bolus part-way through that jumps
     mass and volume together. Both phases (before and after the bolus) are
-    closed-form exponential decay at constant volume, so this is the one
-    dataset simulated analytically rather than by RK4: ``ground_truth.json``'s
+    closed-form exponential decay at constant volume, so it is simulated
+    analytically rather than by RK4: `ground_truth.json`'s
     parameters reconstruct the exact dense curve, not an approximation of it.
     For ``gallery/pseudobatch_splines.md``, which takes 5 measurements
     straddling the jump and recovers the underlying curve from them.
@@ -523,12 +523,12 @@ def _ecoli_pos(B: float) -> float:
 
 
 def _ecoli_surrogate_fba(qG_raw: float, n_X: float, n_M: float, n_A: float, n_S: float):
-    """RAW inputs -> RAW [q_glc, qX, qM, qA, qS], mmol/(gX.h) except q_glc.
+    """Physical inputs -> physical [q_glc, qX, qM, qA, qS].
 
-    Identical math to the ``surrogate_fba`` embedded in fba_hyb_custom.py /
-    pls_dfba_custom.py; duplicated here (not imported) because every
-    Tutorial/Gallery ``custom.py`` is a standalone, self-contained file a
-    reader can copy on its own, and generate.py is not distributed with them.
+    qX is in 1/h; exchange and maintenance fluxes are in mmol/(gX.h). The math
+    matches `surrogate_fba` in examples/gallery_fba_hyb/custom.py and
+    examples/gallery_pls_dfba/custom.py. It is duplicated here so each gallery
+    `custom.py` remains standalone.
     """
     qG = qG_raw / ECOLI_AVG_QG
     n_X, n_M, n_A, n_S = np.array([n_X, n_M, n_A, n_S]) / ECOLI_AVG_N
@@ -1227,8 +1227,8 @@ def build_demo_modeled_pv() -> None:
 # so no biomass is needed: reaction_ode is supplied explicitly). One feed
 # bolus part-way through jumps mass and volume together. Both phases are
 # closed-form exponential decay at constant volume, so the dense ground truth
-# below is exact, not an RK4 approximation. It is the one dataset in this file
-# built that way, since its whole point is a ground truth to fit against.
+# below is exact, not an RK4 approximation. Its whole point is a ground truth to
+# fit against.
 
 SJ_K = 0.15  # 1/h, first-order decay rate
 SJ_V0 = 1.0  # L
@@ -1251,7 +1251,8 @@ def spline_jump_truth(t) -> np.ndarray:
     m_after = m_at_jump + SJ_DELTA_V_BOLUS * SJ_C_FEED
     pre = SJ_C0 * np.exp(-SJ_K * t)
     post = (m_after / v_after) * np.exp(-SJ_K * (t - SJ_T_JUMP))
-    return np.where(t < SJ_T_JUMP, pre, post)
+    # Events are left-sided: the bolus applies for t > SJ_T_JUMP.
+    return np.where(t <= SJ_T_JUMP, pre, post)
 
 
 def build_demo_spline_jump() -> None:

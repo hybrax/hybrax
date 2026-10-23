@@ -70,8 +70,9 @@ import hybrax.train as hxt
 _collection = hxf.serialization.load_process_collection(WORK / "data.json")
 
 def r2_by_target(run_dir):
-    """Pooled R2: concatenate every process's residuals/variance before
-    dividing, so one process's own range can't dominate the score."""
+    """Concatenate measurements and predictions, then compute one global R2.
+    Processes contribute according to their pooled sums of squares.
+    """
     df = pd.read_csv(WORK / run_dir / "predictions.csv")
     per_target = {s: ([], []) for s in ("biomass", "Gln", "NH4")}
     for name, process in _collection.processes.items():
@@ -130,11 +131,11 @@ and the Volume block just confirms `V` stays constant.
 
 That reuse is also why the page's units matter: `Gln` and `NH4` both being `mol/L`
 means `r_Gln * Gln` is already in the right units for both derivatives, mol/(L·h) for
-`Gln`'s loss and mol/(L·h) for `NH4`'s gain. Mixing a `g/L` state and a `mol/L` state
-inside one additive expression is rejected outright, *unless* each term is
-individually scaled by its own declared rate: `-q_Gln * biomass - r_Gln * Gln` is fine
-even though `biomass` is `g/L` and `Gln` is `mol/L`, because `q_Gln` and `r_Gln` are
-each trusted to carry whatever unit bridges their own term. See
+`Gln`'s loss and mol/(L·h) for `NH4`'s gain. In each additive subexpression,
+bare state terms must share a unit. Terms containing a declared rate are exempt
+from this check, because rates are trusted to bridge units. For example,
+`-q_Gln * biomass - r_Gln * Gln` passes even though `biomass` is `g/L` and
+`Gln` is `mol/L`. See
 [The Bioprocess ODE](../format/bioprocess_ode.md#writing-your-own) for the general rule.
 
 ## The Reaction Module
@@ -142,7 +143,7 @@ each trusted to carry whatever unit bridges their own term. See
 ```{literalinclude} ../../../examples/gallery_glutamine_decay/custom.py
 :language: python
 :linenos:
-:lines: 19-43
+:pyobject: GlutamineDecayModule
 ```
 
 Three log-parameterized scalars, no kinetic structure, no state read at all:
@@ -159,7 +160,7 @@ hxt_cli("prepare", "--config", "prepare-config.json",
 out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
 lines = [l for l in out.splitlines() if "training complete" in l]
 print(lines[0] if lines else "training complete")
-print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
+print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[5])}")
 ```
 
 ```{code-cell} ipython3
@@ -210,10 +211,11 @@ everything above it is setup.
 
 ## Gotchas
 
-- **Different-unit states can only be added if each is individually scaled by its
-  own declared rate.** A bare `biomass - Gln` (no rate on either side) is rejected;
-  `-q_Gln * biomass - r_Gln * Gln` is not, because each term's own rate is trusted to
-  carry whatever unit bridges it. See [The Bioprocess ODE](../format/bioprocess_ode.md#writing-your-own).
+- **Bare state terms in an additive subexpression must share a unit.** Terms
+  containing a declared rate are exempt. A bare `biomass - Gln` is rejected;
+  `-q_Gln * biomass - r_Gln * Gln` and `-q_Gln * biomass - Gln` pass this check.
+  This check does not establish full dimensional consistency. See
+  [The Bioprocess ODE](../format/bioprocess_ode.md#writing-your-own).
 - **A slow rate needs a long enough window to be identifiable.** `r_Gln`'s ~8-day
   half-life would leave almost no visible trace over a 10-15 h batch window; this
   page's 120 h duration exists specifically so the effect is separable from noise,
@@ -231,7 +233,7 @@ everything above it is setup.
 
 The full, runnable example (`custom.py`, configs, data) lives in
 `examples/gallery_glutamine_decay/` at the repo root, no docs build required. This
-page's own executed run is at `./source/_data/out/runs/gallery_glutamine_decay/`.
+page's own executed run is at `./docs/source/_data/out/runs/gallery_glutamine_decay/`.
 
 - [The Bioprocess ODE](../format/bioprocess_ode.md): `reaction_ode`, `rates`,
   `derivatives`, and the unit-consistency rule this page relies on.

@@ -427,12 +427,14 @@ installed.</p>
 want, essentially always.</p>
 <div class="danger admonition">
 <p class="admonition-title"><code class="docutils literal notranslate"><span class="pre">model_reload</span></code> keeps the static half you hand it</p>
-<p>There is a second entry point, <code class="docutils literal notranslate"><span class="pre">model_reload</span></code>, which reuses an existing static half rather
-than rebuilding from a directory. Point it at a <em>different</em> dataset and it will load the
-trained weights into a <strong>different scaled space</strong>: the model was fitted with one set of
-<code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code> values and is now evaluated under another.</p>
+<p>There is a second entry point, <code class="docutils literal notranslate"><span class="pre">model_reload(path,</span> <span class="pre">wrapper)</span></code>, which only replaces the
+trained weights and keeps the static half from the wrapper you pass it. Pass it a wrapper
+from a different run, or one built on a different dataset, and it will load the trained
+weights into a <strong>different scaled space</strong>: the model was fitted with one set of <code class="docutils literal notranslate"><span class="pre">SCALE_*</span></code>
+values and is now evaluated under another.</p>
 <p>There is no exception, no shape error and no <code class="docutils literal notranslate"><span class="pre">NaN</span></code>. The predictions are simply wrong, and
-they look plausible. Use <code class="docutils literal notranslate"><span class="pre">model_load</span></code> unless you specifically know why you need the other.</p>
+they look plausible. Use <code class="docutils literal notranslate"><span class="pre">model_load</span></code>, and keep <code class="docutils literal notranslate"><span class="pre">model_reload</span></code> for swapping in another
+checkpoint of the same run.</p>
 </div>
 </section>
 <section id="predicting">
@@ -595,7 +597,7 @@ partition is saved.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

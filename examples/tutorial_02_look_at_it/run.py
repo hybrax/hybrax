@@ -23,9 +23,13 @@ print("ok:", ok)
 for line in messages:
     print(" ", line)
 
-ok, per_process = hxf.validate_for_publication(collection)
+ok, report = hxf.validate_for_publication(collection)
 print("ok:", ok)
-print("checked:", list(per_process))
+for section, results in report.items():
+    for check_ok, message in results:
+        # Print every failure, plus the cross-process results even when they pass.
+        if not check_ok or section.startswith("__"):
+            print(f"  {section}: {message}")
 
 # --- 2.2 Print the structure -------------------------------------------------
 hxf.print_process_structure(process, verbosity=2)

@@ -81,11 +81,9 @@ def estimate_all_scales(runtime_data, target_names, config):
 
     rmc_scale = {name: max_abs_state(name) for name in rhs.name_modeled_RMCs}
 
-    # Rate scales are estimated from the data too. The average specific rate of a
-    # species is its total change divided by the integrated biomass exposure,
-    # which is exactly what "specific" means. Do NOT use max(biomass): biomass
-    # grows by two orders of magnitude over a batch, so dividing by its peak
-    # underestimates the rate several-fold.
+    # Rate scales are estimated from the data too: concentration change divided
+    # by the trapezoidal biomass integral, keeping the largest estimate across
+    # runs. Peak biomass times duration is also a suitable simple estimate here.
     def rate_scale_for(species):
         per_process = []
         for i in range(n_processes):

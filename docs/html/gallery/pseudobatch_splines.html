@@ -410,7 +410,8 @@ constant volume, so the dense curve below is the exact ground truth:</p>
     <span class="n">m_after</span> <span class="o">=</span> <span class="n">m_at_jump</span> <span class="o">+</span> <span class="n">SJ_DELTA_V_BOLUS</span> <span class="o">*</span> <span class="n">SJ_C_FEED</span>
     <span class="n">pre</span> <span class="o">=</span> <span class="n">SJ_C0</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">SJ_K</span> <span class="o">*</span> <span class="n">t</span><span class="p">)</span>
     <span class="n">post</span> <span class="o">=</span> <span class="p">(</span><span class="n">m_after</span> <span class="o">/</span> <span class="n">v_after</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">SJ_K</span> <span class="o">*</span> <span class="p">(</span><span class="n">t</span> <span class="o">-</span> <span class="n">SJ_T_JUMP</span><span class="p">))</span>
-    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">t</span> <span class="o">&lt;</span> <span class="n">SJ_T_JUMP</span><span class="p">,</span> <span class="n">pre</span><span class="p">,</span> <span class="n">post</span><span class="p">)</span>
+    <span class="c1"># Events are left-sided: the bolus applies for t &gt; SJ_T_JUMP.</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">t</span> <span class="o">&lt;=</span> <span class="n">SJ_T_JUMP</span><span class="p">,</span> <span class="n">pre</span><span class="p">,</span> <span class="n">post</span><span class="p">)</span>
 
 
 </pre></div>
@@ -477,11 +478,14 @@ concentration wherever you evaluate it.</p>
 </div>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
-<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Error only where a segment actually has data on both sides. Evaluating a</span>
-<span class="c1"># 2-point segment beyond its own last measurement is pure extrapolation.</span>
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Compare the intervals away from the jump and the full plotted grid.</span>
 <span class="n">pre</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">SJ_T_JUMP</span> <span class="o">-</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>
 <span class="n">post</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">SJ_T_JUMP</span> <span class="o">+</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">SJ_T_END</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>
-<span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">grid</span> <span class="ow">in</span> <span class="p">[(</span><span class="s2">"pre-jump [0, 9]"</span><span class="p">,</span> <span class="n">pre</span><span class="p">),</span> <span class="p">(</span><span class="s2">"post-jump [11, 17]"</span><span class="p">,</span> <span class="n">post</span><span class="p">)]:</span>
+<span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">grid</span> <span class="ow">in</span> <span class="p">[</span>
+    <span class="p">(</span><span class="s2">"pre-jump [0, 9]"</span><span class="p">,</span> <span class="n">pre</span><span class="p">),</span>
+    <span class="p">(</span><span class="s2">"post-jump [11, 17]"</span><span class="p">,</span> <span class="n">post</span><span class="p">),</span>
+    <span class="p">(</span><span class="s2">"full plotted grid [0, 17]"</span><span class="p">,</span> <span class="n">dense_t</span><span class="p">),</span>
+<span class="p">]:</span>
     <span class="n">rec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">back</span><span class="p">(</span><span class="n">grid</span><span class="p">))</span>
     <span class="n">rel</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">rec</span> <span class="o">-</span> <span class="n">spline_jump_truth</span><span class="p">(</span><span class="n">grid</span><span class="p">))</span> <span class="o">/</span> <span class="n">spline_jump_truth</span><span class="p">(</span><span class="n">grid</span><span class="p">)</span>
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2">: max relative error </span><span class="si">{</span><span class="n">rel</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">100</span><span class="si">:</span><span class="s2">4.1f</span><span class="si">}</span><span class="s2">%   "</span>
@@ -492,21 +496,20 @@ concentration wherever you evaluate it.</p>
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>pre-jump [0, 9]: max relative error 13.7%   mean  6.0%
 post-jump [11, 17]: max relative error 14.2%   mean  9.6%
+full plotted grid [0, 17]: max relative error 22.3%   mean  7.3%
 </pre></div>
 </div>
 </div>
 </div>
-<p>A real, honest fit: within roughly 14% of the true curve at its worst, both before and
-after the jump, from 5 points total. The dashed curve tracks the true decay’s shape
-closely, including its curvature between the two endpoints.</p>
+<p>Maximum relative error is about 14% on <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">9]</span></code> and <code class="docutils literal notranslate"><span class="pre">[11,</span> <span class="pre">17]</span></code>. On the full plotted
+grid it reaches about 22% near the jump.</p>
 <div class="note admonition">
-<p class="admonition-title">Why the post-jump segment is the weaker fit</p>
-<p>The pre-jump segment has 3 measurements (0, 4, 9 h); the post-jump segment has only 2
-(11, 17 h). <code class="docutils literal notranslate"><span class="pre">fit_timeseries_spline</span></code> needs at least 4 points per segment for its smoothing
-B-spline path, so both segments here fall back to natural cubic interpolation, and 2
-points pin a natural cubic down to very nearly a straight line. That line still tracks
-an honestly-curved exponential decay to within ~14% here, and the weaker half is the
-2-point one for exactly that reason.</p>
+<p class="admonition-title">One fit through all five transformed measurements</p>
+<p>The transform fits one cubic B-spline through all five transformed measurements,
+with zero smoothing. The backtransform restores the physical bolus jump using the
+ADF and feed correction. Evaluating between 9 h and 11 h is interpolation within
+this fit, but measurements are sparse near the jump, so accuracy there must be
+checked separately.</p>
 </div>
 </section>
 <section id="what-made-this-example-different">
@@ -515,19 +518,15 @@ an honestly-curved exponential decay to within ~14% here, and the weaker half is
 <li><p><strong>No reaction module, no <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, no training.</strong> The pseudobatch transform and
 spline fitting are hybrax.format’s own, and stop being useful to demonstrate the moment
 <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> enters the picture.</p></li>
-<li><p><strong>A closed-form ground truth.</strong> Every other demo dataset in this site is simulated
-with RK4 and compared to noisy measurements of itself. This one has an exact answer to
-check the fit against, because that is the whole point of the page.</p></li>
-<li><p><strong>5 points is a tight budget.</strong> One of the two segments this jump creates
-is forced into the 2-point, near-linear fallback. That the fit still tracks a real,
-curved decay to ~14% is the actual demonstration.</p></li>
+<li><p><strong>A closed-form ground truth.</strong> It lets us check interpolation error between the
+sparse measurements, including near the bolus.</p></li>
 </ul>
 </section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <p>The full example (configs, data) lives in <code class="docutils literal notranslate"><span class="pre">examples/gallery_pseudobatch_splines/</span></code> at the
 repo root, no docs build required. This page’s own executed run is at
-<code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_pseudobatch_splines/</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">./docs/source/_data/out/runs/gallery_pseudobatch_splines/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../format/pseudobatch_transform.html"><span class="std std-doc">The pseudobatch transform</span></a>: what
 <code class="docutils literal notranslate"><span class="pre">build_pseudobatch_transform</span></code> and <code class="docutils literal notranslate"><span class="pre">build_backtransform_spline</span></code> actually compute.</p></li>
@@ -611,7 +610,7 @@ model.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

@@ -10,8 +10,8 @@ dense grid rather than only at the sparse measurement times:
    ``ReactionOde.rates``, attached here via ``transform_process_collection``
    since the auto-generated ODE leaves rates unbounded).
 3. A smoothness penalty: the sum of squared second time-derivatives
-   ("curvature") of each rate trajectory, masked away from genuine
-   discontinuities (bolus/sample jumps) with hybrax.train's own helper.
+   ("curvature") of each rate trajectory, masked away from
+   declared control discontinuities with hybrax.train's own helper.
 """
 
 import equinox as eqx
@@ -192,8 +192,8 @@ class PhysicalConstraintsLoss(DefaultLossModule):
         dt = inputs.dense_t[1] - inputs.dense_t[0]
         rates = inputs.dense_RAW_modeled_ReactionOde_rates
         curvature = (rates[2:] - 2.0 * rates[1:-1] + rates[:-2]) / (dt**2)
-        # A bolus/sample creates a REAL kink; do not penalise curvature there.
-        # hybrax.train ships this exact helper for that purpose.
+        # jump_ts contains declared control discontinuities only.
+        # Include bolus/sample times explicitly when adapting to state jumps.
         triple_mask = all_triple(valid) & dense_triple_mask_away_from_jumps(
             inputs.dense_t, inputs.jump_ts, jump_epsilon_h=2.0 * dt
         )
@@ -211,8 +211,8 @@ class PhysicalConstraintsLoss(DefaultLossModule):
 
 
 def build_loss_module(*, target_names, training_parent_collection, **kwargs):
-    # Bounds are read from the FIRST process. hybrax.format's cross-process
-    # consistency check guarantees every process shares the same structure.
+    # This example assumes identical state bounds and reads the first process.
+    # Cross-process structural validation does not enforce equal state bounds.
     process = next(iter(training_parent_collection.processes.values()))
     rhs = build_rhs_ode(process)
 

@@ -82,10 +82,10 @@ show(hxt_cli("prepare", "--config", "prepare-config.json",
               "--output-dir", "prepared", "--overwrite"), n=2)
 ```
 
-`prepare` is a separate step for a reason: it is where the dataset stops being *data*
-and becomes *a training problem*. It resolves which measurements are targets, fits the
-control splines, fixes the state and control layout, and writes all of it to
-`prepared/prepared.json`. Training reads only that.
+`prepare` is a separate step for a reason: it validates the dataset, applies any
+preparation hooks, checks that every process has the controls training needs, and writes
+the result, with a record of how it was made, to `prepared/prepared.json`. Training
+reads only that. Which measurements to fit is chosen later, by `train`.
 
 Because it is separated, you can prepare once and train twenty models against an
 identical, reproducible starting point.
@@ -104,9 +104,13 @@ print("top-level keys:", sorted(prep)[:8])
 {
   "data": { "prepared": "prepared" },
   "train": { "epochs": 300, "seed": 0 },
+  "checkpoint": { "every": 0 },
   "output": { "dir": "run" }
 }
 ```
+
+`"every": 0` turns off periodic checkpoints for this short run. Training still writes a
+final one.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -137,13 +141,14 @@ Everything not named in that config is a default, and each one is replaceable:
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-print(f"./{(WORK / 'run').relative_to(WORK.parents[4])}")
+print(f"./{(WORK / 'run').relative_to(WORK.parents[5])}")
 ```
 
 Everything below lives in that directory, self-contained: `cp -r` it anywhere and
 keep working from the copy.
 
-The per-epoch record:
+The training record, one row per optimizer step (with full batching, one step is one
+epoch):
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -153,7 +158,7 @@ metrics = pd.read_csv(WORK / "run/metrics.csv")
 print("columns:", ", ".join(metrics.columns))
 print()
 for i in (0, len(metrics) // 2, len(metrics) - 1):
-    print(metrics.iloc[i, :4].to_dict())
+    print(metrics.iloc[i][["epoch", "mean_loss", "grad_norm"]].to_dict())
 ```
 
 And the loss curve:
@@ -189,20 +194,21 @@ Image(filename=str(WORK / "run/forward/plots/run_1.png"))
 
 :::{admonition} Gradient norms are worth a glance
 :class: tip
-`grad_norm_curve.png` shows the **raw** gradient norm, before clipping. If it sits
-permanently at the clip threshold (`grad_clip_norm`, default 1000), your effective step
-size is not what you think it is, and that is usually a scaling problem, which is
+`grad_norm_curve.png` shows the **raw** gradient norm, before clipping. If it stays
+above the clip threshold (`train.grad_clip_norm`, default 1000), most updates are being
+clipped, and that is usually a scaling problem, which is
 [Tutorial 4](04_your_first_custom_py.md).
 :::
 
 ## 3.4 Second runs
 
-`--overwrite` is required to reuse an output directory. You will hit this immediately on
-your second run; it is deliberate, so a long training run cannot be silently destroyed.
+`--overwrite` is required to replace a completed training run. It is also required
+for an incomplete run with existing `step_*` checkpoints when checkpoint retention is
+enabled. The flag clears the previous output before starting fresh.
 
 ```bash
 hybrax train --config train-config.json --overwrite
-hybrax train --config train-config.json --epochs 50    # flags beat the config file
+hybrax train --config train-config.json --overwrite --epochs 50   # flags beat the config file
 ```
 
 ## What you learned

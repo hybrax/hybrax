@@ -392,14 +392,14 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">dataclasses</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">Counter</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">dataclasses</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">fractions</span><span class="w"> </span><span class="kn">import</span> <span class="n">Fraction</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">partial</span>
@@ -413,6 +413,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.tree_util</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jtu</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">optax</span>
+
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">BioProcessCollection</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.inspect</span><span class="w"> </span><span class="kn">import</span> <span class="n">print_rhs_ode</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.mechanistic</span><span class="w"> </span><span class="kn">import</span> <span class="n">RhsOde</span>
@@ -423,7 +424,6 @@
     <span class="n">DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE</span><span class="p">,</span>
     <span class="n">DEFAULT_SOLVER</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.preflight</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_continuous_flow_integration</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.defaults</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">DefaultLossModule</span><span class="p">,</span>
     <span class="n">_default_scale_kwargs</span><span class="p">,</span>
@@ -431,24 +431,21 @@
     <span class="n">default_build_reaction_module</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.inspect</span><span class="w"> </span><span class="kn">import</span> <span class="n">print_reaction_schema</span><span class="p">,</span> <span class="n">print_trainable_structure</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.logging</span><span class="w"> </span><span class="kn">import</span> <span class="n">RunLogger</span><span class="p">,</span> <span class="n">StepRecord</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.model_api</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">EstimatedScales</span><span class="p">,</span>
-    <span class="n">UserLossModule</span><span class="p">,</span>
     <span class="n">RateModule</span><span class="p">,</span>
+    <span class="n">UserLossModule</span><span class="p">,</span>
     <span class="n">_as_scaler</span><span class="p">,</span>
     <span class="n">partition_trainable</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.trainer</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">build_batched_loss_fn</span><span class="p">,</span>
-    <span class="n">clamp_padded_time_rows</span><span class="p">,</span>
-    <span class="n">evaluate_one_sample_loss</span><span class="p">,</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.postprocessing</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">DenseProcessExport</span><span class="p">,</span>
+    <span class="n">dense_exports_from_save_outputs</span><span class="p">,</span>
+    <span class="n">plot_grad_norm_curve</span><span class="p">,</span>
+    <span class="n">plot_loss_curve</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.logging</span><span class="w"> </span><span class="kn">import</span> <span class="n">RunLogger</span><span class="p">,</span> <span class="n">StepRecord</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.training_data</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">TARGET_SOURCE_AUTO</span><span class="p">,</span>
-    <span class="n">TrainingDataStore</span><span class="p">,</span>
-    <span class="n">replace_rhs_ode_process_matrices</span><span class="p">,</span>
-<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.preflight</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_continuous_flow_integration</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.run_config</span><span class="w"> </span><span class="kn">import</span> <span class="n">CheckpointConfig</span><span class="p">,</span> <span class="n">RunConfig</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.runtime_artifact</span><span class="w"> </span><span class="kn">import</span> <span class="n">RuntimeArtifact</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.runtime_context</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
@@ -464,6 +461,16 @@
     <span class="n">load_trained_wrapper</span><span class="p">,</span>
     <span class="n">read_initial_checkpoint</span><span class="p">,</span>
 <span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.trainer</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">build_batched_loss_fn</span><span class="p">,</span>
+    <span class="n">clamp_padded_time_rows</span><span class="p">,</span>
+    <span class="n">evaluate_one_sample_loss</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.training_data</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">TARGET_SOURCE_AUTO</span><span class="p">,</span>
+    <span class="n">TrainingDataStore</span><span class="p">,</span>
+    <span class="n">replace_rhs_ode_process_matrices</span><span class="p">,</span>
+<span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">get_hook</span><span class="p">,</span>
     <span class="n">load_custom_module</span><span class="p">,</span>
@@ -471,12 +478,6 @@
     <span class="n">split_hooks_by_customization</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.wrapper</span><span class="w"> </span><span class="kn">import</span> <span class="n">HybridOdeWrapper</span><span class="p">,</span> <span class="n">validate_rhs_ode_compatibility</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.postprocessing</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-    <span class="n">DenseProcessExport</span><span class="p">,</span>
-    <span class="n">dense_exports_from_save_outputs</span><span class="p">,</span>
-    <span class="n">plot_grad_norm_curve</span><span class="p">,</span>
-    <span class="n">plot_loss_curve</span><span class="p">,</span>
-<span class="p">)</span>
 
 <span class="c1"># Single batched loss fn: module-agnostic, reads wrapper.loss_module at call time.</span>
 <span class="n">_BATCHED_LOSS_FN</span> <span class="o">=</span> <span class="n">build_batched_loss_fn</span><span class="p">()</span>
@@ -596,7 +597,9 @@
         <span class="n">dense_exports</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
             <span class="n">dense_exports_from_save_outputs</span><span class="p">(</span>
                 <span class="n">prediction_t</span><span class="p">[:</span><span class="n">valid</span><span class="p">],</span>
-                <span class="n">jtu</span><span class="o">.</span><span class="n">tree_map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">leaf</span><span class="p">:</span> <span class="n">leaf</span><span class="p">[:</span><span class="n">valid</span><span class="p">],</span> <span class="n">prediction_save_outputs</span><span class="p">),</span>
+                <span class="n">jtu</span><span class="o">.</span><span class="n">tree_map</span><span class="p">(</span>
+                    <span class="k">lambda</span> <span class="n">leaf</span><span class="p">,</span> <span class="n">valid</span><span class="o">=</span><span class="n">valid</span><span class="p">:</span> <span class="n">leaf</span><span class="p">[:</span><span class="n">valid</span><span class="p">],</span> <span class="n">prediction_save_outputs</span>
+                <span class="p">),</span>
                 <span class="n">trained_wrapper</span><span class="p">,</span>
                 <span class="n">valid_names</span><span class="p">,</span>
                 <span class="n">prediction_valid</span><span class="o">=</span><span class="n">prediction_valid</span><span class="p">[:</span><span class="n">valid</span><span class="p">],</span>
@@ -859,9 +862,8 @@
     <span class="n">grad_clip_norm</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1000.0</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">optax</span><span class="o">.</span><span class="n">GradientTransformation</span><span class="p">:</span>
     <span class="c1"># learning_rate can be a float or an optax Schedule</span>
-    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">learning_rate</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">)):</span>
-        <span class="k">if</span> <span class="nb">float</span><span class="p">(</span><span class="n">learning_rate</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mf">0.0</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"learning_rate must be positive"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">learning_rate</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">))</span> <span class="ow">and</span> <span class="nb">float</span><span class="p">(</span><span class="n">learning_rate</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mf">0.0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"learning_rate must be positive"</span><span class="p">)</span>
     <span class="k">if</span> <span class="nb">float</span><span class="p">(</span><span class="n">grad_clip_norm</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">0.0</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"grad_clip_norm must be non-negative"</span><span class="p">)</span>
     <span class="k">if</span> <span class="nb">callable</span><span class="p">(</span><span class="n">learning_rate</span><span class="p">):</span>
@@ -2163,7 +2165,8 @@
 <span class="sd">        likewise breaks on diffrax's internal ``select``s. Auto-axis GSPMD</span>
 <span class="sd">        keeps shardings out of the per-op type system, so the diffrax adjoint</span>
 <span class="sd">        composes cleanly."""</span>
-        <span class="kn">from</span><span class="w"> </span><span class="nn">jax.sharding</span><span class="w"> </span><span class="kn">import</span> <span class="n">PartitionSpec</span> <span class="k">as</span> <span class="n">P</span><span class="p">,</span> <span class="n">NamedSharding</span><span class="p">,</span> <span class="n">AxisType</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">jax.sharding</span><span class="w"> </span><span class="kn">import</span> <span class="n">AxisType</span><span class="p">,</span> <span class="n">NamedSharding</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">jax.sharding</span><span class="w"> </span><span class="kn">import</span> <span class="n">PartitionSpec</span> <span class="k">as</span> <span class="n">P</span>
 
         <span class="n">bs</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">effective_batch_size</span><span class="p">)</span>
         <span class="n">n_dev</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">local_device_count</span><span class="p">(),</span> <span class="n">bs</span><span class="p">)</span>
@@ -3190,7 +3193,7 @@
       
     </aside>
   </div>
-</div><script src="../../../_static/documentation_options.js?v=95c291f4"></script>
+</div><script src="../../../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>

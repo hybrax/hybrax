@@ -84,7 +84,7 @@ fig, ax = plt.subplots(figsize=(5, 3.2))
 ax.semilogy(
     range(1, len(result.mean_loss_by_step) + 1),
     result.mean_loss_by_step,
-    label="train (all 3 processes)",
+    label="train (run_1, run_2)",
 )
 ax.semilogy(
     steps,

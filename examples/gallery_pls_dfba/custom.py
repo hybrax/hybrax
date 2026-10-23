@@ -1,20 +1,18 @@
 """PLS-dFBA-inspired reaction module on e_coli_core.
 
-Builds on fba_hyb.md, but replaces its MLP with an actual PLS-shaped
-component: a linear, low-rank latent-variable regression (predictors -> a
-handful of latent components -> outputs), which is PLS's real structural
-form: no nonlinearity anywhere in the regression itself.
-Trained here by ordinary gradient descent through the whole ODE trajectory
-rather than NIPALS (the actual algorithm real PLS is fit with): the one
-disclosed algorithmic difference from a textbook PLS fit.
+Builds on fba_hyb.md, but replaces its MLP with a PLS-inspired low-rank
+linear map: predictors -> latent components -> outputs.
+Its weights are trained end to end against concentration trajectories,
+rather than selected using the covariance criterion of classical PLS
+regression.
 
 Also reads a constant-valued controlled process variable, `media_blend_fraction`.
 The PLS component takes the blend fraction as an extra predictor alongside state, so
-the predicted FBA objective weights, and hence the predicted rates, become a function
-of both physiology and recipe: Negahban et al. 2026's real structural idea (a kinetic
-corridor that depends on media composition). Shipped as a StaticVariable-valued
-ProcessVariable directly in data.json, baked in by the generator's
-build_demo_ecoli_blend().
+the predicted combined-demand coefficients, and hence the predicted rates, become a
+function of both physiology and recipe: Negahban et al. 2026's real structural idea
+(a kinetic corridor that depends on media composition). Shipped as a
+StaticVariable-valued ProcessVariable directly in data.json, baked in by the
+generator's build_demo_ecoli_blend().
 """
 
 import equinox as eqx
@@ -40,9 +38,12 @@ def _pos(B):
 
 
 def surrogate_fba(x):
-    """SCALED [qG, n_X, n_M, n_A, n_S] -> RAW [q_glc, qX, qM, qA, qS],
-    mmol/(gX.h). Identical fit to fba_hyb.md's surrogate; this page uses all
-    five outputs (n_S/qS included), where fba_hyb.md drops them.
+    """RAW [qG, n_X, n_M, n_A, n_S] -> RAW [q_glc, qX, qM, qA, qS].
+
+    `qX` is in `1/h`; the other output fluxes are in `mmol/(gX.h)`.
+    Inputs are normalized internally using `AVG_QG` and `AVG_N`.
+    Identical fit to fba_hyb.md's surrogate; this page uses all five outputs
+    (n_S/qS included), where fba_hyb.md drops them.
     """
     qG = x[0] / AVG_QG
     n = x[1:5] / AVG_N
@@ -212,13 +213,12 @@ def _bounded_softplus(x, alpha):
 
 
 class PLSComponent(eqx.Module):
-    """Linear, low-rank latent-variable regression: predictors -> a handful
-    of latent components -> outputs. This is PLS's actual structural form
-    (no nonlinearity anywhere), standing in for Negahban et al. 2026's own
-    piecewise-nonlinear PLS regression, whose piecewise refinement is the
-    one part not reproduced here. `n_components` << `n_in` is the whole
-    point of PLS: compress collinear predictors (state + media composition)
-    into a handful of components before regressing onto the outputs.
+    """PLS-inspired low-rank linear map: predictors -> components -> outputs.
+
+    `n_components` bounds the rank of the map from state and media composition
+    to surrogate inputs. The weights are trained against concentration
+    trajectories, rather than selected using the covariance criterion of
+    classical PLS regression.
     """
 
     W: jax.Array = trainable_field()  # (n_in, n_components) predictor loadings

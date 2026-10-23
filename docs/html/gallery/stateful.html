@@ -388,9 +388,10 @@ the solve, so the rates can depend on the whole history of where the process has
 <p><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> does not run a discrete recurrent network beside the ODE solver. It <strong>turns the
 recurrent cell into a continuous-time ODE</strong>: the latent state <code class="docutils literal notranslate"><span class="pre">h</span></code> is an extra integrated
 dimension, and its derivative is the discrepancy between <code class="docutils literal notranslate"><span class="pre">h</span></code> and whatever the cell would
-have jumped to next: <code class="docutils literal notranslate"><span class="pre">d(h)/dt</span> <span class="pre">=</span> <span class="pre">cell(input,</span> <span class="pre">h)</span> <span class="pre">-</span> <span class="pre">h</span></code>. As training pulls the residual to
-zero, <code class="docutils literal notranslate"><span class="pre">h</span></code> tracks the same trajectory the discrete cell would have taken, but now it is a
-proper flow that Diffrax can integrate and differentiate through like any other state.</p>
+have jumped to next: <code class="docutils literal notranslate"><span class="pre">d(h)/dt</span> <span class="pre">=</span> <span class="pre">cell(input,</span> <span class="pre">h)</span> <span class="pre">-</span> <span class="pre">h</span></code>. Diffrax integrates this continuous
+relaxation alongside the physical states. Training adjusts its parameters to fit the
+measured trajectories; it does not enforce agreement with the trajectory of a discrete
+recurrent network.</p>
 <p><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> provides this pattern directly: <code class="docutils literal notranslate"><span class="pre">DefaultGruReactionModule</span></code> and
 <code class="docutils literal notranslate"><span class="pre">DefaultLstmReactionModule</span></code> are built-in stateful defaults. The latter stores
 <code class="docutils literal notranslate"><span class="pre">[hidden</span> <span class="pre">|</span> <span class="pre">cell]</span></code> in <code class="docutils literal notranslate"><span class="pre">SCL_latent</span></code>; its <code class="docutils literal notranslate"><span class="pre">hidden_width</span></code> constructor argument sets
@@ -425,7 +426,7 @@ has been quietly relying on that default.</p>
 allowed to train silently:</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>ValueError: Stateful reaction modules (n_latent &gt; 0) require explicit opt-in: set train.allow_stateful_models=true.
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span><span class=" -Color -Color-Bold -Color-Bold-Magenta">ValueError</span>: <span class=" -Color -Color-Magenta">Stateful reaction modules (n_latent &gt; 0) require explicit opt-in: set train.allow_stateful_models=true.</span>
 </pre></div>
 </div>
 </div>
@@ -442,7 +443,7 @@ means that <code class="docutils literal notranslate"><span class="pre">hybrax.t
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.231356 last_mean_loss=0.00144245 delta=-0.229913
-run directory: ./source/_data/out/runs/gallery_stateful/run
+run directory: ./docs/source/_data/out/runs/gallery_stateful/run
 </pre></div>
 </div>
 </div>
@@ -538,7 +539,7 @@ and <a class="reference internal" href="../tutorials/04_your_first_custom_py.htm
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
 <code class="docutils literal notranslate"><span class="pre">examples/gallery_stateful/</span></code> at the repo root, no docs build required. This page’s own
-executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_stateful/</span></code>.</p>
+executed run is at <code class="docutils literal notranslate"><span class="pre">./docs/source/_data/out/runs/gallery_stateful/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: the general contract this module
 follows.</p></li>
@@ -626,7 +627,7 @@ kinetics, no latent state at all.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

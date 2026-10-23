@@ -69,9 +69,11 @@ The rule is:
 
 :::{admonition} Auto-generation requires a component named `biomass`
 :class: warning
-Every generated rate is *specific* (per unit biomass) so there has to be a biomass to
+Reactor-medium rates are *specific* (per unit biomass) so there has to be a biomass to
 be specific to. Without one (case-insensitive match), constructing the `BioProcess`
-raises immediately, and the message tells you to supply your own `reaction_ode`.
+with auto-generated dynamics raises immediately, and the message tells you to supply
+your own `reaction_ode`. Supplying one only gets past construction: format validation
+and `hybrax.train` preparation still require a `biomass` reactor component.
 :::
 
 ## Writing your own

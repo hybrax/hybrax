@@ -565,7 +565,8 @@ cadence: at least every 5 epochs, at most 20 checkpoints over the whole
 run. <code class="docutils literal notranslate"><span class="pre">0</span></code> disables periodic checkpointing, but the final checkpoint at
 the end of training is always written regardless. Must be finite.</p>
 <p><code class="docutils literal notranslate"><span class="pre">bundle_prepared</span></code> (default <code class="docutils literal notranslate"><span class="pre">True</span></code>) includes prepared data so every
-checkpoint is self-contained; disable it to reduce repeated disk use.</p>
+checkpoint is self-contained; disable it to reduce repeated disk use.
+The run directory always gets one copy of the prepared data.</p>
 <p><code class="docutils literal notranslate"><span class="pre">keep_best=None</span></code> keeps all checkpoints. Zero writes only the final
 checkpoint and requires <code class="docutils literal notranslate"><span class="pre">select_by</span></code> to be omitted. Positive N keeps best
 N plus the final checkpoint, ranked by <code class="docutils literal notranslate"><span class="pre">select_by</span></code>: holdout loss,
@@ -1626,7 +1627,7 @@ run. No-op if <code class="docutils literal notranslate"><span class="pre">custo
       
     </aside>
   </div>
-</div><script src="../../../../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../../../../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../../_static/scripts/furo.js?v=46bd48cc"></script>

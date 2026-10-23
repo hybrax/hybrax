@@ -12,7 +12,7 @@ kernelspec:
 
 # PLS-dFBA
 
-> [FBA-Hyb](fba_hyb.md)'s surrogate, extended with a real PLS-shaped component: a
+> [FBA-Hyb](fba_hyb.md)'s surrogate, extended with a PLS-inspired component: a
 > linear, low-rank latent-variable regression that reads media composition alongside
 > state. A controllable recipe choice measurably shifts the predicted metabolic
 > corridor.
@@ -26,11 +26,9 @@ reproduces that structural idea, a data-driven regression aware of recipe as wel
 physiology shaping the FBA solution, built on the same frozen surrogate as
 [FBA-Hyb](fba_hyb.md) and fit by ordinary gradient descent through the whole ODE
 trajectory against synthetic data, rather than the paper's own fitting procedure
-against real bioreactor data. The PLS component below reproduces PLS's actual
-structural form: predictors compressed into a handful of latent components, then
-linearly regressed onto outputs, with no nonlinearity anywhere, trained here by
-gradient descent rather than the classical NIPALS algorithm, the one disclosed
-algorithmic difference from a textbook PLS fit.
+against real bioreactor data. The PLS-inspired component below is a low-rank linear
+map. Its weights are trained end to end against concentration trajectories, rather
+than selected using the covariance criterion of classical PLS regression.
 
 The walkthrough below shows the file in pieces, next to the reasoning for each one.
 
@@ -122,14 +120,14 @@ in `data.json` itself.
 ```{literalinclude} ../../../examples/gallery_pls_dfba/custom.py
 :language: python
 :linenos:
-:lines: 214-239
+:lines: 215-239
 ```
 
 `W` compresses `n_in` predictors (state + `media_blend_fraction`) down to
 `n_components = 3` latent scores; `Q` regresses those scores back out to the 5
-surrogate inputs. No activation function anywhere in `__call__`: real PLS is linear
-end to end, which is the whole reason it needs a low-rank bottleneck to handle
-collinear predictors in the first place, rather than just more capacity.
+surrogate inputs. There is no activation function in `__call__`. This linear
+factorization bounds the map's rank by `n_components`; it does not impose the
+component-selection criterion of classical PLS regression.
 
 ```{literalinclude} ../../../examples/gallery_pls_dfba/custom.py
 :language: python
@@ -152,7 +150,7 @@ hxt_cli("prepare", "--config", "prepare-config.json",
 out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
 lines = [l for l in out.splitlines() if "training complete" in l]
 print(lines[0] if lines else "training complete")
-print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
+print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[5])}")
 ```
 
 ```{code-cell} ipython3
@@ -173,16 +171,13 @@ Image(filename=str(WORK / "run/forward/plots/blend_67.png"))
 ```
 
 Every predictor passes through only three latent scores before the final linear
-regression: that low-rank bottleneck is PLS's actual structural signature. The R²
-values above are what that bottleneck achieves against this page's dummy data, which
-is the question this page sets out to answer.
+map. The R² values above measure how well this PLS-inspired bottleneck fits this
+page's synthetic data.
 
 ## Gotchas
 
-- **`n_components` is the whole tuning knob for PLS's linear bottleneck.** Too few
-  and the bottleneck cannot represent the real relationship between recipe and
-  metabolism; too many and the "compress collinear predictors" idea PLS exists for
-  stops doing anything.
+- **`n_components` controls the linear map's rank.** Too few components can limit
+  the relationship the map can represent between recipe and metabolism.
 - **The surrogate itself is unchanged from [FBA-Hyb](fba_hyb.md)**: only what
   predicts its inputs differs. This page's predictions are only ever as good as
   that shared, frozen fit.
@@ -191,7 +186,7 @@ is the question this page sets out to answer.
 
 The full, runnable example (`custom.py`, configs, data) lives in
 `examples/gallery_pls_dfba/` at the repo root, no docs build required. This page's own
-executed run is at `./source/_data/out/runs/gallery_pls_dfba/`.
+executed run is at `./docs/source/_data/out/runs/gallery_pls_dfba/`.
 
 - [FBA-Hyb](fba_hyb.md): the surrogate and the base reaction-module shape this
   builds on.

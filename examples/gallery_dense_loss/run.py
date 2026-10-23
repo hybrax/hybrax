@@ -67,10 +67,11 @@ def dense_diagnostics(run_dir):
     curvature = {"q_biomass": [], "q_glucose": []}
     for _, proc_df in df.groupby("process"):
         t = proc_df["t"].to_numpy()
-        dt = t[1] - t[0]
+        h = np.diff(t)
         for rate, values in curvature.items():
             y = proc_df[rate].to_numpy()
-            d2 = (y[2:] - 2 * y[1:-1] + y[:-2]) / dt**2
+            slopes = np.diff(y) / h
+            d2 = 2 * np.diff(slopes) / (h[1:] + h[:-1])
             values.append(float(np.sqrt(np.mean(d2**2))))
     return min_glucose, {k: float(np.mean(v)) for k, v in curvature.items()}
 

@@ -13,9 +13,9 @@ kernelspec:
 # FBA-Hyb
 
 > A hybrid dynamic-FBA reaction module: two small neural networks predict a
-> glucose-uptake rate and a metabolic objective from the current state, and a frozen,
-> offline-fit surrogate converts those into real metabolic rates. No linear program
-> ever gets solved during training.
+> glucose-uptake rate and combined-demand coefficients from the current state.
+> A frozen, offline-fit surrogate converts those into real metabolic rates.
+> No linear program ever gets solved during training.
 
 Dynamic flux-balance analysis (dFBA) normally means solving a real linear program,
 `max c^T v` subject to `S.v = 0` and flux bounds, at every integration step. JAX cannot
@@ -29,7 +29,7 @@ inside an ordinary `RateModule`. No LP solve ever happens during training.
 The surrogate here is fit fresh against `e_coli_core.xml`
 [<a href="#ref-ecolicore">2</a>], a small, real, published teaching model (95
 reactions, 72 metabolites): see [How the Surrogate Was Fit](#how-the-surrogate-was-fit)
-below for the full, reproducible chain. See [PLS-dFBA](pls_dfba.md) for this page's
+below for the offline fitting workflow. See [PLS-dFBA](pls_dfba.md) for this page's
 sibling, which builds on the same surrogate with a product-forming, media-blend-aware
 extension.
 
@@ -101,7 +101,7 @@ def r2_by_target(run_dir):
 ```{literalinclude} ../../../examples/gallery_fba_hyb/custom.py
 :language: python
 :linenos:
-:lines: 36-50
+:pyobject: surrogate_fba
 ```
 
 `AVG_QG`/`AVG_N` are the scaler constants from the offline fit; `q_glc` is analytic
@@ -117,17 +117,20 @@ what a real LP solve *would* do if you tried to differentiate through it.
 ```{literalinclude} ../../../examples/gallery_fba_hyb/custom.py
 :language: python
 :linenos:
-:lines: 188-243
+:pyobject: FBAHybReactionModule
 ```
 
-Two small MLPs predict `qG` (glucose uptake) and the FBA objective weights
-`(n_X, n_M, n_A)` (biomass, ATP maintenance, acetate) from the current state, each
-squashed through `_bounded_softplus` to stay inside the range the surrogate was
-actually fit over. `n_S` (succinate) is fixed at `0.0`: this page has no deliberate
-product, only real *E. coli* overflow metabolism (growth versus maintenance versus
-acetate secretion), the same trade-off the surrogate was trained on. The predicted
-weights go out through `auxiliary`, which `hybrax.train` threads straight into
-`predictions.csv`.
+Two small MLPs predict `qG` (glucose uptake) and combined-demand coefficients
+`(n_X, n_M, n_A)` (biomass, ATP maintenance, acetate) from the current state.
+The offline LP maximizes a combined-demand flux, with artificial-metabolite
+balances enforcing `v_i = n_i * v_combined` for each target flux. These are
+prescribed flux proportions. `_bounded_softplus` caps `qG` at 18 and the
+coefficients at 1.8, but `qG` can fall below the offline sampling minimum of 0.5.
+Uptake near zero therefore extrapolates. `n_S` (succinate) is fixed at `0.0`:
+this page has no deliberate product, only real *E. coli* overflow metabolism
+(growth versus maintenance versus acetate secretion), the same trade-off the
+surrogate was trained on. The predicted coefficients go out through `auxiliary`,
+which `hybrax.train` threads straight into `predictions.csv`.
 
 ## Training
 
@@ -139,7 +142,7 @@ hxt_cli("prepare", "--config", "prepare-config.json",
 out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
 lines = [l for l in out.splitlines() if "training complete" in l]
 print(lines[0] if lines else "training complete")
-print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
+print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[5])}")
 ```
 
 ```{code-cell} ipython3
@@ -167,13 +170,16 @@ Image(filename=str(WORK / "run/forward/plots/run_1.png"))
 df = pd.read_csv(WORK / "run" / "predictions.csv")
 run_1 = df[df["process"] == "run_1"]
 t = run_1["t"].to_numpy()
-weights = run_1[["aux_n_weights_0", "aux_n_weights_1", "aux_n_weights_2"]].to_numpy()
-weights = weights / weights.sum(axis=1, keepdims=True)
+coefficient_names = ["aux_n_weights_0", "aux_n_weights_1", "aux_n_weights_2"]
+coefficients = run_1[coefficient_names].to_numpy()
+shares = coefficients / coefficients.sum(axis=1, keepdims=True)
 
 fig, ax = plt.subplots(figsize=(7, 3.5))
-ax.stackplot(t, weights.T, labels=("n_X (biomass)", "n_M (maintenance)", "n_A (acetate)"))
+ax.stackplot(
+    t, shares.T, labels=("n_X (biomass)", "n_M (maintenance)", "n_A (acetate)")
+)
 ax.set_xlabel("t (h)")
-ax.set_ylabel("share of FBA objective weight")
+ax.set_ylabel("share of combined-demand coefficients")
 ax.set_ylim(0, 1)
 ax.legend(fontsize=8, loc="upper left")
 fig.tight_layout()
@@ -181,18 +187,18 @@ fig.tight_layout()
 
 `aux_n_weights_0/1/2` are `ReactionOutputs.auxiliary["n_weights"]`, written out with
 no extra plumbing beyond what every other page already gets, normalized here to show
-each component's share of the total. The trend is genuinely learned: the model was
-never given time as an input, only state, yet `n_A`'s share rises steadily over the
-batch (real overflow metabolism intensifying as glucose depletes and biomass
-accumulates), inferred purely from the state it was shown.
+each coefficient's share of their sum. The networks infer these coefficients from
+state, without time as an input. Their normalized shares describe the prescribed
+flux proportions, rather than contributions to a weighted-sum objective.
 
 ## How the Surrogate Was Fit
 
 The surrogate is fit offline the same way as the FBA-Hyb paper
 [<a href="#ref-fbahyb">1</a>]: 10,000 real FBA solves on `e_coli_core.xml`
-[<a href="#ref-ecolicore">2</a>], then a pole-free rational fit against that data with
-a boundedness certificate checked before acceptance (validation R² ≥ 0.999 on all four
-fitted fluxes). The fitting scripts live in `examples/gallery_fba_hyb/` for anyone who
+[<a href="#ref-ecolicore">2</a>], then a pole-free rational fit against that data and a
+sampled overshoot screen at 200,000 points in the sampling box (validation R² ≥ 0.999 on
+all four fitted fluxes). The screen is not a proof that the surrogate stays bounded
+everywhere in the box. The fitting scripts live in `examples/gallery_fba_hyb/` for anyone who
 wants to reproduce it; they don't run as part of building these docs, since solving
 10,000 LPs takes a couple of minutes and needs `cobra`, which every doc build should
 not pay for. The coefficients are frozen into `surrogate_fba` above.
@@ -203,12 +209,12 @@ not pay for. The coefficients are frozen into `surrogate_fba` above.
   inputs are `trainable_field()`s; `surrogate_fba` itself has no learnable
   parameters at all.
 - **A surrogate that looks accurate on validation data can still be dangerous.**
-  The boundedness certificate is what actually predicts whether training will stay
-  stable: an unconstrained fit can free-run to far outside the training data's range
-  in the sparse corners of a 5-dimensional sampling box.
-- **`_bounded_softplus` keeps the MLPs inside the surrogate's fitted range.**
-  Removing it does not error immediately: the surrogate just starts extrapolating
-  into territory the boundedness certificate never checked.
+  An unconstrained fit can free-run to far outside the training data's range in the
+  sparse corners of a 5-dimensional sampling box. The sampled overshoot screen can
+  expose such excursions, but it cannot guarantee stable training.
+- **`_bounded_softplus` caps the MLP outputs.** `qG` can still fall below the
+  offline sampling minimum of 0.5. Uptake near zero extrapolates beyond the box
+  checked by the boundedness certificate.
 - **`n_S` fixed at `0.0` is a deliberate modeling choice.** It means
   this reaction module can never represent a deliberate product, by construction.
 
@@ -216,7 +222,7 @@ not pay for. The coefficients are frozen into `surrogate_fba` above.
 
 The full, runnable example (`custom.py`, configs, data) lives in
 `examples/gallery_fba_hyb/` at the repo root, no docs build required. This page's own
-executed run is at `./source/_data/out/runs/gallery_fba_hyb/`.
+executed run is at `./docs/source/_data/out/runs/gallery_fba_hyb/`.
 
 - [PLS-dFBA](pls_dfba.md): builds on this exact surrogate, adds a deliberate
   product and a media-blend-aware PLS component.

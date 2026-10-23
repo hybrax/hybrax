@@ -434,6 +434,10 @@ law you already believe in, with a handful of trainable scalars instead of a net
 <span class="linenos">46</span>        <span class="k">return</span> <span class="n">ReactionOutputs</span><span class="p">(</span>
 <span class="linenos">47</span>            <span class="n">SCL_modeled_ReactionOde_rates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">scale_modeled_ReactionOde_rates</span><span class="p">(</span>
 <span class="linenos">48</span>                <span class="n">RAW_rates</span>
+<span class="linenos">49</span>            <span class="p">),</span>
+<span class="linenos">50</span>            <span class="n">SCL_modeled_Outflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+<span class="linenos">51</span>            <span class="n">SCL_modeled_Inflows_rates</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+<span class="linenos">52</span>        <span class="p">)</span>
 </pre></div>
 </div>
 <p>Three things worth noting.</p>
@@ -456,7 +460,7 @@ position. If someone reorders the dataset’s components, this still works.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.15896 last_mean_loss=0.0002096 delta=-0.158751
-run directory: ./source/_data/out/runs/gallery_structured_rates/run
+run directory: ./docs/source/_data/out/runs/gallery_structured_rates/run
 </pre></div>
 </div>
 </div>
@@ -498,40 +502,43 @@ trade-off explained in the next section.</p>
 </div>
 </div>
 </div>
-<p>During the growth phase (where nearly every measurement sits), glucose is saturating, so
-<code class="docutils literal notranslate"><span class="pre">sigma</span> <span class="pre">≈</span> <span class="pre">1</span></code> and the product rate collapses to <code class="docutils literal notranslate"><span class="pre">q_product</span> <span class="pre">≈</span> <span class="pre">alpha·mu_max</span> <span class="pre">+</span> <span class="pre">beta</span></code>: a single
-number. The data constrains <em>that combination</em> tightly; it says almost nothing about how
-much of it comes from <code class="docutils literal notranslate"><span class="pre">alpha</span></code> versus <code class="docutils literal notranslate"><span class="pre">beta</span></code> individually. Two different splits that sum to
-the same combination fit equally well, so the optimizer finds whichever split its
-initialisation happened to favour: this is a textbook <strong>structural identifiability</strong>
-problem baked into the data itself.</p>
-<p><code class="docutils literal notranslate"><span class="pre">Ks</span></code> is a milder version of the same story: <code class="docutils literal notranslate"><span class="pre">demo_batch</span></code> never lingers at low, resolving
-glucose concentrations (the culture consumes it and moves on) so there is little data
-constraining exactly where the saturation curve bends.</p>
+<p>Here <code class="docutils literal notranslate"><span class="pre">q_product</span> <span class="pre">=</span> <span class="pre">(alpha</span> <span class="pre">*</span> <span class="pre">mu_max</span> <span class="pre">+</span> <span class="pre">beta)</span> <span class="pre">*</span> <span class="pre">sigma</span></code> exactly, at every glucose
+concentration. These trajectories identify the combination, not <code class="docutils literal notranslate"><span class="pre">alpha</span></code> and <code class="docutils literal notranslate"><span class="pre">beta</span></code>
+separately. Different splits with the same combination fit equally well. This is a
+<strong>structural identifiability</strong> problem in the rate law itself.</p>
+<p><code class="docutils literal notranslate"><span class="pre">Ks</span></code> is weakly constrained for a different reason: <code class="docutils literal notranslate"><span class="pre">demo_batch</span></code> never lingers at low,
+resolving glucose concentrations (the culture consumes it and moves on) so there is
+little data constraining exactly where the saturation curve bends.</p>
 <p>That is the practical payoff of naming the rate law’s terms explicitly: the ambiguity
 shows up as a number you can name, <code class="docutils literal notranslate"><span class="pre">alpha</span></code>, <code class="docutils literal notranslate"><span class="pre">beta</span></code>, <code class="docutils literal notranslate"><span class="pre">Ks</span></code>, rather than staying invisible
-inside unlabeled weights. You know exactly which two experiments would resolve it: a
-longer low-glucose tail for <code class="docutils literal notranslate"><span class="pre">Ks</span></code>, a run with product measured <em>after</em> growth stops for
-<code class="docutils literal notranslate"><span class="pre">alpha</span></code>/<code class="docutils literal notranslate"><span class="pre">beta</span></code>.</p>
+inside unlabeled weights. More low-glucose measurements could help constrain <code class="docutils literal notranslate"><span class="pre">Ks</span></code>.
+A post-growth tail cannot separate <code class="docutils literal notranslate"><span class="pre">alpha</span></code> and <code class="docutils literal notranslate"><span class="pre">beta</span></code> under the current rate law:
+both contributions stop when <code class="docutils literal notranslate"><span class="pre">sigma</span></code> is zero. Separating them requires independent
+information or a rate law whose two contributions vary independently.</p>
 </section>
 <section id="gotchas">
 <h2>Gotchas<a class="headerlink" href="#gotchas" title="Link to this heading">¶</a></h2>
 <ul class="simple">
 <li><p><strong>Positivity via <code class="docutils literal notranslate"><span class="pre">log</span></code>.</strong> A <code class="docutils literal notranslate"><span class="pre">jnp.clip</span></code> on a rate is a dead gradient region;
 the log-parameterisation has none.</p></li>
-<li><p><strong>Multiple valid initializations exist.</strong> Try a few seeds if a parameter estimate looks
-implausible: you may be seeing one identifiability trade-off rather than a wrong fit.</p></li>
-<li><p><strong>Adding a state that <em>is</em> well constrained resolves the ambiguity.</strong> If DO or another
-process variable independently informs the split, adding it as a modeled PV changes the
-identifiability picture. See <a class="reference internal" href="modeled_pv.html"><span class="std std-doc">A Modeled Process Variable</span></a> for what
-declaring and training one actually looks like.</p></li>
+<li><p><strong>Multiple valid initializations exist.</strong> Try different starting guesses in
+<code class="docutils literal notranslate"><span class="pre">MonodModule.__init__</span></code> if a parameter estimate looks implausible. Changing the seed
+does not change these fixed initial values; several parameter combinations can
+explain the same trajectories.</p></li>
+<li><p><strong>Additional states need independent information about the parameters.</strong> A modeled
+process variable can help only if it independently constrains the split. See
+<a class="reference internal" href="modeled_pv.html"><span class="std std-doc">A Modeled Process Variable</span></a> for how to declare and train one.
+Its independent <code class="docutils literal notranslate"><span class="pre">glyco_frac</span></code> state does not constrain this example’s <code class="docutils literal notranslate"><span class="pre">alpha</span></code>/<code class="docutils literal notranslate"><span class="pre">beta</span></code>
+split.</p></li>
 </ul>
 </section>
 <section id="see-also">
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
 <code class="docutils literal notranslate"><span class="pre">examples/gallery_mechanistic_rates/</span></code> at the repo root, no docs build required. This
-page’s own executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_mechanistic_rates/</span></code>.</p>
+page uses <code class="docutils literal notranslate"><span class="pre">docs/source/_data/out/runs/gallery_structured_rates/</span></code> as its working
+directory and writes its model run to
+<code class="docutils literal notranslate"><span class="pre">docs/source/_data/out/runs/gallery_structured_rates/run/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc">The Reaction Module</span></a>: the general SCL/RAW contract this
 module follows.</p></li>
@@ -618,7 +625,7 @@ derivatives at once, the same “did it recover the true parameters” check.</p
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

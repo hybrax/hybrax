@@ -2,7 +2,8 @@
 
 Generates synthetic sibling processes from a single fed-batch run via
 `prepare.augmentation`. `custom.py` fits a spline before augmenting (needed
-for resampling) and repairs `product`'s monotonicity after default noise.
+for resampling) and imposes a nondecreasing `product` trajectory after default noise.
+This is a hook demonstration; feeding can dilute product concentration.
 
 Narrated version: `docs/source/gallery/augmentation.md`.
 

@@ -1,11 +1,4 @@
-"""Freezing part of a reaction module: a fixed encoder, a trainable head.
-
-Split one MLP into two fields and tag them differently: `frozen_field()` for
-the part you do not want the optimizer to touch, `trainable_field()` for the
-part you do. `partition_trainable` (what the optimizer actually sees) reads
-these tags directly off the module, and `print_trainable_structure` lets you
-check the split before committing to a long run.
-"""
+"""Unfrozen comparison: both the encoder and readout head are trainable."""
 
 import equinox as eqx
 import jax
@@ -22,7 +15,7 @@ from hybrax.train import (
 
 
 class FrozenEncoderReactionModule(RateModule):
-    """A fixed feature encoder feeding a small trainable readout head."""
+    """A trainable feature encoder feeding a trainable readout head."""
 
     encoder: eqx.nn.MLP = trainable_field()
     head: eqx.nn.Linear = trainable_field()

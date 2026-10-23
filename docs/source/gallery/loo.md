@@ -91,7 +91,7 @@ import matplotlib.pyplot as plt
 steps = sorted(result.holdout_loss_by_step)
 fig, ax = plt.subplots(figsize=(5, 3.2))
 ax.semilogy(range(1, len(result.mean_loss_by_step) + 1), result.mean_loss_by_step,
-           label="train (all 3 processes)")
+           label="train (run_1, run_2)")
 ax.semilogy(steps, [result.holdout_loss_by_step[s] for s in steps], "o--",
            label="holdout (run_3)")
 ax.set_xlabel("step"); ax.set_ylabel("loss"); ax.legend()
@@ -168,7 +168,7 @@ which is more informative than an averaged score.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-print(f"run directory: ./{(WORK / 'loo_run').relative_to(WORK.parents[4])}")
+print(f"run directory: ./{(WORK / 'loo_run').relative_to(WORK.parents[5])}")
 for path in sorted((WORK / "loo_run").iterdir()):
     print(("  " if path.is_file() else "  ") + path.name + ("/" if path.is_dir() else ""))
 ```
@@ -195,7 +195,7 @@ plotting all work on it exactly like any other trained run.
 
 The full example (configs, data) lives in `examples/gallery_loo/` at the repo root, no
 docs build required. This page's own executed run is at
-`./source/_data/out/runs/gallery_loo/`.
+`./docs/source/_data/out/runs/gallery_loo/`.
 
 - [Cross-Validation](../train/loo.md): the full reference, including parallelism and
   resuming.

@@ -31,8 +31,8 @@ BioProcess                ONE experimental run
 ```
 
 Set `case_id`/`organism`/`citation` when the data belongs to one publication or
-campaign: `case_id` is also the natural grouping for cross-validation. Leave them
-unset (the default) for raw or intermediate data that is not a full case study yet.
+campaign. Leave them unset (the default) for raw or intermediate data that is not a
+full case study yet.
 Either way it's the same `BioProcessCollection`, holding the same `BioProcess`
 objects.
 
@@ -131,7 +131,7 @@ It is a `hybrax.format` utility for your own analyses; see
 
 | Term | Meaning |
 |---|---|
-| **prepared artifact** | The output of `hybrax prepare`: your dataset plus everything derived from it that training needs (control splines, layouts, target selection). Training reads this, never the raw file. |
+| **prepared artifact** | The output of `hybrax prepare`: your dataset after validation and any preparation hooks, plus a record of its controls and how it was made. Training reads this, never the raw file. |
 | **target** | A measured quantity the loss is computed against. |
 | **`target_source`** | Which measurements become targets: `reactor_components`, `process_variables`, `combined`, or `auto`. |
 | **reaction module** | The object that predicts rates inside the ODE solve. Neural, mechanistic, or hybrid. Yours to write. |

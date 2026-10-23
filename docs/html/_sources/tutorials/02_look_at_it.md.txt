@@ -35,9 +35,9 @@ process = collection.processes["run_1"]
 
 ## 2.1 Validate
 
-`validate_process` returns `(ok, messages)` and (importantly) **collects every issue
-in one pass** rather than raising on the first one. You get a full report, not a
-whack-a-mole session.
+For a `BioProcess`, `validate_process` returns `(ok, messages)` and collects the
+checks' results instead of raising on the first failed check. Passing the wrong
+object type to either validator raises `TypeError`.
 
 ```{code-cell} ipython3
 ok, messages = hxf.validate_process(process)
@@ -46,14 +46,25 @@ for line in messages:
     print(" ", line)
 ```
 
-Across a whole collection, `validate_for_publication` adds cross-process checks, that
-every run has the same structure, so a model trained on one can be applied to another:
+Across a whole collection, `validate_for_publication` runs the same checks on every run
+and adds cross-process checks that all runs share one structure: the same components,
+process variables and units, and the same time-axis unit and reference (start and end
+may differ). Training checks more on top of this, for example
+that every run declares the same `reaction_ode`.
 
 ```{code-cell} ipython3
-ok, per_process = hxf.validate_for_publication(collection)
+ok, report = hxf.validate_for_publication(collection)
 print("ok:", ok)
-print("checked:", list(per_process))
+for section, results in report.items():
+    for check_ok, message in results:
+        # Print every failure, plus the cross-process results even when they pass.
+        if not check_ok or section.startswith("__"):
+            print(f"  {section}: {message}")
 ```
+
+The report has one section per run and two extra ones: `__consistency__` holds the
+cross-process checks, and `__augmented__` checks that augmented runs point to existing
+parents.
 
 The checks that catch real bugs most often:
 
@@ -71,7 +82,8 @@ The checks that catch real bugs most often:
 hxf.print_process_structure(process, verbosity=2)
 ```
 
-Raise `verbosity` to 3 for every value; drop to 1 for a one-line-per-object summary.
+Raise `verbosity` to 3 to add units, bounds and the time and value range of each series;
+drop to 1 for just the variable names.
 
 ## 2.3 Plot a process
 
@@ -102,7 +114,8 @@ feed metadata is wrong.
 
 ## What you learned
 
-- Validation is non-raising and exhaustive: run it, read all of it.
+- Validation collects data-quality failures in a report. Passing the wrong object
+  type raises `TypeError`.
 - `print_rhs_ode` shows the boundary between "what you must model" and "what is already
   handled".
 - Four calls, before any training: validate, print, plot, print the ODE.

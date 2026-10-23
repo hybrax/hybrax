@@ -3,7 +3,7 @@
 Generates synthetic sibling processes from a single fed-batch run via
 prepare.augmentation, shows the automatic diagnostic plot, and demonstrates
 augment_state_values (per-state control over what gets generated: here,
-repairing product's monotonicity after default noise).
+imposing a nondecreasing product trajectory after default noise).
 
 See docs/source/gallery/augmentation.md for the narrated version.
 """

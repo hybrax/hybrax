@@ -57,13 +57,15 @@ want, essentially always.
 :::{admonition} `model_reload` keeps the static half you hand it
 :class: danger
 
-There is a second entry point, `model_reload`, which reuses an existing static half rather
-than rebuilding from a directory. Point it at a *different* dataset and it will load the
-trained weights into a **different scaled space**: the model was fitted with one set of
-`SCALE_*` values and is now evaluated under another.
+There is a second entry point, `model_reload(path, wrapper)`, which only replaces the
+trained weights and keeps the static half from the wrapper you pass it. Pass it a wrapper
+from a different run, or one built on a different dataset, and it will load the trained
+weights into a **different scaled space**: the model was fitted with one set of `SCALE_*`
+values and is now evaluated under another.
 
 There is no exception, no shape error and no `NaN`. The predictions are simply wrong, and
-they look plausible. Use `model_load` unless you specifically know why you need the other.
+they look plausible. Use `model_load`, and keep `model_reload` for swapping in another
+checkpoint of the same run.
 :::
 
 ## Predicting

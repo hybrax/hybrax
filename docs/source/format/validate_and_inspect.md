@@ -15,11 +15,14 @@ kernelspec:
 > Make the package report what it understood, before you spend a day training against a
 > misdescribed dataset. The cheapest page in the guide to read.
 
-## Validation is non-raising and exhaustive
+## Validation collects data-quality problems instead of raising
 
-Every validator returns `(ok, message)` rather than throwing. That is deliberate: it lets
-the aggregate collect **all** problems in one pass, so you fix a dataset once instead of
-discovering issues one failed run at a time.
+For data-quality problems, validators return `(ok, message)` rather than throwing. That is
+deliberate: it lets the aggregate collect **all** problems in one pass, so you fix a
+dataset once instead of discovering issues one failed run at a time. Passing the wrong
+object type is the exception: `validate_process` needs a `BioProcess` and
+`validate_for_publication` a `BioProcessCollection`, and both raise `TypeError`
+otherwise.
 
 ```{code-cell} ipython3
 import hybrax.format as hxf
@@ -33,9 +36,11 @@ for line in messages:
     print(" ", line)
 ```
 
-`validate_for_publication` runs the same per-process checks and adds cross-process
-ones: principally that every run has the same structure, so a model trained on one can
-be applied to another.
+`validate_for_publication` runs the same per-process checks on every run and adds
+cross-process checks that all runs share one structure: the same components, process
+variables and units, and the same time-axis unit and reference (start and end may
+differ). Training checks more on top of this, for example that
+every run declares the same `reaction_ode`.
 
 ```{code-cell} ipython3
 ok, per_process = hxf.validate_for_publication(collection)
@@ -92,7 +97,8 @@ When it does not, the discrepancy tells you which stream is mis-scaled.
 hxf.print_process_structure(process, verbosity=1)
 ```
 
-`verbosity` runs 1 to 3: 1 is one line per object, 3 prints values.
+`verbosity` runs 1 to 3: 1 lists just the variable names, 2 adds data types and sizes,
+and 3 adds units, bounds and the time and value range of each series.
 `print_collection_structure` does the same across a whole collection.
 
 ### As plots

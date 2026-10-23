@@ -80,8 +80,8 @@ import hybrax.train as hxt
 _collection = hxf.serialization.load_process_collection(WORK / "data.json")
 
 def r2_by_target(run_dir):
-    """Pooled R2: concatenate every process's residuals/variance before
-    dividing, so one process's own range can't dominate the score."""
+    """Concatenate measurements and predictions, then compute one global R2.
+    Processes contribute according to their pooled sums of squares."""
     df = pd.read_csv(WORK / run_dir / "predictions.csv")
     per_target = {"biomass": ([], []), "glyco_frac": ([], [])}
     for name, process in _collection.processes.items():
@@ -146,7 +146,7 @@ lump event.
 ```{literalinclude} ../../../examples/gallery_modeled_pv/custom.py
 :language: python
 :linenos:
-:lines: 19-40
+:pyobject: ModeledPVModule
 ```
 
 Two log-parameterized scalars, no kinetic structure, no state read at all: `__call__`
@@ -163,7 +163,7 @@ hxt_cli("prepare", "--config", "prepare-config.json",
 out = hxt_cli("train", "--config", "train-config.json", "--overwrite")
 lines = [l for l in out.splitlines() if "training complete" in l]
 print(lines[0] if lines else "training complete")
-print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[4])}")
+print(f"run directory: ./{(WORK / 'run').relative_to(WORK.parents[5])}")
 ```
 
 ```{code-cell} ipython3
@@ -237,21 +237,22 @@ itself unaffected.
   variable is treated as intensive, a ratio or an observable, with no dissolved mass
   in a volume to dilute.
 - **Every process still needs a `biomass` reactor component**, even on a page whose
-  point is a process variable: `hybrax.format` expects one on every process, so
-  `biomass` does double duty here as both the mandatory component and the diluted half
-  of the contrast.
+  point is a process variable: auto-generating the default reaction ODE, format
+  validation and `hybrax.train` preparation all require one, so `biomass` does double
+  duty here as both the mandatory component and the diluted half of the contrast.
 
 ## See Also
 
 The full, runnable example (`custom.py`, configs, data) lives in
 `examples/gallery_modeled_pv/` at the repo root, no docs build required. This page's
-own executed run is at `./source/_data/out/runs/gallery_modeled_pv/`.
+own executed run is at `./docs/source/_data/out/runs/gallery_modeled_pv/`.
 
 - [The Bioprocess ODE](../format/bioprocess_ode.md): `reaction_ode`, `rates`,
   `derivatives`, and writing your own expressions.
-- [Mechanistic Models](mechanistic_rates.md): its own Gotchas section raises this
-  exact idea (a well-constrained process variable resolving an identifiability
-  problem) without building it; this page is that example.
+- [Mechanistic Models](mechanistic_rates.md): discusses how an independently
+  informative process variable could change identifiability. This page shows how
+  to declare and train a modeled process variable; its independent `glyco_frac`
+  state does not resolve that example's parameter ambiguity.
 - [The Reaction Module](../train/reaction_module.md): `trainable_field` and
   everything else a `RateModule` can return, including `SCALE_modeled_PVs`.
 - [Configuration](../train/config.md): `target_source` and the rest of the config

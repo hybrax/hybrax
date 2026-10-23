@@ -397,62 +397,69 @@ declares <code class="docutils literal notranslate"><span class="pre">(0.0,</spa
 <code class="docutils literal notranslate"><span class="pre">ReactionOde.rates</span></code> bounds default to unbounded, since auto-generation has no way to
 know what a plausible rate range is. Attaching them is one <code class="docutils literal notranslate"><span class="pre">transform_process_collection</span></code>
 hook:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">1</span>
-<span class="linenos">2</span><span class="c1"># --------------------------------------------------------------------------</span>
-<span class="linenos">3</span><span class="c1"># 3. Attach rate bounds. hybrax.format's auto-generated ReactionOde leaves every</span>
-<span class="linenos">4</span><span class="c1">#    rate unbounded (Bounds = (None, None)); here we declare what we actually</span>
-<span class="linenos">5</span><span class="c1">#    know about the biology, so the loss below has something to read.</span>
-<span class="linenos">6</span><span class="c1"># --------------------------------------------------------------------------</span>
-<span class="linenos">7</span><span class="k">def</span><span class="w"> </span><span class="nf">transform_process_collection</span><span class="p">(</span><span class="n">collection</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
-<span class="linenos">8</span>    <span class="k">del</span> <span class="n">config</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos">1</span><span class="k">def</span><span class="w"> </span><span class="nf">transform_process_collection</span><span class="p">(</span><span class="n">collection</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
+<span class="linenos">2</span>    <span class="k">del</span> <span class="n">config</span>
+<span class="linenos">3</span>    <span class="k">for</span> <span class="n">process</span> <span class="ow">in</span> <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+<span class="linenos">4</span>        <span class="c1"># Uptake cannot be positive; formation cannot be wildly negative.</span>
+<span class="linenos">5</span>        <span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span><span class="o">.</span><span class="n">rates</span><span class="p">[</span><span class="s2">"q_biomass"</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="mf">0.05</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+<span class="linenos">6</span>        <span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span><span class="o">.</span><span class="n">rates</span><span class="p">[</span><span class="s2">"q_glucose"</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+<span class="linenos">7</span>        <span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span><span class="o">.</span><span class="n">rates</span><span class="p">[</span><span class="s2">"q_product"</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.3</span><span class="p">)</span>
+<span class="linenos">8</span>    <span class="k">return</span> <span class="n">collection</span>
 </pre></div>
 </div>
 <p>This is exactly the use hybrax.format’s docs describe for <code class="docutils literal notranslate"><span class="pre">Bounds</span></code>: <em>“pure metadata (not
 enforced inside RhsOde or the integrator); downstream consumers read them off the process
 to build soft-constraint penalties.”</em> Nothing threads these bounds into <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>
 automatically: the loss module below reads them itself, once, at construction:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span>            <span class="n">inputs</span><span class="o">.</span><span class="n">dense_t</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">jump_ts</span><span class="p">,</span> <span class="n">jump_epsilon_h</span><span class="o">=</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">dt</span>
-<span class="linenos"> 2</span>        <span class="p">)</span>
-<span class="linenos"> 3</span>        <span class="n">smoothness</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span>
-<span class="linenos"> 4</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">curvature</span><span class="p">)</span> <span class="o">*</span> <span class="n">triple_mask</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
-<span class="linenos"> 5</span>        <span class="p">)</span> <span class="o">/</span> <span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">triple_mask</span><span class="p">),</span> <span class="mf">1.0</span><span class="p">)</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span><span class="k">def</span><span class="w"> </span><span class="nf">build_loss_module</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">training_parent_collection</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+<span class="linenos"> 2</span>    <span class="c1"># This example assumes identical state bounds and reads the first process.</span>
+<span class="linenos"> 3</span>    <span class="c1"># Cross-process structural validation does not enforce equal state bounds.</span>
+<span class="linenos"> 4</span>    <span class="n">process</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">training_parent_collection</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span>
+<span class="linenos"> 5</span>    <span class="n">rhs</span> <span class="o">=</span> <span class="n">build_rhs_ode</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
 <span class="linenos"> 6</span>
-<span class="linenos"> 7</span>        <span class="k">return</span> <span class="n">LossOutputs</span><span class="p">(</span>
-<span class="linenos"> 8</span>            <span class="n">named_losses</span><span class="o">=</span><span class="p">{</span>
-<span class="linenos"> 9</span>                <span class="o">**</span><span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="n">per_target</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">target_names</span><span class="p">)},</span>
-<span class="linenos">10</span>                <span class="s2">"bounds"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">bounds_weight</span> <span class="o">*</span> <span class="n">bounds</span><span class="p">,</span>
-<span class="linenos">11</span>                <span class="s2">"smoothness"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">smoothness_weight</span> <span class="o">*</span> <span class="n">smoothness</span><span class="p">,</span>
-<span class="linenos">12</span>            <span class="p">}</span>
-<span class="linenos">13</span>        <span class="p">)</span>
-<span class="linenos">14</span>
-<span class="linenos">15</span>
-<span class="linenos">16</span><span class="k">def</span><span class="w"> </span><span class="nf">build_loss_module</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">training_parent_collection</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<span class="linenos">17</span>    <span class="c1"># Bounds are read from the FIRST process. hybrax.format's cross-process</span>
-<span class="linenos">18</span>    <span class="c1"># consistency check guarantees every process shares the same structure.</span>
-<span class="linenos">19</span>    <span class="n">process</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">training_parent_collection</span><span class="o">.</span><span class="n">processes</span><span class="o">.</span><span class="n">values</span><span class="p">()))</span>
-<span class="linenos">20</span>    <span class="n">rhs</span> <span class="o">=</span> <span class="n">build_rhs_ode</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
-<span class="linenos">21</span>
-<span class="linenos">22</span>    <span class="k">def</span><span class="w"> </span><span class="nf">as_pair</span><span class="p">(</span><span class="n">bounds</span><span class="p">):</span>
+<span class="linenos"> 7</span>    <span class="k">def</span><span class="w"> </span><span class="nf">as_pair</span><span class="p">(</span><span class="n">bounds</span><span class="p">):</span>
+<span class="linenos"> 8</span>        <span class="n">lo</span><span class="p">,</span> <span class="n">hi</span> <span class="o">=</span> <span class="n">bounds</span>
+<span class="linenos"> 9</span>        <span class="k">return</span> <span class="p">(</span><span class="o">-</span><span class="n">jnp</span><span class="o">.</span><span class="n">inf</span> <span class="k">if</span> <span class="n">lo</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">lo</span><span class="p">),</span> <span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">inf</span> <span class="k">if</span> <span class="n">hi</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">hi</span><span class="p">)</span>
+<span class="linenos">10</span>
+<span class="linenos">11</span>    <span class="n">state_bounds</span> <span class="o">=</span> <span class="p">[</span>
+<span class="linenos">12</span>        <span class="n">as_pair</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">reactor_medium</span><span class="o">.</span><span class="n">components</span><span class="p">[</span><span class="n">n</span><span class="p">]</span><span class="o">.</span><span class="n">bounds</span><span class="p">)</span>
+<span class="linenos">13</span>        <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_RMCs</span>
+<span class="linenos">14</span>    <span class="p">]</span>
+<span class="linenos">15</span>    <span class="n">rate_bounds</span> <span class="o">=</span> <span class="p">[</span>
+<span class="linenos">16</span>        <span class="n">as_pair</span><span class="p">(</span><span class="n">process</span><span class="o">.</span><span class="n">reaction_ode</span><span class="o">.</span><span class="n">rates</span><span class="p">[</span><span class="n">n</span><span class="p">])</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">rhs</span><span class="o">.</span><span class="n">name_modeled_rates</span>
+<span class="linenos">17</span>    <span class="p">]</span>
+<span class="linenos">18</span>
+<span class="linenos">19</span>    <span class="k">return</span> <span class="n">PhysicalConstraintsLoss</span><span class="p">(</span>
+<span class="linenos">20</span>        <span class="n">target_names</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="n">target_names</span><span class="p">),</span>
+<span class="linenos">21</span>        <span class="n">state_lo</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">b</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">state_bounds</span><span class="p">]),</span>
+<span class="linenos">22</span>        <span class="n">state_hi</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">b</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">state_bounds</span><span class="p">]),</span>
+<span class="linenos">23</span>        <span class="n">rate_lo</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">b</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">rate_bounds</span><span class="p">]),</span>
+<span class="linenos">24</span>        <span class="n">rate_hi</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">b</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">rate_bounds</span><span class="p">]),</span>
+<span class="linenos">25</span>    <span class="p">)</span>
 </pre></div>
 </div>
 </section>
 <section id="the-hinge-penalty-on-the-dense-grid">
 <h2>2. The Hinge Penalty, on the Dense Grid<a class="headerlink" href="#the-hinge-penalty-on-the-dense-grid" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span>        <span class="n">residual</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_target_pred</span> <span class="o">-</span> <span class="n">jnp</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
-<span class="linenos"> 2</span>            <span class="n">inputs</span><span class="o">.</span><span class="n">mask_measured</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_target_measured</span><span class="p">,</span> <span class="mf">0.0</span>
-<span class="linenos"> 3</span>        <span class="p">)</span>
-<span class="linenos"> 4</span>        <span class="n">per_target</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">residual_reduction</span><span class="p">(</span><span class="n">residual</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">mask_measured</span><span class="p">)</span>
-<span class="linenos"> 5</span>
-<span class="linenos"> 6</span>        <span class="n">valid</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">dense_valid_time</span>  <span class="c1"># post-solver-failure mask</span>
-<span class="linenos"> 7</span>
-<span class="linenos"> 8</span>        <span class="k">def</span><span class="w"> </span><span class="nf">hinge</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">lo</span><span class="p">,</span> <span class="n">hi</span><span class="p">):</span>
-<span class="linenos"> 9</span>            <span class="c1"># -inf / +inf bounds fall out of the clip naturally: no branching.</span>
-<span class="linenos">10</span>            <span class="k">return</span> <span class="p">(</span>
-<span class="linenos">11</span>                <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">lo</span> <span class="o">-</span> <span class="n">value</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">value</span> <span class="o">-</span> <span class="n">hi</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
-<span class="linenos">12</span>            <span class="p">)</span>
-<span class="linenos">13</span>
-<span class="linenos">14</span>        <span class="c1"># State bounds: dense_RAW_states is [modeled RMCs | modeled PVs | V];</span>
-<span class="linenos">15</span>        <span class="c1"># slice to just the RMC axes our bounds were built for.</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span>        <span class="k">def</span><span class="w"> </span><span class="nf">hinge</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="n">lo</span><span class="p">,</span> <span class="n">hi</span><span class="p">):</span>
+<span class="linenos"> 2</span>            <span class="c1"># -inf / +inf bounds fall out of the clip naturally: no branching.</span>
+<span class="linenos"> 3</span>            <span class="k">return</span> <span class="p">(</span>
+<span class="linenos"> 4</span>                <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">lo</span> <span class="o">-</span> <span class="n">value</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">value</span> <span class="o">-</span> <span class="n">hi</span><span class="p">,</span> <span class="nb">min</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
+<span class="linenos"> 5</span>            <span class="p">)</span>
+<span class="linenos"> 6</span>
+<span class="linenos"> 7</span>        <span class="c1"># State bounds: dense_RAW_states is [modeled RMCs | modeled PVs | V];</span>
+<span class="linenos"> 8</span>        <span class="c1"># slice to just the RMC axes our bounds were built for.</span>
+<span class="linenos"> 9</span>        <span class="n">n_state_bounds</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">state_lo</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="linenos">10</span>        <span class="n">state_penalty</span> <span class="o">=</span> <span class="n">hinge</span><span class="p">(</span>
+<span class="linenos">11</span>            <span class="n">inputs</span><span class="o">.</span><span class="n">dense_RAW_states</span><span class="p">[:,</span> <span class="p">:</span><span class="n">n_state_bounds</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">state_lo</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">state_hi</span>
+<span class="linenos">12</span>        <span class="p">)</span>
+<span class="linenos">13</span>        <span class="n">rate_penalty</span> <span class="o">=</span> <span class="n">hinge</span><span class="p">(</span>
+<span class="linenos">14</span>            <span class="n">inputs</span><span class="o">.</span><span class="n">dense_RAW_modeled_ReactionOde_rates</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rate_lo</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rate_hi</span>
+<span class="linenos">15</span>        <span class="p">)</span>
+<span class="linenos">16</span>        <span class="n">bounds</span> <span class="o">=</span> <span class="p">(</span>
+<span class="linenos">17</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">state_penalty</span> <span class="o">*</span> <span class="n">valid</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">])</span>
+<span class="linenos">18</span>            <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">rate_penalty</span> <span class="o">*</span> <span class="n">valid</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">])</span>
+<span class="linenos">19</span>        <span class="p">)</span> <span class="o">/</span> <span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">valid</span><span class="p">),</span> <span class="mf">1.0</span><span class="p">)</span>
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">-inf</span></code>/<code class="docutils literal notranslate"><span class="pre">+inf</span></code> for an unbounded side falls straight out of the <code class="docutils literal notranslate"><span class="pre">clip</span></code>, so there is no
@@ -463,17 +470,19 @@ grid’s own post-solver-failure mask.</p>
 </section>
 <section id="smoothness-without-penalising-real-jumps">
 <h2>3. Smoothness, without Penalising Real Jumps<a class="headerlink" href="#smoothness-without-penalising-real-jumps" title="Link to this heading">¶</a></h2>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span>        <span class="n">state_penalty</span> <span class="o">=</span> <span class="n">hinge</span><span class="p">(</span>
-<span class="linenos"> 2</span>            <span class="n">inputs</span><span class="o">.</span><span class="n">dense_RAW_states</span><span class="p">[:,</span> <span class="p">:</span><span class="n">n_state_bounds</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">state_lo</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">state_hi</span>
-<span class="linenos"> 3</span>        <span class="p">)</span>
-<span class="linenos"> 4</span>        <span class="n">rate_penalty</span> <span class="o">=</span> <span class="n">hinge</span><span class="p">(</span>
-<span class="linenos"> 5</span>            <span class="n">inputs</span><span class="o">.</span><span class="n">dense_RAW_modeled_ReactionOde_rates</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rate_lo</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rate_hi</span>
-<span class="linenos"> 6</span>        <span class="p">)</span>
-<span class="linenos"> 7</span>        <span class="n">bounds</span> <span class="o">=</span> <span class="p">(</span>
-<span class="linenos"> 8</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">state_penalty</span> <span class="o">*</span> <span class="n">valid</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">])</span>
-<span class="linenos"> 9</span>            <span class="o">+</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">rate_penalty</span> <span class="o">*</span> <span class="n">valid</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">])</span>
-<span class="linenos">10</span>        <span class="p">)</span> <span class="o">/</span> <span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">valid</span><span class="p">),</span> <span class="mf">1.0</span><span class="p">)</span>
-<span class="linenos">11</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="linenos"> 1</span>        <span class="c1"># Smoothness: central second difference of each rate trajectory.</span>
+<span class="linenos"> 2</span>        <span class="c1"># dense_t is a uniform linspace, so a fixed dt is valid.</span>
+<span class="linenos"> 3</span>        <span class="n">dt</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">dense_t</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">inputs</span><span class="o">.</span><span class="n">dense_t</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<span class="linenos"> 4</span>        <span class="n">rates</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">dense_RAW_modeled_ReactionOde_rates</span>
+<span class="linenos"> 5</span>        <span class="n">curvature</span> <span class="o">=</span> <span class="p">(</span><span class="n">rates</span><span class="p">[</span><span class="mi">2</span><span class="p">:]</span> <span class="o">-</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">rates</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">rates</span><span class="p">[:</span><span class="o">-</span><span class="mi">2</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="n">dt</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+<span class="linenos"> 6</span>        <span class="c1"># jump_ts contains declared control discontinuities only.</span>
+<span class="linenos"> 7</span>        <span class="c1"># Include bolus/sample times explicitly when adapting to state jumps.</span>
+<span class="linenos"> 8</span>        <span class="n">triple_mask</span> <span class="o">=</span> <span class="n">all_triple</span><span class="p">(</span><span class="n">valid</span><span class="p">)</span> <span class="o">&amp;</span> <span class="n">dense_triple_mask_away_from_jumps</span><span class="p">(</span>
+<span class="linenos"> 9</span>            <span class="n">inputs</span><span class="o">.</span><span class="n">dense_t</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">jump_ts</span><span class="p">,</span> <span class="n">jump_epsilon_h</span><span class="o">=</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">dt</span>
+<span class="linenos">10</span>        <span class="p">)</span>
+<span class="linenos">11</span>        <span class="n">smoothness</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span>
+<span class="linenos">12</span>            <span class="n">jnp</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">curvature</span><span class="p">)</span> <span class="o">*</span> <span class="n">triple_mask</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+<span class="linenos">13</span>        <span class="p">)</span> <span class="o">/</span> <span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">triple_mask</span><span class="p">),</span> <span class="mf">1.0</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>The curvature is a plain central second difference; <code class="docutils literal notranslate"><span class="pre">dense_t</span></code> is a uniform linspace, so a
@@ -482,19 +491,18 @@ single <code class="docutils literal notranslate"><span class="pre">dt</span></c
     <span class="n">inputs</span><span class="o">.</span><span class="n">dense_t</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">jump_ts</span><span class="p">,</span> <span class="n">jump_epsilon_h</span><span class="o">=</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">dt</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>A bolus creates a real, physical kink in concentration (and therefore in the inferred
-rate). Penalising curvature there would fight the data. <code class="docutils literal notranslate"><span class="pre">dense_triple_mask_away_from_jumps</span></code>
-is shipped by <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> for exactly this: it excludes any three-point window whose span
-straddles a jump time, so smoothness is only asked for where the process is actually
-smooth. <code class="docutils literal notranslate"><span class="pre">demo_batch</span></code> has no events, so this mask is a no-op here; see
-<a class="reference internal" href="fed_batch.html"><span class="std std-doc">Fed-batch</span></a> for where it matters.</p>
+<p><code class="docutils literal notranslate"><span class="pre">dense_triple_mask_away_from_jumps</span></code> excludes three-point windows that straddle
+the supplied jump times, with the specified padding. Here it masks declared control
+discontinuities from <code class="docutils literal notranslate"><span class="pre">LossInputs.jump_ts</span></code>. Bolus and sample times are separate;
+include them explicitly before reusing this curvature penalty on a process with
+state jumps. <code class="docutils literal notranslate"><span class="pre">demo_batch</span></code> has no events, so this mask is a no-op here.</p>
 </section>
 <section id="training">
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.136489 last_mean_loss=0.00040269 delta=-0.136086
-run directory: ./source/_data/out/runs/gallery_dense_loss/run_full
+run directory: ./docs/source/_data/out/runs/gallery_dense_loss/run_full
 </pre></div>
 </div>
 </div>
@@ -510,8 +518,8 @@ glucose      0.9919
 product      0.9958
 
 min predicted glucose : -0.0030 g/L  (bound: &gt;= 0)
-curvature(q_biomass)  : 0.3189
-curvature(q_glucose)  : 0.6823
+curvature(q_biomass)  : 0.0825
+curvature(q_glucose)  : 0.1926
 </pre></div>
 </div>
 </div>
@@ -521,25 +529,23 @@ same data, same epochs, same learning rate: everything below used the <em>uncons
 loss:</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>comparison run directory: ./source/_data/out/runs/gallery_dense_loss/run_base
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>comparison run directory: ./docs/source/_data/out/runs/gallery_dense_loss/run_base
 target       no penalty   with penalty
 biomass          0.9966         0.9934
 glucose          0.9973         0.9919
 product          0.9990         0.9958
 
 min glucose      -0.1396        -0.0030
-curv(q_X)        0.5044         0.3189
-curv(q_S)        1.2817         0.6823
+curv(q_X)        0.3914         0.0825
+curv(q_S)        1.0119         0.1926
 </pre></div>
 </div>
 </div>
 </div>
-<p>Fit quality is essentially unchanged: every R² moves by less than a percentage point.
-What changed is what happens <em>between</em> measurements: the worst glucose excursion goes
-from clearly negative to essentially zero, and both rate trajectories are visibly less
-wiggly. This is the actual case for dense-grid penalties: they are close to free when the
-constraint is compatible with the data, and they catch exactly the failure mode that
-measurement-only losses cannot see.</p>
+<p>The diagnostic uses a nonuniform-grid second derivative because <code class="docutils literal notranslate"><span class="pre">predictions.csv</span></code>
+contains the union of measurement and prediction times. Compare the R² values,
+minimum glucose and RMS rate curvature above to assess the effect of the penalties.
+The loss itself uses the separate, uniform <code class="docutils literal notranslate"><span class="pre">dense_t</span></code> grid.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <img alt="../_images/b4c0e3e9d986b1f26e3457eadcc6e68aae0105a403e11674c7845f7b37d889ba.png" src="../_images/b4c0e3e9d986b1f26e3457eadcc6e68aae0105a403e11674c7845f7b37d889ba.png" />
@@ -550,14 +556,14 @@ measurement-only losses cannot see.</p>
 <h2>See Also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <p>The full, runnable example (<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, configs, data) lives in
 <code class="docutils literal notranslate"><span class="pre">examples/gallery_dense_loss/</span></code> at the repo root, no docs build required. This page’s own
-executed run is at <code class="docutils literal notranslate"><span class="pre">./source/_data/out/runs/gallery_dense_loss/</span></code>.</p>
+executed run is at <code class="docutils literal notranslate"><span class="pre">./docs/source/_data/out/runs/gallery_dense_loss/</span></code>.</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../train/loss_module.html#the-dense-grid"><span class="std std-ref">The Loss Module</span></a>: <code class="docutils literal notranslate"><span class="pre">dense_grid_n</span></code> and every
 <code class="docutils literal notranslate"><span class="pre">dense_*</span></code> field.</p></li>
 <li><p><a class="reference internal" href="../tutorials/04_your_first_custom_py.html"><span class="std std-doc">Tutorial 4</span></a>: the reaction module and scales
 this builds on.</p></li>
-<li><p><a class="reference internal" href="fed_batch.html"><span class="std std-doc">Fed-batch</span></a>: a process with real jumps, where the away-from-jumps
-masking actually does something.</p></li>
+<li><p><a class="reference internal" href="fed_batch.html"><span class="std std-doc">Fed-batch</span></a>: a process with bolus and sample events. Include those
+times explicitly when adapting this curvature penalty.</p></li>
 </ul>
 </section>
 </section>
@@ -635,7 +641,7 @@ masking actually does something.</p></li>
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>

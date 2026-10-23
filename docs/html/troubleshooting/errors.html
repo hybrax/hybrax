@@ -390,7 +390,9 @@ here is the design working. Search this page for a fragment of your message.</p>
 be a biomass to be specific to. The lookup is case-insensitive on the component name.</p>
 <p><strong>Fix.</strong> Either name your biomass component <code class="docutils literal notranslate"><span class="pre">biomass</span></code>, or write
 <a class="reference internal" href="../format/bioprocess_ode.html#writing-your-own"><span class="std std-ref"><code class="docutils literal notranslate"><span class="pre">reaction_ode</span></code></span></a> yourself. A dataset with
-no biomass at all (a chemical process, an abiotic control) needs the explicit form.</p>
+no biomass at all (a chemical process, an abiotic control) needs the explicit form.
+That only gets past construction: format validation and <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> preparation
+still require a <code class="docutils literal notranslate"><span class="pre">biomass</span></code> reactor component.</p>
 </section>
 <section id="provide-discrete-samples-and-or-spline-representation">
 <h3><code class="docutils literal notranslate"><span class="pre">Provide</span> <span class="pre">discrete</span> <span class="pre">samples</span> <span class="pre">and/or</span> <span class="pre">spline</span> <span class="pre">representation</span></code><a class="headerlink" href="#provide-discrete-samples-and-or-spline-representation" title="Link to this heading">¶</a></h3>
@@ -545,8 +547,8 @@ inside</em> the file is silent.</p>
 <p>Not one error, but the common cluster.</p>
 <ol class="arabic simple">
 <li><p>Raise <code class="docutils literal notranslate"><span class="pre">solver.max_steps</span></code> (default 2048).</p></li>
-<li><p>Check <code class="docutils literal notranslate"><span class="pre">grad_norm_curve.png</span></code>, if it is pinned at <code class="docutils literal notranslate"><span class="pre">grad_clip_norm</span></code>, your step size is
-not what you think.</p></li>
+<li><p>Check <code class="docutils literal notranslate"><span class="pre">grad_norm_curve.png</span></code>. If it stays above <code class="docutils literal notranslate"><span class="pre">grad_clip_norm</span></code>, most updates are
+being clipped.</p></li>
 <li><p><strong>Suspect scaling before anything else.</strong> Most apparent stiffness on these problems is
 an axis four orders of magnitude away from the others. See <a class="reference internal" href="../train/scaling.html"><span class="std std-doc">Scaling</span></a>.</p></li>
 </ol>
@@ -693,7 +695,7 @@ are on <code class="docutils literal notranslate"><span class="pre">hxf.serializ
       
     </aside>
   </div>
-</div><script src="../_static/documentation_options.js?v=04266cf0"></script>
+</div><script src="../_static/documentation_options.js?v=5929fcd5"></script>
     <script src="../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../_static/scripts/furo.js?v=46bd48cc"></script>
