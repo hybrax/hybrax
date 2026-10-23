@@ -4,9 +4,9 @@
   "citation": "Simulated data \u2014 Hybrax docs demo, not a real experiment.",
   "metadata": {
     "hybrax.train": {
-      "prepared_at": "2026-08-28T16:43:09.004766+00:00",
+      "prepared_at": "2026-10-23T13:37:31.551212+00:00",
       "source_input_path": "../data.json",
-      "source_input_sha256": "586fb4e637d1c33b716b598f04777c6b48b73830cf53dac1d8d06504bf0f32e7",
+      "source_input_sha256": "ea02b5d50b15a84f0f29b4ca6b72e1b1793a2ef52b67f49d92bb324709c11a30",
       "custom_py_sha256": null,
       "transform_hooks": {
         "transform_process_collection": "default_transform_process_collection"
@@ -1400,9 +1400,9 @@
         }
       },
       "provenance": {
-        "prepared_at": "2026-08-28T16:43:09.005137+00:00",
+        "prepared_at": "2026-10-23T13:37:31.555713+00:00",
         "prepare_config": {
-          "raw_input": "/work/4df3ff1316cf/hybrax/examples/gallery_modeled_pv/data.json",
+          "raw_input": "/data/worktrees/hybrax-2/t3code-f551d023/examples/gallery_modeled_pv/data.json",
           "augmentation": null,
           "strict_format_validation": false,
           "required_control_names": [],
@@ -1411,9 +1411,9 @@
           "diagnostics": true
         },
         "custom_py_file_hash": null,
-        "raw_input_sha256": "sha256:586fb4e637d1c33b716b598f04777c6b48b73830cf53dac1d8d06504bf0f32e7",
+        "raw_input_sha256": "sha256:ea02b5d50b15a84f0f29b4ca6b72e1b1793a2ef52b67f49d92bb324709c11a30",
         "environment": {
-          "python": "3.13.14",
+          "python": "3.13.15",
           "hybrax": "0.1.0",
           "jax": "0.10.0",
           "optax": "0.2.8",
@@ -1421,7 +1421,7 @@
           "diffrax": "0.7.2",
           "pydantic": "2.13.4"
         },
-        "content_hash": "sha256:353cc341beeacc1b8e79783af1260e39a177bc8229a48865548fcc8e293adf40"
+        "content_hash": "sha256:b7a684f08ed844ef1ddf2e62f37731a18a1bd71aff8e5cc7c9c525371478764d"
       }
     }
   },

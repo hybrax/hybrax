@@ -1,8 +1,8 @@
 {
   "status": "complete",
-  "started_at": "2026-08-25T11:50:09+0200",
+  "started_at": "2026-10-23T15:37:38+0200",
   "cli_argv": [
-    "/home/mgotsmy/code/bpbench/hybrax/src/hybrax/train/cli.py",
+    "/data/worktrees/hybrax-2/t3code-f551d023/src/hybrax/train/cli.py",
     "train",
     "--config",
     "train-config.json",
@@ -10,12 +10,12 @@
   ],
   "config": {
     "data": {
-      "prepared": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_modeled_pv/prepared/prepared.json",
+      "prepared": "/data/worktrees/hybrax-2/t3code-f551d023/examples/gallery_modeled_pv/prepared/prepared.json",
       "processes": null,
       "targets": null,
       "target_source": "combined"
     },
-    "custom_py": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_modeled_pv/custom.py",
+    "custom_py": "/data/worktrees/hybrax-2/t3code-f551d023/examples/gallery_modeled_pv/custom.py",
     "train": {
       "epochs": 400,
       "seed": 0,
@@ -23,10 +23,13 @@
       "learning_rate": 0.02,
       "grad_clip_norm": 1000.0,
       "batch_size": null,
+      "microbatch_size": null,
       "shuffle": true,
       "batch_seed": null,
       "devices": 1,
-      "allow_stateful_models": false
+      "allow_stateful_models": false,
+      "flow_integral_relative_tolerance": 0.001,
+      "holdout_processes": null
     },
     "solver": {
       "max_steps": 2048,
@@ -35,10 +38,13 @@
       "jump_ts": true
     },
     "checkpoint": {
-      "every": 0.0
+      "every": 0.0,
+      "bundle_prepared": true,
+      "keep_best": null,
+      "select_by": null
     },
     "output": {
-      "dir": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_modeled_pv/run",
+      "dir": "/data/worktrees/hybrax-2/t3code-f551d023/examples/gallery_modeled_pv/run",
       "predictions": "parents"
     },
     "logging": {
@@ -50,16 +56,16 @@
   },
   "inputs": {
     "prepared_input": {
-      "path": "/home/mgotsmy/code/bpbench/hybrax/examples/gallery_modeled_pv/prepared/prepared.json",
-      "content_hash": "sha256:33140e402206a37b82d4974b2732464c494553a8eeff3234942c5700b43f4b0b"
+      "path": "/data/worktrees/hybrax-2/t3code-f551d023/examples/gallery_modeled_pv/prepared/prepared.json",
+      "content_hash": "sha256:b7a684f08ed844ef1ddf2e62f37731a18a1bd71aff8e5cc7c9c525371478764d"
     },
     "custom_py": {
       "bundled": "custom.py",
-      "file_hash": "sha256:161e48fb3738e40bc95ea53cfb1c67d847cc4e122285e5a27f949a94d8917aaf"
+      "file_hash": "sha256:66731db446edaa3141a8620cced4cf0d17918d6615dfd79daefe4f731a28afb2"
     }
   },
   "environment": {
-    "python": "3.13.13",
+    "python": "3.13.15",
     "hybrax": "0.1.0",
     "jax": "0.10.0",
     "optax": "0.2.8",
@@ -67,7 +73,7 @@
     "diffrax": "0.7.2",
     "pydantic": "2.13.4"
   },
-  "finished_at": "2026-08-25T11:50:26+0200",
+  "finished_at": "2026-10-23T15:38:29+0200",
   "updates_completed": 400,
-  "final_mean_loss": 0.00022645026986663544
+  "final_mean_loss": 0.000226450269866636
 }

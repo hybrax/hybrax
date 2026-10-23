@@ -4,7 +4,7 @@ Every edge between an input and a hidden or output node carries its own
 learnable univariate function (a SiLU base term plus a small Gaussian
 radial-basis expansion); a node's output sums over its incoming edges. Two
 stacked layers, each genuinely KAN-shaped, not a relabeled MLP. Each of the
-three output rates also gets one small multiplicative term, prod_a(h0) *
+three output rates also gets one multiplicative term, prod_a(h0) *
 prod_b(h1), added on top of its sum: see the page for the architecture and
 what it does and does not reproduce from SR-KAN.
 
@@ -67,11 +67,11 @@ class KANReactionModule(RateModule):
         n_in = self.n_modeled_RMCs
         n_out = self.n_modeled_ReactionOde_rates
         k1, k2, ka, kb = jax.random.split(key, 4)
-        # Hidden layer full-scale; output layer near-zero so the ODE starts flat
-        # yet both layers receive gradient at step 0 (avoids an all-zero cold start).
+        # l2 starts at zero. Initial rates come entirely from the nonzero product
+        # branches, which also let gradients reach l1 at the first update.
         self.l1 = KANLayer(n_in, hidden, grid, k1, out_scale=1.0)
         self.l2 = KANLayer(hidden, n_out, grid, k2, out_scale=0.0)
-        # One small multiplicative term per rate, prod_a(h0) * prod_b(h1), added
+        # One multiplicative term per rate, prod_a(h0) * prod_b(h1), added
         # on top of l2's sum. h0/h1 are the first two of l1's hidden units,
         # picked arbitrarily since none of l1's hidden units carry individual
         # meaning. Ordinary non-zero start (unlike l2): a product started at
