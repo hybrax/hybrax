@@ -146,9 +146,7 @@ def test_scalar_solver_uses_configured_tolerances(monkeypatch):
 
 def test_selected_process_uses_its_own_jump_row():
     first = _process("first", {"feed": _flow("feed", _pulse())})
-    second = _process(
-        "second", {"feed": _flow("feed", _pulse())}, jumps=(0.4, 0.402)
-    )
+    second = _process("second", {"feed": _flow("feed", _pulse())}, jumps=(0.4, 0.402))
     store = _store(first, second)
     preflight.check_continuous_flow_integration(store, ("second",), **SETTINGS)
     with pytest.raises(ValueError, match="process 'first'.*integrated=0"):

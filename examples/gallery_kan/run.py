@@ -142,7 +142,14 @@ print(f"wrote {out / 'edge_shapes.csv'} (all {len(edge_rows)} of l1's edges)")
 # real process that generated its training data (hybrax/docs/source/_data/
 # generate.py, build_demo_batch)? ---
 
-TRUE = {"mu_max": 0.45, "Ks": 0.05, "Y_XS": 0.45, "m_s": 0.02, "alpha": 0.08, "beta": 0.006}
+TRUE = {
+    "mu_max": 0.45,
+    "Ks": 0.05,
+    "Y_XS": 0.45,
+    "m_s": 0.02,
+    "alpha": 0.08,
+    "beta": 0.006,
+}
 TRUE_SCALE = {
     "q_biomass": TRUE["mu_max"],
     "q_glucose": -(TRUE["mu_max"] / TRUE["Y_XS"] + TRUE["m_s"]),
@@ -165,7 +172,9 @@ pooled = {n: np.concatenate(v) for n, v in pooled.items()}
 ranges = {n: (max(float(pooled[n].min()), 0.0), float(pooled[n].max())) for n in names}
 fixed = {n: float(np.median(pooled[n])) for n in names}
 
-print("\nequation recovery: real rates only depend on glucose (Ks=0.05 g/L); does the model agree?")
+print(
+    "\nequation recovery: real rates only depend on glucose (Ks=0.05 g/L); does the model agree?"
+)
 eq_rows = []
 for out_idx, rate in enumerate(["q_biomass", "q_glucose", "q_product"]):
     sweeps = {}

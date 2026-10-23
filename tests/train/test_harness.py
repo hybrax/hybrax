@@ -2096,9 +2096,7 @@ def test_failed_holdout_solve_is_never_selected(tmp_path):
     manifest = json.loads((tmp_path / "checkpoints" / "retention.json").read_text())
     assert manifest["best"] == []
     # The final checkpoint is still written.
-    assert {p.name for p in (tmp_path / "checkpoints").glob("step_*")} == {
-        "step_00002"
-    }
+    assert {p.name for p in (tmp_path / "checkpoints").glob("step_*")} == {"step_00002"}
 
 
 @pytest.mark.parametrize("metric", ["holdout_loss", "train_loss", "epoch_mean_loss"])

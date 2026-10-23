@@ -68,7 +68,11 @@ def best_match(x, y, r2_floor=0.9):
             pred = fn(x, *popt)
             ss_res = float(np.sum((y - pred) ** 2))
             ss_tot = float(np.sum((y - y.mean()) ** 2))
-            r2 = 1.0 - ss_res / ss_tot if ss_tot > 1e-12 else (1.0 if ss_res < 1e-9 else 0.0)
+            r2 = (
+                1.0 - ss_res / ss_tot
+                if ss_tot > 1e-12
+                else (1.0 if ss_res < 1e-9 else 0.0)
+            )
             k = len(popt)
             bic = n * np.log(max(ss_res / n, 1e-300)) + k * np.log(n)
             fits[name] = {"params": [float(p) for p in popt], "r2": r2, "bic": bic}
