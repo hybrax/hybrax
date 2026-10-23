@@ -551,6 +551,9 @@ run with identical biology. Stored per component under that name.</p></li>
 <p><code class="docutils literal notranslate"><span class="pre">pseudobatch_concentration</span></code> curves are smoother, so they spline better, and they make
 batch and fed-batch runs directly comparable. A good sanity check: this trace should
 <strong>not</strong> jump at a pure sampling event. If it does, the volume accounting is wrong.</p>
+<p><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> does not use the transform: training solves the ODE on the physical state.
+It is a <code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> utility for your own analyses; see
+<a class="reference internal" href="../format/pseudobatch_transform.html"><span class="std std-doc">The pseudobatch transform</span></a>.</p>
 </section>
 <section id="hybrax-train-vocabulary">
 <h2><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> vocabulary<a class="headerlink" href="#hybrax-train-vocabulary" title="Link to this heading">¶</a></h2>

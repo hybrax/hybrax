@@ -14,6 +14,14 @@ kernelspec:
 
 > How fed-batch dilution is removed from a measured concentration before you fit to it.
 
+:::{admonition} `hybrax.train` does not use this
+:class: note
+Training solves the ODE on the physical state, so you never need to transform your data
+before running `hybrax prepare` or `hybrax train`. The utilities on this page are for your
+own code that works with `hybrax.format` data, for example to compare batch and fed-batch
+runs or to get smoother curves for spline fitting.
+:::
+
 In a fed-batch run a measured concentration moves for two reasons: the cells did
 something, and the volume changed. The pseudobatch transform removes the second.
 
@@ -49,7 +57,7 @@ print("pseudobatch_concentration:",
       np.round(np.asarray(glucose.pseudobatch_concentration.values)[:6], 2))
 ```
 
-Read those last two rows across. They agree until the feed starts at t = 6 h, and diverge
+Read those last two rows across. They agree until the feed starts at t = 48 h, and diverge
 afterwards: the measured glucose is propped up by feeding, while `pseudobatch_concentration`
 keeps falling because that is what the cells are actually doing to it.
 
@@ -79,8 +87,8 @@ a hundredfold difference in wall time.
 
 `build_backtransform_spline(process, species)` returns a `BacktransformSpline` that maps
 `pseudobatch_concentration` back to real concentration (including the derivative, via
-the quotient rule) and is JIT-safe, so a model can be trained in pseudobatch space and
-evaluated in physical space.
+the quotient rule) and is JIT-safe, so your own code can work in pseudobatch space and
+still report results in physical space.
 
 ## The step-interpolation rule
 

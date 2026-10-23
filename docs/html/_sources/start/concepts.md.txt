@@ -123,6 +123,10 @@ something, and the volume changed. The **pseudobatch transform** removes the sec
 batch and fed-batch runs directly comparable. A good sanity check: this trace should
 **not** jump at a pure sampling event. If it does, the volume accounting is wrong.
 
+`hybrax.train` does not use the transform: training solves the ODE on the physical state.
+It is a `hybrax.format` utility for your own analyses; see
+[The pseudobatch transform](../format/pseudobatch_transform.md).
+
 ## `hybrax.train` vocabulary
 
 | Term | Meaning |

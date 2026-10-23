@@ -377,6 +377,13 @@
 <blockquote>
 <div><p>How fed-batch dilution is removed from a measured concentration before you fit to it.</p>
 </div></blockquote>
+<div class="note admonition">
+<p class="admonition-title"><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> does not use this</p>
+<p>Training solves the ODE on the physical state, so you never need to transform your data
+before running <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">prepare</span></code> or <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">train</span></code>. The utilities on this page are for your
+own code that works with <code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> data, for example to compare batch and fed-batch
+runs or to get smoother curves for spline fitting.</p>
+</div>
 <p>In a fed-batch run a measured concentration moves for two reasons: the cells did
 something, and the volume changed. The pseudobatch transform removes the second.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>pseudobatch_concentration(t) = c(t) · ADF(t) − feed_correction(t)
@@ -418,7 +425,7 @@ pseudobatch_concentration: [  8.     6.42   3.89  -1.28  -7.89 -12.03]
 </div>
 </div>
 </div>
-<p>Read those last two rows across. They agree until the feed starts at t = 6 h, and diverge
+<p>Read those last two rows across. They agree until the feed starts at t = 48 h, and diverge
 afterwards: the measured glucose is propped up by feeding, while <code class="docutils literal notranslate"><span class="pre">pseudobatch_concentration</span></code>
 keeps falling because that is what the cells are actually doing to it.</p>
 <p>Three uses:</p>
@@ -445,8 +452,8 @@ a hundredfold difference in wall time.</p>
 <h2>Going back<a class="headerlink" href="#going-back" title="Link to this heading">¶</a></h2>
 <p><code class="docutils literal notranslate"><span class="pre">build_backtransform_spline(process,</span> <span class="pre">species)</span></code> returns a <code class="docutils literal notranslate"><span class="pre">BacktransformSpline</span></code> that maps
 <code class="docutils literal notranslate"><span class="pre">pseudobatch_concentration</span></code> back to real concentration (including the derivative, via
-the quotient rule) and is JIT-safe, so a model can be trained in pseudobatch space and
-evaluated in physical space.</p>
+the quotient rule) and is JIT-safe, so your own code can work in pseudobatch space and
+still report results in physical space.</p>
 </section>
 <section id="the-step-interpolation-rule">
 <h2>The step-interpolation rule<a class="headerlink" href="#the-step-interpolation-rule" title="Link to this heading">¶</a></h2>
