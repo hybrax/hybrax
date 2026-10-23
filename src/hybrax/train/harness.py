@@ -1755,8 +1755,7 @@ def train_collection(
         ``eqx.filter_eval_shape`` solver loop; explicit-sharding ``jit``
         likewise breaks on diffrax's internal ``select``s. Auto-axis GSPMD
         keeps shardings out of the per-op type system, so the diffrax adjoint
-        composes cleanly — and it needs **no** equinox/diffrax monkeypatch
-        (unlike the pmap path)."""
+        composes cleanly."""
         from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
 
         bs = int(effective_batch_size)
@@ -2007,10 +2006,10 @@ def train_collection(
     # pmap stays the DEFAULT sharded path: it is the only fast option on jax>=0.10.
     # shard_map (manual mode) crashes inside diffrax's nested filter_eval_shape
     # (`assert not hlo_sharding.is_manual()`), and GSPMD auto-sharding
-    # (HYBRAX_GSPMD=1) is correct + patch-free but ~60x slower because XLA
-    # cannot partition the data-dependent ODE solve (it replicates the
-    # per-device work). pmap needs the
-    # equinox closure-convert patch on jax>=0.10; GSPMD needs no patch.
+    # (HYBRAX_GSPMD=1) is correct but ~60x slower because XLA cannot partition
+    # the data-dependent ODE solve (it replicates the per-device work). pmap's
+    # backward pass fails on jax>=0.10.1 (equinox closure-convert mismatch on
+    # diffrax's `RESULTS`), hence the `jax<0.10.1` pin in pyproject.toml.
     _use_gspmd = os.environ.get("HYBRAX_GSPMD", "") not in ("", "0", "false", "False")
     if _use_sharded and _use_gspmd:
         _make_step = _make_gspmd_step
