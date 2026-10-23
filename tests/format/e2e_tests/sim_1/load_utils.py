@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import csv
 import os
-from pathlib import Path
 import re
-from typing import Iterable
+from collections.abc import Iterable
+from pathlib import Path
 
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
 import jax.numpy as jnp
 
-import hybrax.format as bp  # noqa: E402
+import hybrax.format as bp
 
-from .simulation import (  # noqa: E402
+from .simulation import (
     FEED_GLUCOSE,
     FEED_GLUTAMINE,
     FULL_STATE_NAMES,

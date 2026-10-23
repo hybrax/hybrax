@@ -16,17 +16,17 @@ import jax.numpy as jnp
 import pytest
 
 from hybrax.format import (
-    ReactionOde,
     BioProcess,
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
     Inflow,
+    Outflow,
     ProcessOrdering,
     ProcessVariable,
+    ReactionOde,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -44,7 +44,6 @@ from hybrax.format.mechanistic import (
 )
 from hybrax.format.splines import build_pseudobatch_transform
 from hybrax.format.time_series import PPoly
-
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers

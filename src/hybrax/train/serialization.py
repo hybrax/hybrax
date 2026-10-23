@@ -24,24 +24,25 @@ Mirrors ``hybrax.format/serialization.py``. This module owns:
 
 from __future__ import annotations
 
-from contextlib import suppress
-from dataclasses import dataclass
 import hashlib
-from importlib.metadata import PackageNotFoundError
-from importlib.metadata import version as _version
 import json
 import logging
 import math
 import os
-from numbers import Integral, Real
-from pathlib import Path
 import platform
 import secrets
 import stat
+from contextlib import suppress
+from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _version
+from numbers import Integral, Real
+from pathlib import Path
 from typing import Any
 
 import equinox as eqx
 import optax
+
 from hybrax.format.dataclasses import BioProcessCollection
 from hybrax.format.json_io import load_json
 from hybrax.format.serialization import (
@@ -51,7 +52,7 @@ from hybrax.format.serialization import (
 )
 
 from .constants import METADATA_NAMESPACE
-from .model_api import UserLossModule, RateModule, partition_trainable
+from .model_api import RateModule, UserLossModule, partition_trainable
 from .run_config import RunConfig, reresolve_custom
 from .training_data import TARGET_SOURCE_AUTO, TrainingDataStore
 from .utils import load_custom_module

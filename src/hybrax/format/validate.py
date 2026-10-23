@@ -2,20 +2,22 @@
 Validation utilities for bioprocess data
 """
 
+from collections.abc import Sequence
+from typing import Literal
+
 import jax.numpy as jnp
-from typing import Dict, List, Literal, Optional, Sequence, Tuple
+
 from .dataclasses import (
     AugmentedBioProcess,
     BioProcess,
     BioProcessCollection,
     Bounds,
-    StaticVariable,
-    TimeSeries,
     Inflow,
     Outflow,
+    StaticVariable,
+    TimeSeries,
     _check_outflow_retention,
 )
-
 
 _VOLUME_SIGN_EPS = 1e-12
 _TIMESTAMP_BOUNDS_RTOL = 1e-7
@@ -29,7 +31,7 @@ def _timestamp_bounds_tolerance(start: float, end: float) -> float:
 _Verdict = Literal["PASS", "FAIL", "SKIP"]
 
 
-def _check_result(verdict: _Verdict, check_name: str, detail: str) -> Tuple[bool, str]:
+def _check_result(verdict: _Verdict, check_name: str, detail: str) -> tuple[bool, str]:
     """Build a check's ``(ok, message)`` result from a single template.
 
     ``ok`` is derived from ``verdict`` rather than passed separately, so the
@@ -47,7 +49,7 @@ def _join_details(details: Sequence[str], *, bulleted: bool = False) -> str:
     return "; ".join(details)
 
 
-def _check_bounds_tuple(bounds: Bounds, label: str) -> Tuple[bool, str]:
+def _check_bounds_tuple(bounds: Bounds, label: str) -> tuple[bool, str]:
     """Sanity-check a bounds tuple: lo <= hi when both are set.
 
     Returns a bare detail fragment (empty string on pass/unset) for the
@@ -61,7 +63,7 @@ def _check_bounds_tuple(bounds: Bounds, label: str) -> Tuple[bool, str]:
     return True, ""
 
 
-def validate_reaction_ode(process: BioProcess) -> Tuple[bool, str]:
+def validate_reaction_ode(process: BioProcess) -> tuple[bool, str]:
     """Validate ``process.reaction_ode`` if present.
 
     Checks (skipped when ``reaction_ode is None``):
@@ -99,7 +101,7 @@ def validate_reaction_ode(process: BioProcess) -> Tuple[bool, str]:
     algebraic_names = set(bo.algebraic.keys())
     rate_names = set(bo.rates.keys())
 
-    errors: List[str] = []
+    errors: list[str] = []
 
     # Name-collision checks
     overlap_rate_state = rate_names & state_names
@@ -178,7 +180,7 @@ def validate_reaction_ode(process: BioProcess) -> Tuple[bool, str]:
     # ``biomass - product`` when biomass is g/L and product is mg/L (raw
     # numerical subtraction would be meaningless). This generalises the
     # legacy intracellular unit check.
-    def _state_unit(name: str) -> Optional[str]:
+    def _state_unit(name: str) -> str | None:
         if process.reactor_medium and name in process.reactor_medium.components:
             return process.reactor_medium.components[name].unit
         pv = process.process_variables.get(name)
@@ -214,7 +216,7 @@ def validate_reaction_ode(process: BioProcess) -> Tuple[bool, str]:
     visiting: set = set()
     visited: set = set()
 
-    def _dfs(node: str, stack: List[str]) -> bool:
+    def _dfs(node: str, stack: list[str]) -> bool:
         if node in visiting:
             cycle = stack[stack.index(node) :] + [node]
             errors.append(f"algebraic dependency cycle: {' -> '.join(cycle)}")
@@ -253,7 +255,7 @@ def validate_reaction_ode(process: BioProcess) -> Tuple[bool, str]:
 
 def validate_reaction_ode_equivalence(
     container: "BioProcessCollection",
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """Verify all processes in *container* share the same ``reaction_ode``.
 
     Equivalence requires identical ``algebraic``, ``derivatives``, and
@@ -279,7 +281,7 @@ def validate_reaction_ode_equivalence(
     first_name, first_proc = procs[0]
     ref_bo = first_proc.reaction_ode
 
-    errors: List[str] = []
+    errors: list[str] = []
     for name, proc in procs[1:]:
         bo = proc.reaction_ode
         if (ref_bo is None) != (bo is None):
@@ -311,9 +313,9 @@ def validate_reaction_ode_equivalence(
     )
 
 
-def validate_bounds(process: BioProcess) -> Tuple[bool, str]:
+def validate_bounds(process: BioProcess) -> tuple[bool, str]:
     """Sanity-check all bounds tuples on the process (states, PVs, volume)."""
-    errors: List[str] = []
+    errors: list[str] = []
     if process.reactor_medium:
         for cname, comp in process.reactor_medium.components.items():
             ok, detail = _check_bounds_tuple(
@@ -339,7 +341,7 @@ def validate_bounds(process: BioProcess) -> Tuple[bool, str]:
 
 def _check_data_against_bounds(
     value: object, bounds: Bounds, label: str
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """Compare a raw measured value (StaticVariable or TimeSeries) against its
     own declared Bounds tuple; report count/min/max of violations.
 
@@ -362,7 +364,7 @@ def _check_data_against_bounds(
         return True, ""
 
     vals = jnp.asarray(value.values)
-    fragments: List[str] = []
+    fragments: list[str] = []
     if lo is not None:
         n_below = int(jnp.sum(vals < lo))
         if n_below:
@@ -382,7 +384,7 @@ def _check_data_against_bounds(
     return True, ""
 
 
-def validate_bounds_against_data(process: BioProcess) -> Tuple[bool, str]:
+def validate_bounds_against_data(process: BioProcess) -> tuple[bool, str]:
     """Check measured/raw data values against their own declared Bounds.
 
     For every ``ReactorMediumComponent.concentration``,
@@ -395,7 +397,7 @@ def validate_bounds_against_data(process: BioProcess) -> Tuple[bool, str]:
     machinery exists to compute a measured rate value to check against them
     (see ``validate_reaction_ode``'s tuple-only sanity check on rates).
     """
-    errors: List[str] = []
+    errors: list[str] = []
 
     if process.reactor_medium:
         for cname, comp in process.reactor_medium.components.items():
@@ -437,7 +439,7 @@ def _is_dynamic_series(value: object) -> bool:
 
 def validate_timeseries_shape(
     ts: TimeSeries, name: str = "", *, allow_empty: bool = False
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """
     Check that a TimeSeries has consistent shapes and ordered times.
 
@@ -456,7 +458,7 @@ def validate_timeseries_shape(
         A tuple ``(is_valid, message)``.
     """
     label = f"'{name}'" if name else "(unnamed)"
-    errors: List[str] = []
+    errors: list[str] = []
 
     if not _is_dynamic_series(ts):
         return _check_result(
@@ -497,7 +499,7 @@ def validate_timeseries_shape(
     )
 
 
-def validate_discrete_events(process: BioProcess) -> Tuple[bool, str]:
+def validate_discrete_events(process: BioProcess) -> tuple[bool, str]:
     """Check event time shape, ordering, bounds, and label count."""
     events = process.discrete_events
     if events is None:
@@ -538,7 +540,7 @@ def validate_discrete_events(process: BioProcess) -> Tuple[bool, str]:
     )
 
 
-def validate_time_axis(process: BioProcess) -> Tuple[bool, str]:
+def validate_time_axis(process: BioProcess) -> tuple[bool, str]:
     """Check that the process time axis starts no later than it ends."""
     axis = process.time_axis
     if axis.start > axis.end:
@@ -550,7 +552,7 @@ def validate_time_axis(process: BioProcess) -> Tuple[bool, str]:
     return _check_result("PASS", "time_axis", f"[{axis.start}, {axis.end}] {axis.unit}")
 
 
-def validate_timestamp_bounds(process: BioProcess) -> Tuple[bool, str]:
+def validate_timestamp_bounds(process: BioProcess) -> tuple[bool, str]:
     """Check timestamps against valid inclusive time-axis bounds.
 
     Skip this policy-dependent check when the time axis itself is inverted.
@@ -600,7 +602,7 @@ def validate_timestamp_bounds(process: BioProcess) -> Tuple[bool, str]:
 
 def validate_volume_change_sign(
     volume_change,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """
     Verify that a volume change has correct sign for its type.
 
@@ -663,7 +665,7 @@ def validate_volume_change_sign(
 
 def validate_volume_change_states(
     process: BioProcess,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """
     For every *positive* volume change, verify that explicitly declared feed
     components corresponding to dynamic reactor states use the same unit
@@ -681,7 +683,7 @@ def validate_volume_change_states(
         every declared dynamic feed component uses the matching unit string.
     """
     # Collect names of dynamic state variables in the reactor medium
-    state_names: List[str] = []
+    state_names: list[str] = []
     if process.reactor_medium and process.reactor_medium.components:
         for comp_name, comp in process.reactor_medium.components.items():
             if _is_dynamic_series(comp.concentration):
@@ -694,7 +696,7 @@ def validate_volume_change_states(
             "no dynamic state variables found in reactor medium",
         )
 
-    errors: List[str] = []
+    errors: list[str] = []
 
     for vc_name, vc in process.volume.volume_changes.items():
         vals = jnp.asarray(vc.values.values)
@@ -733,7 +735,7 @@ def validate_volume_change_states(
     )
 
 
-def validate_outflow_retention(process: BioProcess) -> Tuple[bool, str]:
+def validate_outflow_retention(process: BioProcess) -> tuple[bool, str]:
     """
     For every Outflow's ``retention``, every key must be a declared
     reactor-medium component name, every value must satisfy
@@ -754,7 +756,7 @@ def validate_outflow_retention(process: BioProcess) -> Tuple[bool, str]:
         if process.reactor_medium
         else set()
     )
-    errors: List[str] = []
+    errors: list[str] = []
 
     if process.volume and process.volume.volume_changes:
         for vc_name, vc in process.volume.volume_changes.items():
@@ -768,7 +770,7 @@ def validate_outflow_retention(process: BioProcess) -> Tuple[bool, str]:
     )
 
 
-def validate_biomass_in_reactor_medium(process: BioProcess) -> Tuple[bool, str]:
+def validate_biomass_in_reactor_medium(process: BioProcess) -> tuple[bool, str]:
     """
     Check that the reactor medium contains a component whose name is
     ``'biomass'`` (case-insensitive).
@@ -804,7 +806,7 @@ def validate_biomass_in_reactor_medium(process: BioProcess) -> Tuple[bool, str]:
     )
 
 
-def validate_initial_state_alignment(process: BioProcess) -> Tuple[bool, str]:
+def validate_initial_state_alignment(process: BioProcess) -> tuple[bool, str]:
     """Every dynamic reactor-medium component and process variable must have a
     measurement at ``process.time_axis.start``, matching where
     ``volume.initial_volume`` is anchored. Otherwise the ODE's initial state
@@ -814,7 +816,7 @@ def validate_initial_state_alignment(process: BioProcess) -> Tuple[bool, str]:
     tolerance = _timestamp_bounds_tolerance(
         process.time_axis.start, process.time_axis.end
     )
-    missing: List[str] = []
+    missing: list[str] = []
 
     if process.reactor_medium and process.reactor_medium.components:
         for name, comp in process.reactor_medium.components.items():
@@ -846,7 +848,7 @@ def validate_initial_state_alignment(process: BioProcess) -> Tuple[bool, str]:
     )
 
 
-def validate_volume_units(process: BioProcess) -> Tuple[bool, str]:
+def validate_volume_units(process: BioProcess) -> tuple[bool, str]:
     """Require every volume change to use the process volume unit."""
     mismatches = [
         f"{name!r} uses {change.unit!r}"
@@ -867,7 +869,7 @@ def validate_volume_units(process: BioProcess) -> Tuple[bool, str]:
     )
 
 
-def validate_process(process: BioProcess) -> Tuple[bool, List[Tuple[bool, str]]]:
+def validate_process(process: BioProcess) -> tuple[bool, list[tuple[bool, str]]]:
     """
     Run all available validation checks on a single BioProcess.
 
@@ -906,9 +908,9 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[Tuple[bool, str]]]
             f"got {type(process).__name__!r}"
         )
     all_valid = True
-    results: List[Tuple[bool, str]] = []
+    results: list[tuple[bool, str]] = []
 
-    def _record(result: Tuple[bool, str]) -> None:
+    def _record(result: tuple[bool, str]) -> None:
         nonlocal all_valid
         ok, _ = result
         results.append(result)
@@ -986,7 +988,7 @@ def validate_process(process: BioProcess) -> Tuple[bool, List[Tuple[bool, str]]]
 def validate_measurement_sampling_alignment(
     process: BioProcess,
     rel_threshold: float = 1e-4,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """
     Check that reactor medium measurement times are not slightly offset from
     sampling times.
@@ -1011,7 +1013,7 @@ def validate_measurement_sampling_alignment(
         A tuple ``(is_valid, message)``.
     """
     # Collect sampling times from Outflow objects
-    sampling_times_list: List[float] = []
+    sampling_times_list: list[float] = []
     if process.volume and process.volume.volume_changes:
         for vc in process.volume.volume_changes.values():
             if (
@@ -1036,7 +1038,7 @@ def validate_measurement_sampling_alignment(
         )
     abs_threshold = rel_threshold * proc_length
 
-    warnings: List[str] = []
+    warnings: list[str] = []
 
     if process.reactor_medium and process.reactor_medium.components:
         for comp_name, comp in process.reactor_medium.components.items():
@@ -1072,8 +1074,8 @@ def validate_measurement_sampling_alignment(
 
 
 def validate_volume_consistency(
-    process: BioProcess, final_volume: Optional[float] = None
-) -> Tuple[bool, str, float]:
+    process: BioProcess, final_volume: float | None = None
+) -> tuple[bool, str, float]:
     """
     Validate that volume changes sum to expected final volume.
 
@@ -1106,7 +1108,7 @@ def validate_volume_consistency(
 
     # Calculate total volume change and collect lines for the summary table
     total_change = 0.0
-    table: List[str] = []
+    table: list[str] = []
 
     for name, change in volume.volume_changes.items():
         if change.is_continuous:
@@ -1145,7 +1147,7 @@ def validate_volume_consistency(
 
 def validate_cross_process_consistency(
     collection: BioProcessCollection,
-) -> Tuple[bool, List[Tuple[bool, str]]]:
+) -> tuple[bool, list[tuple[bool, str]]]:
     """Verify every process in *collection* shares identical structure.
 
     Compares, against the first process as reference:
@@ -1176,12 +1178,12 @@ def validate_cross_process_consistency(
             )
         ]
 
-    consistency_errors: List[str] = []
+    consistency_errors: list[str] = []
 
     # Build a reference signature from the first process
     first_name, first_process = next(iter(processes.items()))
 
-    def _reactor_signature(process: BioProcess) -> Dict[str, Tuple[str, str]]:
+    def _reactor_signature(process: BioProcess) -> dict[str, tuple[str, str]]:
         """Map each reactor medium component name to (concentration type name, unit)."""
         if not process.reactor_medium or not process.reactor_medium.components:
             return {}
@@ -1190,7 +1192,7 @@ def validate_cross_process_consistency(
             for name, comp in process.reactor_medium.components.items()
         }
 
-    def _pv_signature(process: BioProcess) -> Dict[str, Tuple[str, str]]:
+    def _pv_signature(process: BioProcess) -> dict[str, tuple[str, str]]:
         """Map each process variable name to (value type name, unit)."""
         return {
             name: (type(pv.values).__name__, pv.unit)
@@ -1252,7 +1254,7 @@ def validate_cross_process_consistency(
 
 def validate_for_publication(
     collection: BioProcessCollection,
-) -> Tuple[bool, Dict[str, List[Tuple[bool, str]]]]:
+) -> tuple[bool, dict[str, list[tuple[bool, str]]]]:
     """
     Validate a collection for storage/publication as a coherent case study.
 
@@ -1287,7 +1289,7 @@ def validate_for_publication(
         )
 
     all_valid = True
-    report: Dict[str, List[Tuple[bool, str]]] = {}
+    report: dict[str, list[tuple[bool, str]]] = {}
 
     # --- Per-process validation ---
     for proc_name, process in collection.processes.items():
@@ -1313,7 +1315,7 @@ def validate_for_publication(
 
 def validate_augmented_parent_refs(
     container: "BioProcessCollection",
-) -> Tuple[bool, List[Tuple[bool, str]]]:
+) -> tuple[bool, list[tuple[bool, str]]]:
     """Verify ``AugmentedBioProcess.parent_process`` references in a container.
 
     For every :class:`AugmentedBioProcess` in ``container.processes``, the
@@ -1336,7 +1338,7 @@ def validate_augmented_parent_refs(
         )
 
     processes = container.processes
-    results: List[Tuple[bool, str]] = []
+    results: list[tuple[bool, str]] = []
     all_valid = True
 
     for child_name, child in processes.items():

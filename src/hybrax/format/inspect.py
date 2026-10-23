@@ -1,7 +1,6 @@
-from typing import Optional
-
-import numpy as np
 import jax.numpy as jnp
+import numpy as np
+
 from .dataclasses import (
     BioProcess,
     BioProcessCollection,
@@ -9,8 +8,8 @@ from .dataclasses import (
     Outflow,
     ProcessOrdering,
     StaticVariable,
-    _format_reaction_ode_lines,
     _format_bounds,
+    _format_reaction_ode_lines,
 )
 from .splines import _has_spline_state
 from .time_series import TimeSeries
@@ -321,9 +320,9 @@ def _count_datapoints_in_value(value) -> int:
     StaticVariable -> count as 1
     """
     if _is_dynamic_series(value):
-        return int(len(value.times))
+        return len(value.times)
     elif _is_spline_only_series(value):
-        return int(len(value.breaks))
+        return len(value.breaks)
     elif hasattr(value, "value"):
         return 1
     return 0
@@ -1311,7 +1310,7 @@ def _resolve_target(target):
 
 def print_rhs_ode(
     target,
-    ordering: Optional[ProcessOrdering] = None,
+    ordering: ProcessOrdering | None = None,
 ) -> None:
     """Print the mechanistic ODE structure as a single ASCII box with up to
     four sub-tables (Algebraic, Rates, Derivatives, Volume).

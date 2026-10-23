@@ -16,33 +16,36 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import jax.numpy as jnp
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
-import matplotlib.pyplot as plt
 from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
+
+import hybrax.train.harness as harness_module
 from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
+    Outflow,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     TimeAxis,
     TimeSeries,
     Volume,
 )
-
-from hybrax.train import cli, postprocessing
-import hybrax.train.forward_plotting as forward_plotting
-import hybrax.train.harness as harness_module
+from hybrax.train import cli, forward_plotting, postprocessing
 from hybrax.train.controls_store import ControlsStore
-from hybrax.train.harness import ForwardConfig, ForwardResult
 from hybrax.train.defaults import DefaultLossModule
 from hybrax.train.forward_plotting import plot_forward_predictions
-from hybrax.train.harness import compute_dense_exports, evaluate_trained_wrapper
-from hybrax.train.model_api import AffineScaler, ReactionOutputs, RateModule
+from hybrax.train.harness import (
+    ForwardConfig,
+    ForwardResult,
+    compute_dense_exports,
+    evaluate_trained_wrapper,
+)
+from hybrax.train.model_api import AffineScaler, RateModule, ReactionOutputs
 from hybrax.train.training_data import TrainingDataStore
 from hybrax.train.wrapper import HybridOdeWrapper, SaveOutputs
 
@@ -1976,7 +1979,7 @@ def test_aggregate_dense_exports_requires_every_model_to_be_valid():
     np.testing.assert_array_equal(std["p1"].prediction_valid, [True, False])
 
 
-def _mismatched_aux_exports() -> dict[str, "postprocessing.DenseProcessExport"]:
+def _mismatched_aux_exports() -> dict[str, postprocessing.DenseProcessExport]:
     return {
         "p1": postprocessing.DenseProcessExport(
             t=np.asarray([0.0, 1.0], dtype=float),

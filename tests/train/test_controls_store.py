@@ -7,6 +7,7 @@ from pathlib import Path
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
 from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
@@ -14,10 +15,10 @@ from hybrax.format.dataclasses import (
     FeedMedium,
     FeedMediumComponent,
     Inflow,
+    Outflow,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -25,7 +26,6 @@ from hybrax.format.dataclasses import (
 )
 from hybrax.format.serialization import save_process_collection
 from hybrax.format.splines import fit_monotone_timeseries_spline
-
 from hybrax.train.controls import select_control_sources
 from hybrax.train.controls_store import ControlsStore
 from hybrax.train.prepare import prepare_artifact
@@ -160,7 +160,7 @@ def test_select_control_sources_consumes_spline_feed_control():
 
 
 def _continuous_flow(
-    flow_type: type[Inflow] | type[Outflow],
+    flow_type: type[Inflow | Outflow],
     name: str,
     values: TimeSeries,
 ) -> Inflow | Outflow:

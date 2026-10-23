@@ -8,6 +8,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
 from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
@@ -21,7 +22,6 @@ from hybrax.format.dataclasses import (
     Volume,
 )
 from hybrax.format.splines import fit_timeseries_spline
-
 from hybrax.train.controls import select_control_sources
 from hybrax.train.controls_store import ControlsStore
 

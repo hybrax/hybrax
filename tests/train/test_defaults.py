@@ -5,12 +5,12 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 import pytest
+from test_harness import _make_collection, _make_multi_process_collection
 
 from hybrax.format.dataclasses import BioProcessCollection
 from hybrax.format.mechanistic import build_rhs_ode
 from hybrax.train.defaults import DefaultReactionModule, default_build_reaction_module
 from hybrax.train.model_api import ReactionInputs
-from test_harness import _make_collection, _make_multi_process_collection
 
 
 def _reaction_module(

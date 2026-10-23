@@ -12,19 +12,18 @@ from hybrax.format import (
     FeedMedium,
     FeedMediumComponent,
     Inflow,
+    Outflow,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
     Volume,
 )
 from hybrax.format.splines import (
-    build_pseudobatch_transform,
     build_backtransform_spline,
+    build_pseudobatch_transform,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -8,6 +8,7 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 
 import numpy as np
+
 from hybrax.format.dataclasses import (
     BioProcessCollection,
     Outflow,
@@ -18,7 +19,6 @@ from hybrax.format.time_series.timeseries import TimeSeries
 from hybrax.format.validate import validate_reaction_ode_equivalence
 
 from .training_data import TrainingDataStore
-
 
 RawTrace = tuple[np.ndarray, np.ndarray]
 SPLINE_SCALE_SAMPLE_COUNT = 200

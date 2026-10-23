@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import jax.numpy as jnp
-
 from stateful_helpers import (
     ZeroLatentDerivativeModule,
     build_stateful_wrapper,

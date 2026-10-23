@@ -41,6 +41,7 @@ from hybrax.train.diffrax_callbacks import (
     StopConditionCallback,
     diffeqsolve_with_callbacks,
 )
+
 from .constants import DEFAULT_SOLVER, INITIAL_STEP_FRACTION
 from .wrapper import HybridOdeWrapper
 

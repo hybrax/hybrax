@@ -2,8 +2,9 @@
 
 import gzip
 import io
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, BinaryIO, Iterator, TextIO
+from typing import Any, BinaryIO, TextIO
 
 import ijson
 

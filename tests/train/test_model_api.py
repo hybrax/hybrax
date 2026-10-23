@@ -1,31 +1,29 @@
 from __future__ import annotations
 
-import numpy as np
-import pytest
-
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
+import numpy as np
 import optax
+import pytest
 
-import hybrax.train.model_api as model_api
+from hybrax.train import model_api
 from hybrax.train.inspect import format_trainable_structure
 from hybrax.train.model_api import (
     TRAINABLE_METADATA_KEY,
     AffineScaler,
     LinearScaler,
+    RateModule,
     ReactionInputs,
     ReactionOutputs,
     Scaler,
-    RateModule,
     _as_scaler,
     _compose_scalers,
     frozen_field,
     partition_trainable,
     trainable_field,
 )
-
 
 # ---------------------------------------------------------------------------
 # Metadata-only partition: trainability is declared solely via field tags.

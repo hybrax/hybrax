@@ -23,14 +23,14 @@ selection, checkpointing, logging, and the public entry points.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import math
-import sys
 import os
+import sys
 import time
 import warnings
 from collections import Counter
-import dataclasses
 from dataclasses import dataclass
 from fractions import Fraction
 from functools import partial
@@ -44,6 +44,7 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
 import optax
+
 from hybrax.format.dataclasses import BioProcessCollection
 from hybrax.format.inspect import print_rhs_ode
 from hybrax.format.mechanistic import RhsOde
@@ -54,7 +55,6 @@ from .constants import (
     DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE,
     DEFAULT_SOLVER,
 )
-from .preflight import check_continuous_flow_integration
 from .defaults import (
     DefaultLossModule,
     _default_scale_kwargs,
@@ -62,24 +62,21 @@ from .defaults import (
     default_build_reaction_module,
 )
 from .inspect import print_reaction_schema, print_trainable_structure
+from .logging import RunLogger, StepRecord
 from .model_api import (
     EstimatedScales,
-    UserLossModule,
     RateModule,
+    UserLossModule,
     _as_scaler,
     partition_trainable,
 )
-from .trainer import (
-    build_batched_loss_fn,
-    clamp_padded_time_rows,
-    evaluate_one_sample_loss,
+from .postprocessing import (
+    DenseProcessExport,
+    dense_exports_from_save_outputs,
+    plot_grad_norm_curve,
+    plot_loss_curve,
 )
-from .logging import RunLogger, StepRecord
-from .training_data import (
-    TARGET_SOURCE_AUTO,
-    TrainingDataStore,
-    replace_rhs_ode_process_matrices,
-)
+from .preflight import check_continuous_flow_integration
 from .run_config import CheckpointConfig, RunConfig
 from .runtime_artifact import RuntimeArtifact
 from .runtime_context import (
@@ -95,6 +92,16 @@ from .serialization import (
     load_trained_wrapper,
     read_initial_checkpoint,
 )
+from .trainer import (
+    build_batched_loss_fn,
+    clamp_padded_time_rows,
+    evaluate_one_sample_loss,
+)
+from .training_data import (
+    TARGET_SOURCE_AUTO,
+    TrainingDataStore,
+    replace_rhs_ode_process_matrices,
+)
 from .utils import (
     get_hook,
     load_custom_module,
@@ -102,12 +109,6 @@ from .utils import (
     split_hooks_by_customization,
 )
 from .wrapper import HybridOdeWrapper, validate_rhs_ode_compatibility
-from .postprocessing import (
-    DenseProcessExport,
-    dense_exports_from_save_outputs,
-    plot_grad_norm_curve,
-    plot_loss_curve,
-)
 
 # Single batched loss fn: module-agnostic, reads wrapper.loss_module at call time.
 _BATCHED_LOSS_FN = build_batched_loss_fn()
@@ -1756,7 +1757,8 @@ def train_collection(
         likewise breaks on diffrax's internal ``select``s. Auto-axis GSPMD
         keeps shardings out of the per-op type system, so the diffrax adjoint
         composes cleanly."""
-        from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
+        from jax.sharding import AxisType, NamedSharding
+        from jax.sharding import PartitionSpec as P
 
         bs = int(effective_batch_size)
         n_dev = min(jax.local_device_count(), bs)

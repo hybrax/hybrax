@@ -10,13 +10,14 @@ semantics (seed, grid spacing, noise, initial-value handling).
 
 from __future__ import annotations
 
+import warnings
 from copy import deepcopy
 from dataclasses import replace
 from hashlib import sha256
-import warnings
 from typing import Any
 
 import numpy as np
+
 from hybrax.format.dataclasses import (
     AugmentedBioProcess,
     BioProcess,
@@ -28,7 +29,6 @@ from hybrax.format.dataclasses import (
 from hybrax.format.mechanistic import get_process_ordering
 
 from .run_config import AugmentationConfig, InitialValueSource, RunConfig
-
 
 _TIME_ATOL = 1e-9
 _SPLINE_ROOT_IMAG_ATOL = 1e-12

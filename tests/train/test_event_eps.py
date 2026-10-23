@@ -51,7 +51,6 @@ import equinox as eqx
 import jax.numpy as jnp
 import numpy as np
 import pytest
-
 from stateful_helpers import (
     ZeroLatentDerivativeModule,
     build_stateful_wrapper,
@@ -60,7 +59,6 @@ from stateful_helpers import (
 )
 
 from hybrax.train.model_api import LinearScaler
-
 
 # ``make_process(jump=True)``: sample -0.2 L AND bolus +0.3 L, both at
 # t=1.0, V0 = 1.0 L.

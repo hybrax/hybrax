@@ -14,9 +14,9 @@ import numpy as np
 
 from hybrax.train import (
     EstimatedScales,
+    RateModule,
     ReactionInputs,
     ReactionOutputs,
-    RateModule,
     frozen_field,
     trainable_field,
 )

@@ -4,8 +4,8 @@ CallbackSolution: rich solution object from diffeqsolve_with_callbacks.
 
 from __future__ import annotations
 
-import jax.numpy as jnp
 import equinox as eqx
+import jax.numpy as jnp
 
 
 class CallbackSolution(eqx.Module):

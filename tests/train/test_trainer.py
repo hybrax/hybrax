@@ -6,6 +6,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
+import hybrax.train.trainer as trainer_module
 from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
@@ -13,30 +15,28 @@ from hybrax.format.dataclasses import (
     FeedMedium,
     FeedMediumComponent,
     Inflow,
+    Outflow,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
     Volume,
 )
 from hybrax.format.mechanistic import build_rhs_ode
-
-import hybrax.train.trainer as trainer_module
-from hybrax.train.physical_solve import solve_physical_states, within_fail_time
+from hybrax.train.defaults import DefaultLossModule
+from hybrax.train.harness import summarize_train_step_input_signature
 from hybrax.train.model_api import (
     AffineScaler,
     LossInputs,
     LossOutputs,
-    ReactionOutputs,
     RateModule,
+    ReactionOutputs,
     frozen_field,
     partition_trainable,
     trainable_field,
 )
-from hybrax.train.defaults import DefaultLossModule
-from hybrax.train.harness import summarize_train_step_input_signature
+from hybrax.train.physical_solve import solve_physical_states, within_fail_time
 from hybrax.train.trainer import (
     build_batched_loss_fn,
     clamp_padded_time_rows,

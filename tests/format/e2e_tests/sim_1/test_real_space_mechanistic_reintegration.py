@@ -2,32 +2,39 @@ import os
 
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
-import diffrax  # noqa: E402
-import jax  # noqa: E402
-import jax.numpy as jnp  # noqa: E402
-import numpy as np  # noqa: E402
-from hybrax.format.dataclasses import BioProcess  # noqa: E402
-from hybrax.format.dataclasses import ProcessOrdering  # noqa: E402
-from hybrax.format.mechanistic import ControlSplines  # noqa: E402
-from hybrax.format.mechanistic import RhsOde  # noqa: E402
-from hybrax.format.mechanistic import _timeseries_to_ppoly  # noqa: E402
-from hybrax.format.mechanistic import build_rhs_ode  # noqa: E402
-from hybrax.format.mechanistic import get_control_splines  # noqa: E402
-from hybrax.format.mechanistic import get_process_ordering  # noqa: E402
-from hybrax.format.serialization import load_process_collection  # noqa: E402
-from hybrax.format.splines import make_cubic_ppoly  # noqa: E402
-from hybrax.format.time_series import PPoly  # noqa: E402
+import diffrax
+import jax
+import jax.numpy as jnp
+import numpy as np
 
-from .real_space_segments import EXPECTED_PROCESS_IDS  # noqa: E402
-from .real_space_segments import SIMULATION_DENSE_OUTPUT  # noqa: E402
-from .real_space_segments import SIM_RESULTS_DIR  # noqa: E402
-from .real_space_segments import PRE_EVENT_ROW  # noqa: E402
-from .real_space_segments import RealSpaceSegment  # noqa: E402
-from .real_space_segments import build_real_space_segments  # noqa: E402
-from .real_space_segments import dense_rows_by_process  # noqa: E402
-from .real_space_segments import segment_spline_times  # noqa: E402
-from .real_space_segments import segment_state_matrix  # noqa: E402
-from .real_space_segments import segment_times  # noqa: E402
+from hybrax.format.dataclasses import (
+    BioProcess,
+    ProcessOrdering,
+)
+from hybrax.format.mechanistic import (
+    ControlSplines,
+    RhsOde,
+    _timeseries_to_ppoly,
+    build_rhs_ode,
+    get_control_splines,
+    get_process_ordering,
+)
+from hybrax.format.serialization import load_process_collection
+from hybrax.format.splines import make_cubic_ppoly
+from hybrax.format.time_series import PPoly
+
+from .real_space_segments import (
+    EXPECTED_PROCESS_IDS,
+    PRE_EVENT_ROW,
+    SIM_RESULTS_DIR,
+    SIMULATION_DENSE_OUTPUT,
+    RealSpaceSegment,
+    build_real_space_segments,
+    dense_rows_by_process,
+    segment_spline_times,
+    segment_state_matrix,
+    segment_times,
+)
 
 DATA_JSON = SIM_RESULTS_DIR / "process_collection.json"
 EXPECTED_MODELED_RMCS = (

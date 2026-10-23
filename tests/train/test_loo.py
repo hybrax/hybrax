@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 import json
 import math
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -12,34 +12,33 @@ from typing import Any
 import jax.numpy as jnp
 import pandas as pd
 import pytest
+
 from hybrax.format.dataclasses import (
     AugmentedBioProcess,
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
+    Outflow,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     TimeAxis,
     TimeSeries,
     Volume,
 )
-
-from hybrax.train import cli
-from hybrax.train.harness import PreparedTraining, TrainHarnessResult
+from hybrax.train import cli, serialization
 from hybrax.train import loo as loo_mod
-import hybrax.train.serialization as serialization
+from hybrax.train.harness import PreparedTraining, TrainHarnessResult
 from hybrax.train.loo import (
     Fold,
     FoldResult,
     LOOResult,
     _build_fold_groups,
     _read_final_train_loss,
+    _write_summary_and_aggregate,
     compute_parallel_split,
     resolve_folds,
     run_loo_cv,
     run_single_fold,
-    _write_summary_and_aggregate,
 )
 from hybrax.train.run_config import (
     DataConfig,
@@ -48,7 +47,6 @@ from hybrax.train.run_config import (
     RunConfig,
     TrainConfig,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures

@@ -11,11 +11,11 @@ from __future__ import annotations
 
 import argparse
 import csv
-from dataclasses import dataclass
 import os
-from pathlib import Path
 import sys
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
+from pathlib import Path
 
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
@@ -27,9 +27,14 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(REPO_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from hybrax.format.simulation import Simulation, SimulationEvent, SimulationResult  # noqa: E402
-from hybrax.format.simulation import EVENT_TYPE_BOLUS, EVENT_TYPE_SAMPLE  # noqa: E402
-from hybrax.format.simulation import EVENT_TYPE_FERMENTATION_END  # noqa: E402
+from hybrax.format.simulation import (
+    EVENT_TYPE_BOLUS,
+    EVENT_TYPE_FERMENTATION_END,
+    EVENT_TYPE_SAMPLE,
+    Simulation,
+    SimulationEvent,
+    SimulationResult,
+)
 
 PROCESS_ID = "sim_1_run_1"
 T_END = 120.0

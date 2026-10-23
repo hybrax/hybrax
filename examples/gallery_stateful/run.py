@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+
 import hybrax.train as hxt
 
 HERE = Path(__file__).parent

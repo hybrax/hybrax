@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 
 import numpy as np
+
 from hybrax.format import BioProcess, BioProcessCollection, Inflow, Outflow
 
 from .postprocessing import DenseProcessExport

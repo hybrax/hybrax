@@ -16,7 +16,8 @@ is not implemented.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from typing import Any
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -36,7 +37,6 @@ from .splines import (
     make_cubic_ppoly,
 )
 from .time_series import PPoly
-
 
 # ---------------------------------------------------------------------------
 # Spline helpers
@@ -95,7 +95,7 @@ def _apply_feed_dilution(
     retention_modeled_Outflows: jnp.ndarray,
     n_RMCs: int,
     V_min: float | jnp.ndarray = _MIN_REACTOR_VOLUME,
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Reactor-component mass balance from feed/sample flows + ``dV/dt``.
 
     Convention: every flow-rate vector carries the storage sign of its
@@ -176,7 +176,7 @@ def _apply_feed_dilution(
 # ---------------------------------------------------------------------------
 
 
-def _lambdify_with_array_arg(expr, ordered_names: Tuple[str, ...]) -> Callable:
+def _lambdify_with_array_arg(expr, ordered_names: tuple[str, ...]) -> Callable:
     """Return ``f(args)`` that evaluates *expr* with the symbol values
     supplied as a flat 1-D array indexed by *ordered_names*.
 
@@ -195,7 +195,7 @@ def _lambdify_with_array_arg(expr, ordered_names: Tuple[str, ...]) -> Callable:
     return fn
 
 
-def _topo_sort_algebraic(algebraic_exprs: Dict[str, Any]) -> List[str]:
+def _topo_sort_algebraic(algebraic_exprs: dict[str, Any]) -> list[str]:
     """Topologically sort algebraic names by mutual dependencies. Assumes
     expressions have already been parsed (sympy)."""
     algebraic_names = set(algebraic_exprs.keys())
@@ -203,7 +203,7 @@ def _topo_sort_algebraic(algebraic_exprs: Dict[str, Any]) -> List[str]:
         name: {str(s) for s in expr.free_symbols} & algebraic_names
         for name, expr in algebraic_exprs.items()
     }
-    order: List[str] = []
+    order: list[str] = []
     remaining = set(algebraic_names)
     while remaining:
         ready = sorted(n for n in remaining if not (deps[n] & remaining))
@@ -220,7 +220,7 @@ def _topo_sort_algebraic(algebraic_exprs: Dict[str, Any]) -> List[str]:
 def _parse_reaction_ode_expressions(
     bo,
     allowed_names: set,
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Sympify ``ReactionOde.algebraic`` and ``derivatives`` strings.
 
     Returns ``(algebraic_exprs, derivative_exprs)`` keyed by name. Raises
@@ -230,7 +230,7 @@ def _parse_reaction_ode_expressions(
 
     symbol_table = {n: sympy.Symbol(n) for n in allowed_names}
 
-    algebraic_exprs: Dict[str, Any] = {}
+    algebraic_exprs: dict[str, Any] = {}
     for name, expr_str in bo.algebraic.items():
         try:
             algebraic_exprs[name] = sympy.sympify(expr_str, locals=symbol_table)
@@ -239,7 +239,7 @@ def _parse_reaction_ode_expressions(
                 f"reaction_ode.algebraic[{name!r}] failed to parse: {exc}"
             ) from exc
 
-    derivative_exprs: Dict[str, Any] = {}
+    derivative_exprs: dict[str, Any] = {}
     for name, expr_str in bo.derivatives.items():
         try:
             derivative_exprs[name] = sympy.sympify(expr_str, locals=symbol_table)
@@ -359,8 +359,8 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
     # ---- Reaction ODE: rates (insertion order) and algebraic (topo-sorted)
     bo = process.reaction_ode
     if bo is None:
-        name_modeled_rates: Tuple[str, ...] = ()
-        name_modeled_algebraic: Tuple[str, ...] = ()
+        name_modeled_rates: tuple[str, ...] = ()
+        name_modeled_algebraic: tuple[str, ...] = ()
     else:
         name_modeled_rates = tuple(bo.rates.keys())
         # Need parsed algebraic expressions for topo-sort. Build a minimal
@@ -388,8 +388,8 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
         "name_modeled_rates": name_modeled_rates,
         "name_modeled_algebraic": name_modeled_algebraic,
     }
-    seen: Dict[str, str] = {}
-    duplicates: List[str] = []
+    seen: dict[str, str] = {}
+    duplicates: list[str] = []
     for group_name, names in groups.items():
         for n in names:
             if n in seen:
@@ -457,7 +457,7 @@ class ControlSplines(eqx.Module):
 
 def get_control_splines(
     process: BioProcess,
-    ordering: Optional[ProcessOrdering] = None,
+    ordering: ProcessOrdering | None = None,
 ) -> ControlSplines:
     """Build a :class:`ControlSplines` module for *process*.
 
@@ -496,8 +496,8 @@ def get_control_splines(
 
 def _build_cin(
     process: BioProcess,
-    vc_names: Tuple[str, ...],
-    name_modeled_RMCs: Tuple[str, ...],
+    vc_names: tuple[str, ...],
+    name_modeled_RMCs: tuple[str, ...],
 ) -> jnp.ndarray:
     """Build a ``(len(vc_names), len(RMCs))`` feed-composition matrix.
 
@@ -506,7 +506,7 @@ def _build_cin(
     sparse feed mapping remain zero in the preinitialized row.
     """
 
-    def cell(vc: Inflow, vc_name: str, sp_name: str) -> Optional[float]:
+    def cell(vc: Inflow, vc_name: str, sp_name: str) -> float | None:
         if vc.feed_medium is None or sp_name not in vc.feed_medium.components:
             return None
         conc = vc.feed_medium.components[sp_name].concentration
@@ -523,8 +523,8 @@ def _build_cin(
 
 def _build_retention(
     process: BioProcess,
-    vc_names: Tuple[str, ...],
-    name_modeled_RMCs: Tuple[str, ...],
+    vc_names: tuple[str, ...],
+    name_modeled_RMCs: tuple[str, ...],
 ) -> jnp.ndarray:
     """Build a ``(len(vc_names), len(RMCs))`` retention matrix.
 
@@ -536,7 +536,7 @@ def _build_retention(
     modeling), not a data gap standing in for something unknown.
     """
 
-    def cell(vc: Outflow, vc_name: str, sp_name: str) -> Optional[float]:
+    def cell(vc: Outflow, vc_name: str, sp_name: str) -> float | None:
         if sp_name in vc.retention:
             return float(vc.retention[sp_name])
         return None
@@ -546,10 +546,10 @@ def _build_retention(
 
 def _build_vc_matrix(
     process: BioProcess,
-    vc_names: Tuple[str, ...],
-    name_modeled_RMCs: Tuple[str, ...],
+    vc_names: tuple[str, ...],
+    name_modeled_RMCs: tuple[str, ...],
     vc_type: type,
-    cell_value: Callable[[Any, str, str], Optional[float]],
+    cell_value: Callable[[Any, str, str], float | None],
 ) -> jnp.ndarray:
     """Shared ``(len(vc_names), len(RMCs))`` matrix builder.
 
@@ -697,7 +697,7 @@ class RhsOde(eqx.Module):
 
 def build_rhs_ode(
     process: BioProcess,
-    ordering: Optional[ProcessOrdering] = None,
+    ordering: ProcessOrdering | None = None,
 ) -> RhsOde:
     """Build a :class:`RhsOde` from a process whose ``reaction_ode`` is
     set (auto-generated in :meth:`BioProcess.__post_init__` when not
@@ -716,7 +716,7 @@ def build_rhs_ode(
     # Canonical args order: every lambdified expression consumes a single
     # flat array indexed in this exact order. Must match the concatenation
     # order in RhsOde.__call__.
-    args_order: Tuple[str, ...] = (
+    args_order: tuple[str, ...] = (
         ordering.name_modeled_RMCs
         + ordering.name_modeled_PVs
         + ordering.name_controlled_PVs
@@ -780,8 +780,8 @@ def build_rhs_ode(
 
 def build_algebraic_func(
     process: BioProcess,
-    ordering: Optional[ProcessOrdering] = None,
-) -> Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], Dict[str, jnp.ndarray]]:
+    ordering: ProcessOrdering | None = None,
+) -> Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], dict[str, jnp.ndarray]]:
     """Build a callable that evaluates the ``reaction_ode.algebraic``
     quantities from concrete ``(state_values, ctrl_pv_values, rates)``
     arrays.
@@ -822,7 +822,7 @@ def build_algebraic_func(
 def extract_discrete_events(
     process: BioProcess,
     ordering: ProcessOrdering,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Extract sampling and bolus-feed events from *process*.
 
     Each event dict carries:
@@ -837,7 +837,7 @@ def extract_discrete_events(
     Events are sorted by time; sampling precedes bolus feeds at the same
     timestamp. At most one sample and one bolus per timestamp.
     """
-    events: List[Dict[str, Any]] = []
+    events: list[dict[str, Any]] = []
 
     for vc_name, vc in process.volume.volume_changes.items():
         if vc.is_continuous:
@@ -889,7 +889,7 @@ def extract_discrete_events(
     )
 
     # At a single timestamp at most one sample and one bolus.
-    per_time_counts: Dict[float, Dict[str, int]] = {}
+    per_time_counts: dict[float, dict[str, int]] = {}
     for ev in events:
         t = float(ev["t"])
         kind = str(ev["kind"])
@@ -1007,7 +1007,7 @@ def _validate_process_pseudobatch_transform(
 def build_state_splines(
     process: BioProcess,
     ordering: ProcessOrdering,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build state splines from stored TimeSeries spline state.
 
     Pseudobatch-transformed reactor components (identified through the
@@ -1019,7 +1019,7 @@ def build_state_splines(
     Returns ``{state_name: spline_callable}`` for every non-volume state
     in ``ordering.name_modeled_RMCs + ordering.name_modeled_PVs``.
     """
-    state_splines: Dict[str, Any] = {}
+    state_splines: dict[str, Any] = {}
     pseudobatch_transform = _validate_process_pseudobatch_transform(process, ordering)
 
     for sp_name in ordering.name_modeled_RMCs:

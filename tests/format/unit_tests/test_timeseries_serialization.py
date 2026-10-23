@@ -13,11 +13,11 @@ from hybrax.format import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
+    Outflow,
     ProcessVariable,
     PseudobatchTransform,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     TimeAxis,
     TimeSeries,
     Volume,
@@ -27,7 +27,6 @@ from hybrax.format.serialization import (
     load_process_collection,
     save_process_collection,
 )
-
 
 OLD_PSEUDOBATCH_KEYS = {
     "adf_ts",

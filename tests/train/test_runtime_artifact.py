@@ -12,6 +12,8 @@ from types import SimpleNamespace
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from test_wrapper import _make_mixed_flow_process
+
 from hybrax.format.dataclasses import (
     AugmentedBioProcess,
     BioProcess,
@@ -32,8 +34,7 @@ from hybrax.format.dataclasses import (
 from hybrax.format.mechanistic import build_rhs_ode
 from hybrax.format.serialization import load_process_collection, save_process_collection
 from hybrax.format.time_series import PPoly
-
-import hybrax.train.runtime_artifact as runtime_artifact
+from hybrax.train import runtime_artifact
 from hybrax.train.defaults import default_build_reaction_module
 from hybrax.train.harness import (
     TrainHarnessConfig,
@@ -46,6 +47,8 @@ from hybrax.train.runtime_artifact import (
     RuntimeArtifactFold,
     load_runtime_artifact,
     read_runtime_artifact_metadata,
+)
+from hybrax.train.runtime_artifact import (
     write_runtime_artifact as _write_runtime_artifact,
 )
 from hybrax.train.runtime_context import (
@@ -55,8 +58,6 @@ from hybrax.train.runtime_context import (
     select_parent_collection,
 )
 from hybrax.train.training_data import TrainingDataStore
-from test_wrapper import _make_mixed_flow_process
-
 
 _FEED_TIMES = jnp.asarray([0.0, 0.5, 1.0])
 _FEED_VOLUMES = jnp.asarray([0.0, 0.03, 0.1])

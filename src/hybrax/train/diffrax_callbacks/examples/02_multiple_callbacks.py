@@ -17,16 +17,16 @@ This models a realistic bioreactor with:
   - Physical constraint enforcement (no negative concentrations)
 """
 
+import diffrax
 import jax
 import jax.numpy as jnp
-import diffrax
 
 from hybrax.train.diffrax_callbacks import (
-    ContinuousCallback,
-    PresetTimeCallback,
-    PeriodicCallback,
-    ManifoldProjection,
     CallbackSet,
+    ContinuousCallback,
+    ManifoldProjection,
+    PeriodicCallback,
+    PresetTimeCallback,
     diffeqsolve_with_callbacks,
 )
 

@@ -4,7 +4,6 @@ import gzip
 import json
 from copy import deepcopy
 from pathlib import Path
-from typing import Dict, Optional, Union
 
 import jax.numpy as jnp
 import numpy as np
@@ -12,33 +11,33 @@ from ijson.common import ObjectBuilder
 
 from ._logging import get_logger
 from .dataclasses import (
-    AugmentedBioProcess,
-    ReactionOde,
-    BioProcessCollection,
-    BioProcess,
-    Bounds,
     _DEFAULT_RMC_BOUNDS,
-    TimeSeries,
-    TimeAxis,
+    AugmentedBioProcess,
+    BioProcess,
+    BioProcessCollection,
+    BioProcessMetadata,
+    Bounds,
     DiscreteEvents,
     FeedMedium,
     FeedMediumComponent,
-    StaticVariable,
-    BioProcessMetadata,
-    Volume,
     Inflow,
     Outflow,
+    ProcessVariable,
     PseudobatchTransform,
+    ReactionOde,
     ReactorMedium,
     ReactorMediumComponent,
-    ProcessVariable,
+    StaticVariable,
+    TimeAxis,
+    TimeSeries,
+    Volume,
 )
 from .json_io import _kvitems, _parse, load_json
 
 _logger = get_logger(__name__)
 
 
-def _bounds_to_dict(bounds: Bounds) -> Optional[Dict]:
+def _bounds_to_dict(bounds: Bounds) -> dict | None:
     """Serialize bounds; return ``None`` when both sides are unbounded so the
     JSON stays clean for the common default."""
     if bounds is None or (bounds[0] is None and bounds[1] is None):
@@ -46,14 +45,14 @@ def _bounds_to_dict(bounds: Bounds) -> Optional[Dict]:
     return {"lower": bounds[0], "upper": bounds[1]}
 
 
-def _dict_to_bounds(data: Optional[Dict]) -> Bounds:
+def _dict_to_bounds(data: dict | None) -> Bounds:
     """Deserialize bounds; missing or null → ``(None, None)``."""
     if not data:
         return (None, None)
     return (data.get("lower"), data.get("upper"))
 
 
-def _reaction_ode_to_dict(ode: ReactionOde) -> Dict:
+def _reaction_ode_to_dict(ode: ReactionOde) -> dict:
     """Convert ReactionOde to dictionary."""
     return {
         "algebraic": dict(ode.algebraic),
@@ -62,7 +61,7 @@ def _reaction_ode_to_dict(ode: ReactionOde) -> Dict:
     }
 
 
-def _dict_to_reaction_ode(data: Dict) -> ReactionOde:
+def _dict_to_reaction_ode(data: dict) -> ReactionOde:
     """Reconstruct ReactionOde from dictionary."""
     return ReactionOde(
         algebraic=dict(data.get("algebraic", {})),
@@ -130,7 +129,7 @@ def _open_json_file(path: Path, mode: str):
     return open(path, mode, **kwargs)
 
 
-def _save_json(data_dict: Dict, json_path: Path) -> None:
+def _save_json(data_dict: dict, json_path: Path) -> None:
     """Write a serialized data dict to a `.json` / `.json.gz` file."""
     json_path = Path(json_path)
     json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -161,7 +160,7 @@ def _restore_arrays(obj):
     return obj
 
 
-def _load_json(json_path: Path) -> Dict:
+def _load_json(json_path: Path) -> dict:
     """Read a `.json` / `.json.gz` file and restore JAX arrays."""
     json_path = Path(json_path)
     return _restore_arrays(load_json(json_path))
@@ -176,10 +175,10 @@ def save_process_collection(collection: BioProcessCollection, path: Path) -> Non
     _save_json(_process_collection_to_dict(collection), _resolve_json_path(path))
 
 
-def _read_collection_header(json_path: Path) -> Dict:
+def _read_collection_header(json_path: Path) -> dict:
     """Stream-read the top-level scalar/metadata fields of a collection JSON
     (case_id, organism, citation, metadata) without materializing `processes`."""
-    header: Dict = {
+    header: dict = {
         "case_id": None,
         "organism": None,
         "citation": None,
@@ -306,9 +305,9 @@ def load_process_collection(path: Path) -> BioProcessCollection:
 # ============================================================
 
 
-def _process_collection_to_dict(collection: BioProcessCollection) -> Dict:
+def _process_collection_to_dict(collection: BioProcessCollection) -> dict:
     """Convert BioProcessCollection to nested dictionary."""
-    result: Dict = {}
+    result: dict = {}
     if collection.case_id is not None:
         result["case_id"] = collection.case_id
     if collection.organism is not None:
@@ -323,7 +322,7 @@ def _process_collection_to_dict(collection: BioProcessCollection) -> Dict:
     return result
 
 
-def _process_to_dict(process: BioProcess) -> Dict:
+def _process_to_dict(process: BioProcess) -> dict:
     """Convert BioProcess to dictionary."""
     result = {
         "metadata": _process_metadata_to_dict(process.metadata),
@@ -365,7 +364,7 @@ def _process_to_dict(process: BioProcess) -> Dict:
     return result
 
 
-def _process_metadata_to_dict(metadata: Optional[BioProcessMetadata]) -> Optional[Dict]:
+def _process_metadata_to_dict(metadata: BioProcessMetadata | None) -> dict | None:
     """Convert BioProcessMetadata to dictionary."""
     if metadata is None:
         return None
@@ -376,7 +375,7 @@ def _process_metadata_to_dict(metadata: Optional[BioProcessMetadata]) -> Optiona
     }
 
 
-def _reactor_medium_to_dict(reactor_medium: ReactorMedium) -> Dict:
+def _reactor_medium_to_dict(reactor_medium: ReactorMedium) -> dict:
     """Convert ReactorMedium to dictionary."""
     return {
         "name": reactor_medium.name,
@@ -389,7 +388,7 @@ def _reactor_medium_to_dict(reactor_medium: ReactorMedium) -> Dict:
     }
 
 
-def _reactor_component_to_dict(comp: ReactorMediumComponent) -> Dict:
+def _reactor_component_to_dict(comp: ReactorMediumComponent) -> dict:
     """Convert ReactorMediumComponent to dictionary."""
     result = {
         "name": comp.name,
@@ -406,7 +405,7 @@ def _reactor_component_to_dict(comp: ReactorMediumComponent) -> Dict:
     return result
 
 
-def _process_variable_to_dict(pv: ProcessVariable) -> Dict:
+def _process_variable_to_dict(pv: ProcessVariable) -> dict:
     """Convert ProcessVariable to dictionary."""
     result = {
         "name": pv.name,
@@ -420,7 +419,7 @@ def _process_variable_to_dict(pv: ProcessVariable) -> Dict:
     return result
 
 
-def _pseudobatch_transform_to_dict(transform: PseudobatchTransform) -> Dict:
+def _pseudobatch_transform_to_dict(transform: PseudobatchTransform) -> dict:
     """Convert PseudobatchTransform to dictionary."""
     result = {
         "adf": _timeseries_to_dict_payload(transform.adf, include_type=False),
@@ -443,7 +442,7 @@ def _pseudobatch_transform_to_dict(transform: PseudobatchTransform) -> Dict:
 
 def _timeseries_to_dict_payload(
     value: TimeSeries, *, include_type: bool = True
-) -> Dict:
+) -> dict:
     """Serialize TimeSeries using canonical keys."""
     times = getattr(value, "times", None)
 
@@ -471,7 +470,7 @@ def _timeseries_to_dict_payload(
     return payload
 
 
-def _timeseries_or_static_to_dict(value: Union[TimeSeries, StaticVariable]) -> Dict:
+def _timeseries_or_static_to_dict(value: TimeSeries | StaticVariable) -> dict:
     """Convert TimeSeries or StaticVariable to dictionary."""
     if isinstance(value, TimeSeries):
         return _timeseries_to_dict_payload(value, include_type=True)
@@ -481,7 +480,7 @@ def _timeseries_or_static_to_dict(value: Union[TimeSeries, StaticVariable]) -> D
         raise ValueError(f"Unknown value type: {type(value)}")
 
 
-def _volume_to_dict(volume: Volume) -> Dict:
+def _volume_to_dict(volume: Volume) -> dict:
     """Convert Volume to dictionary."""
     result = {
         "initial_volume": volume.initial_volume,
@@ -502,7 +501,7 @@ def _volume_to_dict(volume: Volume) -> Dict:
     return result
 
 
-def _volume_change_to_dict(vc) -> Dict:
+def _volume_change_to_dict(vc) -> dict:
     """Convert Inflow or Outflow to dictionary."""
     result = {
         "name": vc.name,
@@ -529,7 +528,7 @@ def _volume_change_to_dict(vc) -> Dict:
     return result
 
 
-def _feed_medium_to_dict(feed: FeedMedium) -> Dict:
+def _feed_medium_to_dict(feed: FeedMedium) -> dict:
     """Convert FeedMedium to dictionary."""
     return {
         "name": feed.name,
@@ -542,7 +541,7 @@ def _feed_medium_to_dict(feed: FeedMedium) -> Dict:
     }
 
 
-def _feed_component_to_dict(comp: FeedMediumComponent) -> Dict:
+def _feed_component_to_dict(comp: FeedMediumComponent) -> dict:
     """Convert FeedMediumComponent to dictionary."""
     return {
         "name": comp.name,
@@ -552,7 +551,7 @@ def _feed_component_to_dict(comp: FeedMediumComponent) -> Dict:
     }
 
 
-def _dict_to_process_collection(data: Dict) -> BioProcessCollection:
+def _dict_to_process_collection(data: dict) -> BioProcessCollection:
     """Reconstruct BioProcessCollection from dictionary."""
     return BioProcessCollection(
         case_id=data.get("case_id"),
@@ -566,7 +565,7 @@ def _dict_to_process_collection(data: Dict) -> BioProcessCollection:
     )
 
 
-def _dict_to_process(p_data: Dict) -> BioProcess:
+def _dict_to_process(p_data: dict) -> BioProcess:
     """Reconstruct BioProcess from dictionary."""
     # Reconstruct metadata
     metadata = None
@@ -651,14 +650,14 @@ def _dict_to_process(p_data: Dict) -> BioProcess:
     )
 
 
-def _require_mapping(value, context: str) -> Dict:
+def _require_mapping(value, context: str) -> dict:
     """Return a dict-like payload or raise a clear loader error."""
     if not isinstance(value, dict):
         raise ValueError(f"{context} must be a dictionary.")
     return value
 
 
-def _require_keys(data: Dict, required: tuple[str, ...], context: str) -> None:
+def _require_keys(data: dict, required: tuple[str, ...], context: str) -> None:
     """Validate required keys for a strict serialized payload."""
     missing = [key for key in required if key not in data]
     if missing:
@@ -666,7 +665,7 @@ def _require_keys(data: Dict, required: tuple[str, ...], context: str) -> None:
         raise ValueError(f"{context} missing required key(s): {missing_keys}.")
 
 
-def _dict_to_pseudobatch_transform(data: Dict) -> PseudobatchTransform:
+def _dict_to_pseudobatch_transform(data: dict) -> PseudobatchTransform:
     """Reconstruct PseudobatchTransform from dictionary."""
     data = _require_mapping(data, "pseudobatch_transform")
     _require_keys(
@@ -714,13 +713,13 @@ def _dict_to_pseudobatch_transform(data: Dict) -> PseudobatchTransform:
     )
 
 
-def _dict_to_pseudobatch_timeseries(data: Dict, context: str) -> TimeSeries:
+def _dict_to_pseudobatch_timeseries(data: dict, context: str) -> TimeSeries:
     """Reconstruct one strict TimeSeries payload in a pseudobatch bundle."""
     data = _require_mapping(data, context)
     return _timeseries_from_dict_payload(data)
 
 
-def _dict_to_reactor_medium(rm_data: Dict) -> ReactorMedium:
+def _dict_to_reactor_medium(rm_data: dict) -> ReactorMedium:
     """Reconstruct ReactorMedium from dictionary."""
     components = {
         name: _dict_to_reactor_component(comp_data)
@@ -735,7 +734,7 @@ def _dict_to_reactor_medium(rm_data: Dict) -> ReactorMedium:
     )
 
 
-def _dict_to_reactor_component(comp_data: Dict) -> ReactorMediumComponent:
+def _dict_to_reactor_component(comp_data: dict) -> ReactorMediumComponent:
     """Reconstruct ReactorMediumComponent from dictionary."""
     _reject_legacy_interpolator_payload(
         comp_data.get("interpolator"), "ReactorMediumComponent"
@@ -757,7 +756,7 @@ def _dict_to_reactor_component(comp_data: Dict) -> ReactorMediumComponent:
     )
 
 
-def _dict_to_process_variable(pv_data: Dict) -> ProcessVariable:
+def _dict_to_process_variable(pv_data: dict) -> ProcessVariable:
     """Reconstruct ProcessVariable from dictionary."""
     _reject_legacy_interpolator_payload(pv_data.get("interpolator"), "ProcessVariable")
     return ProcessVariable(
@@ -769,14 +768,14 @@ def _dict_to_process_variable(pv_data: Dict) -> ProcessVariable:
     )
 
 
-def _timeseries_from_dict_payload(value_data: Dict) -> TimeSeries:
+def _timeseries_from_dict_payload(value_data: dict) -> TimeSeries:
     """Reconstruct TimeSeries from a typed or untyped serialized payload."""
     times = value_data.get("times")
     values = value_data.get("values")
     metadata = value_data.get("metadata")
     _reject_nested_pseudobatch_metadata(metadata)
 
-    kwargs: Dict = {"values": values}
+    kwargs: dict = {"values": values}
     if values is not None:
         if times is None:
             raise ValueError(
@@ -803,8 +802,8 @@ def _timeseries_from_dict_payload(value_data: Dict) -> TimeSeries:
 
 
 def _dict_to_timeseries_or_static(
-    value_data: Dict,
-) -> Union[TimeSeries, StaticVariable]:
+    value_data: dict,
+) -> TimeSeries | StaticVariable:
     """Reconstruct TimeSeries or StaticVariable from dictionary."""
     if value_data["type"] == "TimeSeries":
         return _timeseries_from_dict_payload(value_data)
@@ -814,7 +813,7 @@ def _dict_to_timeseries_or_static(
         raise ValueError(f"Unknown value type: {value_data['type']}")
 
 
-def _dict_to_volume(vol_data: Dict) -> Volume:
+def _dict_to_volume(vol_data: dict) -> Volume:
     """Reconstruct Volume from dictionary."""
     volume_changes = {
         name: _dict_to_volume_change(vc_data)
@@ -834,7 +833,7 @@ def _dict_to_volume(vol_data: Dict) -> Volume:
     )
 
 
-def _dict_to_volume_change(vc_data: Dict):
+def _dict_to_volume_change(vc_data: dict):
     """Reconstruct Inflow or Outflow from dictionary."""
     vc_type = vc_data.get("type")
     if vc_type is None:
@@ -877,7 +876,7 @@ def _dict_to_volume_change(vc_data: Dict):
         raise ValueError(f"Unknown volume change type: {vc_type}")
 
 
-def _reject_legacy_interpolator_payload(interpolator_data: Dict | None, owner: str):
+def _reject_legacy_interpolator_payload(interpolator_data: dict | None, owner: str):
     """Reject legacy sibling ``interpolator`` payloads loudly."""
     if interpolator_data is not None:
         raise ValueError(
@@ -900,7 +899,7 @@ def _reject_nested_pseudobatch_metadata(metadata) -> None:
         )
 
 
-def _dict_to_feed_medium(feed_data: Dict) -> FeedMedium:
+def _dict_to_feed_medium(feed_data: dict) -> FeedMedium:
     """Reconstruct FeedMedium from dictionary."""
     components = {
         name: _dict_to_feed_component(comp_data)
@@ -915,7 +914,7 @@ def _dict_to_feed_medium(feed_data: Dict) -> FeedMedium:
     )
 
 
-def _dict_to_feed_component(comp_data: Dict) -> FeedMediumComponent:
+def _dict_to_feed_component(comp_data: dict) -> FeedMediumComponent:
     """Reconstruct FeedMediumComponent from dictionary."""
     return FeedMediumComponent(
         name=comp_data["name"],
@@ -930,7 +929,7 @@ def _dict_to_feed_component(comp_data: Dict) -> FeedMediumComponent:
 # ============================================================
 
 
-def _discrete_events_to_dict(de: DiscreteEvents) -> Dict:
+def _discrete_events_to_dict(de: DiscreteEvents) -> dict:
     """Convert DiscreteEvents to dictionary."""
     return {
         "times": de.times,
@@ -939,7 +938,7 @@ def _discrete_events_to_dict(de: DiscreteEvents) -> Dict:
     }
 
 
-def _dict_to_discrete_events(data: Dict) -> DiscreteEvents:
+def _dict_to_discrete_events(data: dict) -> DiscreteEvents:
     """Reconstruct DiscreteEvents from dictionary."""
     times = data["times"]
     if not isinstance(times, jnp.ndarray):

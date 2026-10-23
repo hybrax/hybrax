@@ -4,19 +4,19 @@ Tests for diffrax_callbacks.
 Run with: pytest tests/ -v
 """
 
+import diffrax
 import jax
 import jax.numpy as jnp
-import diffrax
 import pytest
 
 from hybrax.train.diffrax_callbacks import (
+    CallbackSet,
     ContinuousCallback,
     DiscreteCallback,
+    ManifoldProjection,
+    PeriodicCallback,
     PresetTimeCallback,
     StopConditionCallback,
-    PeriodicCallback,
-    ManifoldProjection,
-    CallbackSet,
     diffeqsolve_with_callbacks,
     evaluate_trajectory,
 )

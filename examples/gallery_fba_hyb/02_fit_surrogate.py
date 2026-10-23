@@ -23,11 +23,12 @@ EX_ac_e, EX_succ_e. Its output, 02_surrogate_body.txt, is the literal
 """
 
 import sys
+
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 import scipy.optimize
-import jax
-import jax.numpy as jnp
 
 jax.config.update("jax_enable_x64", True)
 

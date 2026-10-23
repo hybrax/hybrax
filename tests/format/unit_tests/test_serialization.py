@@ -2,38 +2,36 @@
 
 import gzip
 import json
-from pathlib import Path
 import tempfile
+from pathlib import Path
 
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
-import hybrax.format.serialization as serialization
-from hybrax.format.json_io import JSONParseError
-
 from hybrax.format import (
-    ReactionOde,
-    BioProcessCollection,
     BioProcess,
+    BioProcessCollection,
     BioProcessMetadata,
-    TimeAxis,
-    TimeSeries,
-    StaticVariable,
-    ProcessVariable,
-    ReactorMediumComponent,
-    ReactorMedium,
-    FeedMediumComponent,
     FeedMedium,
+    FeedMediumComponent,
     Inflow,
     Outflow,
+    ProcessVariable,
+    ReactionOde,
+    ReactorMedium,
+    ReactorMediumComponent,
+    StaticVariable,
+    TimeAxis,
+    TimeSeries,
     Volume,
+    serialization,
 )
+from hybrax.format.json_io import JSONParseError
 from hybrax.format.serialization import (
-    save_process_collection,
     load_process_collection,
+    save_process_collection,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

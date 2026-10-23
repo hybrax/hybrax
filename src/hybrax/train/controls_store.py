@@ -31,6 +31,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
+
 from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,

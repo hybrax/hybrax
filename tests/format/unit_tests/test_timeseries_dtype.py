@@ -8,9 +8,8 @@ import warnings
 import jax.numpy as jnp
 import pytest
 
-from hybrax.format.time_series.timeseries import TimeSeries
 from hybrax.format.splines import fit_timeseries_spline
-
+from hybrax.format.time_series.timeseries import TimeSeries
 
 # ---------------------------------------------------------------------------
 # 1. Arrays are float64

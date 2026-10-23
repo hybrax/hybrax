@@ -10,18 +10,18 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 import pytest
+
 from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
+    Outflow,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     TimeAxis,
     TimeSeries,
     Volume,
 )
-
 from hybrax.train.checkpointing import CheckpointWriter, save_model
 from hybrax.train.harness import (
     TrainHarnessConfig,
@@ -29,8 +29,8 @@ from hybrax.train.harness import (
     train_collection,
 )
 from hybrax.train.model_api import (
-    ReactionOutputs,
     RateModule,
+    ReactionOutputs,
     frozen_field,
     partition_trainable,
     trainable_field,
@@ -42,7 +42,6 @@ from hybrax.train.postprocessing import (
 )
 from hybrax.train.serialization import load_trained_wrapper
 from hybrax.train.training_data import TrainingDataStore
-
 
 # --------------------------------------------------------------------------
 # plot_loss_curve (still a pure array→PNG helper)

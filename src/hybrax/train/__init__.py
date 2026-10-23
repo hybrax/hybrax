@@ -172,13 +172,13 @@ if "xla_force_host_platform_device_count" not in _os.environ.get("XLA_FLAGS", ""
 
 # Enable float64 (JAX x64) for the whole hybrax.train pipeline. Set after the XLA
 # device-count env above and before any array is created downstream.
-import jax as _jax  # noqa: E402
+import jax as _jax
 
 _jax.config.update("jax_enable_x64", True)
 
 
-from importlib import import_module  # noqa: E402
-from typing import Any  # noqa: E402
+from importlib import import_module
+from typing import Any
 
 _EXPORTS = {
     "ControlsStore": "controls_store",

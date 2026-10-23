@@ -17,6 +17,7 @@ import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 import pytest
+
 from hybrax.format.dataclasses import (
     AugmentedBioProcess,
     BioProcess,
@@ -32,7 +33,6 @@ from hybrax.format.dataclasses import (
     TimeSeries,
     Volume,
 )
-
 from hybrax.train.loo_metrics import (
     DEFAULT_METRICS,
     _read_fold_sidecar,

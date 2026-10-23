@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import gc
 import json
+import weakref
 from pathlib import Path
 from types import SimpleNamespace
-import weakref
 
-import pytest
 import pandas as pd
-from hybrax.format.serialization import save_process_collection
-
-import hybrax.train
-from hybrax.train.cli import main
+import pytest
 
 # Tiny single-process collection fixture (parametrizable biomass values).
 from test_serialization import _collection
+
+import hybrax.train
+from hybrax.format.serialization import save_process_collection
+from hybrax.train.cli import main
 
 
 def _write_prepared(path: Path, biomass_values=(1.0, 0.8, 0.64)) -> Path:

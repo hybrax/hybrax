@@ -14,13 +14,16 @@ import os
 
 os.environ.setdefault("JAX_ENABLE_X64", "true")
 
-import numpy as np  # noqa: E402
-from hybrax.format.serialization import save_process_collection  # noqa: E402
+import numpy as np
 
-from .load_utils import parse_all_processes  # noqa: E402
-from .real_space_segments import SIM_RESULTS_DIR  # noqa: E402
-from .simulation import run_all_default  # noqa: E402
-from .simulation import write_simulation_plots  # noqa: E402
+from hybrax.format.serialization import save_process_collection
+
+from .load_utils import parse_all_processes
+from .real_space_segments import SIM_RESULTS_DIR
+from .simulation import (
+    run_all_default,
+    write_simulation_plots,
+)
 
 DATA_JSON = SIM_RESULTS_DIR / "process_collection.json"
 EVENTS_OUTPUT = SIM_RESULTS_DIR / "simulation_events.csv"

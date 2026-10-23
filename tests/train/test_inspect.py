@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import jax
 import jax.numpy as jnp
+from stateful_helpers import default_stateful_scale_kwargs
 
 from hybrax.train.defaults import DefaultStatefulReactionModule
 from hybrax.train.inspect import (
@@ -11,13 +12,11 @@ from hybrax.train.inspect import (
     format_trainable_structure,
 )
 from hybrax.train.model_api import (
-    ReactionOutputs,
     RateModule,
+    ReactionOutputs,
     frozen_field,
     trainable_field,
 )
-from stateful_helpers import default_stateful_scale_kwargs
-
 
 # ---------------------------------------------------------------------------
 # format_reaction_schema

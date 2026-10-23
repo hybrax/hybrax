@@ -3,7 +3,6 @@ from __future__ import annotations
 import equinox as eqx
 import jax
 import jax.numpy as jnp
-
 from stateful_helpers import (
     TrainableH0DefaultStateful,
     build_stateful_wrapper,
@@ -11,7 +10,6 @@ from stateful_helpers import (
     make_process,
     solve,
 )
-
 
 _FD_EPS = 1e-2
 _SCALE_KWARGS = default_stateful_scale_kwargs()

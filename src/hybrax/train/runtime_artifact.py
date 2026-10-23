@@ -8,19 +8,21 @@ import json
 import os
 import shutil
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
+
 from hybrax.format.dataclasses import AugmentedBioProcess, BioProcessCollection
 from hybrax.format.mechanistic import RhsOde, build_rhs_ode
-from hybrax.format.validate import validate_reaction_ode_equivalence
 from hybrax.format.serialization import load_process_collection, save_process_collection
+from hybrax.format.validate import validate_reaction_ode_equivalence
 
 from .controls_store import ControlsStore, derive_control_partition
 from .model_api import AffineScaler, EstimatedScales, LinearScaler, Scaler

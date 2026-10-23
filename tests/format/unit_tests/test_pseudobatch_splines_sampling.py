@@ -8,8 +8,8 @@ These tests verify that:
    jumps only at bolus times, smooth across sampling times.
 """
 
-import numpy as np
 import jax.numpy as jnp
+import numpy as np
 import pytest
 
 from hybrax.format import (
@@ -18,20 +18,19 @@ from hybrax.format import (
     FeedMedium,
     FeedMediumComponent,
     Inflow,
+    Outflow,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
     Volume,
 )
 from hybrax.format.splines import (
+    build_backtransform_spline,
     build_pseudobatch_inputs,
     build_pseudobatch_transform,
-    build_backtransform_spline,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

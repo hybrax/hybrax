@@ -8,6 +8,7 @@ from typing import Protocol, SupportsIndex, cast
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+
 from hybrax.format.dataclasses import BioProcess, BioProcessCollection
 from hybrax.format.mechanistic import RhsOde
 
@@ -15,11 +16,11 @@ from .model_api import (
     LinearScaler,
     LossInputs,
     LossOutputs,
+    RateModule,
     ReactionInputs,
     ReactionOutputs,
     Scaler,
     UserLossModule,
-    RateModule,
     trainable_field,
 )
 from .run_config import RunConfig

@@ -211,8 +211,8 @@ def _names_cell_lines(
 
 
 def _reaction_schema_rows(
-    rhs_ode: "RhsOde",
-    controls: "PerProcessControls",
+    rhs_ode: RhsOde,
+    controls: PerProcessControls,
 ) -> tuple[
     list[tuple[str, str, tuple[str, ...]]],
     list[tuple[str, str, tuple[str, ...]]],
@@ -392,8 +392,8 @@ def _render_schema_table(
 
 
 def format_reaction_schema(
-    rhs_ode: "RhsOde",
-    controls: "PerProcessControls",
+    rhs_ode: RhsOde,
+    controls: PerProcessControls,
 ) -> str:
     """Return labeled tables for ReactionInputs + ReactionOutputs axes.
 
@@ -416,7 +416,7 @@ def format_reaction_schema(
     return inputs_table + "\n\n" + outputs_table
 
 
-def print_reaction_schema(wrapper: "HybridOdeWrapper") -> None:
+def print_reaction_schema(wrapper: HybridOdeWrapper) -> None:
     """Print the labeled ReactionInputs / ReactionOutputs tables.
 
     Sources names from `wrapper.rhs_ode`.

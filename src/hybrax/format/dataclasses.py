@@ -2,7 +2,7 @@
 
 import contextlib
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Set, Tuple, Union
+
 import jax.numpy as jnp
 
 from ._logging import get_logger
@@ -15,7 +15,7 @@ _logger = get_logger(__name__)
 # Bounds are pure metadata: not enforced inside RhsOde / integrator. Consumers
 # (e.g. hybrax.train's loss generator) read them off the process to build
 # soft-constraint penalties.
-Bounds = Tuple[Optional[float], Optional[float]]
+Bounds = tuple[float | None, float | None]
 _NO_BOUNDS: Bounds = (None, None)
 _DEFAULT_RMC_BOUNDS: Bounds = (0.0, None)
 
@@ -101,15 +101,15 @@ class ProcessOrdering:
     derivatives); the remaining ``len(PVs)`` entries are direct values.
     """
 
-    name_modeled_rates: Tuple[str, ...]
-    name_modeled_algebraic: Tuple[str, ...]
-    name_modeled_RMCs: Tuple[str, ...]
-    name_modeled_PVs: Tuple[str, ...]
-    name_modeled_Inflows: Tuple[str, ...]
-    name_modeled_Outflows: Tuple[str, ...]
-    name_controlled_PVs: Tuple[str, ...]
-    name_controlled_Inflows: Tuple[str, ...]
-    name_controlled_Outflows: Tuple[str, ...]
+    name_modeled_rates: tuple[str, ...]
+    name_modeled_algebraic: tuple[str, ...]
+    name_modeled_RMCs: tuple[str, ...]
+    name_modeled_PVs: tuple[str, ...]
+    name_modeled_Inflows: tuple[str, ...]
+    name_modeled_Outflows: tuple[str, ...]
+    name_controlled_PVs: tuple[str, ...]
+    name_controlled_Inflows: tuple[str, ...]
+    name_controlled_Outflows: tuple[str, ...]
 
 
 # TODO for later: standardize unit spelling so it might be used for unit checks
@@ -120,8 +120,8 @@ class DiscreteEvents:
     """Discrete event times: bolus feeds, sampling, volume jumps, and similar."""
 
     times: jnp.ndarray  # sorted, unique event times
-    labels: Optional[list] = None
-    metadata: Optional[dict] = None
+    labels: list | None = None
+    metadata: dict | None = None
 
 
 # ============================================================
@@ -212,7 +212,7 @@ class FeedMedium:
     name: str
     density: float = 1.0
     density_unit: str = "kg/L"
-    components: Dict[str, FeedMediumComponent] = field(default_factory=dict)
+    components: dict[str, FeedMediumComponent] = field(default_factory=dict)
 
 
 @dataclass
@@ -227,7 +227,7 @@ class ReactorMedium:
     name: str
     density: float = 1.0
     density_unit: str = "kg/L"
-    components: Dict[str, ReactorMediumComponent] = field(default_factory=dict)
+    components: dict[str, ReactorMediumComponent] = field(default_factory=dict)
 
 
 @dataclass
@@ -236,7 +236,7 @@ class BioProcessMetadata:
 
     name: str
     process_type: str  # "batch", "fed_batch", "continuous"
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 @dataclass
@@ -274,7 +274,7 @@ class Outflow(VolumeChange):
     All delta values should be <= 0.
     """
 
-    retention: Dict[str, float] = field(default_factory=dict)
+    retention: dict[str, float] = field(default_factory=dict)
     # sigma in [0, 1] per reactor-medium component name. Missing key => 0
     # (species fully leaves with the outflow: sampling/harvest, the only
     # behavior before this field existed). sigma=1 => fully retained (e.g.
@@ -288,8 +288,8 @@ class Outflow(VolumeChange):
 
 
 def _check_outflow_retention(
-    vc_name: str, vc: "Outflow", rmc_names: Union[Set[str], frozenset]
-) -> List[str]:
+    vc_name: str, vc: "Outflow", rmc_names: set[str] | frozenset
+) -> list[str]:
     """Return validation errors for one Outflow's retention (empty = valid).
 
     Single source of truth for the three retention rules, shared by
@@ -310,7 +310,7 @@ def _check_outflow_retention(
                 "be silently ignored by the RHS ODE."
             )
         ]
-    errors: List[str] = []
+    errors: list[str] = []
     unknown = [name for name in vc.retention if name not in rmc_names]
     if unknown:
         errors.append(
@@ -338,7 +338,7 @@ class Volume:
 
     initial_volume: float
     unit: str  # e.g. "L", "m3", "kg"
-    volume_changes: Dict[str, VolumeChange] = field(default_factory=dict)
+    volume_changes: dict[str, VolumeChange] = field(default_factory=dict)
     total_volume: TimeSeries | None = None
     bounds: Bounds = _NO_BOUNDS  # (lo, hi) on V; None on either side = unbounded
 
@@ -377,19 +377,19 @@ class ReactionOde:
             declare no reaction dynamics.
     """
 
-    algebraic: Dict[str, str] = field(default_factory=dict)
-    rates: Dict[str, Bounds] = field(default_factory=dict)
-    derivatives: Dict[str, str] = field(default_factory=dict)
+    algebraic: dict[str, str] = field(default_factory=dict)
+    rates: dict[str, Bounds] = field(default_factory=dict)
+    derivatives: dict[str, str] = field(default_factory=dict)
 
 
-def _format_reaction_ode_lines(bo: ReactionOde, prefix: str = "") -> List[str]:
+def _format_reaction_ode_lines(bo: ReactionOde, prefix: str = "") -> list[str]:
     """Render a ReactionOde's algebraic/rates/derivatives as display lines.
 
     Shared by `_auto_generate_reaction_ode`'s assumption notice and
     `inspect.print_process_structure`. Kept here, next to `ReactionOde`
     itself, for the same import-direction reason as `_format_bounds`.
     """
-    lines: List[str] = []
+    lines: list[str] = []
     if bo.algebraic:
         lines.append(f"{prefix}Algebraic ({len(bo.algebraic)}):")
         for name, expr in bo.algebraic.items():
@@ -453,13 +453,13 @@ def _auto_generate_reaction_ode(process: "BioProcess") -> ReactionOde:
         if (not pv.is_controlled) and isinstance(pv.values, TimeSeries)
     ]
 
-    rates: Dict[str, Bounds] = {}
+    rates: dict[str, Bounds] = {}
     for rmc in rmc_names:
         rates[f"q_{rmc}"] = _NO_BOUNDS
     for pv in pv_dynamic:
         rates[f"r_{pv}"] = _NO_BOUNDS
 
-    derivatives: Dict[str, str] = {
+    derivatives: dict[str, str] = {
         rmc: f"q_{rmc} * {biomass_name}" for rmc in rmc_names
     }
     derivatives.update({pv: f"r_{pv}" for pv in pv_dynamic})
@@ -508,9 +508,9 @@ class PseudobatchTransform:
     """
 
     adf: TimeSeries
-    feed_corrections: Dict[str, TimeSeries]
-    sample_compensation: Optional[TimeSeries] = None
-    accumulated_feeds: Dict[str, TimeSeries] = field(default_factory=dict)
+    feed_corrections: dict[str, TimeSeries]
+    sample_compensation: TimeSeries | None = None
+    accumulated_feeds: dict[str, TimeSeries] = field(default_factory=dict)
 
 
 # ============================================================
@@ -527,14 +527,14 @@ class BioProcess:
     ``_auto_generate_reaction_ode``.
     """
 
-    metadata: Optional[BioProcessMetadata]
+    metadata: BioProcessMetadata | None
     time_axis: TimeAxis
     volume: Volume
     reactor_medium: ReactorMedium
-    process_variables: Dict[str, ProcessVariable] = field(default_factory=dict)
-    discrete_events: Optional[DiscreteEvents] = None
-    reaction_ode: Optional[ReactionOde] = None
-    pseudobatch_transform: Optional[PseudobatchTransform] = None
+    process_variables: dict[str, ProcessVariable] = field(default_factory=dict)
+    discrete_events: DiscreteEvents | None = None
+    reaction_ode: ReactionOde | None = None
+    pseudobatch_transform: PseudobatchTransform | None = None
 
     def __post_init__(self):
         if self.volume is None:
@@ -592,8 +592,8 @@ class BioProcessCollection:
     namespaced metadata block).
     """
 
-    case_id: Optional[str] = None
-    organism: Optional[str] = None
-    citation: Optional[str] = None
-    metadata: Optional[Dict] = None
-    processes: Dict[str, BioProcess] = field(default_factory=dict)
+    case_id: str | None = None
+    organism: str | None = None
+    citation: str | None = None
+    metadata: dict | None = None
+    processes: dict[str, BioProcess] = field(default_factory=dict)

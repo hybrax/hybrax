@@ -14,10 +14,10 @@ Gradients flow through:
        -> affect (neural feed controller) -> next ODE segment -> ...
 """
 
+import diffrax
+import equinox as eqx
 import jax
 import jax.numpy as jnp
-import equinox as eqx
-import diffrax
 import optax
 
 from hybrax.train.diffrax_callbacks import (

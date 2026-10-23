@@ -10,9 +10,9 @@ This is the simplest use case: a bioreactor where cells consume substrate,
 and a bolus feed is triggered whenever substrate drops below 1.0 g/L.
 """
 
+import diffrax
 import jax
 import jax.numpy as jnp
-import diffrax
 import optax
 
 from hybrax.train.diffrax_callbacks import (

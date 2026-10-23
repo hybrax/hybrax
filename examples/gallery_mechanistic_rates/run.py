@@ -15,6 +15,7 @@ from pathlib import Path
 
 import jax.numpy as jnp
 import pandas as pd
+
 import hybrax.train as hxt
 
 HERE = Path(__file__).parent

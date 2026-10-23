@@ -15,18 +15,18 @@ Features:
 
 from __future__ import annotations
 
+import diffrax
 import jax
 import jax.numpy as jnp
-import diffrax
 
 from ._callbacks import (
-    ContinuousCallback,
-    StopConditionCallback,
-    DiscreteCallback,
-    PresetTimeCallback,
-    PeriodicCallback,
-    ManifoldProjection,
     CallbackSet,
+    ContinuousCallback,
+    DiscreteCallback,
+    ManifoldProjection,
+    PeriodicCallback,
+    PresetTimeCallback,
+    StopConditionCallback,
 )
 from ._solution import CallbackSolution
 

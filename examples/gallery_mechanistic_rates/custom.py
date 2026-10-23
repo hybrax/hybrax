@@ -12,8 +12,8 @@ import numpy as np
 from hybrax.format.mechanistic import build_rhs_ode
 from hybrax.train import (
     EstimatedScales,
-    ReactionOutputs,
     RateModule,
+    ReactionOutputs,
     trainable_field,
 )
 

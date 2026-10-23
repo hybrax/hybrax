@@ -24,6 +24,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from stateful_helpers import build_stateful_wrapper, default_stateful_scale_kwargs
+
+import hybrax.train.controls_store as controls_store_module
 from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
@@ -31,27 +34,23 @@ from hybrax.format.dataclasses import (
     FeedMedium,
     FeedMediumComponent,
     Inflow,
-    ReactorMedium,
-    ProcessVariable,
-    ReactorMediumComponent,
     Outflow,
+    ProcessVariable,
+    ReactorMedium,
+    ReactorMediumComponent,
     StaticVariable,
     TimeAxis,
     TimeSeries,
     Volume,
 )
+from hybrax.train.controls_store import ControlsStore, _output_window_bounds
+from hybrax.train.dense import build_union_time_grid
 from hybrax.train.diffrax_callbacks import (
     PresetTimeCallback,
     diffeqsolve_with_callbacks,
 )
-
-import hybrax.train.controls_store as controls_store_module
-from hybrax.train.controls_store import ControlsStore, _output_window_bounds
-from hybrax.train.dense import build_union_time_grid
 from hybrax.train.physical_solve import _output_window, solve_physical_states
 from hybrax.train.training_data import TrainingDataStore
-
-from stateful_helpers import build_stateful_wrapper, default_stateful_scale_kwargs
 
 T_END = 240.0
 

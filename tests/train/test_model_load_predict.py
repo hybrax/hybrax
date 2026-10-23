@@ -18,13 +18,13 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from hybrax.format.serialization import load_process_collection, save_process_collection
-
-import hybrax.train
-from hybrax.train.cli import main
 
 # Tiny single-process collection fixture, shared with the serialization tests.
 from test_serialization import _collection
+
+import hybrax.train
+from hybrax.format.serialization import load_process_collection, save_process_collection
+from hybrax.train.cli import main
 
 
 def _write_prepared(path: Path, biomass_values=(1.0, 0.8, 0.64), *, n_processes=1):

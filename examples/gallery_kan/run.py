@@ -21,10 +21,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from shape_match import best_match
 
 import hybrax.format as hxf
 import hybrax.train as hxt
-from shape_match import best_match
 
 HERE = Path(__file__).parent
 ENV = {

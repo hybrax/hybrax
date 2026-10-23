@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 import pandas as pd
 
 from .serialization import dumps_json
 
-__all__ = ["StepRecord", "RunLogger"]
+__all__ = ["RunLogger", "StepRecord"]
 
 
 @dataclass(frozen=True)

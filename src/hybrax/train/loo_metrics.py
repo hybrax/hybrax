@@ -25,12 +25,14 @@ from __future__ import annotations
 import logging
 import math
 import statistics
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any
 
 import numpy as np
 import pandas as pd
+
 from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,

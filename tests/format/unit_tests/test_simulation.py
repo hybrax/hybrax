@@ -13,7 +13,6 @@ from hybrax.format.simulation import (
     ROW_TYPE_PRE_EVENT,
 )
 
-
 STATE_NAMES = ("biomass", "glucose", "pH", "volume")
 REACTOR_STATE_NAMES = ("biomass", "glucose")
 

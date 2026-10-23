@@ -24,14 +24,14 @@ from hybrax.train import (
     EstimatedScales,
     LossInputs,
     LossOutputs,
+    RateModule,
     ReactionInputs,
     ReactionOutputs,
-    RateModule,
     dense_triple_mask_away_from_jumps,
     trainable_field,
 )
-from hybrax.train.dense import all_triple
 from hybrax.train.defaults import DefaultLossModule
+from hybrax.train.dense import all_triple
 
 
 # --------------------------------------------------------------------------

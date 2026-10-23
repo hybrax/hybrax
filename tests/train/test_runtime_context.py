@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+
 from hybrax.format.dataclasses import (
     AugmentedBioProcess,
     BioProcess,
@@ -15,17 +16,16 @@ from hybrax.format.dataclasses import (
     FeedMedium,
     FeedMediumComponent,
     Inflow,
+    Outflow,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
     Volume,
 )
-
-import hybrax.train.runtime_context as runtime_context
+from hybrax.train import runtime_context
 from hybrax.train.harness import _resolve_estimated_scales
 from hybrax.train.model_api import EstimatedScales
 from hybrax.train.runtime_context import (

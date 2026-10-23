@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+
 from hybrax.format import validate_augmented_parent_refs
 from hybrax.format.dataclasses import AugmentedBioProcess, BioProcessCollection
 from hybrax.format.json_io import load_json
@@ -54,6 +55,7 @@ from .harness import (
     train_harness_config_from_run_config,
 )
 from .postprocessing import plot_cross_fold_loss_curves, save_model_metadata
+from .run_config import LooConfig, PredictionScope, RunConfig
 from .runtime_artifact import (
     FORMAT_VERSION,
     RhsNames,
@@ -68,7 +70,6 @@ from .runtime_context import (
     original_parent_processes,
     select_parent_collection,
 )
-from .run_config import LooConfig, PredictionScope, RunConfig
 from .serialization import (
     content_hash,
     load_trained_wrapper,
@@ -77,8 +78,8 @@ from .serialization import (
     update_json,
     write_json,
 )
-from .validate import ensure_prepared_training_semantics, validate_for_training
 from .training_data import TrainingDataStore
+from .validate import ensure_prepared_training_semantics, validate_for_training
 
 logger = logging.getLogger(__name__)
 

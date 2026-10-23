@@ -2,34 +2,33 @@
 Tests for hybrax.format.inspect utility functions.
 """
 
-import pytest
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from hybrax.format import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
-    ReactionOde,
-    TimeAxis,
-    TimeSeries,
-    StaticVariable,
-    ProcessVariable,
-    ReactorMediumComponent,
-    ReactorMedium,
     FeedMedium,
     FeedMediumComponent,
     Inflow,
     Outflow,
+    ProcessVariable,
+    ReactionOde,
+    ReactorMedium,
+    ReactorMediumComponent,
+    StaticVariable,
+    TimeAxis,
+    TimeSeries,
     Volume,
-    print_process_structure,
-    print_collection_structure,
-    print_rhs_ode,
-    plot_process,
     plot_collection,
+    plot_process,
+    print_collection_structure,
+    print_process_structure,
+    print_rhs_ode,
 )
 from hybrax.format.splines import build_pseudobatch_transform
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

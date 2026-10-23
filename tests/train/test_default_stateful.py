@@ -5,6 +5,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from stateful_helpers import TrainableH0DefaultStateful, default_stateful_scale_kwargs
 
 from hybrax.train.defaults import (
     DefaultGruReactionModule,
@@ -12,8 +13,6 @@ from hybrax.train.defaults import (
     DefaultStatefulReactionModule,
 )
 from hybrax.train.model_api import ReactionInputs, partition_trainable
-from stateful_helpers import TrainableH0DefaultStateful, default_stateful_scale_kwargs
-
 
 _SCALE_KWARGS = default_stateful_scale_kwargs(
     n_controlled_inflows=0, n_controlled_outflows=0
@@ -124,7 +123,7 @@ def test_default_stateful_module_uses_gru_cell_as_latent_derivative():
 
 
 def test_default_gru_alias_and_package_exports():
-    import hybrax.train as train
+    from hybrax import train
 
     assert DefaultStatefulReactionModule is DefaultGruReactionModule
     assert train.DefaultGruReactionModule is DefaultGruReactionModule

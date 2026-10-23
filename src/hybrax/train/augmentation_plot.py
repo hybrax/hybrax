@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+
 from hybrax.format.dataclasses import AugmentedBioProcess, BioProcessCollection
 
 from .augmentation import (
@@ -14,7 +15,6 @@ from .augmentation import (
     _state_series,
 )
 from .run_config import AugmentationConfig
-
 
 AUGMENTATION_PLOT_FILENAME = "augmented-data.png"
 _SPLINE_GRID_POINTS = 200

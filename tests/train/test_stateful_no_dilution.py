@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import equinox as eqx
 import jax.numpy as jnp
-
-from hybrax.train.model_api import AffineScaler
-
 from stateful_helpers import (
     TrainableH0Module,
     ZeroLatentDerivativeModule,
@@ -12,6 +9,8 @@ from stateful_helpers import (
     make_process,
     solve,
 )
+
+from hybrax.train.model_api import AffineScaler
 
 
 def test_continuous_feed_dilutes_physical_state_not_latent_state():

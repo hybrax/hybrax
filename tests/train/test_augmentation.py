@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import json
+import warnings
 from copy import deepcopy
 from dataclasses import replace
-import json
 from pathlib import Path
-import warnings
 
 import numpy as np
 import pytest
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
+from pydantic import ValidationError
+
+import hybrax.train.augmentation as augmentation_module
+import hybrax.train.augmentation_plot as augmentation_plot_module
+import hybrax.train.prepare as prepare_module
 from hybrax.format import validate_measurement_sampling_alignment
 from hybrax.format.dataclasses import (
     AugmentedBioProcess,
@@ -16,23 +23,16 @@ from hybrax.format.dataclasses import (
     BioProcessMetadata,
     FeedMedium,
     Inflow,
+    Outflow,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     TimeAxis,
     TimeSeries,
     Volume,
 )
-from hybrax.format.splines import fit_timeseries_spline
 from hybrax.format.serialization import load_process_collection, save_process_collection
-from matplotlib.axes import Axes
-from matplotlib.figure import Figure
-from pydantic import ValidationError
-
-import hybrax.train.augmentation as augmentation_module
-import hybrax.train.augmentation_plot as augmentation_plot_module
-import hybrax.train.prepare as prepare_module
+from hybrax.format.splines import fit_timeseries_spline
 from hybrax.train.augmentation import augment_process_collection
 from hybrax.train.loo import _build_fold_groups
 from hybrax.train.prepare import prepare_artifact

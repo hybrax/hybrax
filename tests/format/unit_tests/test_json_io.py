@@ -3,7 +3,7 @@ import io
 
 import pytest
 
-import hybrax.format.json_io as json_io
+from hybrax.format import json_io
 from hybrax.format.json_io import (
     JSONParseError,
     has_top_level_key,

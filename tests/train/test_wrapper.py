@@ -8,6 +8,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
 from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
@@ -16,25 +17,24 @@ from hybrax.format.dataclasses import (
     FeedMedium,
     FeedMediumComponent,
     Inflow,
+    Outflow,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
     Volume,
 )
 from hybrax.format.mechanistic import build_rhs_ode
-
 from hybrax.train.controls_store import ControlsStore
 from hybrax.train.model_api import (
     AffineScaler,
     LinearScaler,
-    ReactionInputs,
-    Scaler,
-    ReactionOutputs,
     RateModule,
+    ReactionInputs,
+    ReactionOutputs,
+    Scaler,
 )
 from hybrax.train.wrapper import (
     HybridOdeWrapper,
@@ -457,7 +457,7 @@ def _inject_scales(
     (``tree_at`` bypasses the module ``__init__`` promotion).
     """
     return eqx.tree_at(
-        lambda m: tuple(getattr(m, name) for name in scale_kwargs.keys()),
+        lambda m: tuple(getattr(m, name) for name in scale_kwargs),
         reaction_module,
         tuple(
             v if isinstance(v, Scaler) else LinearScaler(v)

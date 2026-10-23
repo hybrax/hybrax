@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
 import warnings
+from typing import Any
 
 import equinox as eqx
 import jax.numpy as jnp
@@ -12,15 +12,16 @@ import pandas as pd
 from scipy.interpolate import PPoly as SciPyPPoly
 from scipy.interpolate import make_splrep
 
-from . import grid_utils
-from . import spline_ops
+from . import grid_utils, spline_ops
+from .constants import (
+    APPROX_ABS_FLOOR,
+    APPROX_INITIAL_S,
+    APPROX_MAX_REFIT_ATTEMPTS,
+    APPROX_REL_ERR_TARGET,
+    APPROX_S_REDUCTION_FACTOR,
+    DIVISION_NEAR_ZERO_THRESHOLD,
+)
 from .ppoly import PPoly
-from .constants import APPROX_ABS_FLOOR
-from .constants import APPROX_INITIAL_S
-from .constants import APPROX_MAX_REFIT_ATTEMPTS
-from .constants import APPROX_REL_ERR_TARGET
-from .constants import APPROX_S_REDUCTION_FACTOR
-from .constants import DIVISION_NEAR_ZERO_THRESHOLD
 
 
 def _as_float_array(name: str, value: Any, dtype: Any, *, ndim: int) -> jnp.ndarray:
@@ -407,7 +408,7 @@ class TimeSeries(eqx.Module):
             metadata=self.metadata,
         )
 
-    def _binary_discrete(self, other: "TimeSeries", op: str) -> "TimeSeries":
+    def _binary_discrete(self, other: TimeSeries, op: str) -> TimeSeries:
         """Combine via linear interpolation on a merged time grid; drops any spline."""
         if self.dtype != other.dtype:
             raise TypeError(f"TimeSeries dtype mismatch: {self.dtype} vs {other.dtype}")
@@ -460,7 +461,7 @@ class TimeSeries(eqx.Module):
             metadata={"source": "discrete_binary_op", "op": op},
         )
 
-    def _binary_exact(self, other: "TimeSeries", op: str) -> "TimeSeries":
+    def _binary_exact(self, other: TimeSeries, op: str) -> TimeSeries:
         """Add or subtract two splines exactly on a merged breakpoint grid.
 
         Add and subtract are linear in the power-basis coefficients, so this
@@ -525,7 +526,7 @@ class TimeSeries(eqx.Module):
             metadata={"source": "exact_binary_op", "op": op},
         )
 
-    def _binary_approx(self, other: "TimeSeries", op: str) -> "TimeSeries":
+    def _binary_approx(self, other: TimeSeries, op: str) -> TimeSeries:
         """Multiply or divide two splines by refitting a new spline to the result.
 
         Multiply and divide are not closed under the power-basis

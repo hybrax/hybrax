@@ -19,15 +19,15 @@ failed lane yields a finite or nan gradient is slot- and loss-dependent (an unst
 property), and the failure->optimiser policy lives in the caller/harness, not here.
 """
 
+import diffrax
 import jax
 import jax.numpy as jnp
-import diffrax
 
 from hybrax.train.diffrax_callbacks import (
+    CallbackSet,
     ContinuousCallback,
     DiscreteCallback,
     PresetTimeCallback,
-    CallbackSet,
     diffeqsolve_with_callbacks,
 )
 

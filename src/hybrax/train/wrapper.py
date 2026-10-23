@@ -9,15 +9,16 @@ from typing import Any
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+
 from hybrax.format.dataclasses import BioProcess
 from hybrax.format.mechanistic import RhsOde, build_rhs_ode
 
 from .controls_store import PerProcessControls
 from .model_api import (
+    RateModule,
     ReactionInputs,
     ReactionOutputs,
     UserLossModule,
-    RateModule,
 )
 
 
@@ -476,7 +477,7 @@ class HybridOdeWrapper(eqx.Module):
 
     def physical_save_outputs(
         self, t: float | jax.Array, y_phys: jax.Array
-    ) -> "SaveOutputs":
+    ) -> SaveOutputs:
         """``SaveOutputs`` computed from the physical state (for loss/exports)."""
         module = self.reaction_module
         n_RMCs = len(self.modeled_RMC_names)

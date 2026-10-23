@@ -6,21 +6,20 @@ These tests verify that JAX arrays embedded in our dataclasses work correctly
 with JAX operations (jit, grad, vmap, etc.) when extracted from the structures.
 """
 
-import pytest
 import jax
 import jax.numpy as jnp
+import pytest
 
 from hybrax.format import (
+    BioProcess,
+    BioProcessMetadata,
+    ReactorMedium,
+    ReactorMediumComponent,
+    StaticVariable,
     TimeAxis,
     TimeSeries,
-    StaticVariable,
-    BioProcessMetadata,
-    ReactorMediumComponent,
-    ReactorMedium,
     Volume,
-    BioProcess,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

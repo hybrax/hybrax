@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 import pytest
-
-from hybrax.train.model_api import ReactionInputs, ReactionOutputs, RateModule
 from stateful_helpers import build_stateful_wrapper, make_process
+
+from hybrax.train.model_api import RateModule, ReactionInputs, ReactionOutputs
 
 
 class _LatentAuxModule(RateModule):

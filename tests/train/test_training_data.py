@@ -6,21 +6,21 @@ from pathlib import Path
 import jax.numpy as jnp
 import numpy as np
 import pytest
+
 from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
+    Outflow,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
     Volume,
 )
 from hybrax.format.serialization import save_process_collection
-
 from hybrax.train.prepare import prepare_artifact
 from hybrax.train.run_config import load_prepare_config
 from hybrax.train.training_data import TrainingDataStore

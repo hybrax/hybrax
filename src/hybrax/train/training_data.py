@@ -14,6 +14,7 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
+
 from hybrax.format.dataclasses import BioProcessCollection
 from hybrax.format.mechanistic import RhsOde, build_rhs_ode
 from hybrax.format.serialization import load_process_collection
@@ -21,7 +22,6 @@ from hybrax.format.validate import validate_reaction_ode_equivalence
 
 from .controls_store import BatchControls, ControlsStore, PerProcessControls
 from .wrapper import validate_rhs_ode_compatibility
-
 
 TARGET_SOURCE_AUTO = "auto"
 TARGET_SOURCE_PROCESS_VARIABLES = "process_variables"

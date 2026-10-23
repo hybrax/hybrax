@@ -3,6 +3,7 @@ from __future__ import annotations
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+
 from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
@@ -19,14 +20,13 @@ from hybrax.format.dataclasses import (
     Volume,
 )
 from hybrax.format.mechanistic import build_rhs_ode
-
 from hybrax.train.controls_store import ControlsStore
 from hybrax.train.defaults import DefaultStatefulReactionModule
 from hybrax.train.model_api import (
     LinearScaler,
+    RateModule,
     ReactionInputs,
     ReactionOutputs,
-    RateModule,
     trainable_field,
 )
 from hybrax.train.physical_solve import solve_physical_states

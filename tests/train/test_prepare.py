@@ -8,19 +8,19 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-import hybrax.format.json_io as json_io
+from hybrax.format import json_io
 from hybrax.format.dataclasses import (
-    ReactionOde,
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
     FeedMedium,
     FeedMediumComponent,
     Inflow,
+    Outflow,
     ProcessVariable,
+    ReactionOde,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
@@ -30,7 +30,6 @@ from hybrax.format.serialization import (
     load_process_collection,
     save_process_collection,
 )
-
 from hybrax.train.controls import select_control_sources
 from hybrax.train.controls_store import ControlsStore
 from hybrax.train.prepare import load_raw_collection, prepare_artifact

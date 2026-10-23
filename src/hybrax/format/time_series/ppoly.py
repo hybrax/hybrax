@@ -8,8 +8,8 @@ import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
-from scipy.interpolate import PPoly as SciPyPPoly
 from scipy.interpolate import PchipInterpolator
+from scipy.interpolate import PPoly as SciPyPPoly
 
 from . import spline_ops
 
@@ -52,7 +52,7 @@ class PPoly(eqx.Module):
     @classmethod
     def from_scipy_ppoly(
         cls, ppoly: SciPyPPoly, continuity_side: str = "right"
-    ) -> "PPoly":
+    ) -> PPoly:
         """Convert a SciPy PPoly to local power-basis coefficients."""
         x = np.asarray(ppoly.x, dtype=np.float64)
         c = np.asarray(ppoly.c, dtype=np.float64)
@@ -71,7 +71,7 @@ class PPoly(eqx.Module):
     @classmethod
     def from_samples_pchip(
         cls, t: Any, y: Any, continuity_side: str = "right"
-    ) -> "PPoly":
+    ) -> PPoly:
         """Build an owned PPoly from SciPy's PCHIP sample interpolator.
 
         This constructor is a low-level conversion convenience. The project-wide
@@ -102,7 +102,7 @@ class PPoly(eqx.Module):
             dt = dt[..., jnp.newaxis]
         return a + dt * (b + dt * (c + dt * d))
 
-    def derivative(self, order: int = 1) -> "PPoly":
+    def derivative(self, order: int = 1) -> PPoly:
         """Return the piecewise-polynomial derivative of the given order."""
         order = int(order)
         if order < 0:

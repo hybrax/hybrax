@@ -9,8 +9,9 @@ import equinox as eqx
 import jax
 import numpy as np
 import pytest
-from hybrax.format.serialization import load_process_collection, save_process_collection
+from test_serialization import _collection
 
+from hybrax.format.serialization import load_process_collection, save_process_collection
 from hybrax.train.harness import (
     TrainHarnessConfig,
     compute_dense_exports,
@@ -20,8 +21,6 @@ from hybrax.train.harness import (
 from hybrax.train.model_api import partition_trainable
 from hybrax.train.prepare import prepare_artifact
 from hybrax.train.run_config import load_prepare_config
-
-from test_serialization import _collection
 
 
 @pytest.mark.integration

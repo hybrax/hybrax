@@ -9,14 +9,15 @@ from __future__ import annotations
 
 import logging
 import os
+import warnings
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
-import warnings
 
 import numpy as np
+
 from hybrax.format import validate_augmented_parent_refs
 from hybrax.format.dataclasses import (
     BioProcess,
@@ -60,7 +61,7 @@ def _sha256_hex(data: bytes | None) -> str | None:
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _portable_input_path(input_path: Path | None, output_path: Path) -> str | None:

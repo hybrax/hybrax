@@ -1,29 +1,31 @@
 from __future__ import annotations
 
-from dataclasses import replace
 import json
 import os
-from pathlib import Path
 import stat
+from dataclasses import replace
+from pathlib import Path
 
 import equinox as eqx
 import jax
 import jax.numpy as jnp
 import pytest
+
+# Reuse the tiny single-process reaction module + collection fixtures.
+from test_checkpointing import _LinearReactionModule
+
 from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
+    Outflow,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     TimeAxis,
     TimeSeries,
     Volume,
 )
-
-import hybrax.train.harness as harness
-import hybrax.train.serialization as serialization
+from hybrax.train import harness, serialization
 from hybrax.train.harness import _build_optimizer, _build_template_wrapper
 from hybrax.train.model_api import partition_trainable
 from hybrax.train.run_config import (
@@ -44,9 +46,6 @@ from hybrax.train.serialization import (
     save_opt_state,
 )
 from hybrax.train.training_data import TrainingDataStore
-
-# Reuse the tiny single-process reaction module + collection fixtures.
-from test_checkpointing import _LinearReactionModule
 
 
 def test_shared_model_resolvers_preserve_forward_and_load_file_contracts(tmp_path):

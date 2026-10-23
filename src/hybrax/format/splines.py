@@ -30,8 +30,8 @@ rather than silently producing wrong numbers.
 
 from __future__ import annotations
 
-from typing import Dict, Any, List, Optional, Tuple
 import dataclasses
+from typing import Any
 
 import equinox as eqx
 import jax
@@ -43,14 +43,13 @@ from .dataclasses import (
     BioProcess,
     DiscreteEvents,
     Inflow,
-    PseudobatchTransform,
     Outflow,
+    PseudobatchTransform,
     StaticVariable,
     TimeSeries,
 )
 from .monotone_spline import fit_monotone_timeseries_spline  # noqa: F401
 from .time_series import PPoly, spline_ops
-
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -255,7 +254,7 @@ def make_segment_boundaries(
     return boundaries
 
 
-def split_timeseries(ts: TimeSeries, boundaries: jnp.ndarray) -> List[TimeSeries]:
+def split_timeseries(ts: TimeSeries, boundaries: jnp.ndarray) -> list[TimeSeries]:
     """Split *ts* into segments defined by *boundaries*.
 
     Points that fall exactly on a boundary belong to both adjacent segments
@@ -267,7 +266,7 @@ def split_timeseries(ts: TimeSeries, boundaries: jnp.ndarray) -> List[TimeSeries
     t = t[order]
     v = v[order]
 
-    segments: List[TimeSeries] = []
+    segments: list[TimeSeries] = []
     for i in range(len(boundaries) - 1):
         lo, hi = boundaries[i], boundaries[i + 1]
         mask = (t >= lo) & (t <= hi)
@@ -290,7 +289,7 @@ def _fit_smoothing_segment(
     y: jnp.ndarray,
     *,
     s: float,
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Fit a SciPy smoothing B-spline and return power-basis arrays."""
 
     if len(x) < _MIN_SMOOTHING_BSPLINE_SAMPLES:
@@ -309,7 +308,7 @@ def _fit_smoothing_segment(
 
 def _fit_interp_segment(
     x: jnp.ndarray, y: jnp.ndarray
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Fit an interpolating natural cubic segment in power-basis form."""
     x_unique, y_unique = _prepare_knots(x, y)
     ppoly = interpolate.CubicSpline(
@@ -323,13 +322,13 @@ def _fit_interp_segment(
 
 
 def _combine_segment_splines(
-    segment_splines: List[Tuple[jnp.ndarray, jnp.ndarray]],
+    segment_splines: list[tuple[jnp.ndarray, jnp.ndarray]],
     boundaries: jnp.ndarray,
-) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Flatten per-segment power-basis splines into TimeSeries arrays."""
-    all_breaks: List[np.ndarray] = []
-    all_coeffs: List[np.ndarray] = []
-    segment_starts: List[int] = []
+    all_breaks: list[np.ndarray] = []
+    all_coeffs: list[np.ndarray] = []
+    segment_starts: list[int] = []
     piece_cursor = 0
 
     boundary_arr = jnp.asarray(boundaries, dtype=float)
@@ -379,7 +378,7 @@ def _combine_segment_splines(
 def fit_timeseries_spline(
     ts: TimeSeries,
     *,
-    boundaries: Optional[jnp.ndarray] = None,
+    boundaries: jnp.ndarray | None = None,
     smoothing_s: float = 0.0,
 ) -> TimeSeries:
     """Fit segmented spline state onto a TimeSeries.
@@ -408,7 +407,7 @@ def fit_timeseries_spline(
     )
     actual_n_segments = len(segments)
 
-    segment_splines: List[Tuple[jnp.ndarray, jnp.ndarray]] = []
+    segment_splines: list[tuple[jnp.ndarray, jnp.ndarray]] = []
     segment_fit_strategies: list[str] = []
 
     for seg in segments:
@@ -536,10 +535,10 @@ def _piecewise_polynomial_timeseries(
     coeffs: jnp.ndarray,
     *,
     continuity_side: str = "left",
-    times: Optional[jnp.ndarray] = None,
-    values: Optional[jnp.ndarray] = None,
-    jump_times: Optional[jnp.ndarray] = None,
-    metadata: Optional[dict] = None,
+    times: jnp.ndarray | None = None,
+    values: jnp.ndarray | None = None,
+    jump_times: jnp.ndarray | None = None,
+    metadata: dict | None = None,
 ) -> TimeSeries:
     """Build a spline-backed TimeSeries with exact local polynomial coeffs."""
     breaks = jnp.asarray(breaks, dtype=float)
@@ -570,7 +569,7 @@ def _constant_timeseries(
     t_end: float,
     *,
     continuity_side: str = "left",
-    metadata: Optional[dict] = None,
+    metadata: dict | None = None,
 ) -> TimeSeries:
     """Build an exact constant TimeSeries over ``[t_start, t_end]``."""
     end = float(t_end)
@@ -593,8 +592,8 @@ def _piecewise_constant_from_intervals(
     interval_values: jnp.ndarray,
     *,
     continuity_side: str = "left",
-    jump_times: Optional[jnp.ndarray] = None,
-    metadata: Optional[dict] = None,
+    jump_times: jnp.ndarray | None = None,
+    metadata: dict | None = None,
 ) -> TimeSeries:
     """Build an exact piecewise-constant TimeSeries from interval values."""
     values = jnp.asarray(interval_values, dtype=float)
@@ -793,7 +792,7 @@ def _build_direct_pseudobatch_series(
     process: BioProcess,
     species_name: str,
     meas_times: jnp.ndarray,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Build physical pseudobatch transform quantities as exact TimeSeries."""
     breaks = _canonical_pseudobatch_breaks(process, meas_times)
     breaks_np = np.asarray(breaks, dtype=np.float64)
@@ -1113,7 +1112,7 @@ def _reject_continuous_outflow(process: BioProcess) -> None:
             )
 
 
-def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str, Any]:
+def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> dict[str, Any]:
     """
     Build canonical inputs for pseudobatch normalization.
 
@@ -1189,12 +1188,12 @@ def build_pseudobatch_inputs(process: BioProcess, species_name: str) -> Dict[str
 
 
 def build_splines(
-    inputs: Dict[str, Any],
-    process: "BioProcess | None" = None,
-    species_name: "str | None" = None,
+    inputs: dict[str, Any],
+    process: BioProcess | None = None,
+    species_name: str | None = None,
     *,
     cstar_smoothing_s: float = 0.0,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Build the runtime pseudobatch spline payload from
     ``build_pseudobatch_inputs``.
@@ -1352,8 +1351,8 @@ def _assert_same_timeseries(
 
 
 def _assert_same_shared_series(
-    reference: Dict[str, Any],
-    current: Dict[str, Any],
+    reference: dict[str, Any],
+    current: dict[str, Any],
     *,
     species_name: str,
 ) -> None:
@@ -1383,7 +1382,7 @@ def _assert_same_shared_series(
 
 def _selected_pseudobatch_species(
     process: BioProcess,
-    species_names: Optional[List[str]],
+    species_names: list[str] | None,
 ) -> list[str]:
     """Return reactor-medium species with TimeSeries concentrations."""
 
@@ -1419,7 +1418,7 @@ def _selected_pseudobatch_species(
 
 def build_pseudobatch_transform(
     process: BioProcess,
-    species_names: Optional[List[str]] = None,
+    species_names: list[str] | None = None,
     *,
     cstar_smoothing_s: float = 0.0,
 ) -> PseudobatchTransform:
@@ -1502,7 +1501,7 @@ def build_pseudobatch_transform(
 
 
 def evaluate_real_concentration(
-    t_eval: jnp.ndarray, splines: Dict[str, Any]
+    t_eval: jnp.ndarray, splines: dict[str, Any]
 ) -> jnp.ndarray:
     """
     Backtransform c*(t) -> c(t) at arbitrary evaluation times t_eval.
@@ -1624,8 +1623,8 @@ def evaluate_pseudobatch_transform(
 
 
 def to_timeseries(
-    inputs: Dict[str, Any],
-    splines: Dict[str, Any],
+    inputs: dict[str, Any],
+    splines: dict[str, Any],
     species_name: str,
     *,
     cstar_smoothing_s: float = 0.0,

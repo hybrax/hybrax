@@ -10,12 +10,12 @@ from numbers import Integral
 import equinox as eqx
 import jax
 import jax.numpy as jnp
+
 from hybrax.format.dataclasses import BioProcessCollection
 
 from .defaults import DefaultLossModule
 from .model_api import LossInputs, LossOutputs
 from .runtime_context import rhs_ode_from_training_parents
-
 
 BoundDeclaration = tuple[str, str, int, float | None, float | None]
 BoundSnapshot = tuple[BoundDeclaration, ...]

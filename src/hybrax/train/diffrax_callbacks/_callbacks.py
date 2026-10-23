@@ -20,12 +20,11 @@ Design principles:
 
 from __future__ import annotations
 
-from typing import Callable, Optional, Union
+from collections.abc import Callable
 
-import jax.numpy as jnp
 import equinox as eqx
+import jax.numpy as jnp
 import optimistix as optx
-
 
 # ================================================================
 # ContinuousCallback
@@ -68,7 +67,7 @@ class ContinuousCallback(eqx.Module):
             )
 
     @property
-    def _diffrax_direction(self) -> Optional[bool]:
+    def _diffrax_direction(self) -> bool | None:
         if self.direction == "up":
             return True
         elif self.direction == "down":
@@ -280,15 +279,13 @@ class CallbackSet(eqx.Module):
 
     def __init__(
         self,
-        *callbacks: Union[
-            ContinuousCallback,
-            StopConditionCallback,
-            DiscreteCallback,
-            PresetTimeCallback,
-            PeriodicCallback,
-            ManifoldProjection,
-            "CallbackSet",
-        ],
+        *callbacks: ContinuousCallback
+        | StopConditionCallback
+        | DiscreteCallback
+        | PresetTimeCallback
+        | PeriodicCallback
+        | ManifoldProjection
+        | CallbackSet,
     ):
         continuous = []
         stop_conditions = []

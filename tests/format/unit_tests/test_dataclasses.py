@@ -4,35 +4,34 @@ Tests for hybrax.format data structures (current architecture).
 
 import logging
 
-import pytest
 import jax.numpy as jnp
+import pytest
 
-import hybrax.format.dataclasses as dataclasses
 from hybrax.format import (
+    AugmentedBioProcess,
+    BioProcess,
+    BioProcessCollection,
+    BioProcessMetadata,
+    FeedMedium,
+    FeedMediumComponent,
+    Inflow,
+    ProcessVariable,
+    ReactionOde,
+    ReactorMedium,
+    ReactorMediumComponent,
+    StaticVariable,
     TimeAxis,
     TimeSeries,
-    StaticVariable,
-    ReactionOde,
-    BioProcessMetadata,
-    ProcessVariable,
-    FeedMediumComponent,
-    ReactorMediumComponent,
-    FeedMedium,
-    ReactorMedium,
-    Inflow,
     Volume,
-    BioProcess,
-    AugmentedBioProcess,
-    BioProcessCollection,
+    dataclasses,
     silence_assumptions,
 )
 from hybrax.format.dataclasses import _format_reaction_ode_lines
 from hybrax.format.mechanistic import get_process_ordering
 from hybrax.format.serialization import (
-    save_process_collection,
     load_process_collection,
+    save_process_collection,
 )
-
 
 # ---------------------------------------------------------------------------
 # Low-level structures
@@ -579,9 +578,8 @@ def test_silence_assumptions_suppresses_reaction_ode_notice(caplog):
 
 
 def test_silence_assumptions_restores_state_after_exception():
-    with pytest.raises(RuntimeError):
-        with silence_assumptions():
-            raise RuntimeError("boom")
+    with pytest.raises(RuntimeError), silence_assumptions():
+        raise RuntimeError("boom")
     assert dataclasses._ANNOUNCE_ASSUMPTIONS is True
 
 

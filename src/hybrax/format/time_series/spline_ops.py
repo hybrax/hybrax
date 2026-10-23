@@ -9,7 +9,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-
 VALID_SIDES = ("left", "right")
 
 

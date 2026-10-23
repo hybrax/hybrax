@@ -17,13 +17,16 @@ so a scale value is a fingerprint of *which* processes fed reconstruction.
 
 from __future__ import annotations
 
-from dataclasses import replace
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from stateful_helpers import make_process
+
+import hybrax.train
 from hybrax.format.dataclasses import (
     BioProcessCollection,
     FeedMedium,
@@ -36,14 +39,11 @@ from hybrax.format.dataclasses import (
     TimeSeries,
 )
 from hybrax.format.serialization import load_process_collection, save_process_collection
-
-import hybrax.train
-import hybrax.train.harness as harness
+from hybrax.train import harness
 from hybrax.train.cli import main
 from hybrax.train.harness import ForwardConfig, forward_from_collection
 from hybrax.train.serialization import content_hash, reconstruct_training
 from hybrax.train.training_data import TARGET_SOURCE_AUTO
-from stateful_helpers import make_process
 
 
 def _collection(

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from copy import deepcopy
 import dataclasses
 import gc
 import json
@@ -8,6 +7,7 @@ import logging
 import re
 import warnings
 import weakref
+from copy import deepcopy
 from typing import Any
 
 import equinox as eqx
@@ -17,6 +17,8 @@ import numpy as np
 import optax
 import pandas as pd
 import pytest
+
+import hybrax.train.harness as harness_module
 from hybrax.format.dataclasses import (
     AugmentedBioProcess,
     BioProcess,
@@ -25,20 +27,19 @@ from hybrax.format.dataclasses import (
     FeedMedium,
     FeedMediumComponent,
     Inflow,
+    Outflow,
     ProcessVariable,
     ReactorMedium,
     ReactorMediumComponent,
-    Outflow,
     StaticVariable,
     TimeAxis,
     TimeSeries,
     Volume,
 )
 from hybrax.format.mechanistic import build_rhs_ode
-
-import hybrax.train.harness as harness_module
 from hybrax.train.checkpointing import CheckpointWriter
 from hybrax.train.controls_store import ControlsStore
+from hybrax.train.defaults import DefaultLossModule, default_build_reaction_module
 from hybrax.train.harness import (
     TrainHarnessConfig,
     _build_batch_index_stream,
@@ -47,27 +48,26 @@ from hybrax.train.harness import (
     _ensure_process_names,
     _resolve_estimated_scales,
     _target_state_indices,
+    _validate_batching_config,
     compute_dense_exports,
     prepare_training_from_runtime_artifact,
-    _validate_batching_config,
-    train_from_collection,
     train_collection,
-)
-from hybrax.train.defaults import DefaultLossModule, default_build_reaction_module
-from hybrax.train.runtime_artifact import RuntimeArtifact, RuntimeArtifactFold
-from hybrax.train.runtime_context import (
-    ProducerCollectionData,
-    RuntimeDataContext,
-    select_parent_collection,
+    train_from_collection,
 )
 from hybrax.train.model_api import (
     AffineScaler,
     EstimatedScales,
     LinearScaler,
-    ReactionOutputs,
     RateModule,
+    ReactionOutputs,
     frozen_field,
     trainable_field,
+)
+from hybrax.train.runtime_artifact import RuntimeArtifact, RuntimeArtifactFold
+from hybrax.train.runtime_context import (
+    ProducerCollectionData,
+    RuntimeDataContext,
+    select_parent_collection,
 )
 from hybrax.train.trainer import simulate_measurement_states
 from hybrax.train.training_data import TrainingDataStore

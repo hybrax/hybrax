@@ -3,8 +3,6 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 import pytest
-
-from hybrax.train.defaults import DefaultGruReactionModule, DefaultLstmReactionModule
 from stateful_helpers import (
     build_stateful_wrapper,
     default_stateful_scale_kwargs,
@@ -12,6 +10,7 @@ from stateful_helpers import (
     solve,
 )
 
+from hybrax.train.defaults import DefaultGruReactionModule, DefaultLstmReactionModule
 
 _SCALE_KWARGS = default_stateful_scale_kwargs()
 

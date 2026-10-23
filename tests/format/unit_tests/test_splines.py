@@ -3,57 +3,57 @@ Tests for hybrax.format.splines: spline fitting, serialization, evaluation,
 and pseudobatch transform pipeline.
 """
 
-import pytest
+import tempfile
+from pathlib import Path
+
 import jax
 import jax.numpy as jnp
 import numpy as np
-import tempfile
-from pathlib import Path
+import pytest
 from scipy import interpolate
 
 from hybrax.format import (
     BioProcess,
     BioProcessCollection,
     BioProcessMetadata,
-    TimeAxis,
-    TimeSeries,
-    StaticVariable,
-    ReactorMedium,
-    ReactorMediumComponent,
+    DiscreteEvents,
     FeedMedium,
     FeedMediumComponent,
     Inflow,
     Outflow,
-    Volume,
     ProcessVariable,
-    DiscreteEvents,
     PseudobatchTransform,
+    ReactorMedium,
+    ReactorMediumComponent,
+    StaticVariable,
+    TimeAxis,
+    TimeSeries,
+    Volume,
+)
+from hybrax.format.serialization import (
+    load_process_collection,
+    save_process_collection,
 )
 from hybrax.format.splines import (
-    detect_discrete_state_events,
-    make_segment_boundaries,
-    split_timeseries,
-    fit_timeseries_spline,
-    make_constant_spline,
-    make_cubic_ppoly,
-    build_pseudobatch_inputs,
-    build_pseudobatch_transform,
-    build_splines,
-    evaluate_real_concentration,
-    evaluate_pseudobatch_transform,
-    to_timeseries,
-    build_backtransform_spline,
     BacktransformSpline,
     _forward_pseudobatch_concentration,
     _inverse_pseudobatch_concentration,
     _inverse_pseudobatch_derivative,
-)
-from hybrax.format.serialization import (
-    save_process_collection,
-    load_process_collection,
+    build_backtransform_spline,
+    build_pseudobatch_inputs,
+    build_pseudobatch_transform,
+    build_splines,
+    detect_discrete_state_events,
+    evaluate_pseudobatch_transform,
+    evaluate_real_concentration,
+    fit_timeseries_spline,
+    make_constant_spline,
+    make_cubic_ppoly,
+    make_segment_boundaries,
+    split_timeseries,
+    to_timeseries,
 )
 from hybrax.format.time_series import PPoly
-
 
 # ---------------------------------------------------------------------------
 # make_cubic_ppoly
