@@ -125,7 +125,7 @@ BATCH_SAMPLE_TIMES = np.arange(0.0, BATCH_END + 0.5, 1.0)
 def _simulate_batch(s0: float, x0: float) -> dict[str, np.ndarray]:
     """RK4 on concentrations — volume is constant, so amounts add nothing."""
     dt = 0.002
-    n = int(round(BATCH_END / dt)) + 1
+    n = round(BATCH_END / dt) + 1
     t_grid = np.linspace(0.0, BATCH_END, n)
     y = np.array([x0, s0, 0.0])
 
@@ -283,7 +283,7 @@ def _simulate_fedbatch() -> dict[str, np.ndarray]:
     """RK4 on **amounts** (g) plus volume, with discrete events applied between
     segments. Sample first, then bolus, at a coincident timestamp."""
     dt = 0.01
-    n = int(round(FB_END / dt)) + 1
+    n = round(FB_END / dt) + 1
     t_grid = np.linspace(0.0, FB_END, n)
 
     v = 1.0
@@ -713,7 +713,7 @@ def _ecoli_simulate(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Forward-Euler through the surrogate. blend=None -> demo_ecoli_fba (no
     succinate tracking); blend=0..1 -> demo_ecoli_blend."""
-    n = int(round(t_end / dt)) + 1
+    n = round(t_end / dt) + 1
     t_grid = np.linspace(0.0, t_end, n)
     X, G, A, S = X0, S0, 0.0, 0.0
     n_cols = 3 if blend is None else 4
@@ -926,7 +926,7 @@ def _simulate_glutamine_decay(
     x0: float, gln0: float, nh4_0: float
 ) -> dict[str, np.ndarray]:
     dt = 0.005
-    n = int(round(GLN_END / dt)) + 1
+    n = round(GLN_END / dt) + 1
     t_grid = np.linspace(0.0, GLN_END, n)
     y = np.array([x0, gln0, nh4_0])
 

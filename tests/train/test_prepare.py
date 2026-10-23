@@ -232,8 +232,10 @@ def _write_sample_semantics_custom_py(path: Path) -> None:
                 "",
                 "def transform_process_collection(collection, config):",
                 "    process = next(iter(collection.processes.values()))",
-                "    process.reactor_medium.components['biomass'] = "
-                "ReactorMediumComponent(",
+                (
+                    "    process.reactor_medium.components['biomass'] = "
+                    "ReactorMediumComponent("
+                ),
                 "        name='biomass',",
                 "        unit='g/L',",
                 "        concentration=TimeSeries(",
@@ -254,21 +256,27 @@ def _write_feed_semantics_custom_py(path: Path) -> None:
     path.write_text(
         "\n".join(
             [
-                "from hybrax.format.dataclasses import ("
-                "FeedMediumComponent, ReactorMediumComponent, "
-                "StaticVariable, TimeSeries)",
+                (
+                    "from hybrax.format.dataclasses import ("
+                    "FeedMediumComponent, ReactorMediumComponent, "
+                    "StaticVariable, TimeSeries)"
+                ),
                 "import jax.numpy as jnp",
                 "",
                 "def transform_process_collection(collection, config):",
                 "    process = next(iter(collection.processes.values()))",
-                "    process.reactor_medium.components['biomass'] = "
-                "ReactorMediumComponent(",
+                (
+                    "    process.reactor_medium.components['biomass'] = "
+                    "ReactorMediumComponent("
+                ),
                 "        name='biomass',",
                 "        unit='g/L',",
                 "        concentration=StaticVariable(0.1),",
                 "    )",
-                "    process.reactor_medium.components['glucose'] = "
-                "ReactorMediumComponent(",
+                (
+                    "    process.reactor_medium.components['glucose'] = "
+                    "ReactorMediumComponent("
+                ),
                 "        name='glucose',",
                 "        unit='g/L',",
                 "        concentration=TimeSeries(",
@@ -276,8 +284,10 @@ def _write_feed_semantics_custom_py(path: Path) -> None:
                 "            values=jnp.asarray([1.0, 1.2]),",
                 "        ),",
                 "    )",
-                "    process.volume.volume_changes['feed_A']"
-                ".feed_medium.components['biomass'] = FeedMediumComponent(",
+                (
+                    "    process.volume.volume_changes['feed_A']"
+                    ".feed_medium.components['biomass'] = FeedMediumComponent("
+                ),
                 "        name='biomass',",
                 "        unit='g/L',",
                 "        concentration=StaticVariable(0.0),",
@@ -296,21 +306,27 @@ def _write_feed_semantics_incomplete_custom_py(path: Path) -> None:
     path.write_text(
         "\n".join(
             [
-                "from hybrax.format.dataclasses import ("
-                "FeedMediumComponent, ReactorMediumComponent, "
-                "StaticVariable, TimeSeries)",
+                (
+                    "from hybrax.format.dataclasses import ("
+                    "FeedMediumComponent, ReactorMediumComponent, "
+                    "StaticVariable, TimeSeries)"
+                ),
                 "import jax.numpy as jnp",
                 "",
                 "def transform_process_collection(collection, config):",
                 "    process = next(iter(collection.processes.values()))",
-                "    process.reactor_medium.components['biomass'] = "
-                "ReactorMediumComponent(",
+                (
+                    "    process.reactor_medium.components['biomass'] = "
+                    "ReactorMediumComponent("
+                ),
                 "        name='biomass',",
                 "        unit='g/L',",
                 "        concentration=StaticVariable(0.1),",
                 "    )",
-                "    process.reactor_medium.components['glucose'] = "
-                "ReactorMediumComponent(",
+                (
+                    "    process.reactor_medium.components['glucose'] = "
+                    "ReactorMediumComponent("
+                ),
                 "        name='glucose',",
                 "        unit='g/L',",
                 "        concentration=TimeSeries(",
@@ -318,10 +334,14 @@ def _write_feed_semantics_incomplete_custom_py(path: Path) -> None:
                 "            values=jnp.asarray([1.0, 1.2]),",
                 "        ),",
                 "    )",
-                "    process.volume.volume_changes['feed_A']"
-                ".feed_medium.components = {}",
-                "    process.volume.volume_changes['feed_A']"
-                ".feed_medium.components['unknown'] = FeedMediumComponent(",
+                (
+                    "    process.volume.volume_changes['feed_A']"
+                    ".feed_medium.components = {}"
+                ),
+                (
+                    "    process.volume.volume_changes['feed_A']"
+                    ".feed_medium.components['unknown'] = FeedMediumComponent("
+                ),
                 "        name='unknown',",
                 "        unit='g/L',",
                 "        concentration=StaticVariable(0.0),",

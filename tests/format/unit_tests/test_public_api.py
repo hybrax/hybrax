@@ -14,10 +14,12 @@ def test_import_does_not_load_jax_but_configures_later_import():
         [
             sys.executable,
             "-c",
-            "import sys; import hybrax.format; "
-            "assert 'jax' not in sys.modules; "
-            "from hybrax.format import BioProcess; "
-            "assert sys.modules['jax'].config.x64_enabled",
+            (
+                "import sys; import hybrax.format; "
+                "assert 'jax' not in sys.modules; "
+                "from hybrax.format import BioProcess; "
+                "assert sys.modules['jax'].config.x64_enabled"
+            ),
         ],
         check=True,
         env=env,
@@ -31,8 +33,10 @@ def test_import_enables_x64_when_jax_is_already_loaded():
         [
             sys.executable,
             "-c",
-            "import jax; assert not jax.config.x64_enabled; "
-            "import hybrax.format; assert jax.config.x64_enabled",
+            (
+                "import jax; assert not jax.config.x64_enabled; "
+                "import hybrax.format; assert jax.config.x64_enabled"
+            ),
         ],
         check=True,
         env=env,

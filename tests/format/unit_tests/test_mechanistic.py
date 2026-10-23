@@ -1300,7 +1300,7 @@ class TestBuildStateSplines:
         ordering = get_process_ordering(process)
         state_splines = build_state_splines(process, ordering)
         assert set(state_splines.keys()) == {"biomass", "glucose", "dissolved_O2"}
-        for sp_name, sp in state_splines.items():
+        for sp in state_splines.values():
             val = sp(jnp.array(5.0))
             assert val is not None
 

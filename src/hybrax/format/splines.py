@@ -659,7 +659,7 @@ def _canonical_pseudobatch_breaks(
     t_end = float(process.time_axis.end)
     points: list[float] = [t_start, t_end]
     points.extend(float(t) for t in np.asarray(meas_times, dtype=float))
-    for _, vc in process.volume.volume_changes.items():
+    for vc in process.volume.volume_changes.values():
         values = vc.values
         if _has_spline_state(values):
             points.extend(float(t) for t in np.asarray(values.breaks, dtype=float))

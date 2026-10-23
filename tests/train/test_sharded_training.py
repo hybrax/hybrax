@@ -290,8 +290,10 @@ def test_device_count_capped_at_cpu_count():
         [
             sys.executable,
             "-c",
-            "import hybrax.train, jax, os; "
-            "print('CAP', jax.device_count(), os.cpu_count())",
+            (
+                "import hybrax.train, jax, os; "
+                "print('CAP', jax.device_count(), os.cpu_count())"
+            ),
         ],
         env=env,
         capture_output=True,

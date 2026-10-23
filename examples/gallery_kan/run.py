@@ -173,7 +173,8 @@ ranges = {n: (max(float(pooled[n].min()), 0.0), float(pooled[n].max())) for n in
 fixed = {n: float(np.median(pooled[n])) for n in names}
 
 print(
-    "\nequation recovery: real rates only depend on glucose (Ks=0.05 g/L); does the model agree?"
+    "\nequation recovery: real rates only depend on glucose (Ks=0.05 g/L); "
+    "does the model agree?"
 )
 eq_rows = []
 for out_idx, rate in enumerate(["q_biomass", "q_glucose", "q_product"]):
@@ -196,7 +197,10 @@ for out_idx, rate in enumerate(["q_biomass", "q_glucose", "q_product"]):
             note = f"shape={m['best']} (closest={m['closest']}, R2={m['r2']:.2f})"
         else:
             rel = spread / glucose_spread if glucose_spread > 1e-12 else 0.0
-            note = f"{'negligible' if rel < 0.10 else 'not negligible'} ({rel * 100:.1f}% of glucose's effect)"
+            note = (
+                f"{'negligible' if rel < 0.10 else 'not negligible'} "
+                f"({rel * 100:.1f}% of glucose's effect)"
+            )
         eq_rows.append((rate, species, spread, note))
         print(f"  {rate:10s} vs {species:8s}: spread={spread:.5f}  {note}")
     fit = best_match(*sweeps["glucose"][:2])

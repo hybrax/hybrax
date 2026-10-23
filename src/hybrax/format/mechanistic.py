@@ -335,7 +335,7 @@ def get_process_ordering(process: BioProcess) -> ProcessOrdering:
         vc = process.volume.volume_changes[vc_name]
         if vc.feed_medium is None:
             raise ValueError(f"Inflow {vc_name!r} has no feed_medium defined.")
-        unknown = [c for c in vc.feed_medium.components.keys() if c not in rmc_set]
+        unknown = [c for c in vc.feed_medium.components if c not in rmc_set]
         if unknown:
             raise ValueError(
                 f"Inflow {vc_name!r} references unknown reactor "
