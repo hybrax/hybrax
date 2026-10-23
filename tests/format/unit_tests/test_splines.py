@@ -4,6 +4,7 @@ and pseudobatch transform pipeline.
 """
 
 import tempfile
+from itertools import pairwise
 from pathlib import Path
 
 import jax
@@ -524,7 +525,7 @@ def test_segmented_smoothing_spline_matches_per_segment_scipy_fit():
         smoothing_s=1.0,
     )
 
-    for lo, hi in zip(boundaries[:-1], boundaries[1:]):
+    for lo, hi in pairwise(boundaries):
         mask = (np.asarray(times) >= lo) & (np.asarray(times) <= hi)
         scipy_bspline = interpolate.make_splrep(
             np.asarray(times)[mask],

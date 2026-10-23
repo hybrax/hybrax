@@ -47,6 +47,7 @@ def _device_count(
         text=True,
         timeout=300,
         cwd=cwd,
+        check=False,
     )
     assert proc.returncode == 0, (
         f"subprocess failed (argv={argv}):\n{proc.stderr[-3000:]}"

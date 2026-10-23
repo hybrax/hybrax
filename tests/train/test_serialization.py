@@ -386,7 +386,7 @@ def test_load_into_structurally_different_controls_template(tmp_path: Path):
     # into the differently-shaped template fails.
     whole_path = tmp_path / "whole.eqx"
     eqx.tree_serialise_leaves(whole_path, wrapper)
-    with pytest.raises(Exception):
+    with pytest.raises(RuntimeError, match="changed shape"):
         eqx.tree_deserialise_leaves(whole_path, like=different_template)
 
     # NEW behaviour: partition save + load succeeds; controls follow the

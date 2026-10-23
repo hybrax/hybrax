@@ -22,6 +22,7 @@ jumps applied by the callbacks solve (``physical_solve.py``) from the
 
 from __future__ import annotations
 
+import itertools
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -163,7 +164,7 @@ def _output_window_bounds(
         padded = np.concatenate(
             [measured, np.full(padded_width - measured.size, t1, dtype=np.float64)]
         )
-        for lo, hi in zip(boundaries[:-1], boundaries[1:], strict=True):
+        for lo, hi in itertools.pairwise(boundaries):
             gap_fraction = max(gap_fraction, float(hi - lo) / (t1 - t0))
             measurements_per_gap = max(
                 measurements_per_gap, int(((padded > lo) & (padded <= hi)).sum())

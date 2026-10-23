@@ -18,6 +18,7 @@ possible, and the per-segment output WINDOW that keeps it fast:
 from __future__ import annotations
 
 import math
+from itertools import pairwise
 
 import diffrax
 import jax
@@ -178,8 +179,7 @@ def _widest_gap_points(n_out=61):
     grid = np.linspace(0.0, 10.0, n_out)
     boundaries = np.asarray([0.0, 2.0, 4.0, 6.0, 10.0])
     return max(
-        int(((grid > lo) & (grid <= hi)).sum())
-        for lo, hi in zip(boundaries[:-1], boundaries[1:], strict=True)
+        int(((grid > lo) & (grid <= hi)).sum()) for lo, hi in pairwise(boundaries)
     )
 
 
@@ -353,8 +353,7 @@ def test_output_window_bound_covers_every_gap(n_sample, n_bolus, n_dense, n_pred
         events = np.unique(events[(events > t0) & (events <= t1)])
         boundaries = np.unique(np.concatenate([[t0], events, [t1]]))
         true_max = max(
-            int(((grid > lo) & (grid <= hi)).sum())
-            for lo, hi in zip(boundaries[:-1], boundaries[1:], strict=True)
+            int(((grid > lo) & (grid <= hi)).sum()) for lo, hi in pairwise(boundaries)
         )
         collection_true_max = max(collection_true_max, true_max)
         window = _output_window(controls, n_dense + n_prediction)
@@ -439,8 +438,7 @@ def test_measured_process_variables_do_count_toward_the_window():
     )
     pv_ts = np.linspace(0.0, T_END, n_pv_points)
     true_per_gap = max(
-        int(((pv_ts > lo) & (pv_ts <= hi)).sum())
-        for lo, hi in zip(boundaries[:-1], boundaries[1:], strict=True)
+        int(((pv_ts > lo) & (pv_ts <= hi)).sum()) for lo, hi in pairwise(boundaries)
     )
     assert per_gap >= true_per_gap, (
         f"a MEASURED process variable must be counted: per_gap={per_gap} < "

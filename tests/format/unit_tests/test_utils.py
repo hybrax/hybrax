@@ -206,10 +206,7 @@ def test_print_process_structure_no_crash_minimal():
         volume=Volume(initial_volume=1.0, unit="L"),
         reactor_medium=ReactorMedium(name="m", density=1.0, density_unit="kg/L"),
     )
-    try:
-        print_process_structure(process)
-    except Exception as exc:
-        pytest.fail(f"print_process_structure raised {exc} unexpectedly!")
+    print_process_structure(process)
 
 
 def test_print_process_structure_no_metadata_uses_fallbacks(capsys):

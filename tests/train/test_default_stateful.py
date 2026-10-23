@@ -413,7 +413,9 @@ def test_default_stateful_flow_heads_are_calibrated_and_signed(
 
         nonzero_readout = jnp.ones(head.in_features, dtype=head.weight.dtype)
         gradient = eqx.filter_grad(
-            lambda candidate: jax.nn.softplus(candidate(nonzero_readout))[0]
+            lambda candidate, nonzero_readout=nonzero_readout: jax.nn.softplus(
+                candidate(nonzero_readout)
+            )[0]
         )(head)
         assert jnp.all(jnp.isfinite(gradient.weight))
         assert jnp.all(jnp.isfinite(gradient.bias))

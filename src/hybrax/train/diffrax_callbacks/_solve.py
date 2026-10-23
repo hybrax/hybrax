@@ -83,6 +83,10 @@ _EVENT_TOL_FACTOR = 1e2
 # "strictly future / positive-length segment" — tight (above ULP)
 _STEP_TOL_FACTOR = 2.0
 
+# Immutable Equinox modules, so sharing one default instance across calls is safe.
+_DEFAULT_CONTROLLER = diffrax.PIDController(rtol=1e-6, atol=1e-8)
+_DEFAULT_ADJOINT = diffrax.RecursiveCheckpointAdjoint()
+
 
 def _dtype_tol(t, factor):
     eps = jnp.finfo(jnp.asarray(t).dtype).eps
@@ -160,11 +164,9 @@ def diffeqsolve_with_callbacks(
     max_events: int = 20,
     output_times: jnp.ndarray | None = None,
     output_window: int | None = None,
-    stepsize_controller: diffrax.AbstractStepSizeController = diffrax.PIDController(
-        rtol=1e-6, atol=1e-8
-    ),
+    stepsize_controller: diffrax.AbstractStepSizeController = _DEFAULT_CONTROLLER,
     max_steps: int = 4096,
-    adjoint: diffrax.AbstractAdjoint = diffrax.RecursiveCheckpointAdjoint(),
+    adjoint: diffrax.AbstractAdjoint = _DEFAULT_ADJOINT,
 ) -> CallbackSolution:
     """Solve an ODE with Julia-style callbacks.
 
@@ -786,9 +788,7 @@ def evaluate_trajectory(
     args=None,
     *,
     ts: jnp.ndarray,
-    stepsize_controller: diffrax.AbstractStepSizeController = diffrax.PIDController(
-        rtol=1e-6, atol=1e-8
-    ),
+    stepsize_controller: diffrax.AbstractStepSizeController = _DEFAULT_CONTROLLER,
     max_steps_per_segment: int = 4096,
 ):
     """Reconstruct the full trajectory at arbitrary time points.

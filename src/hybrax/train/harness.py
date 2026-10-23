@@ -226,7 +226,9 @@ def compute_dense_exports(
         dense_exports.update(
             dense_exports_from_save_outputs(
                 prediction_t[:valid],
-                jtu.tree_map(lambda leaf: leaf[:valid], prediction_save_outputs),
+                jtu.tree_map(
+                    lambda leaf, valid=valid: leaf[:valid], prediction_save_outputs
+                ),
                 trained_wrapper,
                 valid_names,
                 prediction_valid=prediction_valid[:valid],
@@ -473,9 +475,8 @@ def _build_optimizer(
     grad_clip_norm: float = 1000.0,
 ) -> optax.GradientTransformation:
     # learning_rate can be a float or an optax Schedule
-    if isinstance(learning_rate, (int, float)):
-        if float(learning_rate) <= 0.0:
-            raise ValueError("learning_rate must be positive")
+    if isinstance(learning_rate, (int, float)) and float(learning_rate) <= 0.0:
+        raise ValueError("learning_rate must be positive")
     if float(grad_clip_norm) < 0.0:
         raise ValueError("grad_clip_norm must be non-negative")
     if callable(learning_rate):

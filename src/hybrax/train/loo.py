@@ -1226,6 +1226,21 @@ def _read_fold_losses(
     return target_names, out
 
 
+def _average_fold_losses(
+    losses: dict[str, tuple[float, tuple[float, ...]]],
+    target_names: tuple[str, ...],
+    names: tuple[str, ...],
+) -> tuple[float, dict[str, float]]:
+    """Average the total and per-target losses of `names` found in `losses`."""
+    totals = [losses[n][0] for n in names if n in losses]
+    per_t: dict[str, float] = {}
+    for ti, tname in enumerate(target_names):
+        vals = [losses[n][1][ti] for n in names if n in losses]
+        per_t[tname] = sum(vals) / len(vals) if vals else float("nan")
+    total = sum(totals) / len(totals) if totals else float("nan")
+    return total, per_t
+
+
 def _read_final_train_loss(fold_dir: Path) -> float:
     try:
         meta = load_json(fold_dir / "trained_wrapper.meta.json")
@@ -1315,17 +1330,12 @@ def _write_summary_and_aggregate(
             target_names = tnames
             holdout_per_target = {n: [] for n in target_names}
 
-        def _avg(names: tuple[str, ...]) -> tuple[float, dict[str, float]]:
-            totals = [losses[n][0] for n in names if n in losses]
-            per_t: dict[str, float] = {}
-            for ti, tname in enumerate(target_names):
-                vals = [losses[n][1][ti] for n in names if n in losses]
-                per_t[tname] = sum(vals) / len(vals) if vals else float("nan")
-            total = sum(totals) / len(totals) if totals else float("nan")
-            return total, per_t
-
-        holdout_total, holdout_targets = _avg(fold.test)
-        train_total, train_targets = _avg(fold.train)
+        holdout_total, holdout_targets = _average_fold_losses(
+            losses, target_names, fold.test
+        )
+        train_total, train_targets = _average_fold_losses(
+            losses, target_names, fold.train
+        )
         holdout_totals.append(holdout_total)
 
         row: dict[str, Any] = {

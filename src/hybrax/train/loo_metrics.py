@@ -301,9 +301,9 @@ def _prediction_unscoreable(
     meas_t = np.asarray(meas_t, dtype=float)
     if pred_t.size == 0 or not bool(np.all(np.isfinite(pred_y))):
         return True
-    if meas_t.size and (meas_t.min() < pred_t.min() or meas_t.max() > pred_t.max()):
-        return True
-    return False
+    return bool(
+        meas_t.size and (meas_t.min() < pred_t.min() or meas_t.max() > pred_t.max())
+    )
 
 
 def _evaluate_predictions_for_process(

@@ -255,9 +255,8 @@ class CheckpointConfig(ConfigBase):
         """
         if self.keep_best is None and self.select_by is not None:
             raise ValueError("checkpoint.select_by requires checkpoint.keep_best")
-        if self.keep_best is not None and self.keep_best > 0:
-            if self.select_by is None:
-                raise ValueError("checkpoint.keep_best > 0 requires select_by")
+        if self.keep_best is not None and self.keep_best > 0 and self.select_by is None:
+            raise ValueError("checkpoint.keep_best > 0 requires select_by")
         if self.keep_best == 0 and self.select_by is not None:
             raise ValueError("checkpoint.keep_best=0 needs no select_by; omit it")
         return self

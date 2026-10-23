@@ -196,6 +196,7 @@ def _run(devices: str, *, gspmd: bool = False) -> dict:
         capture_output=True,
         text=True,
         timeout=300,
+        check=False,
     )
     assert proc.returncode == 0, (
         f"subprocess (devices={devices}) failed:\n{proc.stderr[-3000:]}"
@@ -230,6 +231,7 @@ def _run_telemetry(mode: str) -> dict:
         capture_output=True,
         text=True,
         timeout=300,
+        check=False,
     )
     assert proc.returncode == 0, proc.stderr[-3000:]
     line = next(ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT_JSON "))
@@ -299,6 +301,7 @@ def test_device_count_capped_at_cpu_count():
         capture_output=True,
         text=True,
         timeout=180,
+        check=False,
     )
     assert proc.returncode == 0, proc.stderr[-2000:]
     line = next(ln for ln in proc.stdout.splitlines() if ln.startswith("CAP"))

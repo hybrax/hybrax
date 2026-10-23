@@ -36,6 +36,7 @@ def hxt_cli(*args):
         env=ENV,
         capture_output=True,
         text=True,
+        check=False,
     )
     if proc.returncode != 0:
         raise RuntimeError(proc.stdout + proc.stderr)

@@ -386,14 +386,13 @@ class _DummyStore:
 
 
 def _make_fake_collection():
-    class _Coll:
-        processes = {
+    return SimpleNamespace(
+        processes={
             "p1": SimpleNamespace(),
             "p2": SimpleNamespace(),
             "p3": SimpleNamespace(),
         }
-
-    return _Coll()
+    )
 
 
 def _stub_forward_result(**kwargs) -> ForwardResult:

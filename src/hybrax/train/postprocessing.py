@@ -46,6 +46,13 @@ class DenseProcessExport:
     auxiliary: dict[str, np.ndarray] | None = None
 
 
+def _mean_std(
+    exports: Sequence[DenseProcessExport], attr: str
+) -> tuple[np.ndarray, np.ndarray]:
+    stacked = np.stack([getattr(e, attr) for e in exports], axis=0)
+    return stacked.mean(axis=0), stacked.std(axis=0)
+
+
 def aggregate_dense_exports(
     per_model: list[dict[str, DenseProcessExport]],
 ) -> tuple[dict[str, DenseProcessExport], dict[str, DenseProcessExport]]:
@@ -69,17 +76,12 @@ def aggregate_dense_exports(
         prediction_valid = np.logical_and.reduce(
             [export.prediction_valid for export in exports]
         )
-
-        def _mean_std(attr: str) -> tuple[np.ndarray, np.ndarray]:
-            stacked = np.stack([getattr(e, attr) for e in exports], axis=0)
-            return stacked.mean(axis=0), stacked.std(axis=0)
-
-        c_m, c_s = _mean_std("c_species")
-        v_m, v_s = _mean_std("v_real")
-        b_m, b_s = _mean_std("b_modeled_cum")
-        q_m, q_s = _mean_std("q_rates")
-        inflow_m, inflow_s = _mean_std("modeled_Inflow_rates")
-        outflow_m, outflow_s = _mean_std("modeled_Outflow_rates")
+        c_m, c_s = _mean_std(exports, "c_species")
+        v_m, v_s = _mean_std(exports, "v_real")
+        b_m, b_s = _mean_std(exports, "b_modeled_cum")
+        q_m, q_s = _mean_std(exports, "q_rates")
+        inflow_m, inflow_s = _mean_std(exports, "modeled_Inflow_rates")
+        outflow_m, outflow_s = _mean_std(exports, "modeled_Outflow_rates")
         aux_keys = list(exports[0].auxiliary or {})
         aux_m = {
             k: np.stack([e.auxiliary[k] for e in exports]).mean(0) for k in aux_keys
@@ -110,6 +112,13 @@ def aggregate_dense_exports(
             auxiliary=aux_s,
         )
     return mean_out, std_out
+
+
+def _mask_invalid(values: np.ndarray, valid: np.ndarray) -> np.ndarray:
+    """Set rows (leading axis) of `values` where `valid` is false to NaN."""
+    values = np.asarray(values)
+    valid = valid.reshape((-1,) + (1,) * (values.ndim - 1))
+    return np.where(valid, values, np.nan)
 
 
 def dense_exports_from_save_outputs(
@@ -163,11 +172,6 @@ def dense_exports_from_save_outputs(
         sel = order[keep]
         valid_i = prediction_valid_np[i, sel]
 
-        def _mask_invalid(values: np.ndarray) -> np.ndarray:
-            values = np.asarray(values)
-            valid = valid_i.reshape((-1,) + (1,) * (values.ndim - 1))
-            return np.where(valid, values, np.nan)
-
         aux_i = (
             None
             if auxiliary is None
@@ -176,14 +180,14 @@ def dense_exports_from_save_outputs(
         exports[name] = DenseProcessExport(
             t=t_i[sel],
             prediction_valid=valid_i,
-            c_species=_mask_invalid(RAW_states[i, sel, :n_species]),
-            v_real=_mask_invalid(v_real_np[i][sel]),
+            c_species=_mask_invalid(RAW_states[i, sel, :n_species], valid_i),
+            v_real=_mask_invalid(v_real_np[i][sel], valid_i),
             b_modeled_cum=_mask_invalid(
-                RAW_states[i, sel, n_species + 1 : n_species + 1 + n_modeled]
+                RAW_states[i, sel, n_species + 1 : n_species + 1 + n_modeled], valid_i
             ),
-            q_rates=_mask_invalid(q_np[i][sel]),
-            modeled_Inflow_rates=_mask_invalid(inflow_rates_np[i][sel]),
-            modeled_Outflow_rates=_mask_invalid(outflow_rates_np[i][sel]),
+            q_rates=_mask_invalid(q_np[i][sel], valid_i),
+            modeled_Inflow_rates=_mask_invalid(inflow_rates_np[i][sel], valid_i),
+            modeled_Outflow_rates=_mask_invalid(outflow_rates_np[i][sel], valid_i),
             auxiliary=aux_i,
         )
     return exports

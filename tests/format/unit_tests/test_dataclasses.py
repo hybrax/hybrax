@@ -564,16 +564,18 @@ def test_silence_assumptions_suppresses_reaction_ode_notice(caplog):
             ),
         },
     )
-    with caplog.at_level(logging.INFO, logger="hybrax.format"):
-        with silence_assumptions():
-            BioProcess(
-                metadata=BioProcessMetadata(name="p", process_type="batch"),
-                time_axis=TimeAxis(
-                    unit="hours", start=0.0, end=1.0, time_reference="inoculation"
-                ),
-                volume=Volume(initial_volume=1.0, unit="L"),
-                reactor_medium=rm,
-            )
+    with (
+        caplog.at_level(logging.INFO, logger="hybrax.format"),
+        silence_assumptions(),
+    ):
+        BioProcess(
+            metadata=BioProcessMetadata(name="p", process_type="batch"),
+            time_axis=TimeAxis(
+                unit="hours", start=0.0, end=1.0, time_reference="inoculation"
+            ),
+            volume=Volume(initial_volume=1.0, unit="L"),
+            reactor_medium=rm,
+        )
     assert [r for r in caplog.records if r.name.startswith("hybrax.format")] == []
 
 

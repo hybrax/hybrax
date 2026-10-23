@@ -201,8 +201,8 @@ def build_demo_batch() -> None:
             "product": _noisy(rng, truth["product"], 0.0),
         }
         # t=0 is measured exactly: hybrax.train requires a t0 value for every target.
-        for species in meas:
-            meas[species][0] = truth[species][0]
+        for species, values in meas.items():
+            values[0] = truth[species][0]
 
         processes[run] = _batch_process(run, meas)
         for i, t in enumerate(BATCH_SAMPLE_TIMES):
@@ -361,8 +361,8 @@ def build_demo_fedbatch() -> None:
         "lactate": _noisy(rng, at_samples("lactate"), 0.0),
         "product": _noisy(rng, at_samples("product"), 0.0),
     }
-    for species in meas:
-        meas[species][0] = at_samples(species)[0]
+    for species, values in meas.items():
+        values[0] = at_samples(species)[0]
 
     components = {
         species: hxf.ReactorMediumComponent(
@@ -766,8 +766,8 @@ def build_demo_ecoli_fba() -> None:
             "glucose": _noisy_ecoli(rng, truth["glucose"], 0.0),
             "acetate": _noisy_ecoli(rng, truth["acetate"], 0.0),
         }
-        for species in meas:
-            meas[species][0] = truth[species][0]
+        for species, values in meas.items():
+            values[0] = truth[species][0]
         components = {
             species: hxf.ReactorMediumComponent(
                 name=species,
@@ -839,8 +839,8 @@ def build_demo_ecoli_blend() -> None:
             k: _noisy_ecoli(rng, v, 0.005 if k == "biomass" else 0.0)
             for k, v in truth.items()
         }
-        for species in meas:
-            meas[species][0] = truth[species][0]
+        for species, values in meas.items():
+            values[0] = truth[species][0]
         components = {
             species: hxf.ReactorMediumComponent(
                 name=species,
@@ -968,8 +968,8 @@ def build_demo_glutamine_decay() -> None:
             "Gln": _noisy(rng, sim["Gln"], 1e-5),
             "NH4": _noisy(rng, sim["NH4"], 1e-5),
         }
-        for species in meas:
-            meas[species][0] = sim[species][0]  # first sample noise-free
+        for species, values in meas.items():
+            values[0] = sim[species][0]  # first sample noise-free
 
         components = {
             "biomass": hxf.ReactorMediumComponent(
@@ -1117,8 +1117,8 @@ def build_demo_modeled_pv() -> None:
             "biomass": _noisy(rng, sim["biomass"], 0.005),
             "glyco_frac": np.clip(_noisy(rng, sim["glyco_frac"], 0.005), 0.0, 1.0),
         }
-        for species in meas:
-            meas[species][0] = sim[species][0]  # first sample noise-free
+        for species, values in meas.items():
+            values[0] = sim[species][0]  # first sample noise-free
 
         feed_medium = hxf.FeedMedium(
             name="dilution_feed",

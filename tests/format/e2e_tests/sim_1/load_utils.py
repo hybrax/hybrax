@@ -6,6 +6,7 @@ import csv
 import os
 import re
 from collections.abc import Iterable
+from itertools import pairwise
 from pathlib import Path
 
 os.environ.setdefault("JAX_ENABLE_X64", "true")
@@ -423,7 +424,7 @@ def _times(rows: list[dict[str, str]]) -> list[float]:
 
 
 def _require_strictly_increasing(times: list[float], label: str) -> None:
-    if any(right <= left for left, right in zip(times, times[1:])):
+    if any(right <= left for left, right in pairwise(times)):
         raise ValueError(f"{label} must be strictly increasing.")
 
 

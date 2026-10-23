@@ -11,6 +11,7 @@ transparent canvas. custom.css toggles which one is visible, the same
 technique already used for the sidebar logo.
 """
 
+from itertools import pairwise
 from pathlib import Path
 
 import matplotlib
@@ -248,7 +249,7 @@ def make_shape_diagram(theme, annotate_files):
             weight="bold",
             mono=True,
         )
-    for y0, y1 in zip(ys[:3], ys[1:]):
+    for y0, y1 in pairwise(ys):
         arrow(ax, (main_cx, y0), (main_cx, y1 + stage_h), c, lw=1.8)
     if annotate_files:
         # What actually flows on each main-pipeline arrow, real names only:

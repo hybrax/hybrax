@@ -578,23 +578,25 @@ class TimeSeries(eqx.Module):
 
         out_times = None
         out_values = None
-        if self.times is not None and self.values is not None:
-            if other.times is not None and other.values is not None:
-                out_times = grid_utils.merge_times_with_tolerance(
-                    self.times, other.times
-                )
-                left_discrete = grid_utils.linear_interpolate_samples(
-                    self.times, self.values, out_times
-                )
-                right_discrete = grid_utils.linear_interpolate_samples(
-                    other.times, other.values, out_times
-                )
-                if op == "mul":
-                    out_values = left_discrete * right_discrete
-                else:
-                    if jnp.any(jnp.abs(right_discrete) <= DIVISION_NEAR_ZERO_THRESHOLD):
-                        raise ZeroDivisionError("discrete denominator near zero")
-                    out_values = left_discrete / right_discrete
+        if (
+            self.times is not None
+            and self.values is not None
+            and other.times is not None
+            and other.values is not None
+        ):
+            out_times = grid_utils.merge_times_with_tolerance(self.times, other.times)
+            left_discrete = grid_utils.linear_interpolate_samples(
+                self.times, self.values, out_times
+            )
+            right_discrete = grid_utils.linear_interpolate_samples(
+                other.times, other.values, out_times
+            )
+            if op == "mul":
+                out_values = left_discrete * right_discrete
+            else:
+                if jnp.any(jnp.abs(right_discrete) <= DIVISION_NEAR_ZERO_THRESHOLD):
+                    raise ZeroDivisionError("discrete denominator near zero")
+                out_values = left_discrete / right_discrete
 
         out_jumps = np.unique(
             np.concatenate(
