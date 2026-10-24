@@ -140,7 +140,8 @@ _EXPORTS.update(
     }
 )
 
-__all__ = ["__version__", *_EXPORTS]
+# Ruff cannot infer that unpacking _EXPORTS yields only string keys.
+__all__ = ["__version__", *_EXPORTS]  # noqa: PLE0604
 
 
 def __getattr__(name: str) -> Any:
