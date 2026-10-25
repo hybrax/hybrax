@@ -42,7 +42,7 @@ def _load_config():
         if isinstance(_doc, dict) and isinstance(_doc.get("config"), dict):
             return _doc["config"], _path
         return _doc, _path
-    except Exception:
+    except Exception:  # noqa: BLE001 - optional pre-JAX config probe
         return None
 
 
@@ -130,7 +130,7 @@ def _count_processes():
             for _k in ("processes", "process_order", "case_studies"):
                 if isinstance(_d, dict) and isinstance(_d.get(_k), (dict, list)):
                     return len(_d[_k]) or None
-        except Exception:
+        except Exception:  # noqa: BLE001,S112 - try the next optional file
             continue
     return None
 

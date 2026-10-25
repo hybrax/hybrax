@@ -817,7 +817,7 @@ def _draw_panel(
                     alpha=0.8,
                     label="spline",
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - plotting warns and continues
                 import warnings
 
                 warnings.warn(
