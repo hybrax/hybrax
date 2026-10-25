@@ -477,7 +477,7 @@ def _timeseries_or_static_to_dict(value: TimeSeries | StaticVariable) -> dict:
     elif isinstance(value, StaticVariable):
         return {"type": "StaticVariable", "value": value.value}
     else:
-        raise ValueError(f"Unknown value type: {type(value)}")
+        raise TypeError(f"Unknown value type: {type(value)}")
 
 
 def _volume_to_dict(volume: Volume) -> dict:
@@ -523,7 +523,7 @@ def _volume_change_to_dict(vc) -> dict:
         result["type"] = "Outflow"
         result["retention"] = dict(vc.retention)
     else:
-        raise ValueError(f"Unknown volume change type: {type(vc)}")
+        raise TypeError(f"Unknown volume change type: {type(vc)}")
 
     return result
 
@@ -849,13 +849,13 @@ def _dict_to_volume_change(vc_data: dict):
         )
     values = _timeseries_from_dict_payload(vc_data["values"])
 
-    common = dict(
-        name=vc_data["name"],
-        unit=vc_data["unit"],
-        is_controlled=vc_data["is_controlled"],
-        is_continuous=vc_data["is_continuous"],
-        values=values,
-    )
+    common = {
+        "name": vc_data["name"],
+        "unit": vc_data["unit"],
+        "is_controlled": vc_data["is_controlled"],
+        "is_continuous": vc_data["is_continuous"],
+        "values": values,
+    }
 
     _reject_legacy_interpolator_payload(vc_data.get("interpolator"), "VolumeChange")
 

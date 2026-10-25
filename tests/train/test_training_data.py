@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from textwrap import dedent
 
 import jax.numpy as jnp
 import numpy as np
@@ -176,18 +177,15 @@ def _make_two_process_collection() -> BioProcessCollection:
 
 def _write_custom(path: Path) -> None:
     path.write_text(
-        "\n".join(
-            [
-                "",
-                "def transform_process_collection(collection, config):",
-                "    for process in collection.processes.values():",
-                "        process.process_variables['CF'].is_controlled = True",
-                "        process.process_variables['T'].is_controlled = True",
-                "        process.reaction_ode = None",
-                "        process.__post_init__()",
-                "    return collection",
-            ]
-        ),
+        dedent("""\
+            def transform_process_collection(collection, config):
+                for process in collection.processes.values():
+                    process.process_variables["CF"].is_controlled = True
+                    process.process_variables["T"].is_controlled = True
+                    process.reaction_ode = None
+                    process.__post_init__()
+                return collection
+        """),
         encoding="utf-8",
     )
 
@@ -397,17 +395,14 @@ def test_training_data_store_rejects_inconsistent_target_order(tmp_path):
 
     custom_py = tmp_path / "custom.py"
     custom_py.write_text(
-        "\n".join(
-            [
-                "",
-                "def transform_process_collection(collection, config):",
-                "    for process in collection.processes.values():",
-                "        process.process_variables['CF'].is_controlled = True",
-                "        process.reaction_ode = None",
-                "        process.__post_init__()",
-                "    return collection",
-            ]
-        ),
+        dedent("""\
+            def transform_process_collection(collection, config):
+                for process in collection.processes.values():
+                    process.process_variables["CF"].is_controlled = True
+                    process.reaction_ode = None
+                    process.__post_init__()
+                return collection
+        """),
         encoding="utf-8",
     )
     output_dir = tmp_path / "prepared"

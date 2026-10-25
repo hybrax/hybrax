@@ -1055,12 +1055,12 @@ def test_harness_batch_stream_preserves_order_and_drops_each_epoch_tail():
 
 
 def test_harness_batch_stream_shuffle_is_deterministic_and_seeded():
-    kwargs = dict(
-        selected_process_indices=jnp.asarray([0, 1, 2], dtype=jnp.int32),
-        epochs=4,
-        batch_size=2,
-        shuffle_batches=True,
-    )
+    kwargs = {
+        "selected_process_indices": jnp.asarray([0, 1, 2], dtype=jnp.int32),
+        "epochs": 4,
+        "batch_size": 2,
+        "shuffle_batches": True,
+    }
     s1 = _build_batch_index_stream(batch_seed=999, seed=123, **kwargs)
     s2 = _build_batch_index_stream(batch_seed=999, seed=777, **kwargs)
     s3 = _build_batch_index_stream(batch_seed=1000, seed=123, **kwargs)
@@ -1071,13 +1071,13 @@ def test_harness_batch_stream_shuffle_is_deterministic_and_seeded():
 
 
 def test_harness_batch_stream_falls_back_to_seed_when_batch_seed_none():
-    kwargs = dict(
-        selected_process_indices=jnp.asarray([0, 1, 2], dtype=jnp.int32),
-        epochs=3,
-        batch_size=3,
-        shuffle_batches=True,
-        batch_seed=None,
-    )
+    kwargs = {
+        "selected_process_indices": jnp.asarray([0, 1, 2], dtype=jnp.int32),
+        "epochs": 3,
+        "batch_size": 3,
+        "shuffle_batches": True,
+        "batch_seed": None,
+    }
     s1 = _build_batch_index_stream(seed=42, **kwargs)
     s2 = _build_batch_index_stream(seed=42, **kwargs)
     s3 = _build_batch_index_stream(seed=43, **kwargs)

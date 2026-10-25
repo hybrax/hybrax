@@ -25,6 +25,7 @@ from hybrax.format import (
     TimeAxis,
     TimeSeries,
     Volume,
+    VolumeChange,
     serialization,
 )
 from hybrax.format.json_io import JSONParseError
@@ -1045,6 +1046,29 @@ def test_auto_generated_reaction_ode_roundtrips(sample_process):
         sample_process.reaction_ode.rates.keys()
     )
     assert p2.reaction_ode.derivatives == sample_process.reaction_ode.derivatives
+
+
+@pytest.mark.parametrize("kind", ["concentration", "volume_change"])
+def test_save_rejects_unsupported_object_types(sample_process, tmp_path, kind):
+    """Unsupported Python objects raise TypeError at the public save boundary."""
+    if kind == "concentration":
+        sample_process.reactor_medium.components["biomass"].concentration = object()
+        message = "Unknown value type"
+    else:
+        sample_process.volume.volume_changes["unsupported"] = VolumeChange(
+            name="unsupported",
+            unit="L",
+            is_controlled=True,
+            is_continuous=False,
+            values=TimeSeries(
+                times=jnp.array([0.0, 1.0]), values=jnp.array([0.0, 0.1])
+            ),
+        )
+        message = "Unknown volume change type"
+    collection = BioProcessCollection(processes={"p1": sample_process})
+
+    with pytest.raises(TypeError, match=message):
+        save_process_collection(collection, tmp_path / "unsupported.json")
 
 
 if __name__ == "__main__":

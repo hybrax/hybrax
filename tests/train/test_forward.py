@@ -396,17 +396,17 @@ def _make_fake_collection():
 
 
 def _stub_forward_result(**kwargs) -> ForwardResult:
-    defaults = dict(
-        trained_wrapper=object(),
-        store=_DummyStore(),
-        process_names=("p1", "p2"),
-        target_names=("X", "S"),
-        name_modeled_Inflows=(),
-        name_modeled_Outflows=(),
-        training_process_names=("p1", "p2"),
-        per_process_total_loss={"p1": 0.1, "p2": 0.2},
-        per_process_per_target_loss={"p1": (0.05, 0.15), "p2": (0.1, 0.3)},
-    )
+    defaults = {
+        "trained_wrapper": object(),
+        "store": _DummyStore(),
+        "process_names": ("p1", "p2"),
+        "target_names": ("X", "S"),
+        "name_modeled_Inflows": (),
+        "name_modeled_Outflows": (),
+        "training_process_names": ("p1", "p2"),
+        "per_process_total_loss": {"p1": 0.1, "p2": 0.2},
+        "per_process_per_target_loss": {"p1": (0.05, 0.15), "p2": (0.1, 0.3)},
+    }
     defaults.update(kwargs)
     return ForwardResult(**defaults)
 

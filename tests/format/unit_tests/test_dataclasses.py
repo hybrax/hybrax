@@ -402,12 +402,12 @@ def _process_with_incomplete_feed(silence=False):
         feed_medium=fm,
         values=TimeSeries(times=jnp.array([0.0, 1.0]), values=jnp.array([0.0, 0.1])),
     )
-    kwargs = dict(
-        metadata=BioProcessMetadata(name="p", process_type="fed_batch"),
-        time_axis=TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
-        volume=Volume(initial_volume=1.0, unit="L", volume_changes={"feed": vc}),
-        reactor_medium=rm,
-    )
+    kwargs = {
+        "metadata": BioProcessMetadata(name="p", process_type="fed_batch"),
+        "time_axis": TimeAxis(unit="hours", start=0.0, end=1.0, time_reference="x"),
+        "volume": Volume(initial_volume=1.0, unit="L", volume_changes={"feed": vc}),
+        "reactor_medium": rm,
+    }
     if silence:
         with silence_assumptions():
             process = BioProcess(**kwargs)

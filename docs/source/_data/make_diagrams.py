@@ -29,20 +29,20 @@ BRAND_LIGHT = "#2563eb"  # matches conf.py html_theme_options light accent
 BRAND_DARK = "#60a5fa"  # matches conf.py html_theme_options dark accent
 
 THEMES = {
-    "light": dict(
-        ink="#1e293b",
-        muted="#475569",
-        accent=BRAND_LIGHT,
-        box_fill="#eff6ff",
-        box_edge="#93b4f0",
-    ),
-    "dark": dict(
-        ink="#e5e9f0",
-        muted="#a8b3c5",
-        accent=BRAND_DARK,
-        box_fill="#1e2a3f",
-        box_edge="#3b5578",
-    ),
+    "light": {
+        "ink": "#1e293b",
+        "muted": "#475569",
+        "accent": BRAND_LIGHT,
+        "box_fill": "#eff6ff",
+        "box_edge": "#93b4f0",
+    },
+    "dark": {
+        "ink": "#e5e9f0",
+        "muted": "#a8b3c5",
+        "accent": BRAND_DARK,
+        "box_fill": "#1e2a3f",
+        "box_edge": "#3b5578",
+    },
 }
 
 MONO = FontProperties(family="monospace")

@@ -1006,16 +1006,16 @@ def test_trainer_wires_dense_volume_from_export():
 
 
 def _fail_time_kwargs(process_data, **overrides):
-    kw = dict(
-        t_measured=process_data.t_measured,
-        SCL_target_measured=process_data.y_measured,
-        mask_measured=process_data.mask_measured,
-        n_measured=process_data.n_measured,
-        RAW_y0_measured=process_data.y0_measured,
-        jump_ts=process_data.controls.active_jump_ts,
-        solver_rtol=1e-5,
-        solver_atol=1e-7,
-    )
+    kw = {
+        "t_measured": process_data.t_measured,
+        "SCL_target_measured": process_data.y_measured,
+        "mask_measured": process_data.mask_measured,
+        "n_measured": process_data.n_measured,
+        "RAW_y0_measured": process_data.y0_measured,
+        "jump_ts": process_data.controls.active_jump_ts,
+        "solver_rtol": 1e-5,
+        "solver_atol": 1e-7,
+    }
     kw.update(overrides)
     return kw
 

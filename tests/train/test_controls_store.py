@@ -3,6 +3,7 @@ from __future__ import annotations
 import dataclasses
 import json
 from pathlib import Path
+from textwrap import dedent
 
 import jax.numpy as jnp
 import numpy as np
@@ -295,15 +296,13 @@ def test_monotone_spline_fit_is_accepted_as_cumulative_flow(flow_type, direction
 
 def _write_control_custom_py(path: Path) -> None:
     path.write_text(
-        "\n".join(
-            [
-                "def transform_process_collection(collection, config):",
-                "    for process in collection.processes.values():",
-                "        process.process_variables['CF'].is_controlled = True",
-                "        process.process_variables['T'].is_controlled = True",
-                "    return collection",
-            ]
-        ),
+        dedent("""\
+            def transform_process_collection(collection, config):
+                for process in collection.processes.values():
+                    process.process_variables["CF"].is_controlled = True
+                    process.process_variables["T"].is_controlled = True
+                return collection
+        """),
         encoding="utf-8",
     )
 
@@ -326,16 +325,14 @@ def _prepare_two_process(tmp_path: Path) -> Path:
 def _prepare_two_process_inconsistent_controls(tmp_path: Path) -> Path:
     custom_py = tmp_path / "custom-inconsistent.py"
     custom_py.write_text(
-        "\n".join(
-            [
-                "def transform_process_collection(collection, config):",
-                "    p1 = collection.processes['p1']",
-                "    p2 = collection.processes['p2']",
-                "    p1.process_variables['T'].is_controlled = False",
-                "    p2.process_variables['CF'].is_controlled = False",
-                "    return collection",
-            ]
-        ),
+        dedent("""\
+            def transform_process_collection(collection, config):
+                p1 = collection.processes["p1"]
+                p2 = collection.processes["p2"]
+                p1.process_variables["T"].is_controlled = False
+                p2.process_variables["CF"].is_controlled = False
+                return collection
+        """),
         encoding="utf-8",
     )
     raw = tmp_path / "raw-inconsistent.json"

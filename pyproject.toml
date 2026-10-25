@@ -83,6 +83,8 @@ Documentation = "https://hybrax.readthedocs.io"
 
 [tool.ruff.lint]
 extend-select = ["E501"]
+# Schema validation uses ValueError, including Pydantic field validators.
+ignore = ["TRY004"]
 
 [tool.ruff.format]
 exclude = ["*.md"]

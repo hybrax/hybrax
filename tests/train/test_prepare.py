@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from textwrap import dedent
 
 import jax.numpy as jnp
 import numpy as np
@@ -223,135 +224,125 @@ def _make_explicit_ode_collection() -> BioProcessCollection:
 
 def _write_sample_semantics_custom_py(path: Path) -> None:
     path.write_text(
-        "\n".join(
-            [
-                "from hybrax.format.dataclasses import (",
-                "    ReactorMediumComponent, TimeSeries,",
-                ")",
-                "import jax.numpy as jnp",
-                "",
-                "def transform_process_collection(collection, config):",
-                "    process = next(iter(collection.processes.values()))",
-                (
-                    "    process.reactor_medium.components['biomass'] = "
-                    "ReactorMediumComponent("
-                ),
-                "        name='biomass',",
-                "        unit='g/L',",
-                "        concentration=TimeSeries(",
-                "            times=jnp.asarray([0.0, 1.0]),",
-                "            values=jnp.asarray([0.1, 0.2]),",
-                "        ),",
-                "    )",
-                "    process.reaction_ode = None",
-                "    process.__post_init__()",
-                "    return collection",
-            ]
-        ),
+        dedent("""\
+            from hybrax.format.dataclasses import (
+                ReactorMediumComponent,
+                TimeSeries,
+            )
+            import jax.numpy as jnp
+
+
+            def transform_process_collection(collection, config):
+                process = next(iter(collection.processes.values()))
+                process.reactor_medium.components["biomass"] = (
+                    ReactorMediumComponent(
+                        name="biomass",
+                        unit="g/L",
+                        concentration=TimeSeries(
+                            times=jnp.asarray([0.0, 1.0]),
+                            values=jnp.asarray([0.1, 0.2]),
+                        ),
+                    )
+                )
+                process.reaction_ode = None
+                process.__post_init__()
+                return collection
+        """),
         encoding="utf-8",
     )
 
 
 def _write_feed_semantics_custom_py(path: Path) -> None:
     path.write_text(
-        "\n".join(
-            [
-                (
-                    "from hybrax.format.dataclasses import ("
-                    "FeedMediumComponent, ReactorMediumComponent, "
-                    "StaticVariable, TimeSeries)"
-                ),
-                "import jax.numpy as jnp",
-                "",
-                "def transform_process_collection(collection, config):",
-                "    process = next(iter(collection.processes.values()))",
-                (
-                    "    process.reactor_medium.components['biomass'] = "
-                    "ReactorMediumComponent("
-                ),
-                "        name='biomass',",
-                "        unit='g/L',",
-                "        concentration=StaticVariable(0.1),",
-                "    )",
-                (
-                    "    process.reactor_medium.components['glucose'] = "
-                    "ReactorMediumComponent("
-                ),
-                "        name='glucose',",
-                "        unit='g/L',",
-                "        concentration=TimeSeries(",
-                "            times=jnp.asarray([0.0, 1.0]),",
-                "            values=jnp.asarray([1.0, 1.2]),",
-                "        ),",
-                "    )",
-                (
-                    "    process.volume.volume_changes['feed_A']"
-                    ".feed_medium.components['biomass'] = FeedMediumComponent("
-                ),
-                "        name='biomass',",
-                "        unit='g/L',",
-                "        concentration=StaticVariable(0.0),",
-                "        is_controlled=False,",
-                "    )",
-                "    process.reaction_ode = None",
-                "    process.__post_init__()",
-                "    return collection",
-            ]
-        ),
+        dedent("""\
+            from hybrax.format.dataclasses import (
+                FeedMediumComponent,
+                ReactorMediumComponent,
+                StaticVariable,
+                TimeSeries,
+            )
+            import jax.numpy as jnp
+
+
+            def transform_process_collection(collection, config):
+                process = next(iter(collection.processes.values()))
+                process.reactor_medium.components["biomass"] = (
+                    ReactorMediumComponent(
+                        name="biomass",
+                        unit="g/L",
+                        concentration=StaticVariable(0.1),
+                    )
+                )
+                process.reactor_medium.components["glucose"] = (
+                    ReactorMediumComponent(
+                        name="glucose",
+                        unit="g/L",
+                        concentration=TimeSeries(
+                            times=jnp.asarray([0.0, 1.0]),
+                            values=jnp.asarray([1.0, 1.2]),
+                        ),
+                    )
+                )
+                process.volume.volume_changes["feed_A"].feed_medium.components[
+                    "biomass"
+                ] = FeedMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(0.0),
+                    is_controlled=False,
+                )
+                process.reaction_ode = None
+                process.__post_init__()
+                return collection
+        """),
         encoding="utf-8",
     )
 
 
 def _write_feed_semantics_incomplete_custom_py(path: Path) -> None:
     path.write_text(
-        "\n".join(
-            [
-                (
-                    "from hybrax.format.dataclasses import ("
-                    "FeedMediumComponent, ReactorMediumComponent, "
-                    "StaticVariable, TimeSeries)"
-                ),
-                "import jax.numpy as jnp",
-                "",
-                "def transform_process_collection(collection, config):",
-                "    process = next(iter(collection.processes.values()))",
-                (
-                    "    process.reactor_medium.components['biomass'] = "
-                    "ReactorMediumComponent("
-                ),
-                "        name='biomass',",
-                "        unit='g/L',",
-                "        concentration=StaticVariable(0.1),",
-                "    )",
-                (
-                    "    process.reactor_medium.components['glucose'] = "
-                    "ReactorMediumComponent("
-                ),
-                "        name='glucose',",
-                "        unit='g/L',",
-                "        concentration=TimeSeries(",
-                "            times=jnp.asarray([0.0, 1.0]),",
-                "            values=jnp.asarray([1.0, 1.2]),",
-                "        ),",
-                "    )",
-                (
-                    "    process.volume.volume_changes['feed_A']"
-                    ".feed_medium.components = {}"
-                ),
-                (
-                    "    process.volume.volume_changes['feed_A']"
-                    ".feed_medium.components['unknown'] = FeedMediumComponent("
-                ),
-                "        name='unknown',",
-                "        unit='g/L',",
-                "        concentration=StaticVariable(0.0),",
-                "        is_controlled=False,",
-                "    )",
-                "    process.reaction_ode = None",
-                "    process.__post_init__()",
-                "    return collection",
-            ]
-        ),
+        dedent("""\
+            from hybrax.format.dataclasses import (
+                FeedMediumComponent,
+                ReactorMediumComponent,
+                StaticVariable,
+                TimeSeries,
+            )
+            import jax.numpy as jnp
+
+
+            def transform_process_collection(collection, config):
+                process = next(iter(collection.processes.values()))
+                process.reactor_medium.components["biomass"] = (
+                    ReactorMediumComponent(
+                        name="biomass",
+                        unit="g/L",
+                        concentration=StaticVariable(0.1),
+                    )
+                )
+                process.reactor_medium.components["glucose"] = (
+                    ReactorMediumComponent(
+                        name="glucose",
+                        unit="g/L",
+                        concentration=TimeSeries(
+                            times=jnp.asarray([0.0, 1.0]),
+                            values=jnp.asarray([1.0, 1.2]),
+                        ),
+                    )
+                )
+                process.volume.volume_changes["feed_A"].feed_medium.components = {}
+                process.volume.volume_changes["feed_A"].feed_medium.components[
+                    "unknown"
+                ] = FeedMediumComponent(
+                    name="unknown",
+                    unit="g/L",
+                    concentration=StaticVariable(0.0),
+                    is_controlled=False,
+                )
+                process.reaction_ode = None
+                process.__post_init__()
+                return collection
+        """),
         encoding="utf-8",
     )
 
@@ -487,13 +478,11 @@ def test_prepare_artifact_rejects_missing_reaction_ode_after_transform(
     collection = _make_explicit_ode_collection()
     custom_py = tmp_path / "clear_ode.py"
     custom_py.write_text(
-        "\n".join(
-            [
-                "def transform_process_collection(collection, config):",
-                "    collection.processes['p1'].reaction_ode = None",
-                "    return collection",
-            ]
-        ),
+        dedent("""\
+            def transform_process_collection(collection, config):
+                collection.processes["p1"].reaction_ode = None
+                return collection
+        """),
         encoding="utf-8",
     )
 
@@ -517,14 +506,12 @@ def test_prepare_artifact_rejects_invalid_stale_reaction_ode_after_transform(
 
     custom_py = tmp_path / "control_x.py"
     custom_py.write_text(
-        "\n".join(
-            [
-                "def transform_process_collection(collection, config):",
-                "    process = collection.processes['p1']",
-                "    process.process_variables['X'].is_controlled = True",
-                "    return collection",
-            ]
-        ),
+        dedent("""\
+            def transform_process_collection(collection, config):
+                process = collection.processes["p1"]
+                process.process_variables["X"].is_controlled = True
+                return collection
+        """),
         encoding="utf-8",
     )
 
@@ -546,16 +533,14 @@ def test_prepare_artifact_allows_hook_to_explicitly_regenerate_reaction_ode(
 
     custom_py = tmp_path / "control_x_regenerate.py"
     custom_py.write_text(
-        "\n".join(
-            [
-                "def transform_process_collection(collection, config):",
-                "    process = collection.processes['p1']",
-                "    process.process_variables['X'].is_controlled = True",
-                "    process.reaction_ode = None",
-                "    process.__post_init__()",
-                "    return collection",
-            ]
-        ),
+        dedent("""\
+            def transform_process_collection(collection, config):
+                process = collection.processes["p1"]
+                process.process_variables["X"].is_controlled = True
+                process.reaction_ode = None
+                process.__post_init__()
+                return collection
+        """),
         encoding="utf-8",
     )
 
@@ -633,18 +618,15 @@ def test_prepare_artifact_does_not_persist_padded_control_arrays(tmp_path):
 def test_prepare_artifact_respects_custom_control_order(tmp_path):
     custom_py = tmp_path / "custom.py"
     custom_py.write_text(
-        "\n".join(
-            [
-                "",
-                "def transform_process_collection(collection, config):",
-                "    for process in collection.processes.values():",
-                "        process.process_variables['CF'].is_controlled = True",
-                "        process.process_variables['T'].is_controlled = True",
-                "        process.reaction_ode = None",
-                "        process.__post_init__()",
-                "    return collection",
-            ]
-        ),
+        dedent("""\
+            def transform_process_collection(collection, config):
+                for process in collection.processes.values():
+                    process.process_variables["CF"].is_controlled = True
+                    process.process_variables["T"].is_controlled = True
+                    process.reaction_ode = None
+                    process.__post_init__()
+                return collection
+        """),
         encoding="utf-8",
     )
 
@@ -764,20 +746,18 @@ def test_prepare_artifact_partial_process_rename_preserves_unmapped_metadata_nam
 def test_prepare_artifact_supports_transform_process_collection_hook(tmp_path):
     custom_py = tmp_path / "custom-transform-collection.py"
     custom_py.write_text(
-        "\n".join(
-            [
-                "def transform_process_collection(collection, config):",
-                "    reordered = {}",
-                "    for name, process in collection.processes.items():",
-                "        new_name = f'proc::{name}'",
-                "        process.metadata.name = new_name",
-                "        reordered[new_name] = process",
-                "    collection.processes = reordered",
-                "    collection.metadata = dict(collection.metadata or {})",
-                "    collection.metadata['collection_transform_marker'] = 'applied'",
-                "    return collection",
-            ]
-        ),
+        dedent("""\
+            def transform_process_collection(collection, config):
+                reordered = {}
+                for name, process in collection.processes.items():
+                    new_name = f"proc::{name}"
+                    process.metadata.name = new_name
+                    reordered[new_name] = process
+                collection.processes = reordered
+                collection.metadata = dict(collection.metadata or {})
+                collection.metadata["collection_transform_marker"] = "applied"
+                return collection
+        """),
         encoding="utf-8",
     )
     output_dir = tmp_path / "prepared-transform-collection"
@@ -810,12 +790,10 @@ def test_prepare_artifact_logs_default_hooks_by_default(tmp_path, caplog):
 def test_prepare_artifact_logs_custom_hooks_when_supplied(tmp_path, caplog):
     custom_py = tmp_path / "custom-hooks-detected.py"
     custom_py.write_text(
-        "\n".join(
-            [
-                "def transform_process_collection(collection, config):",
-                "    return collection",
-            ]
-        ),
+        dedent("""\
+            def transform_process_collection(collection, config):
+                return collection
+        """),
         encoding="utf-8",
     )
     output_dir = tmp_path / "prepared-hooks-custom"
@@ -938,19 +916,17 @@ def test_prepare_artifact_rejects_zero_feed_without_component_metadata(tmp_path)
 def test_prepare_artifact_rejects_inconsistent_control_sets(tmp_path):
     custom_py = tmp_path / "custom-inconsistent.py"
     custom_py.write_text(
-        "\n".join(
-            [
-                "def transform_process_collection(collection, config):",
-                "    for process in collection.processes.values():",
-                "        if process.metadata.name == 'p1':",
-                "            process.process_variables['CF'].is_controlled = True",
-                "        else:",
-                "            process.process_variables['T'].is_controlled = True",
-                "        process.reaction_ode = None",
-                "        process.__post_init__()",
-                "    return collection",
-            ]
-        ),
+        dedent("""\
+            def transform_process_collection(collection, config):
+                for process in collection.processes.values():
+                    if process.metadata.name == "p1":
+                        process.process_variables["CF"].is_controlled = True
+                    else:
+                        process.process_variables["T"].is_controlled = True
+                    process.reaction_ode = None
+                    process.__post_init__()
+                return collection
+        """),
         encoding="utf-8",
     )
 
@@ -976,17 +952,15 @@ def test_prepare_artifact_fails_on_missing_required_control(tmp_path):
 def _write_control_custom_py(path: Path) -> None:
     """Mark CF/T controlled so prepare emits a control-diagnostics plot."""
     path.write_text(
-        "\n".join(
-            [
-                "def transform_process_collection(collection, config):",
-                "    for process in collection.processes.values():",
-                "        process.process_variables['CF'].is_controlled = True",
-                "        process.process_variables['T'].is_controlled = True",
-                "        process.reaction_ode = None",
-                "        process.__post_init__()",
-                "    return collection",
-            ]
-        ),
+        dedent("""\
+            def transform_process_collection(collection, config):
+                for process in collection.processes.values():
+                    process.process_variables["CF"].is_controlled = True
+                    process.process_variables["T"].is_controlled = True
+                    process.reaction_ode = None
+                    process.__post_init__()
+                return collection
+        """),
         encoding="utf-8",
     )
 

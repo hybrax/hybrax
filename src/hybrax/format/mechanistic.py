@@ -862,23 +862,23 @@ def extract_discrete_events(
                     0
                 ]
                 events.append(
-                    dict(
-                        t=float(t_event),
-                        kind="bolus_feed",
-                        dV=float(dV_event),
-                        Cin=Cin_event,
-                        source=vc_name,
-                    )
+                    {
+                        "t": float(t_event),
+                        "kind": "bolus_feed",
+                        "dV": float(dV_event),
+                        "Cin": Cin_event,
+                        "source": vc_name,
+                    }
                 )
             else:
                 events.append(
-                    dict(
-                        t=float(t_event),
-                        kind="sample",
-                        dV=float(dV_event),
-                        Cin=None,
-                        source=vc_name,
-                    )
+                    {
+                        "t": float(t_event),
+                        "kind": "sample",
+                        "dV": float(dV_event),
+                        "Cin": None,
+                        "source": vc_name,
+                    }
                 )
 
     events.sort(

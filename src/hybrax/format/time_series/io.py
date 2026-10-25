@@ -35,15 +35,15 @@ def timeseries_from_dict(cls: Any, data: Mapping[str, Any]) -> Any:
     All floating-point fields are float64 (x64 enabled package-wide). A legacy
     ``"dtype"`` key in older serialized payloads is ignored.
     """
-    kwargs = dict(
-        times=data.get("times"),
-        values=data.get("values"),
-        derived=bool(data.get("derived", False)),
-        jump_times=data.get("jump_times"),
-        breaks=data.get("breaks"),
-        coeffs=data.get("coeffs"),
-        segment_start_piece_idx=data.get("segment_start_piece_idx"),
-        continuity_side=data.get("continuity_side", "right"),
-        metadata=data.get("metadata"),
-    )
+    kwargs = {
+        "times": data.get("times"),
+        "values": data.get("values"),
+        "derived": bool(data.get("derived", False)),
+        "jump_times": data.get("jump_times"),
+        "breaks": data.get("breaks"),
+        "coeffs": data.get("coeffs"),
+        "segment_start_piece_idx": data.get("segment_start_piece_idx"),
+        "continuity_side": data.get("continuity_side", "right"),
+        "metadata": data.get("metadata"),
+    }
     return cls(**kwargs)
