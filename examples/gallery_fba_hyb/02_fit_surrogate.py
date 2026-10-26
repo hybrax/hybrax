@@ -127,7 +127,7 @@ def fit_flux(g, N, y, tr, d, n_restarts, seed):
                 method="L-BFGS-B",
                 options={"maxiter": 3000, "maxfun": 6000, "ftol": 1e-15, "gtol": 1e-12},
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - discard a failed example restart
             return
         if np.isfinite(r.fun) and r.fun < best_loss:
             best_loss, best = r.fun, r.x

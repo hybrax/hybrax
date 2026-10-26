@@ -109,16 +109,17 @@ if __name__ == "__main__":
             )
             try:
                 sol = cobra.flux_analysis.pfba(tmp)
-                rows.append(
-                    np.concatenate(
-                        [
-                            np.array([qG, n_X, n_M, n_A, n_S]),
-                            sol.fluxes.values.flatten(),
-                        ]
-                    )
-                )
-            except Exception:
+            except Exception:  # noqa: BLE001 - skip failed solver samples
                 n_fail += 1
+                continue
+            rows.append(
+                np.concatenate(
+                    [
+                        np.array([qG, n_X, n_M, n_A, n_S]),
+                        sol.fluxes.values.flatten(),
+                    ]
+                )
+            )
 
     with model as tmp:
         tmp = build_model(
