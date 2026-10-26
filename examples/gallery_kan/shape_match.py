@@ -65,19 +65,17 @@ def best_match(x, y, r2_floor=0.9):
     for name, (fn, p0, bounds) in CANDIDATES.items():
         try:
             popt, _ = curve_fit(fn, x, y, p0=p0, bounds=bounds, maxfev=10000)
-            pred = fn(x, *popt)
-            ss_res = float(np.sum((y - pred) ** 2))
-            ss_tot = float(np.sum((y - y.mean()) ** 2))
-            r2 = (
-                1.0 - ss_res / ss_tot
-                if ss_tot > 1e-12
-                else (1.0 if ss_res < 1e-9 else 0.0)
-            )
-            k = len(popt)
-            bic = n * np.log(max(ss_res / n, 1e-300)) + k * np.log(n)
-            fits[name] = {"params": [float(p) for p in popt], "r2": r2, "bic": bic}
-        except Exception:
+        except Exception:  # noqa: BLE001,S112 - skip failed example fits
             continue
+        pred = fn(x, *popt)
+        ss_res = float(np.sum((y - pred) ** 2))
+        ss_tot = float(np.sum((y - y.mean()) ** 2))
+        r2 = (
+            1.0 - ss_res / ss_tot if ss_tot > 1e-12 else (1.0 if ss_res < 1e-9 else 0.0)
+        )
+        k = len(popt)
+        bic = n * np.log(max(ss_res / n, 1e-300)) + k * np.log(n)
+        fits[name] = {"params": [float(p) for p in popt], "r2": r2, "bic": bic}
     if not fits:
         return {"best": "no clean match", "r2": None, "params": None, "fits": fits}
     best_name = min(fits, key=lambda nm: fits[nm]["bic"])
