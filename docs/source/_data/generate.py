@@ -502,8 +502,9 @@ def build_demo_fedbatch() -> None:
 # pFBA solves on e_coli_core.xml (Orth, Fleming & Palsson 2010), using the
 # method from Gotsmy & Guillen-Gosalbez's FBA-Hyb
 # (bioRxiv:10.64898/2026.04.22.720062v1): see
-# gallery/_files/01_generate_fba_data.py and 02_fit_surrogate.py for the full,
-# reproducible chain. Validation R^2 >= 0.999 on all four fitted fluxes;
+# examples/gallery_fba_hyb/01_generate_fba_data.py and 02_fit_surrogate.py
+# at the repository root for the full, reproducible chain.
+# Validation R^2 >= 0.999 on all four fitted fluxes;
 # boundedness certificate passed (max overshoot 1.7x over the sampling box,
 # min denominator 0.199 > 0 -- pole-free). Fixed here, not re-fit on every
 # docs build: solving 10,000 LPs takes minutes and needs `cobra`, neither of

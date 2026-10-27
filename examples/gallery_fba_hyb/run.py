@@ -3,8 +3,9 @@
 A hybrid dynamic-FBA reaction module: two small MLPs predict a glucose-uptake
 rate and an FBA objective from the current state, a frozen, pole-free
 surrogate (fit offline against 10,000 real pFBA solves on e_coli_core.xml,
-see 01_generate_fba_data.py / 02_fit_surrogate.py, not run here) converts
-that into real metabolic rates.
+see 01_generate_fba_data.py / 02_fit_surrogate.py) converts that into real
+metabolic rates. This script regenerates the FBA CSV in an isolated uv
+environment before training. Refitting the frozen surrogate is a separate step.
 
 See docs/source/gallery/fba_hyb.md for the narrated version.
 """
@@ -45,6 +46,8 @@ def hxt_cli(*args):
         raise RuntimeError(proc.stdout + proc.stderr)
     return proc.stdout + proc.stderr
 
+
+subprocess.run(["uv", "run", "01_generate_fba_data.py"], cwd=HERE, check=True)
 
 _collection = hxf.serialization.load_process_collection(HERE / "data.json")
 

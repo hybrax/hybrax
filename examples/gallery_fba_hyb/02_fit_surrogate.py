@@ -47,7 +47,7 @@ DELTA = {"qX": 0.05, "qM": 0.05, "qA": 0.05, "qS": 0.05}
 
 
 def load():
-    df = pd.read_csv("01_obj_fba_data.csv", index_col=0)
+    df = pd.read_csv("01_obj_fba_data.csv.gz", index_col=0)
     avg = df[["qG", "n_X", "n_M", "n_A", "n_S"]].mean(axis=0)
     AVG_QG = float(avg["qG"])
     AVG_N = np.array([avg["n_X"], avg["n_M"], avg["n_A"], avg["n_S"]], float)
