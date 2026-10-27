@@ -1,0 +1,10 @@
+{
+  "prepare": {
+    "raw_input": "data.json",
+    "strict_format_validation": true,
+    "diagnostics": false
+  },
+  "output": {
+    "dir": "prepared"
+  }
+}

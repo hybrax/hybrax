@@ -1,0 +1,29 @@
+{
+  "repository": "https://github.com/jrcramos/Hybrid-modeling-of-bioreactor-with-LSTM",
+  "commit": "d4197ed84ba46bfb53c3e4f42cfe00f44916edb5",
+  "dataset": "nine synthetic HEK293 cultures; not the paper experimental data",
+  "files": {
+    "source.xlsx": {
+      "path": "data/data.xlsx",
+      "sha256": "cd7e696867534976cfbb1d845c8c14caa7b5dcfed208ea6c76f8d6d8ce5e5e1f",
+      "vendored": false
+    },
+    "source-data.mat": {
+      "path": "data/data.mat",
+      "sha256": "1cbffa0456097560822ef8ac76d17d0e318108bf0e1833c8606226caba90aa7a"
+    },
+    "feed.json": {
+      "derived_from": "source.xlsx",
+      "sheet": "synthetic DoE",
+      "names": "row 14, columns F:AD",
+      "concentrations": "row 16, columns F:AD",
+      "sha256": "989290c6de482d840dc7d7e295f3ab05376e300d4aaf1f852f0cd8923787b2ce"
+    },
+    "matlab-reference.npz": {
+      "derived_from": "hybrid_LSTM_1.mat at the pinned commit",
+      "recipe": "scipy.io.loadmat(..., squeeze_me=True, struct_as_record=False)[\"runs\"].data.batch[i].ysim for i=0..8; stacked in culture order",
+      "source_sha256": "0766fe53e44df589bb1c9cdfb330dd169d69a7b30bd55879337c0879946d0399",
+      "contains": "saved concentration predictions only, no neural-network weights"
+    }
+  }
+}
