@@ -19,7 +19,7 @@ microbial models, including amino acids and other metabolites. If a hybrid
 model's neural network has to learn a specific rate for every one of these
 states, it becomes large and hard to train.
 
-Ramos et al. <a href="#ref-ramos">[1]</a> addressed this with a smart trick:
+Ramos et al. [<a href="#ref-ramos">1</a>] addressed this with a smart trick:
 they converted measured concentrations into cumulative reacted amounts, applied
 principal component analysis (PCA) across all cultures, and extracted a few of
 the most important principal components (which we will call "reaction modes"
@@ -34,9 +34,9 @@ loadings then maps these seven mode rates back onto the reaction terms for all
 
 The authors' experimental measurements are not in their public repository, so
 this example uses the synthetic data they provide instead: nine HEK293 cultures
-with 25 extracellular states <a href="#ref-code">[2]</a>. Here four PCA modes
-retain 99.66% of the normalized reacted amounts, so the ANN learns four
-rates that drive all 25 concentration balances.
+with 25 extracellular states [<a href="#ref-code">2</a>]. Here four PCA modes
+capture 99.66% of the normalized reacted-amount squared magnitude, so the ANN
+learns four rates that drive all 25 concentration balances.
 
 This page is an illustrative example of how to implement a model similar to the
 authors' in Hybrax. For the sake of simplicity, we do not reproduce their custom
@@ -205,7 +205,7 @@ not a wet-to-dry biomass conversion.
 
 ````{dropdown} Source files and provenance
 The inputs come from the authors' repository at a pinned commit
-<a href="#ref-code">[2]</a>:
+[<a href="#ref-code">2</a>]:
 
 - {download}`source-data.mat <../../../examples/gallery_hek293_lstm/source-data.mat>`
   is `data/data.mat` from that commit.
@@ -297,8 +297,8 @@ model needs the feed history as well as the concentrations.
 Hybrax splits each state's derivative into a reaction part and a transport part.
 Users declare the reaction part and Hybrax handles the transport part (i.e. it
 generates feed and dilution from the volume description). In this example the
-reaction part is the PCA reaction matrix times the four learned rates predicted
-by the ANN.
+reaction part is biomass concentration times the PCA reaction matrix and the
+four learned mode rates predicted by the ANN.
 
 ### Map four learned rates to 25 balances
 
@@ -410,7 +410,7 @@ its default. This example defines three:
 - `estimate_all_scales` sets how states are standardized.
 - `build_loss_module` defines the training and validation loss.
 
-For more details, the [Customization](../train/hooks_cheatsheet.md) docs lists
+For more details, the [Customization](../train/hooks_cheatsheet.md) docs list
 all hooks and their signatures.
 
 ### The LSTM as extra ODE states
@@ -497,7 +497,7 @@ This one choice does two jobs. Hybrax integrates the ODE in these z-score
 coordinates, which keeps the solver well conditioned. It also hands the same
 scaled values to the reaction module as `inputs.SCL_modeled_RMCs` and
 `inputs.SCL_modeled_V`, so the ANN inputs arrive standardized without any extra
-code. Time is not a state, so we have to standardizes it ourselves in
+code. Time is not a state, so we have to standardize it ourselves in
 `input_features`. The means and SDs come from the `custom` block of the config,
 and the hook reorders them by name to match the ODE's species order. All other
 scales are ones or empty arrays: the four mode rates and the feed keep their
@@ -645,7 +645,7 @@ model, using a four-unit LSTM and a small linear output head:
 
 selected_epoch = select_checkpoint(WORK, curves)
 comparison = score_selected_checkpoint(WORK, selected_epoch)
-display(comparison.style.format("{:.5f}"))
+display(comparison.style.set_uuid("hek_comparison").format("{:.5f}"))
 ```
 
 ````{dropdown} How the test scores are calculated
@@ -679,7 +679,7 @@ reflect model selection rather than an independent test.
 selected_epoch = select_checkpoint(WORK, curves)
 scores = plot_trajectories(WORK, selected_epoch)
 print(f"Checkpoint: epoch {selected_epoch:,}")
-display(scores[["All 25"]].style.format("{:.5f}"))
+display(scores[["All 25"]].style.set_uuid("hek_scores").format("{:.5f}"))
 display(Image(filename=str(WORK / "Br7-trajectories.png")))
 ```
 
@@ -706,9 +706,9 @@ The script regenerates `data.json` and `train-config.json`, plots the source
 data, prepares the collection, trains the model, and runs `results.py`. It
 replaces any existing `prepared/` and `run/`. It writes `loss-curves.csv`,
 `loss-curves.png`, `selected-checkpoint.txt`, `comparison-scores.csv`,
-`Br7-scores.csv`, and `Br7-trajectories.png` to the example directory. Everything runs from the
-bundled inputs, without MATLAB or network access. This page's executed run is
-in `docs/source/_data/out/runs/gallery_hek293_lstm/run/`.
+`Br7-scores.csv`, and `Br7-trajectories.png` to the example directory. Everything
+runs from the bundled inputs, without MATLAB or network access. This page's
+executed run is in `docs/source/_data/out/runs/gallery_hek293_lstm/run/`.
 
 ````{dropdown} run.py
 ```{literalinclude} ../../../examples/gallery_hek293_lstm/run.py
@@ -730,6 +730,27 @@ in `docs/source/_data/out/runs/gallery_hek293_lstm/run/`.
 :caption: results.py
 ```
 ````
+
+## Conclusion
+
+This example imported nine synthetic HEK293 cultures from Ramos et al.
+[<a href="#ref-ramos">1</a>] into a reusable Hybrax collection, with measurements,
+units, feed and reaction equations stored together in `data.json`. PCA on the
+cumulative reacted amounts reduced the number of rates the network needs to
+learn to four, which are mapped to the reaction terms in all 25 concentration
+balances using the rescaled PCA loadings. A continuous-time LSTM with four
+hidden units and a small linear head was trained directly against measured
+concentrations using `hybrax prepare`, `hybrax train`, and three hooks in
+`custom.py`.
+
+The resulting fit is comparable to the authors' saved MATLAB model, despite
+differences in the recurrent cells, output heads and optimization. Validation
+and test NRMSE are 0.05207 and 0.03492, compared with 0.05761 and 0.03757 for
+MATLAB. This is a synthetic benchmark: preprocessing uses all nine cultures,
+including the held-out cultures (same as the MATLAB code), and neither model
+guarantees nonnegative concentrations. Adding a soft penalty for negative
+concentrations would be a straightforward extension; see the
+[custom loss example](dense_loss.md) for details.
 
 ## References
 

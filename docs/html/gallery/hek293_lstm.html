@@ -379,7 +379,7 @@
 microbial models, including amino acids and other metabolites. If a hybrid
 model’s neural network has to learn a specific rate for every one of these
 states, it becomes large and hard to train.</p>
-<p>Ramos et al. <a href="#ref-ramos">[1]</a> addressed this with a smart trick:
+<p>Ramos et al. [<a href="#ref-ramos">1</a>] addressed this with a smart trick:
 they converted measured concentrations into cumulative reacted amounts, applied
 principal component analysis (PCA) across all cultures, and extracted a few of
 the most important principal components (which we will call “reaction modes”
@@ -393,9 +393,9 @@ loadings then maps these seven mode rates back onto the reaction terms for all
 27 states.</p>
 <p>The authors’ experimental measurements are not in their public repository, so
 this example uses the synthetic data they provide instead: nine HEK293 cultures
-with 25 extracellular states <a href="#ref-code">[2]</a>. Here four PCA modes
-retain 99.66% of the normalized reacted amounts, so the ANN learns four
-rates that drive all 25 concentration balances.</p>
+with 25 extracellular states [<a href="#ref-code">2</a>]. Here four PCA modes
+capture 99.66% of the normalized reacted-amount squared magnitude, so the ANN
+learns four rates that drive all 25 concentration balances.</p>
 <p>This page is an illustrative example of how to implement a model similar to the
 authors’ in Hybrax. For the sake of simplicity, we do not reproduce their custom
 LSTM architecture exactly because this would increase the code complexity
@@ -571,7 +571,7 @@ not a wet-to-dry biomass conversion.</p>
 <summary class="sd-summary-title sd-card-header">
 <span class="sd-summary-text">Source files and provenance</span><span class="sd-summary-state-marker sd-summary-chevron-right"><svg version="1.1" width="1.5em" height="1.5em" class="sd-octicon sd-octicon-chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.72 18.78a.75.75 0 0 1 0-1.06L14.44 12 8.72 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0Z"></path></svg></span></summary><div class="sd-summary-content sd-card-body docutils">
 <p class="sd-card-text">The inputs come from the authors’ repository at a pinned commit
-<a href="#ref-code">[2]</a>:</p>
+[<a href="#ref-code">2</a>]:</p>
 <ul class="simple">
 <li><p class="sd-card-text"><a class="reference download internal" download="" href="../_downloads/b94c4a7ff8fd9041e49e4c42dc51c7f4/source-data.mat"><code class="xref download docutils literal notranslate"><span class="pre">source-data.mat</span></code></a>
 is <code class="docutils literal notranslate"><span class="pre">data/data.mat</span></code> from that commit.</p></li>
@@ -907,8 +907,8 @@ model needs the feed history as well as the concentrations.</p>
 <p>Hybrax splits each state’s derivative into a reaction part and a transport part.
 Users declare the reaction part and Hybrax handles the transport part (i.e. it
 generates feed and dilution from the volume description). In this example the
-reaction part is the PCA reaction matrix times the four learned rates predicted
-by the ANN.</p>
+reaction part is biomass concentration times the PCA reaction matrix and the
+four learned mode rates predicted by the ANN.</p>
 <section id="map-four-learned-rates-to-25-balances">
 <h3>Map four learned rates to 25 balances<a class="headerlink" href="#map-four-learned-rates-to-25-balances" title="Link to this heading">¶</a></h3>
 <p>The importer builds the reaction matrix from the reacted amounts <code class="docutils literal notranslate"><span class="pre">m_r</span></code> in the
@@ -1159,7 +1159,7 @@ its default. This example defines three:</p>
 <li><p><code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code> sets how states are standardized.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">build_loss_module</span></code> defines the training and validation loss.</p></li>
 </ul>
-<p>For more details, the <a class="reference internal" href="../train/hooks_cheatsheet.html"><span class="std std-doc">Customization</span></a> docs lists
+<p>For more details, the <a class="reference internal" href="../train/hooks_cheatsheet.html"><span class="std std-doc">Customization</span></a> docs list
 all hooks and their signatures.</p>
 <section id="the-lstm-as-extra-ode-states">
 <h3>The LSTM as extra ODE states<a class="headerlink" href="#the-lstm-as-extra-ode-states" title="Link to this heading">¶</a></h3>
@@ -1260,7 +1260,7 @@ sample standard deviation (SD) as scale, every state becomes a z-score:</p>
 coordinates, which keeps the solver well conditioned. It also hands the same
 scaled values to the reaction module as <code class="docutils literal notranslate"><span class="pre">inputs.SCL_modeled_RMCs</span></code> and
 <code class="docutils literal notranslate"><span class="pre">inputs.SCL_modeled_V</span></code>, so the ANN inputs arrive standardized without any extra
-code. Time is not a state, so we have to standardizes it ourselves in
+code. Time is not a state, so we have to standardize it ourselves in
 <code class="docutils literal notranslate"><span class="pre">input_features</span></code>. The means and SDs come from the <code class="docutils literal notranslate"><span class="pre">custom</span></code> block of the config,
 and the hook reorders them by name to match the ODE’s species order. All other
 scales are ones or empty arrays: the four mode rates and the feed keep their
@@ -1731,36 +1731,36 @@ model, using a four-unit LSTM and a small linear output head:</p>
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">selected_epoch</span> <span class="o">=</span> <span class="n">select_checkpoint</span><span class="p">(</span><span class="n">WORK</span><span class="p">,</span> <span class="n">curves</span><span class="p">)</span>
 <span class="n">comparison</span> <span class="o">=</span> <span class="n">score_selected_checkpoint</span><span class="p">(</span><span class="n">WORK</span><span class="p">,</span> <span class="n">selected_epoch</span><span class="p">)</span>
-<span class="n">display</span><span class="p">(</span><span class="n">comparison</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s2">"</span><span class="si">{:.5f}</span><span class="s2">"</span><span class="p">))</span>
+<span class="n">display</span><span class="p">(</span><span class="n">comparison</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">set_uuid</span><span class="p">(</span><span class="s2">"hek_comparison"</span><span class="p">)</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s2">"</span><span class="si">{:.5f}</span><span class="s2">"</span><span class="p">))</span>
 </pre></div>
 </div>
 </div>
 <div class="cell_output docutils container">
 <div class="output text_html"><style type="text/css">
 </style>
-<table id="T_d7427">
+<table id="T_hek_comparison">
   <thead>
     <tr>
       <th class="blank level0" >&nbsp;</th>
-      <th id="T_d7427_level0_col0" class="col_heading level0 col0" >Hybrax</th>
-      <th id="T_d7427_level0_col1" class="col_heading level0 col1" >MATLAB</th>
+      <th id="T_hek_comparison_level0_col0" class="col_heading level0 col0" >Hybrax</th>
+      <th id="T_hek_comparison_level0_col1" class="col_heading level0 col1" >MATLAB</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <th id="T_d7427_level0_row0" class="row_heading level0 row0" >Training</th>
-      <td id="T_d7427_row0_col0" class="data row0 col0" >0.03095</td>
-      <td id="T_d7427_row0_col1" class="data row0 col1" >0.03256</td>
+      <th id="T_hek_comparison_level0_row0" class="row_heading level0 row0" >Training</th>
+      <td id="T_hek_comparison_row0_col0" class="data row0 col0" >0.03095</td>
+      <td id="T_hek_comparison_row0_col1" class="data row0 col1" >0.03256</td>
     </tr>
     <tr>
-      <th id="T_d7427_level0_row1" class="row_heading level0 row1" >Validation (Br7)</th>
-      <td id="T_d7427_row1_col0" class="data row1 col0" >0.05207</td>
-      <td id="T_d7427_row1_col1" class="data row1 col1" >0.05761</td>
+      <th id="T_hek_comparison_level0_row1" class="row_heading level0 row1" >Validation (Br7)</th>
+      <td id="T_hek_comparison_row1_col0" class="data row1 col0" >0.05207</td>
+      <td id="T_hek_comparison_row1_col1" class="data row1 col1" >0.05761</td>
     </tr>
     <tr>
-      <th id="T_d7427_level0_row2" class="row_heading level0 row2" >Test</th>
-      <td id="T_d7427_row2_col0" class="data row2 col0" >0.03492</td>
-      <td id="T_d7427_row2_col1" class="data row2 col1" >0.03757</td>
+      <th id="T_hek_comparison_level0_row2" class="row_heading level0 row2" >Test</th>
+      <td id="T_hek_comparison_row2_col0" class="data row2 col0" >0.03492</td>
+      <td id="T_hek_comparison_row2_col1" class="data row2 col1" >0.03757</td>
     </tr>
   </tbody>
 </table>
@@ -1853,7 +1853,7 @@ reflect model selection rather than an independent test.</p>
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">selected_epoch</span> <span class="o">=</span> <span class="n">select_checkpoint</span><span class="p">(</span><span class="n">WORK</span><span class="p">,</span> <span class="n">curves</span><span class="p">)</span>
 <span class="n">scores</span> <span class="o">=</span> <span class="n">plot_trajectories</span><span class="p">(</span><span class="n">WORK</span><span class="p">,</span> <span class="n">selected_epoch</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Checkpoint: epoch </span><span class="si">{</span><span class="n">selected_epoch</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<span class="n">display</span><span class="p">(</span><span class="n">scores</span><span class="p">[[</span><span class="s2">"All 25"</span><span class="p">]]</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s2">"</span><span class="si">{:.5f}</span><span class="s2">"</span><span class="p">))</span>
+<span class="n">display</span><span class="p">(</span><span class="n">scores</span><span class="p">[[</span><span class="s2">"All 25"</span><span class="p">]]</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">set_uuid</span><span class="p">(</span><span class="s2">"hek_scores"</span><span class="p">)</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s2">"</span><span class="si">{:.5f}</span><span class="s2">"</span><span class="p">))</span>
 <span class="n">display</span><span class="p">(</span><span class="n">Image</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">WORK</span> <span class="o">/</span> <span class="s2">"Br7-trajectories.png"</span><span class="p">)))</span>
 </pre></div>
 </div>
@@ -1864,21 +1864,21 @@ reflect model selection rather than an independent test.</p>
 </div>
 <div class="output text_html"><style type="text/css">
 </style>
-<table id="T_93827">
+<table id="T_hek_scores">
   <thead>
     <tr>
       <th class="blank level0" >&nbsp;</th>
-      <th id="T_93827_level0_col0" class="col_heading level0 col0" >All 25</th>
+      <th id="T_hek_scores_level0_col0" class="col_heading level0 col0" >All 25</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <th id="T_93827_level0_row0" class="row_heading level0 row0" >Hybrax</th>
-      <td id="T_93827_row0_col0" class="data row0 col0" >0.05207</td>
+      <th id="T_hek_scores_level0_row0" class="row_heading level0 row0" >Hybrax</th>
+      <td id="T_hek_scores_row0_col0" class="data row0 col0" >0.05207</td>
     </tr>
     <tr>
-      <th id="T_93827_level0_row1" class="row_heading level0 row1" >MATLAB</th>
-      <td id="T_93827_row1_col0" class="data row1 col0" >0.05761</td>
+      <th id="T_hek_scores_level0_row1" class="row_heading level0 row1" >MATLAB</th>
+      <td id="T_hek_scores_row1_col0" class="data row1 col0" >0.05761</td>
     </tr>
   </tbody>
 </table>
@@ -1906,9 +1906,9 @@ non-negative, so both can predict negative values.</p>
 data, prepares the collection, trains the model, and runs <code class="docutils literal notranslate"><span class="pre">results.py</span></code>. It
 replaces any existing <code class="docutils literal notranslate"><span class="pre">prepared/</span></code> and <code class="docutils literal notranslate"><span class="pre">run/</span></code>. It writes <code class="docutils literal notranslate"><span class="pre">loss-curves.csv</span></code>,
 <code class="docutils literal notranslate"><span class="pre">loss-curves.png</span></code>, <code class="docutils literal notranslate"><span class="pre">selected-checkpoint.txt</span></code>, <code class="docutils literal notranslate"><span class="pre">comparison-scores.csv</span></code>,
-<code class="docutils literal notranslate"><span class="pre">Br7-scores.csv</span></code>, and <code class="docutils literal notranslate"><span class="pre">Br7-trajectories.png</span></code> to the example directory. Everything runs from the
-bundled inputs, without MATLAB or network access. This page’s executed run is
-in <code class="docutils literal notranslate"><span class="pre">docs/source/_data/out/runs/gallery_hek293_lstm/run/</span></code>.</p>
+<code class="docutils literal notranslate"><span class="pre">Br7-scores.csv</span></code>, and <code class="docutils literal notranslate"><span class="pre">Br7-trajectories.png</span></code> to the example directory. Everything
+runs from the bundled inputs, without MATLAB or network access. This page’s
+executed run is in <code class="docutils literal notranslate"><span class="pre">docs/source/_data/out/runs/gallery_hek293_lstm/run/</span></code>.</p>
 <details class="sd-sphinx-override sd-dropdown sd-card sd-mb-3">
 <summary class="sd-summary-title sd-card-header">
 <span class="sd-summary-text"><a class="reference external" href="http://run.py">run.py</a></span><span class="sd-summary-state-marker sd-summary-chevron-right"><svg version="1.1" width="1.5em" height="1.5em" class="sd-octicon sd-octicon-chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.72 18.78a.75.75 0 0 1 0-1.06L14.44 12 8.72 6.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0Z"></path></svg></span></summary><div class="sd-summary-content sd-card-body docutils">
@@ -2284,6 +2284,26 @@ in <code class="docutils literal notranslate"><span class="pre">docs/source/_dat
 </div>
 </div>
 </details></section>
+<section id="conclusion">
+<h2>Conclusion<a class="headerlink" href="#conclusion" title="Link to this heading">¶</a></h2>
+<p>This example imported nine synthetic HEK293 cultures from Ramos et al.
+[<a href="#ref-ramos">1</a>] into a reusable Hybrax collection, with measurements,
+units, feed and reaction equations stored together in <code class="docutils literal notranslate"><span class="pre">data.json</span></code>. PCA on the
+cumulative reacted amounts reduced the number of rates the network needs to
+learn to four, which are mapped to the reaction terms in all 25 concentration
+balances using the rescaled PCA loadings. A continuous-time LSTM with four
+hidden units and a small linear head was trained directly against measured
+concentrations using <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">prepare</span></code>, <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">train</span></code>, and three hooks in
+<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>.</p>
+<p>The resulting fit is comparable to the authors’ saved MATLAB model, despite
+differences in the recurrent cells, output heads and optimization. Validation
+and test NRMSE are 0.05207 and 0.03492, compared with 0.05761 and 0.03757 for
+MATLAB. This is a synthetic benchmark: preprocessing uses all nine cultures,
+including the held-out cultures (same as the MATLAB code), and neither model
+guarantees nonnegative concentrations. Adding a soft penalty for negative
+concentrations would be a straightforward extension; see the
+<a class="reference internal" href="dense_loss.html"><span class="std std-doc">custom loss example</span></a> for details.</p>
+</section>
 <section id="references">
 <h2>References<a class="headerlink" href="#references" title="Link to this heading">¶</a></h2>
 <ol class="arabic simple" id="ref-ramos">
@@ -2403,6 +2423,7 @@ checkpoint directory.</p>
 </ul>
 </li>
 <li><a class="reference internal" href="#run-the-example-locally">Run the example locally</a></li>
+<li><a class="reference internal" href="#conclusion">Conclusion</a></li>
 <li><a class="reference internal" href="#references">References</a></li>
 </ul>
 </li>
