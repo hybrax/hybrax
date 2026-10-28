@@ -384,8 +384,8 @@ fixed activation with learned weights. After training, each edge’s curve is ma
 against a small shape library and checked against the real process that generated the
 training data.</p>
 </div></blockquote>
-<p>Inspired by Bühler &amp; Guillén-Gosálbez 2026 <a href="#ref-srkan">[1]</a>, whose SR-KAN
-framework builds on Kolmogorov-Arnold Networks <a href="#ref-kan">[2]</a> to recover
+<p>Inspired by Bühler &amp; Guillén-Gosálbez 2026 [<a href="#ref-srkan">1</a>], whose SR-KAN
+framework builds on Kolmogorov-Arnold Networks [<a href="#ref-kan">2</a>] to recover
 interpretable kinetic rate laws from a batch fermentation case study similar to this
 page’s own biomass, glucose, and product data. This page reproduces the core idea,
 learnable curves on edges in place of a neural network’s fixed activations, as a single
@@ -419,9 +419,9 @@ the paper’s further step of composing those matches into one closed-form rate 
 </div>
 <p>Per edge <code class="docutils literal notranslate"><span class="pre">(i,</span> <span class="pre">o)</span></code>: <code class="docutils literal notranslate"><span class="pre">base_w[o,i]·SiLU(x_i)</span></code> plus <code class="docutils literal notranslate"><span class="pre">Σ_g</span> <span class="pre">spline_c[o,i,g]·rbf_g(x_i)</span></code>, a
 small Gaussian radial-basis expansion centered on a fixed grid
-<a href="#ref-rbf">[3]</a>. A node’s output is the sum over its incoming edges’
+[<a href="#ref-rbf">3</a>]. A node’s output is the sum over its incoming edges’
 curves, <code class="docutils literal notranslate"><span class="pre">Σ_i</span> <span class="pre">φ_oi(x_i)</span></code>, the defining property that makes this a KAN
-<a href="#ref-kan">[2]</a> rather than an MLP: the learnable function lives on
+[<a href="#ref-kan">2</a>] rather than an MLP: the learnable function lives on
 the edge, separate from a fixed node activation. <code class="docutils literal notranslate"><span class="pre">x</span></code> is <code class="docutils literal notranslate"><span class="pre">tanh</span></code>-bounded before
 hitting the grid, so every edge’s spline term always sees an input inside the
 range it was actually fit over.</p>
@@ -584,7 +584,7 @@ model picked up an inhibiting effect of product concentration on biomass
 growth that the real process did not have, and noted “slight numerical
 discrepancies” between its recovered growth surface and the real one, even
 after correctly capturing the overall trend
-<a href="#ref-forster">[4]</a>. The aim here is to show that a comparable check runs,
+[<a href="#ref-forster">4</a>]. The aim here is to show that a comparable check runs,
 end to end, inside <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>, at a smaller scale than SR-KAN’s own
 hyperparameter-tuned pipeline.</p>
 </section>

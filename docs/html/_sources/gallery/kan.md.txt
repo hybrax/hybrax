@@ -20,8 +20,8 @@ kernelspec:
 > against a small shape library and checked against the real process that generated the
 > training data.
 
-Inspired by Bühler & Guillén-Gosálbez 2026 <a href="#ref-srkan">[1]</a>, whose SR-KAN
-framework builds on Kolmogorov-Arnold Networks <a href="#ref-kan">[2]</a> to recover
+Inspired by Bühler & Guillén-Gosálbez 2026 [<a href="#ref-srkan">1</a>], whose SR-KAN
+framework builds on Kolmogorov-Arnold Networks [<a href="#ref-kan">2</a>] to recover
 interpretable kinetic rate laws from a batch fermentation case study similar to this
 page's own biomass, glucose, and product data. This page reproduces the core idea,
 learnable curves on edges in place of a neural network's fixed activations, as a single
@@ -100,9 +100,9 @@ def r2_by_target(run_dir):
 
 Per edge `(i, o)`: `base_w[o,i]·SiLU(x_i)` plus `Σ_g spline_c[o,i,g]·rbf_g(x_i)`, a
 small Gaussian radial-basis expansion centered on a fixed grid
-<a href="#ref-rbf">[3]</a>. A node's output is the sum over its incoming edges'
+[<a href="#ref-rbf">3</a>]. A node's output is the sum over its incoming edges'
 curves, `Σ_i φ_oi(x_i)`, the defining property that makes this a KAN
-<a href="#ref-kan">[2]</a> rather than an MLP: the learnable function lives on
+[<a href="#ref-kan">2</a>] rather than an MLP: the learnable function lives on
 the edge, separate from a fixed node activation. `x` is `tanh`-bounded before
 hitting the grid, so every edge's spline term always sees an input inside the
 range it was actually fit over.
@@ -324,7 +324,7 @@ model picked up an inhibiting effect of product concentration on biomass
 growth that the real process did not have, and noted "slight numerical
 discrepancies" between its recovered growth surface and the real one, even
 after correctly capturing the overall trend
-<a href="#ref-forster">[4]</a>. The aim here is to show that a comparable check runs,
+[<a href="#ref-forster">4</a>]. The aim here is to show that a comparable check runs,
 end to end, inside `hybrax.train`, at a smaller scale than SR-KAN's own
 hyperparameter-tuned pipeline.
 

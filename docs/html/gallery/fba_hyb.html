@@ -385,12 +385,12 @@ ever gets solved during training.</p>
 <code class="docutils literal notranslate"><span class="pre">max</span> <span class="pre">c^T</span> <span class="pre">v</span></code> subject to <code class="docutils literal notranslate"><span class="pre">S.v</span> <span class="pre">=</span> <span class="pre">0</span></code> and flux bounds, at every integration step. JAX cannot
 differentiate through or <code class="docutils literal notranslate"><span class="pre">vmap</span></code>/<code class="docutils literal notranslate"><span class="pre">jit</span></code> a linear-program solve the way it does a neural
 network, and <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> has no LP solver in its training loop. The fix, from Gotsmy &amp;
-Guillén-Gosálbez’s FBA-Hyb <a href="#ref-fbahyb">[1]</a>: fit a closed-form,
+Guillén-Gosálbez’s FBA-Hyb [<a href="#ref-fbahyb">1</a>]: fit a closed-form,
 pole-free surrogate of the FBA solution <strong>once, offline</strong> (10,000 real linear
 programs solved outside the training loop), then embed that surrogate directly
 inside an ordinary <code class="docutils literal notranslate"><span class="pre">RateModule</span></code>. No LP solve ever happens during training.</p>
 <p>The surrogate here is fit fresh against <code class="docutils literal notranslate"><span class="pre">e_coli_core.xml</span></code>
-<a href="#ref-ecolicore">[2]</a>, a small, real, published teaching model (95
+[<a href="#ref-ecolicore">2</a>], a small, real, published teaching model (95
 reactions, 72 metabolites): see <a class="reference internal" href="#how-the-surrogate-was-fit">How the Surrogate Was Fit</a>
 below for the full, reproducible chain. See <a class="reference internal" href="pls_dfba.html"><span class="std std-doc">PLS-dFBA</span></a> for this page’s
 sibling, which builds on the same surrogate with a product-forming, media-blend-aware
@@ -534,8 +534,8 @@ accumulates), inferred purely from the state it was shown.</p>
 <section id="how-the-surrogate-was-fit">
 <h2>How the Surrogate Was Fit<a class="headerlink" href="#how-the-surrogate-was-fit" title="Link to this heading">¶</a></h2>
 <p>The surrogate is fit offline the same way as the FBA-Hyb paper
-<a href="#ref-fbahyb">[1]</a>: 10,000 real FBA solves on <code class="docutils literal notranslate"><span class="pre">e_coli_core.xml</span></code>
-<a href="#ref-ecolicore">[2]</a>, then a pole-free rational fit against that data with
+[<a href="#ref-fbahyb">1</a>]: 10,000 real FBA solves on <code class="docutils literal notranslate"><span class="pre">e_coli_core.xml</span></code>
+[<a href="#ref-ecolicore">2</a>], then a pole-free rational fit against that data with
 a boundedness certificate checked before acceptance (validation R² ≥ 0.999 on all four
 fitted fluxes). The fitting scripts live in <code class="docutils literal notranslate"><span class="pre">examples/gallery_fba_hyb/</span></code> for anyone who
 wants to reproduce it; they don’t run as part of building these docs, since solving

@@ -17,7 +17,7 @@ kernelspec:
 > state. A controllable recipe choice measurably shifts the predicted metabolic
 > corridor.
 
-Inspired by Negahban et al. 2026 <a href="#ref-negahban">[1]</a>, *"Run-to-run
+Inspired by Negahban et al. 2026 [<a href="#ref-negahban">1</a>], *"Run-to-run
 optimization of CHO cell culture media using high-throughput microscale bioreactor
 system and a hybrid modeling approach,"* whose hybrid PLS-dFBA model predicts kinetic
 rate constraints from a Partial Least Squares regression fed by both state and media

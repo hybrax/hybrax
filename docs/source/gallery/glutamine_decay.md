@@ -16,7 +16,7 @@ kernelspec:
 > sink in one, a source in the other. Training recovers that single shared value from
 > data alone.
 
-This page is inspired by Ulonska et al. (2018) <a href="#ref-ulonska">[1]</a>, whose CHO
+This page is inspired by Ulonska et al. (2018) [<a href="#ref-ulonska">1</a>], whose CHO
 cell culture model includes glutamine's own spontaneous, non-enzymatic decomposition to
 glutamate and ammonia at a real, fitted first-order rate of 0.0036 1/h (roughly an
 eight-day half-life). `r_Gln` below reproduces that rate exactly as this page's synthetic

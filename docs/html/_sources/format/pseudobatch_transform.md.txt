@@ -34,7 +34,7 @@ accounts for mass the feed added. The result is what the concentration *would ha
 in a batch run with identical biology.
 
 This is a direct implementation of Hesselberg-Thomsen et al. 2024
-<a href="#ref-pseudobatch">[1]</a>, *"Pseudo batch transformation: A novel method to
+[<a href="#ref-pseudobatch">1</a>], *"Pseudo batch transformation: A novel method to
 correct for mass removal through sample withdrawal of fed-batch fermentations,"* whose
 accumulated-dilution-factor and feed-correction formulas `build_pseudobatch_transform`
 reproduces exactly.

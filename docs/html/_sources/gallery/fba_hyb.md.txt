@@ -21,13 +21,13 @@ Dynamic flux-balance analysis (dFBA) normally means solving a real linear progra
 `max c^T v` subject to `S.v = 0` and flux bounds, at every integration step. JAX cannot
 differentiate through or `vmap`/`jit` a linear-program solve the way it does a neural
 network, and `hybrax.train` has no LP solver in its training loop. The fix, from Gotsmy &
-Guillén-Gosálbez's FBA-Hyb <a href="#ref-fbahyb">[1]</a>: fit a closed-form,
+Guillén-Gosálbez's FBA-Hyb [<a href="#ref-fbahyb">1</a>]: fit a closed-form,
 pole-free surrogate of the FBA solution **once, offline** (10,000 real linear
 programs solved outside the training loop), then embed that surrogate directly
 inside an ordinary `RateModule`. No LP solve ever happens during training.
 
 The surrogate here is fit fresh against `e_coli_core.xml`
-<a href="#ref-ecolicore">[2]</a>, a small, real, published teaching model (95
+[<a href="#ref-ecolicore">2</a>], a small, real, published teaching model (95
 reactions, 72 metabolites): see [How the Surrogate Was Fit](#how-the-surrogate-was-fit)
 below for the full, reproducible chain. See [PLS-dFBA](pls_dfba.md) for this page's
 sibling, which builds on the same surrogate with a product-forming, media-blend-aware
@@ -189,8 +189,8 @@ accumulates), inferred purely from the state it was shown.
 ## How the Surrogate Was Fit
 
 The surrogate is fit offline the same way as the FBA-Hyb paper
-<a href="#ref-fbahyb">[1]</a>: 10,000 real FBA solves on `e_coli_core.xml`
-<a href="#ref-ecolicore">[2]</a>, then a pole-free rational fit against that data with
+[<a href="#ref-fbahyb">1</a>]: 10,000 real FBA solves on `e_coli_core.xml`
+[<a href="#ref-ecolicore">2</a>], then a pole-free rational fit against that data with
 a boundedness certificate checked before acceptance (validation R² ≥ 0.999 on all four
 fitted fluxes). The fitting scripts live in `examples/gallery_fba_hyb/` for anyone who
 wants to reproduce it; they don't run as part of building these docs, since solving
