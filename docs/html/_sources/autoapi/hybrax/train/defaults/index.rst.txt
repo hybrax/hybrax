@@ -41,7 +41,7 @@ Functions
 Module Contents
 ---------------
 
-.. py:class:: DefaultGruReactionModule(*, key, n_latent, **scale_kwargs)
+.. py:class:: DefaultGruReactionModule(*, key, n_latent, input_size = None, **scale_kwargs)
 
    Bases: :py:obj:`hybrax.train.model_api.RateModule`
 
@@ -101,7 +101,7 @@ Module Contents
       :type:  tuple[str, ...]
 
 
-.. py:class:: DefaultLstmReactionModule(*, key, hidden_width, **scale_kwargs)
+.. py:class:: DefaultLstmReactionModule(*, key, hidden_width, input_size = None, **scale_kwargs)
 
    Bases: :py:obj:`hybrax.train.model_api.RateModule`
 
@@ -136,16 +136,16 @@ Module Contents
       :type:  equinox.nn.Linear
 
 
-.. py:class:: DefaultReactionModule(*, key, depth = 2, width_size = None, **scale_kwargs)
+.. py:class:: DefaultReactionModule(*, key, depth = 2, width_size = None, input_size = None, **scale_kwargs)
 
    Bases: :py:obj:`hybrax.train.model_api.RateModule`
 
 
    Minimal default reaction model for harness runs.
 
-   Predicts ``SCL_modeled_ReactionOde_rates`` (which includes any ``r_<pv>``
-   PV rates) from the SCL species + modeled-PV slices. Ignores controls; emits
-   zero-valued modeled Inflow and Outflow rates. Uses tanh/Glorot for shallow
+   Predicts ``SCL_modeled_ReactionOde_rates`` (including ``r_<pv>`` PV rates)
+   from scaled physical and control features. Emits zero-valued modeled
+   Inflow and Outflow rates. Uses tanh/Glorot for shallow
    networks and SiLU/He for deeper networks. The rate head starts near zero.
 
 

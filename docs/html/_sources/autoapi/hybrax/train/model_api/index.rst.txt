@@ -528,6 +528,18 @@ Module Contents
 
 
 
+   .. py:method:: input_features(t, inputs)
+
+      Return the default scaled physical and control features for an ANN.
+
+      Time and latent state are excluded. Override to select or add features;
+      the built-in ANN modules require a one-dimensional array matching their
+      input_size. Their constructors infer only the default width and do not
+      call this method, so overrides may use fields set after super().__init__.
+      Custom forward methods may use this helper or assemble their own inputs.
+
+
+
    .. py:method:: observe(states)
 
       Optional post-hoc observation map; default identity on physical state.

@@ -453,7 +453,7 @@ each run’s controls. Worth a look the first time you prepare your own data.</p
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=38.6735 last_mean_loss=0.114875 delta=-38.5587
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=38.6222 last_mean_loss=0.0552837 delta=-38.5669
 </pre></div>
 </div>
 </div>
@@ -473,11 +473,11 @@ off, since a dense re-solve and a rendered figure cost more than a bare loss num
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>process,total,biomass,glucose,product,split
-run_1,0.0701205,0.0498043,0.158708,0.00184905,train
-run_2,0.123503,0.0909949,0.276743,0.00277043,train
-run_3,0.150076,0.13187,0.31514,0.00321937,train
-total (mean),0.114567,0.0908896,0.250197,0.00261295,
-train (mean),0.114567,0.0908896,0.250197,0.00261295,train
+run_1,0.0387076,0.0346508,0.0814304,4.15679e-05,train
+run_2,0.0499952,0.032496,0.116492,0.000997792,train
+run_3,0.0765684,0.0742779,0.152164,0.00326365,train
+total (mean),0.0550904,0.0471416,0.116695,0.00143434,
+train (mean),0.0550904,0.0471416,0.116695,0.00143434,train
 </pre></div>
 </div>
 </div>
@@ -490,7 +490,7 @@ gives you a number; forward gives you something you can plot and hand to a colle
 <h2>5. Look at it<a class="headerlink" href="#look-at-it" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/b66a312c198e452ced3a3268d2f1287b4eb5780a9554bfd12ebb8ab7b194930d.png" src="../_images/b66a312c198e452ced3a3268d2f1287b4eb5780a9554bfd12ebb8ab7b194930d.png" />
+<img alt="../_images/0dab40b91cc3bada3c716521b3b511955a16979b64a0aec851650324837dbb76.png" src="../_images/0dab40b91cc3bada3c716521b3b511955a16979b64a0aec851650324837dbb76.png" />
 </div>
 </div>
 <p>Left column: measurements (dots) against the integrated trajectory (line), with R² per
@@ -500,7 +500,7 @@ they are what the model inferred.</p>
 rate of <strong>0.45 1/h</strong>, and nobody told the model that:</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>learned q_biomass at t=0 : 0.473 1/h
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>learned q_biomass at t=0 : 0.458 1/h
 true    mu_max           : 0.450 1/h
 </pre></div>
 </div>

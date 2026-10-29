@@ -431,7 +431,7 @@ identical, reproducible starting point.</p>
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=38.6735 last_mean_loss=0.114875 delta=-38.5587
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=38.6222 last_mean_loss=0.0552837 delta=-38.5669
 </pre></div>
 </div>
 </div>
@@ -447,7 +447,7 @@ identical, reproducible starting point.</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p>reaction module</p></td>
-<td><p>A 2-layer MLP over the modeled state</p></td>
+<td><p>A 2-layer MLP over scaled state and controls</p></td>
 <td><p><a class="reference internal" href="../train/reaction_module.html"><span class="std std-doc"><code class="docutils literal notranslate"><span class="pre">build_reaction_module</span></code></span></a></p></td>
 </tr>
 <tr class="row-odd"><td><p>loss module</p></td>
@@ -484,7 +484,7 @@ keep working from the copy.</p>
 <p>The per-epoch record:</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>columns: step, total_updates, epoch, batch_in_epoch, samples_seen, mean_loss, per_target_loss, per_process_loss, target_names, process_names, step_dt, rebuild_count, holdout_loss, holdout_label, epoch_mean_loss, epoch_time_seconds, grad_norm, n_failed_samples, failed_processes
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>columns: step, total_updates, epoch, batch_in_epoch, samples_seen, mean_loss, per_target_loss, per_process_loss, target_names, process_names, step_dt, rebuild_count, holdout_loss, holdout_label, epoch_mean_loss, epoch_time_seconds, grad_norm, n_failed_samples, failed_processes, failed_holdout_processes
 
 {'step': 1, 'total_updates': 300, 'epoch': 1, 'batch_in_epoch': 1}
 {'step': 151, 'total_updates': 300, 'epoch': 151, 'batch_in_epoch': 1}
@@ -496,14 +496,14 @@ keep working from the copy.</p>
 <p>And the loss curve:</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/6e4365e0ff21f04e4d76a70b8a2a2ccc126b848ef490d0454a86c66948298de6.png" src="../_images/6e4365e0ff21f04e4d76a70b8a2a2ccc126b848ef490d0454a86c66948298de6.png" />
+<img alt="../_images/49166ccf065b2efd0e9d261c1a8eb5370bfea97837ad190ab8b75432af5fdd37.png" src="../_images/49166ccf065b2efd0e9d261c1a8eb5370bfea97837ad190ab8b75432af5fdd37.png" />
 </div>
 </div>
 <p>Then the fit itself: measurements against the integrated trajectory on the left,
 the inferred rates on the right:</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/b66a312c198e452ced3a3268d2f1287b4eb5780a9554bfd12ebb8ab7b194930d.png" src="../_images/b66a312c198e452ced3a3268d2f1287b4eb5780a9554bfd12ebb8ab7b194930d.png" />
+<img alt="../_images/0dab40b91cc3bada3c716521b3b511955a16979b64a0aec851650324837dbb76.png" src="../_images/0dab40b91cc3bada3c716521b3b511955a16979b64a0aec851650324837dbb76.png" />
 </div>
 </div>
 <section id="what-to-look-at-in-order">

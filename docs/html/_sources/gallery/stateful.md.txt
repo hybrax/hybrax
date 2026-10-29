@@ -78,7 +78,10 @@ hxt_cli("prepare", "--config", "prepare-config.json",
 An LSTM cell has *two* pieces of memory, hidden and cell state, so `SCL_latent`
 holds both concatenated. The built-in computes its discrete target, emits the
 difference as the derivative, and reads rates from the *current* hidden state
-(not the target).
+concatenated with the selected input features. The heads do not use the cell's
+proposed next hidden state. To customize the shared cell and head inputs, override
+[`input_features`](../train/reaction_module.md#customize-built-in-ann-inputs)
+and supply the corresponding `input_size`.
 
 `ReactionOutputs` gains a field we have not used before, `SCL_latent_derivative`, aligned
 with `SCL_latent`. It defaults to an empty array: every non-stateful module in these docs

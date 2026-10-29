@@ -391,8 +391,8 @@ uses the Python API below. The CLI also supports <code class="docutils literal n
 train config (see <a class="reference internal" href="../train/loo.html#holdout-without-cross-validation"><span class="std std-ref">Cross-Validation</span></a>):</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>final train mean_loss   = 0.0367
-final holdout (run_3)   = 0.0490  (label: holdout)
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>final train mean_loss   = 0.0349
+final holdout (run_3)   = 0.0514  (label: holdout)
 </pre></div>
 </div>
 </div>
@@ -425,7 +425,7 @@ the exact training set, otherwise every other process is used. With no
 per process.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: LOO complete: 3 fold(s) (1 parallel x 2 device(s) each); aggregate={'base_seed': 0, 'n_folds': 3, 'holdout_total_mean': 0.04841843333333334, 'holdout_total_std': 0.007135348009966532, 'holdout_total_median': 0.0463514, 'holdout_biomass_mean': 0.03901983333333333, 'holdout_biomass_std': 0.02636229193949823, 'holdout_biomass_median': 0.0349426, 'holdout_glucose_mean': 0.10596246666666666, 'holdout_glucose_std': 0.016038275576050358, 'holdout_glucose_median': 0.101616, 'holdout_product_mean': 0.0002727703333333333, 'holdout_product_std': 0.00012389118609624065, 'holdout_product_median': 0.00027767}
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: LOO complete: 3 fold(s) (1 parallel x 2 device(s) each); aggregate={'base_seed': 0, 'n_folds': 3, 'holdout_total_mean': 0.04726566666666667, 'holdout_total_std': 0.0054732317184030595, 'holdout_total_median': 0.0492479, 'holdout_biomass_mean': 0.027214000000000002, 'holdout_biomass_std': 0.007897166373453203, 'holdout_biomass_median': 0.0299961, 'holdout_glucose_mean': 0.11346043333333333, 'holdout_glucose_std': 0.020608713605252835, 'holdout_glucose_median': 0.124296, 'holdout_product_mean': 0.0011225086666666667, 'holdout_product_std': 0.0016702868103704027, 'holdout_product_median': 0.000194462}
 </pre></div>
 </div>
 </div>
@@ -436,16 +436,16 @@ per process.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>fold       held out    holdout loss  train loss
-run_1      run_1             0.0564      0.0377
-run_2      run_2             0.0425      0.0362
-run_3      run_3             0.0464      0.0329
+run_1      run_1             0.0515      0.0381
+run_2      run_2             0.0411      0.0368
+run_3      run_3             0.0492      0.0319
 </pre></div>
 </div>
 </div>
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/2d3b6aa301e9afcfbacd4b8cd7d2e0fb993a6013bbb7e7d9aa2c72c1e56ef387.png" src="../_images/2d3b6aa301e9afcfbacd4b8cd7d2e0fb993a6013bbb7e7d9aa2c72c1e56ef387.png" />
+<img alt="../_images/c3e296e2f227b4578726554d5aad4459d3329abaaa7957204099ceb30c35cfc5.png" src="../_images/c3e296e2f227b4578726554d5aad4459d3329abaaa7957204099ceb30c35cfc5.png" />
 </div>
 </div>
 <p>Read the <strong>spread across folds</strong> as well as the mean: one fold noticeably worse than

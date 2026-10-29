@@ -1021,6 +1021,28 @@ derivative must NOT subtract the offset (<code class="docutils literal notransla
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.input_features">
+<span class="sig-name descname"><span class="pre">input_features</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.input_features"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.input_features" title="Link to this definition">¶</a></dt>
+<dd><p>Return the default scaled physical and control features for an ANN.</p>
+<p>Time and latent state are excluded. Override to select or add features;
+the built-in ANN modules require a one-dimensional array matching their
+input_size. Their constructors infer only the default width and do not
+call this method, so overrides may use fields set after super().__init__.
+Custom forward methods may use this helper or assemble their own inputs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>t</strong> (<em>jax.Array</em>)</p></li>
+<li><p><strong>inputs</strong> (<a class="reference internal" href="#hybrax.train.model_api.ReactionInputs" title="hybrax.train.model_api.ReactionInputs"><em>ReactionInputs</em></a>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>jax.Array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="hybrax.train.model_api.RateModule.observe">
 <span class="sig-name descname"><span class="pre">observe</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">states</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/model_api.html#RateModule.observe"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.model_api.RateModule.observe" title="Link to this definition">¶</a></dt>
 <dd><p>Optional post-hoc observation map; default identity on physical state.</p>
@@ -1997,6 +2019,7 @@ Untagged array leaves default to frozen.</p>
 </li>
 <li><a class="reference internal" href="#hybrax.train.model_api.RateModule"><code class="docutils literal notranslate"><span class="pre">RateModule</span></code></a><ul>
 <li><a class="reference internal" href="#hybrax.train.model_api.RateModule.initial_latent"><code class="docutils literal notranslate"><span class="pre">RateModule.initial_latent()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.model_api.RateModule.input_features"><code class="docutils literal notranslate"><span class="pre">RateModule.input_features()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.RateModule.observe"><code class="docutils literal notranslate"><span class="pre">RateModule.observe()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_V_in_cumulative"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_V_in_cumulative()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.model_api.RateModule.scale_controlled_Inflows_Cin"><code class="docutils literal notranslate"><span class="pre">RateModule.scale_controlled_Inflows_Cin()</span></code></a></li>

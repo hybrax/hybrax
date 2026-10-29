@@ -411,7 +411,10 @@ stateful behavior.</p>
 <p>An LSTM cell has <em>two</em> pieces of memory, hidden and cell state, so <code class="docutils literal notranslate"><span class="pre">SCL_latent</span></code>
 holds both concatenated. The built-in computes its discrete target, emits the
 difference as the derivative, and reads rates from the <em>current</em> hidden state
-(not the target).</p>
+concatenated with the selected input features. The heads do not use the cell’s
+proposed next hidden state. To customize the shared cell and head inputs, override
+<a class="reference internal" href="../train/reaction_module.html#customize-built-in-ann-inputs"><span class="std std-ref"><code class="docutils literal notranslate"><span class="pre">input_features</span></code></span></a>
+and supply the corresponding <code class="docutils literal notranslate"><span class="pre">input_size</span></code>.</p>
 <p><code class="docutils literal notranslate"><span class="pre">ReactionOutputs</span></code> gains a field we have not used before, <code class="docutils literal notranslate"><span class="pre">SCL_latent_derivative</span></code>, aligned
 with <code class="docutils literal notranslate"><span class="pre">SCL_latent</span></code>. It defaults to an empty array: every non-stateful module in these docs
 has been quietly relying on that default.</p>
@@ -438,7 +441,7 @@ means that <code class="docutils literal notranslate"><span class="pre">hybrax.t
 <h2>Training It<a class="headerlink" href="#training-it" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.231356 last_mean_loss=0.00409163 delta=-0.227264
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.231356 last_mean_loss=0.00144245 delta=-0.229913
 run directory: ./source/_data/out/runs/gallery_stateful/run
 </pre></div>
 </div>
@@ -446,7 +449,7 @@ run directory: ./source/_data/out/runs/gallery_stateful/run
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/580a1a7cf1f231d240237d1497e9a1b2ca66d3a847cc9abb44956628a13b00cb.png" src="../_images/580a1a7cf1f231d240237d1497e9a1b2ca66d3a847cc9abb44956628a13b00cb.png" />
+<img alt="../_images/d99d12815ffea640d829f356783ba27109f150abb24d471945dd758e7176562b.png" src="../_images/d99d12815ffea640d829f356783ba27109f150abb24d471945dd758e7176562b.png" />
 </div>
 </div>
 </section>
@@ -481,7 +484,7 @@ run directory: ./source/_data/out/runs/gallery_stateful/run
 | reaction_module.lstm_cell.weight_ih                        |   (16, 4) | trainable |
 | reaction_module.lstm_cell.weight_hh                        |   (16, 4) | trainable |
 | reaction_module.lstm_cell.bias                             |     (16,) | trainable |
-| reaction_module.rate_head.weight                           |    (3, 7) | trainable |
+| reaction_module.rate_head.weight                           |    (3, 8) | trainable |
 | reaction_module.rate_head.bias                             |      (3,) | trainable |
 | controls.spline_breaks                                     |      (0,) |    frozen |
 | controls.spline_coeffs                                     | (0, 0, 4) |    frozen |

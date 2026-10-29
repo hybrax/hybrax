@@ -555,6 +555,49 @@ both. See <a class="reference internal" href="../gallery/freezing.html"><span cl
 when the loss needs an internal quantity the model computed anyway (a latent, an
 intermediate flux) rather than recomputing it.</p>
 </section>
+<section id="customize-built-in-ann-inputs">
+<h2>Customize built-in ANN inputs<a class="headerlink" href="#customize-built-in-ann-inputs" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">DefaultReactionModule</span></code>, <code class="docutils literal notranslate"><span class="pre">DefaultGruReactionModule</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">DefaultLstmReactionModule</span></code> inherit <code class="docutils literal notranslate"><span class="pre">RateModule.input_features</span></code>. Its default
+features are scaled modeled RMCs, modeled PVs, volume, cumulative modeled
+inflows and outflows, cumulative controlled inflows and their rates, cumulative
+controlled outflows and their rates, and controlled PVs. Time and latent state are excluded.</p>
+<p>Each constructor accepts optional keyword-only <code class="docutils literal notranslate"><span class="pre">input_size</span></code>. Omit it to infer
+the default feature count from the scale axes. To change features without
+rewriting the forward pass, override <code class="docutils literal notranslate"><span class="pre">input_features(t,</span> <span class="pre">inputs)</span></code> and set
+<code class="docutils literal notranslate"><span class="pre">input_size</span></code> to the returned vector’s length. For example, select 25 RMCs, volume, and time:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">hybrax.train</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">hxt</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">TimeLstm</span><span class="p">(</span><span class="n">hxt</span><span class="o">.</span><span class="n">DefaultLstmReactionModule</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">input_features</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">inputs</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span>
+            <span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_RMCs</span><span class="p">,</span>
+            <span class="n">jnp</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">SCL_modeled_V</span><span class="p">),</span>
+            <span class="n">jnp</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">t</span> <span class="o">/</span> <span class="mf">240.0</span><span class="p">),</span>
+        <span class="p">])</span>
+
+<span class="c1"># In build_reaction_module, with this dataset's resolved scale_kwargs:</span>
+<span class="n">module</span> <span class="o">=</span> <span class="n">TimeLstm</span><span class="p">(</span>
+    <span class="n">key</span><span class="o">=</span><span class="n">jax</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">key</span><span class="p">(</span><span class="n">seed</span><span class="p">),</span> <span class="n">hidden_width</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">input_size</span><span class="o">=</span><span class="mi">27</span><span class="p">,</span> <span class="o">**</span><span class="n">scale_kwargs</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>The method must return a one-dimensional array. Constructors do not call it, so
+it can use attributes initialized after <code class="docutils literal notranslate"><span class="pre">super().__init__</span></code>. The FFNN consumes
+these features directly. GRU and LSTM cells consume them with their separate
+hidden state; their output heads consume the current hidden state concatenated
+with the same features. LSTM cell state is not passed directly to the heads.</p>
+<p>The framework applies your configured scaling before this method runs. If you
+add time, choose its scaling here. Without an <code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code> hook, unit
+scales leave values unchanged, so choose suitable scales for volume and
+cumulative flows as well as concentrations.</p>
+<p>The expanded FFNN inputs and recurrent readouts change parameter shapes and
+training results. Load older checkpoints with their matching implementation;
+retrain to evaluate the revised architecture.</p>
+</section>
 <section id="stateful-latent-ode-modules">
 <h2>Stateful (latent-ODE) modules<a class="headerlink" href="#stateful-latent-ode-modules" title="Link to this heading">¶</a></h2>
 <p>A module with <code class="docutils literal notranslate"><span class="pre">n_latent</span> <span class="pre">&gt;</span> <span class="pre">0</span></code> adds its own integrated latent state. That is a genuinely
@@ -654,6 +697,7 @@ and <code class="docutils literal notranslate"><span class="pre">SCL_modeled_PVs
 <li><a class="reference internal" href="#the-scl-raw-convention">The SCL/RAW convention</a></li>
 <li><a class="reference internal" href="#trainable-and-frozen">Trainable and frozen</a></li>
 <li><a class="reference internal" href="#passing-auxiliary-values-to-the-loss">Passing auxiliary values to the loss</a></li>
+<li><a class="reference internal" href="#customize-built-in-ann-inputs">Customize built-in ANN inputs</a></li>
 <li><a class="reference internal" href="#stateful-latent-ode-modules">Stateful (latent-ODE) modules</a></li>
 <li><a class="reference internal" href="#gotchas">Gotchas</a></li>
 <li><a class="reference internal" href="#see-also">See also</a></li>
