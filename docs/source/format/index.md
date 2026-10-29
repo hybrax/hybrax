@@ -36,7 +36,6 @@ of truth for layout everywhere downstream: `hybrax.train` never re-derives it.
 | [The pseudobatch transform](pseudobatch_transform.md) | Your process has feeds and you need to remove dilution before fitting. |
 | [The Bioprocess ODE](bioprocess_ode.md) | You want to see or change the assembled equations. |
 | [Limits and gotchas](limits_and_gotchas.md) | Something you expected to work does not. |
-| [Further reading](further_reading.md) | You want the exhaustive reference. |
 
 ## The shortest possible complete example
 

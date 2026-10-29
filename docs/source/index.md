@@ -81,7 +81,6 @@ format/time_series_and_splines
 format/pseudobatch_transform
 format/bioprocess_ode
 format/limits_and_gotchas
-format/further_reading
 ```
 
 ```{toctree}
@@ -99,7 +98,6 @@ train/scaling
 train/forward
 train/loo
 train/save_load_predict
-train/further_reading
 ```
 
 ```{toctree}
