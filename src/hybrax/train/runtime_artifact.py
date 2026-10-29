@@ -1009,6 +1009,62 @@ def _polynomial_has_wrong_sign(
     return bool(np.any(values < 0 if positive else values > 0))
 
 
+def _polynomials_have_wrong_sign(
+    coeffs: np.ndarray, widths: np.ndarray, *, positive: bool
+) -> bool:
+    """Check cubic pieces at endpoints and stationary points in batches."""
+    coeffs = np.asarray(coeffs)
+    widths = np.broadcast_to(widths, coeffs.shape[:-1]).reshape(-1)
+    pieces = coeffs.reshape(-1, coeffs.shape[-1])
+
+    def wrong(values: np.ndarray) -> bool:
+        return bool(np.any(values < 0 if positive else values > 0))
+
+    def evaluate(rows: np.ndarray, x: np.ndarray) -> np.ndarray:
+        out = rows[:, -1].copy()
+        for column in range(rows.shape[1] - 2, -1, -1):
+            out = rows[:, column] + x * out
+        return out
+
+    # Endpoints in float64, as polyval does with Python floats; float32
+    # cancellation could otherwise round a negative endpoint to zero.
+    if wrong(pieces[:, 0]) or wrong(evaluate(pieces, widths.astype(np.float64))):
+        return True
+
+    # polyroots trims trailing zeros before building a companion matrix.
+    # Partition by degree so batched eigvals uses the same matrix for each row.
+    for order in range(1, pieces.shape[1] - 1):
+        indices = np.flatnonzero(
+            (pieces[:, order + 1] != 0) & np.all(pieces[:, order + 2 :] == 0, axis=1)
+        )
+        if not len(indices):
+            continue
+        # Same dtype as polyder, so float32 pieces keep float32 rounding.
+        derivative = pieces[indices, 1 : order + 2] * np.arange(
+            1, order + 2, dtype=pieces.dtype
+        )
+        if order == 1:
+            roots = (-derivative[:, 0] / derivative[:, 1])[:, None]
+        else:
+            matrices = np.zeros((len(indices), order, order), dtype=pieces.dtype)
+            matrices[:, 1:, :-1] = np.eye(order - 1)
+            matrices[:, :, -1] -= derivative[:, :-1] / derivative[:, -1, None]
+            roots = np.linalg.eigvals(matrices)
+        valid = (
+            np.isreal(roots) & (roots.real >= 0) & (roots.real <= widths[indices, None])
+        )
+        for root_column in range(roots.shape[1]):
+            selected = valid[:, root_column]
+            if np.any(selected):
+                rows = indices[selected]
+                # Evaluate at float64 roots, as polyval does with Python floats.
+                roots_here = roots[selected, root_column].real.astype(np.float64)
+                values = evaluate(pieces[rows], roots_here)
+                if wrong(values):
+                    return True
+    return False
+
+
 def _validate_flow_control_signs(
     controls: dict[str, Any],
     arrays: dict[str, np.ndarray],
@@ -1032,22 +1088,21 @@ def _validate_flow_control_signs(
 
     breaks = np.asarray(arrays["shared.controls.spline_breaks"])
     coeffs = np.asarray(arrays["shared.controls.spline_coeffs"])
+    widths = np.diff(breaks, axis=1)
+    active = np.isfinite(widths)
     for column, control_index in enumerate(controls["spline_indices"]):
         if control_index >= flow_end:
             continue
         positive = control_index < n_inflows
-        for row, row_breaks in enumerate(breaks):
-            finite = row_breaks[np.isfinite(row_breaks)]
-            for segment, width in enumerate(np.diff(finite)):
-                polynomial = coeffs[row, segment, column]
-                if _polynomial_has_wrong_sign(
-                    polynomial, float(width), positive=positive
-                ) or _polynomial_has_wrong_sign(
-                    np.polynomial.polynomial.polyder(polynomial),
-                    float(width),
-                    positive=positive,
-                ):
-                    raise ValueError("runtime controls contain sign-invalid flows")
+        polynomials = coeffs[:, :, column, :][active]
+        piece_widths = widths[active]
+        derivatives = polynomials[:, 1:] * np.arange(
+            1, polynomials.shape[1], dtype=polynomials.dtype
+        )
+        if _polynomials_have_wrong_sign(
+            polynomials, piece_widths, positive=positive
+        ) or _polynomials_have_wrong_sign(derivatives, piece_widths, positive=positive):
+            raise ValueError("runtime controls contain sign-invalid flows")
 
 
 def _valid_json_metadata(value: Any) -> bool:

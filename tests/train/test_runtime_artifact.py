@@ -1537,6 +1537,92 @@ def test_runtime_artifact_rejects_sign_invalid_controlled_flows(tmp_path, name):
         load_runtime_artifact(artifact, fold_id=0)
 
 
+def test_batched_polynomial_sign_matches_scalar_at_boundaries():
+    pieces = np.array(
+        [
+            [0.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, -1.0, 1.0, 0.0],
+            [1.0, -2.0, 1.0, 0.0],
+            [1.0, -3.0, 2.0, 0.0],
+            [-np.nextafter(0.0, 1.0), 0.0, 0.0, 0.0],
+            # Cubics: interior minimum below zero, and one above zero.
+            [0.1, -1.0, 0.0, 1.0],
+            [1.0, -1.0, 0.0, 1.0],
+        ]
+    )
+    widths = np.ones(len(pieces))
+    for positive in (True, False):
+        for piece, width in zip(pieces, widths, strict=True):
+            expected = runtime_artifact._polynomial_has_wrong_sign(
+                piece, float(width), positive=positive
+            )
+            assert (
+                runtime_artifact._polynomials_have_wrong_sign(
+                    piece[None], np.array([width]), positive=positive
+                )
+                == expected
+            )
+            derivative = np.polynomial.polynomial.polyder(piece)
+            expected_derivative = runtime_artifact._polynomial_has_wrong_sign(
+                derivative, float(width), positive=positive
+            )
+            assert (
+                runtime_artifact._polynomials_have_wrong_sign(
+                    derivative[None], np.array([width]), positive=positive
+                )
+                == expected_derivative
+            )
+
+
+def test_batched_polynomial_sign_matches_scalar_for_mixed_batches():
+    rng = np.random.default_rng(0)
+    pieces = rng.normal(size=(64, 4))
+    pieces[::4, 3] = 0.0
+    pieces[::8, 2:] = 0.0
+    widths = rng.uniform(0.1, 2.0, size=len(pieces))
+    for positive in (True, False):
+        expected = any(
+            runtime_artifact._polynomial_has_wrong_sign(
+                piece, float(width), positive=positive
+            )
+            for piece, width in zip(pieces, widths, strict=True)
+        )
+        assert (
+            runtime_artifact._polynomials_have_wrong_sign(
+                pieces, widths, positive=positive
+            )
+            == expected
+        )
+
+
+@pytest.mark.parametrize(
+    ("coefficients", "width"),
+    [
+        # The derivative's interior minimum is negative only in float32 rounding.
+        ([1.0, 0.17864391207695007, -0.4226628839969635, 0.3333333432674408], 1.0),
+        # The derivative at the right end is -6e-8 in float64, 0.0 in float32.
+        ([1.0, 1.0, -2.0, 1.3333332538604736], 0.5),
+    ],
+)
+def test_flow_sign_validation_keeps_float32_rounding(coefficients, width):
+    cumulative = np.array(coefficients, dtype=np.float32)
+    derivative = np.polynomial.polynomial.polyder(cumulative)
+    assert runtime_artifact._polynomial_has_wrong_sign(derivative, width, positive=True)
+    controls = {"linear_indices": [], "spline_indices": [0]}
+    arrays = {
+        "shared.controls.grid_lengths": np.zeros(1, dtype=np.int32),
+        "shared.controls.control_values": np.zeros((1, 0, 0), dtype=np.float32),
+        "shared.controls.control_derivatives": np.zeros((1, 0, 0), dtype=np.float32),
+        "shared.controls.spline_breaks": np.array([[0.0, width]], dtype=np.float32),
+        "shared.controls.spline_coeffs": cumulative[None, None, None, :],
+    }
+    with pytest.raises(ValueError, match="sign-invalid flows"):
+        runtime_artifact._validate_flow_control_signs(
+            controls, arrays, n_inflows=1, n_outflows=0
+        )
+
+
 def test_flow_sign_validation_runs_once_at_publication(tmp_path, monkeypatch):
     artifact = tmp_path / "artifact"
     calls = []
@@ -1607,13 +1693,23 @@ def test_flow_sign_validation_record_is_required(tmp_path):
         load_runtime_artifact(artifact, fold_id=0)
 
 
+@pytest.mark.parametrize(
+    "piece",
+    [
+        [-1.0, 0.0, 0.0, 0.0],
+        # Positive cumulative flow over any plausible piece, but decreasing.
+        [1e6, -1.0, 0.0, 0.0],
+    ],
+)
 def test_writer_rejects_sign_invalid_controlled_flows(
-    tmp_path, producer_data, scales, rhs_names
+    tmp_path, producer_data, scales, rhs_names, piece
 ):
     store = producer_data.training_data
     controls = dataclasses.replace(
         store.controls_store,
-        spline_coeffs=store.controls_store.spline_coeffs.at[0, 0, 0, 0].set(-1.0),
+        spline_coeffs=store.controls_store.spline_coeffs.at[0, 0, 0, :].set(
+            np.asarray(piece)
+        ),
     )
     invalid = dataclasses.replace(
         producer_data,
