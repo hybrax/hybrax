@@ -25,7 +25,14 @@ ODE integration for gradient-based hybrid model training.
 
 ## Installation
 
-For local development, create the uv environment with the development extras:
+Install the latest release from PyPI (requires Python 3.12 or newer):
+
+```bash
+pip install hybrax
+```
+
+For local development, clone the repository and create the uv environment with
+the development extras:
 
 ```bash
 uv sync --extra dev
