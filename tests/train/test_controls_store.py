@@ -1005,3 +1005,23 @@ def test_controls_store_batch_controls_rejects_out_of_range_row(tmp_path):
         batch_controls.eval_controlled_Inflows_cumulative(2, jnp.asarray(0.25), None)
     with pytest.raises(IndexError, match="out of range"):
         batch_controls.eval_controlled_Inflows_cumulative(999, jnp.asarray(0.25), None)
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+def test_spline_control_derivative_preserves_cubic_pieces(side):
+    collection = _make_two_process_collection()
+    process = collection.processes["p1"]
+    series = TimeSeries(
+        breaks=np.array([0.0, 1.0, 2.0]),
+        coeffs=np.array([[1.0, 2.0, 3.0, 4.0], [8.0, -3.0, 5.0, -2.0]]),
+        segment_start_piece_idx=np.array([0, 1]),
+        continuity_side=side,
+    )
+    process.process_variables["CF"].is_controlled = True
+    process.process_variables["CF"].values = series
+    source = select_control_sources(process).sources_by_name["CF"]
+    times = np.array([-0.5, 0.0, 0.25, 1.0, 1.5, 2.0, 2.5])
+    expected = np.array(
+        [2.0, 2.0, 4.25, 20.0 if side == "left" else -3.0, 0.5, 1.0, -1.5]
+    )
+    np.testing.assert_array_equal(source.derivative(times), expected)

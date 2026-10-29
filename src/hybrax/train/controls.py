@@ -138,16 +138,23 @@ def _make_source_from_spline(
     coeffs = _as_numpy(series.coeffs)
     side = str(getattr(series, "continuity_side", "right"))
 
-    deriv = series.deriv()
-    d_breaks = _as_numpy(deriv.breaks)
-    d_coeffs = _as_numpy(deriv.coeffs)
-    d_side = str(getattr(deriv, "continuity_side", side))
+    # Differentiate the host coefficients directly. Constructing a TimeSeries
+    # derivative compiles JAX operations for each distinct control-grid shape.
+    d_coeffs = np.stack(
+        [
+            coeffs[:, 1],
+            2.0 * coeffs[:, 2],
+            3.0 * coeffs[:, 3],
+            np.zeros_like(coeffs[:, 0]),
+        ],
+        axis=1,
+    )
 
     def _eval(ts: Any) -> np.ndarray:
         return _eval_ppoly_numpy(breaks, coeffs, side, ts)
 
     def _deriv(ts: Any) -> np.ndarray:
-        return _eval_ppoly_numpy(d_breaks, d_coeffs, d_side, ts)
+        return _eval_ppoly_numpy(breaks, d_coeffs, side, ts)
 
     return SignalSource(
         name=name,

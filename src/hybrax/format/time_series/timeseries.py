@@ -65,7 +65,7 @@ def _as_integral_index_1d(name: str, value: Any) -> jnp.ndarray:
 def _is_strictly_increasing(arr: jnp.ndarray) -> bool:
     if arr.size <= 1:
         return True
-    return bool(jnp.all(jnp.diff(arr) > 0))
+    return bool(np.all(np.diff(np.asarray(arr)) > 0))
 
 
 class TimeSeries(eqx.Module):
