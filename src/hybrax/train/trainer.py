@@ -185,10 +185,19 @@ def simulate_measurement_states(
 
 
 class _BatchIndexedControls(eqx.Module):
-    """Lightweight per-sample controls adapter for batched loss evaluation."""
+    """Select a singleton controls batch before entering the per-sample solve."""
 
     batch_controls: BatchControls
-    row_idx: jax.Array
+    row_idx: int = eqx.field(static=True)
+
+    def __init__(self, batch_controls: BatchControls, row_idx: jax.Array):
+        # Keep the batch axis so the existing evaluators and event accessors can
+        # use a static row index throughout the solve, including its adjoint.
+        self.batch_controls = jtu.tree_map(lambda x: x[row_idx][None], batch_controls)
+        self.row_idx = 0
+
+    def evaluate(self, t_arr, states=None) -> tuple[jax.Array, jax.Array]:
+        return self.batch_controls.evaluate(self.row_idx, t_arr, states)
 
     def eval_controlled_Inflows_cumulative(self, t_arr, states) -> jax.Array:
         return self.batch_controls.eval_controlled_Inflows_cumulative(

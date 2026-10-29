@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from textwrap import dedent
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -31,6 +32,7 @@ from hybrax.train.controls import select_control_sources
 from hybrax.train.controls_store import ControlsStore
 from hybrax.train.prepare import prepare_artifact
 from hybrax.train.run_config import load_prepare_config
+from hybrax.train.trainer import _BatchIndexedControls
 
 
 def _prepare_from_collection(
@@ -219,6 +221,91 @@ def test_select_control_sources_orders_and_preserves_signed_flow_controls():
         [-0.2]
     )
     assert controls.eval_controlled_Outflows_rates(0.5, None) == pytest.approx([-0.2])
+
+
+@pytest.mark.parametrize("side", ["left", "right"])
+@pytest.mark.parametrize("scalar", [False, True])
+def test_combined_controls_preserve_values_rates_and_padded_batch_rows(side, scalar):
+    collection = _make_two_process_collection()
+    for index, process in enumerate(collection.processes.values(), start=1):
+        process.volume.volume_changes["feed"] = _continuous_flow(
+            Inflow,
+            "feed",
+            TimeSeries(
+                times=[0.0, 1.0],
+                values=[0.0, 0.3 * index],
+                breaks=[0.0, 1.0],
+                coeffs=[[0.0, 0.2 * index, 0.1 * index, 0.0]],
+                segment_start_piece_idx=[0],
+                continuity_side=side,
+            ),
+        )
+        process.volume.volume_changes["harvest"] = _continuous_flow(
+            Outflow,
+            "harvest",
+            TimeSeries(
+                times=[0.0, 0.5, 1.0],
+                values=[0.0, -0.1 * index, -0.3 * index],
+                continuity_side=side,
+            ),
+        )
+        grid = [0.0, 1.0] if index == 1 else [0.0, 0.25, 1.0]
+        process.process_variables = {
+            "CF": ProcessVariable(
+                "CF",
+                "g/L",
+                True,
+                TimeSeries(
+                    times=grid,
+                    values=[index + 2.0 * t for t in grid],
+                    continuity_side=side,
+                ),
+            ),
+            "T": ProcessVariable("T", "C", True, StaticVariable(30.0 + index)),
+        }
+
+    store = ControlsStore.from_collection(collection)
+    assert int(store.grid_lengths[0]) < int(store.grid_lengths[1])
+    ts = np.asarray(0.5 if scalar else [-0.2, 0.0, 0.5, 1.0, 1.2])
+    clipped = np.clip(ts, 0.0, 1.0)
+    rate = np.where(ts <= 0.5 if side == "left" else ts < 0.5, -0.2, -0.4)
+    base_values = np.stack(
+        [
+            0.2 * ts + 0.1 * ts**2,
+            np.where(clipped <= 0.5, -0.2 * clipped, 0.1 - 0.4 * clipped),
+            1.0 + 2.0 * clipped,
+            np.full_like(ts, 31.0),
+        ],
+        axis=-1,
+    )
+    base_rates = np.stack(
+        [0.2 + 0.2 * ts, rate, np.full_like(ts, 2.0), np.zeros_like(ts)],
+        axis=-1,
+    )
+    expected_values = np.stack([base_values.copy() for _ in range(3)])
+    expected_rates = np.stack([base_rates.copy() for _ in range(3)])
+    for row, index in enumerate((2, 1, 2)):
+        expected_values[row, ..., :2] *= index
+        expected_values[row, ..., 2:] += index - 1
+        expected_rates[row, ..., :2] *= index
+        values, rates = store.get_controls(index - 1).evaluate(ts)
+        np.testing.assert_allclose(values, expected_values[row])
+        np.testing.assert_allclose(rates, expected_rates[row])
+
+    batch = store.gather_batch(jnp.asarray([1, 0, 1]))
+    rows = jnp.arange(3)
+    values, rates = jax.jit(jax.vmap(lambda row: batch.evaluate(row, ts)))(rows)
+    np.testing.assert_allclose(values, expected_values)
+    np.testing.assert_allclose(rates, expected_rates)
+
+    def evaluate_selected(row):
+        controls = _BatchIndexedControls(batch, row)
+        assert controls.batch_controls.linear_grid.shape[0] == 1
+        return controls.evaluate(ts)
+
+    values, rates = jax.jit(jax.vmap(evaluate_selected))(rows)
+    np.testing.assert_allclose(values, expected_values)
+    np.testing.assert_allclose(rates, expected_rates)
 
 
 @pytest.mark.parametrize(

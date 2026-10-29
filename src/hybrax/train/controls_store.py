@@ -4,9 +4,9 @@ This module provides:
 
 - ``ControlPartition`` / ``derive_control_partition`` — split a process's controls
   into the direct-spline and linear-interpolant groups the solver consumes.
-- ``PerProcessControls`` — a single process's controls as JAX arrays, with
-  semantic per-axis ``eval_controlled_*`` accessors (RAW, unscaled) consumed by
-  ``HybridOdeWrapper``.
+- ``PerProcessControls`` — a single process's controls as JAX arrays, with a
+  combined ``evaluate`` method and per-axis ``eval_controlled_*`` accessors, all
+  returning RAW, unscaled controls.
 - ``BatchControls`` — the same evaluator, indexed by batch row, for a padded
   batch of processes trained together.
 - ``ControlsStore`` — the collection-level loader: reads every process's raw
@@ -487,9 +487,11 @@ class PerProcessControls(eqx.Module):
 
     Column axis follows
     ``[name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]``
-    matching hybrax.format `ControlSplines`. All columns are consumed through
-    the per-axis `eval_controlled_*` accessors, which the wrapper scales into
-    `ReactionInputs`. Discrete bolus/sample events are NOT controls here;
+    matching hybrax.format `ControlSplines`. The wrapper uses `evaluate` to
+    fetch values and derivatives together, then scales them into `ReactionInputs`.
+    Per-axis `eval_controlled_*` accessors remain for callers outside the
+    solve, such as scale setup in a `custom.py`.
+    Discrete bolus/sample events are NOT controls here;
     the callbacks solve applies them as state jumps from the `*_event_*`
     arrays. `jump_ts` carries genuine vector-field discontinuity times
     (`BioProcess.discrete_events`) for the adaptive solver.
@@ -558,16 +560,18 @@ class PerProcessControls(eqx.Module):
         """``control_derivatives`` sliced to its unpadded length (``grid_length``)."""
         return self.control_derivatives[: self.grid_length]
 
-    def _eval_values(self, ts: float | np.ndarray | jax.Array) -> jax.Array:
-        """Interpolate all control values in canonical flow/PV column order.
+    def evaluate(
+        self, ts: float | np.ndarray | jax.Array, states=None
+    ) -> tuple[jax.Array, jax.Array]:
+        """Return RAW values and derivatives in Inflows, Outflows, PVs order.
 
-        Private; public access is through the per-axis ``eval_controlled_*``
-        methods.
+        Scalar queries return vectors; a query vector returns two matrices.
+        `states` is reserved for state-dependent controls and is unused.
         """
         query = jnp.asarray(ts, dtype=self.linear_grid.dtype)
         scalar_input = query.ndim == 0
         query_1d = jnp.atleast_1d(query)
-        values, _ = _eval_hybrid_columns(
+        values, derivatives = _eval_hybrid_columns(
             query_1d,
             self.spline_breaks,
             self.spline_coeffs,
@@ -579,27 +583,17 @@ class PerProcessControls(eqx.Module):
             self.continuity_side,
             self.n_u,
         )
-        return values[0] if scalar_input else values
+        if scalar_input:
+            return values[0], derivatives[0]
+        return values, derivatives
+
+    def _eval_values(self, ts: float | np.ndarray | jax.Array) -> jax.Array:
+        """Interpolate all control values in canonical flow/PV column order."""
+        return self.evaluate(ts)[0]
 
     def _eval_derivatives(self, ts: float | np.ndarray | jax.Array) -> jax.Array:
-        """Interpolate all control DERIVATIVES (flow rates) in canonical order.
-        Private — sliced by the per-axis ``eval_controlled_*_rates`` accessors."""
-        query = jnp.asarray(ts, dtype=self.linear_grid.dtype)
-        scalar_input = query.ndim == 0
-        query_1d = jnp.atleast_1d(query)
-        _, derivatives = _eval_hybrid_columns(
-            query_1d,
-            self.spline_breaks,
-            self.spline_coeffs,
-            self.active_linear_grid,
-            self.active_control_values,
-            self.active_control_derivatives,
-            self.spline_indices,
-            self.linear_indices,
-            self.continuity_side,
-            self.n_u,
-        )
-        return derivatives[0] if scalar_input else derivatives
+        """Interpolate all control derivatives in canonical flow/PV order."""
+        return self.evaluate(ts)[1]
 
     # ------------------------------------------------------------------
     # Semantic, non-overlapping per-axis accessors. Each returns RAW
@@ -708,9 +702,12 @@ class BatchControls(eqx.Module):
     max_event_gap_fraction: float = eqx.field(static=True)
     max_measurements_per_event_gap: int = eqx.field(static=True)
 
-    def _eval_values(self, row_idx: int, t: jax.Array) -> jax.Array:
-        """Interpolate all control VALUES for one batch row, canonical order.
-        Private — sliced by the per-axis ``eval_controlled_*`` accessors."""
+    def evaluate(self, row_idx, t, states=None) -> tuple[jax.Array, jax.Array]:
+        """Return RAW values and derivatives for one row in flow/PV order.
+
+        Scalar queries return vectors; a query vector returns two matrices.
+        `states` is reserved for state-dependent controls and is unused.
+        """
         if isinstance(row_idx, (int, np.integer)):
             idx = int(row_idx)
             batch_size = int(self.linear_grid.shape[0])
@@ -721,7 +718,7 @@ class BatchControls(eqx.Module):
         query = jnp.asarray(t, dtype=grid.dtype)
         scalar_input = query.ndim == 0
         query_1d = jnp.atleast_1d(query)
-        out, _ = _eval_hybrid_columns(
+        values, derivatives = _eval_hybrid_columns(
             query_1d,
             self.spline_breaks[row_idx],
             self.spline_coeffs[row_idx],
@@ -733,28 +730,17 @@ class BatchControls(eqx.Module):
             self.continuity_side,
             len(self.spline_indices) + len(self.linear_indices),
         )
-        return out[0] if scalar_input else out
+        if scalar_input:
+            return values[0], derivatives[0]
+        return values, derivatives
+
+    def _eval_values(self, row_idx: int, t: jax.Array) -> jax.Array:
+        """Interpolate all control values for one batch row in canonical order."""
+        return self.evaluate(row_idx, t)[0]
 
     def _eval_derivatives(self, row_idx: int, t: jax.Array) -> jax.Array:
-        """Interpolate all control DERIVATIVES for one batch row, canonical
-        order. Private — sliced by the ``eval_controlled_*_rates`` accessors."""
-        grid = self.linear_grid[row_idx]
-        query = jnp.asarray(t, dtype=grid.dtype)
-        scalar_input = query.ndim == 0
-        query_1d = jnp.atleast_1d(query)
-        _, out = _eval_hybrid_columns(
-            query_1d,
-            self.spline_breaks[row_idx],
-            self.spline_coeffs[row_idx],
-            grid,
-            self.control_values[row_idx],
-            self.control_derivatives[row_idx],
-            self.spline_indices,
-            self.linear_indices,
-            self.continuity_side,
-            len(self.spline_indices) + len(self.linear_indices),
-        )
-        return out[0] if scalar_input else out
+        """Interpolate all control derivatives for one row in canonical order."""
+        return self.evaluate(row_idx, t)[1]
 
     # Semantic, non-overlapping per-axis accessors (RAW values). ``states`` is a
     # placeholder for future state-dependent controls and is currently unused.

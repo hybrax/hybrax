@@ -1515,23 +1515,25 @@ def test_wrapper_supports_modeled_pv():
 
 
 class ControlInputsEchoModule(ConstantReactionModule):
-    """Expose reaction time and all five control inputs as latent derivatives."""
+    """Expose reaction time and control inputs as latent derivatives and saves."""
 
     def __call__(self, t, inputs):
+        features = jnp.concatenate(
+            [
+                jnp.atleast_1d(t),
+                inputs.SCL_controlled_Inflows_cumulative,
+                inputs.SCL_controlled_Inflows_rates,
+                inputs.SCL_controlled_Outflows_cumulative,
+                inputs.SCL_controlled_Outflows_rates,
+                inputs.SCL_controlled_PVs,
+            ]
+        )
         return ReactionOutputs(
             SCL_modeled_ReactionOde_rates=jnp.zeros(1),
             SCL_modeled_Inflows_rates=jnp.zeros(0),
             SCL_modeled_Outflows_rates=jnp.zeros(0),
-            SCL_latent_derivative=jnp.concatenate(
-                [
-                    jnp.atleast_1d(t),
-                    inputs.SCL_controlled_Inflows_cumulative,
-                    inputs.SCL_controlled_Inflows_rates,
-                    inputs.SCL_controlled_Outflows_cumulative,
-                    inputs.SCL_controlled_Outflows_rates,
-                    inputs.SCL_controlled_PVs,
-                ]
-            ),
+            SCL_latent_derivative=features,
+            auxiliary={"features": features},
         )
 
 
@@ -1585,6 +1587,10 @@ def test_physical_rhs_control_time_preserves_reaction_time_and_holds_rates():
         ]
         np.testing.assert_allclose(derivative[-6:], expected, rtol=1e-12)
         np.testing.assert_allclose(derivative[1], expected[2] + expected[4], rtol=1e-12)
+        saved = wrapper.physical_save_outputs(control_t, state)
+        np.testing.assert_allclose(
+            saved.auxiliary["features"], [control_t, *expected[1:]], rtol=1e-12
+        )
     np.testing.assert_allclose(
         wrapper.physical_rhs(1.0, state)[-6:],
         [1.0, 0.15, 0.2, -0.03, -0.04, 302.0],

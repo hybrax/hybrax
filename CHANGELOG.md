@@ -33,6 +33,14 @@ public API; such entries are marked **Breaking**.
   finishes, instead of being redrawn at checkpoint boundaries. Training waited
   for every redraw, which took up to 15 s with many loss terms and about a fifth
   of a long run's time.
+- The ODE right-hand side and save points interpolate the controls once per call
+  instead of once per flow, rate and process-variable group, and each sample's
+  controls are selected before its solve. On a 165-process benchmark this made
+  updates 1.26x faster. Results are equal up to floating-point rounding: they
+  were bit-identical in our tests except when spline and linearly interpolated
+  controls are mixed and several processes are solved together. There, rounding
+  differences grew to about 1e-5 relative in the training loss after 20 updates
+  and about 1e-4 relative in the final holdout loss.
 
 ### Removed
 

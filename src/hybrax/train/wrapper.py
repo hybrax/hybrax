@@ -374,19 +374,14 @@ class HybridOdeWrapper(eqx.Module):
         RAW_latent = y_phys[n_phys:]
         RAW_RMC_rhs = jnp.maximum(RAW_RMCs, 0.0)
 
-        RAW_controlled_Inflows_cumulative = (
-            self.controls.eval_controlled_Inflows_cumulative(control_t, y_phys)
-        )
-        RAW_controlled_Inflows_rates = self.controls.eval_controlled_Inflows_rates(
-            control_t, y_phys
-        )
-        RAW_controlled_Outflows_cumulative = (
-            self.controls.eval_controlled_Outflows_cumulative(control_t, y_phys)
-        )
-        RAW_controlled_Outflows_rates = self.controls.eval_controlled_Outflows_rates(
-            control_t, y_phys
-        )
-        RAW_controlled_PVs = self.controls.eval_controlled_PVs(control_t, y_phys)
+        control_values, control_rates = self.controls.evaluate(control_t, y_phys)
+        n_in = self.n_controlled_Inflows
+        n_flow = n_in + self.n_controlled_Outflows
+        RAW_controlled_Inflows_cumulative = control_values[:n_in]
+        RAW_controlled_Inflows_rates = control_rates[:n_in]
+        RAW_controlled_Outflows_cumulative = control_values[n_in:n_flow]
+        RAW_controlled_Outflows_rates = control_rates[n_in:n_flow]
+        RAW_controlled_PVs = control_values[n_flow:]
         RAW_controlled_Inflows_Cin = self.rhs_ode.Cin_controlled_Inflows
         RAW_modeled_Inflows_Cin = self.rhs_ode.Cin_modeled_Inflows
 
@@ -500,19 +495,14 @@ class HybridOdeWrapper(eqx.Module):
         ]
         RAW_latent = y_phys[n_phys:]
 
-        RAW_controlled_Inflows_cumulative = (
-            self.controls.eval_controlled_Inflows_cumulative(t_arr, y_phys)
-        )
-        RAW_controlled_Inflows_rates = self.controls.eval_controlled_Inflows_rates(
-            t_arr, y_phys
-        )
-        RAW_controlled_Outflows_cumulative = (
-            self.controls.eval_controlled_Outflows_cumulative(t_arr, y_phys)
-        )
-        RAW_controlled_Outflows_rates = self.controls.eval_controlled_Outflows_rates(
-            t_arr, y_phys
-        )
-        RAW_controlled_PVs = self.controls.eval_controlled_PVs(t_arr, y_phys)
+        control_values, control_rates = self.controls.evaluate(t_arr, y_phys)
+        n_in = self.n_controlled_Inflows
+        n_flow = n_in + self.n_controlled_Outflows
+        RAW_controlled_Inflows_cumulative = control_values[:n_in]
+        RAW_controlled_Inflows_rates = control_rates[:n_in]
+        RAW_controlled_Outflows_cumulative = control_values[n_in:n_flow]
+        RAW_controlled_Outflows_rates = control_rates[n_in:n_flow]
+        RAW_controlled_PVs = control_values[n_flow:]
         inputs = ReactionInputs(
             SCL_modeled_RMCs=module.scale_modeled_RMCs(RAW_RMCs),
             SCL_modeled_PVs=module.scale_modeled_PVs(RAW_PVs),
