@@ -82,6 +82,7 @@ docs = [
 Homepage = "https://github.com/hybrax/hybrax"
 Repository = "https://github.com/hybrax/hybrax"
 Documentation = "https://hybrax.readthedocs.io"
+Changelog = "https://github.com/hybrax/hybrax/blob/main/CHANGELOG.md"
 
 [tool.ruff.lint]
 extend-select = ["E501"]
