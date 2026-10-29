@@ -1061,7 +1061,6 @@ dependencies = [
     { name = "equinox" },
     { name = "ijson" },
     { name = "jax" },
-    { name = "jaxlib" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "optax" },
@@ -1111,8 +1110,7 @@ requires-dist = [
     { name = "ipdb", marker = "extra == 'dev'", specifier = ">=0.13.13" },
     { name = "ipykernel", marker = "extra == 'dev'", specifier = ">=7.2.0" },
     { name = "ipykernel", marker = "extra == 'docs'", specifier = ">=6.29" },
-    { name = "jax", specifier = ">=0.4.30,<0.10.1" },
-    { name = "jaxlib", specifier = ">=0.4.0" },
+    { name = "jax", specifier = ">=0.9,<0.10.1" },
     { name = "jupyter", marker = "extra == 'dev'", specifier = ">=1.1.1" },
     { name = "jupyter-cache", marker = "extra == 'docs'", specifier = ">=1.0" },
     { name = "linkify-it-py", marker = "extra == 'docs'", specifier = ">=2.0" },
@@ -1124,7 +1122,7 @@ requires-dist = [
     { name = "openpyxl", marker = "extra == 'dev'", specifier = ">=3.1.5" },
     { name = "optax", specifier = ">=0.2.8,<0.3" },
     { name = "optimistix", specifier = ">=0.1.0" },
-    { name = "pandas", specifier = ">=3.0.5,<3.1" },
+    { name = "pandas", specifier = ">=3.0.5" },
     { name = "pydantic", specifier = ">=2.5.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=3.0.0" },
@@ -1135,7 +1133,7 @@ requires-dist = [
     { name = "sphinx-autoapi", marker = "extra == 'docs'", specifier = ">=3.1" },
     { name = "sphinx-copybutton", marker = "extra == 'docs'", specifier = ">=0.5" },
     { name = "sphinx-design", marker = "extra == 'docs'", specifier = ">=0.6" },
-    { name = "sympy", specifier = ">=1.14.0,<1.15" },
+    { name = "sympy", specifier = ">=1.14.0" },
 ]
 provides-extras = ["dev", "docs"]
 
