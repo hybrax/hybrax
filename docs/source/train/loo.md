@@ -89,9 +89,9 @@ Folds are independent, and each runs in its own subprocess.
 { "loo": { "parallel_folds": 2, "devices_per_fold": 2 } }
 ```
 
-That is 2 × 2 = 4 cores. Size it against your machine: the orchestrator deliberately
-holds itself to one device so an exported `HYBRAX_TRAIN_DEVICES` meant for workers does not
-reserve the pool.
+That exposes two JAX devices per worker. Device counts do not restrict the
+CPUs JAX uses. The orchestrator holds itself to one device so an exported
+`HYBRAX_TRAIN_DEVICES` meant for workers does not reserve the device pool.
 
 :::{admonition} Do not also fan out at the shell level
 :class: warning
@@ -109,6 +109,28 @@ To use [microbatching](train.md#the-knobs-that-matter), set one device per fold:
 Microbatching preserves each fold's logical batch and optimizer update count.
 Larger execution widths are capped by that fold's batch size. A resolved device
 count greater than one raises before any folds are dispatched.
+
+## CPU budget for parallel folds
+
+CPU affinity is unrestricted by default. To limit each worker to two logical
+CPUs, independently of its JAX device count:
+
+```json
+{ "loo": { "parallel_folds": 4, "devices_per_fold": 1, "cpus_per_fold": 2 } }
+```
+
+This requires eight CPUs in the parent's allowed affinity mask. Workers lease
+disjoint sets, preferring distinct physical cores, and return them on exit.
+The child applies affinity before importing JAX, so its runtime threads inherit
+the same set. Assignments appear in the orchestrator log. See
+[LOO CPU affinity](config.md#loo-cpu-affinity) for validation and topology fallback.
+
+Two CPUs are the minimum. One-CPU training can fail during JAX warmup with
+`No registered implementation for untyped custom call to
+xla_ffi_python_cpu_callback for Host` from Equinox `error_if` callbacks.
+`EQX_ON_ERROR=nan` changes error handling and is diagnostic only, not a
+recommended workaround. Affinity can reduce CPU contention in long parallel
+runs, but extra warmup can outweigh training gains in short runs.
 
 ## Resuming
 

@@ -10,7 +10,7 @@ device count — the JAX host-device count is fixed per process at import, so
 concurrent in-process folds cannot get separate shards. The user picks how many
 folds run at once (``loo.parallel_folds``); the orchestrator chooses the per-fold
 JAX device count (``devices_per_fold = n_cpu // parallel_folds`` by default),
-lets the OS schedule the worker processes, then aggregates their on-disk losses
+optionally leases disjoint CPUs via `cpus_per_fold`, then aggregates on-disk losses
 into ``loo_summary.csv`` / ``loo_aggregate.json``. ``run_loo_cv(resume=True)``
 skips only identity-matched, complete folds and re-runs the rest.
 
@@ -42,6 +42,7 @@ from hybrax.format import validate_augmented_parent_refs
 from hybrax.format.dataclasses import AugmentedBioProcess, BioProcessCollection
 from hybrax.format.json_io import load_json
 
+from .cpu_affinity import CpuLeases
 from .harness import (
     ForwardConfig,
     ForwardResult,
@@ -606,10 +607,26 @@ def _dispatch_worker(
     artifact_path: Path,
     fold_idx: int,
     devices: int,
+    cpus: tuple[int, ...] | None = None,
 ) -> int:
     """Run one fold subprocess. Returns its exit code."""
+    cmd = _worker_cmd(config_path, output_dir, artifact_path, fold_idx)
+    if cpus is not None:
+        # A fresh interpreter pins its only thread before any Hybrax/JAX import.
+        # Exec preserves affinity, which all later runtime threads inherit.
+        cmd = [
+            sys.executable,
+            "-c",
+            (
+                "import os, sys; "
+                "os.sched_setaffinity(0, {int(c) for c in sys.argv[1].split(',')}); "
+                "os.execv(sys.argv[2], sys.argv[2:])"
+            ),
+            ",".join(map(str, cpus)),
+            *cmd,
+        ]
     proc = subprocess.Popen(
-        _worker_cmd(config_path, output_dir, artifact_path, fold_idx),
+        cmd,
         env=_worker_env(devices),
     )
     return proc.wait()
@@ -622,15 +639,23 @@ def _dispatch_pool(
     folds: list[Fold],
     parallel: int,
     devices: int,
+    cpu_leases: CpuLeases | None = None,
 ) -> None:
     """Run ``folds`` in a pool of ``parallel`` worker subprocesses."""
     failures: list[tuple[str, str]] = []
 
     def _run(fold: Fold) -> None:
         try:
-            rc = _dispatch_worker(
-                config_path, output_dir, artifact_path, fold.idx, devices
-            )
+            if cpu_leases is None:
+                rc = _dispatch_worker(
+                    config_path, output_dir, artifact_path, fold.idx, devices
+                )
+            else:
+                with cpu_leases.lease() as cpus:
+                    logger.info("LOO fold %d (%s): CPUs %s", fold.idx, fold.slug, cpus)
+                    rc = _dispatch_worker(
+                        config_path, output_dir, artifact_path, fold.idx, devices, cpus
+                    )
             if rc != 0:
                 failures.append((fold.slug, f"exit {rc}"))
         except Exception as exc:  # noqa: BLE001 - record, don't abort other folds
@@ -1126,7 +1151,14 @@ def run_loo_cv(
     folds = tuple(_fold_from_record(fold) for fold in metadata.folds)
     n_folds = len(folds)
     loo_cfg = cfg.loo or LooConfig()
-    n_cpu = os.cpu_count() or 1
+    cpu_leases = (
+        CpuLeases(loo_cfg.cpus_per_fold, min(loo_cfg.parallel_folds, n_folds))
+        if loo_cfg.cpus_per_fold is not None
+        else None
+    )
+    n_cpu = (
+        len(os.sched_getaffinity(0)) if cpu_leases is not None else os.cpu_count() or 1
+    )
     batch_size = cfg.train.batch_size
 
     def _eff_batch(fold: Fold) -> int:
@@ -1137,7 +1169,10 @@ def run_loo_cv(
         n_cpu,
         loo_cfg.parallel_folds,
         devices_per_fold=loo_cfg.devices_per_fold,
-        max_devices_per_fold=min(_eff_batch(fold) for fold in folds),
+        max_devices_per_fold=min(
+            min(_eff_batch(fold) for fold in folds),
+            loo_cfg.cpus_per_fold or n_cpu,
+        ),
     )
     if cfg.train.microbatch_size is not None and devices > 1:
         raise ValueError("microbatching requires loo.devices_per_fold=1")
@@ -1176,7 +1211,13 @@ def run_loo_cv(
     )
     if pending:
         _dispatch_pool(
-            config_path, output_dir, artifact_path, pending, parallel, devices
+            config_path,
+            output_dir,
+            artifact_path,
+            pending,
+            parallel,
+            devices,
+            cpu_leases=cpu_leases,
         )
 
     summary_csv_path = output_dir / "loo_summary.csv"

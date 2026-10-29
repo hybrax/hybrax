@@ -68,7 +68,7 @@ pipeline if you want to.
 | `logging` | all | `decimals`: rounding precision for logged numbers |
 | `custom_py` | all | path to your hooks file |
 | `custom` | all | free-form, handed to your hooks |
-| `loo` | loo | `per_fold_holdout_sets`, `parallel_folds`, `devices_per_fold` |
+| `loo` | loo | `per_fold_holdout_sets`, `parallel_folds`, `devices_per_fold`, `cpus_per_fold` |
 | `models` | forward | list of run or checkpoint directories |
 
 The [`build_solver`](train.md#hook-build_solver) hook selects the solver instance;
@@ -202,6 +202,24 @@ for defaults you do not want to repeat in every config file.
   present file is silent. Different failure modes, and only one of them is loud.
 - **`hybrax loo` has a hidden `--fold` flag.** It is internal worker dispatch. Do not
   use it.
+
+## LOO CPU affinity
+
+`loo.cpus_per_fold` defaults to `null`, leaving worker CPU affinity
+unrestricted. An integer of at least 2 leases that many allowed logical CPUs
+per fold. The concurrent folds must fit within the parent's allowed CPU set;
+otherwise the run fails before the runtime producer starts. Concurrency is
+capped at the number of folds; for classic leave-one-out the early check
+assumes `parallel_folds` folds. Linux CPU affinity support is required when this option is set.
+
+The pool prefers distinct physical cores across all leases using Linux sysfs
+package/core IDs, then uses SMT siblings. Without readable topology it uses
+sorted CPU IDs. Each completed worker returns its CPUs to the pool. Affinity
+is applied before importing JAX and logged for each fold.
+
+`devices_per_fold` controls JAX devices, separately from CPU affinity. With
+`cpus_per_fold` set, the resolved device count is also capped at that CPU
+budget. See [CPU budget for parallel folds](loo.md#cpu-budget-for-parallel-folds).
 
 ## See also
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import gzip
 import json
 import math
+import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
@@ -1076,7 +1077,9 @@ def _patch_dispatch(monkeypatch) -> dict[str, Any]:
     """Replace the subprocess pool with a stub-fold writer (no real training)."""
     seen: dict[str, Any] = {}
 
-    def fake_pool(config_path, output_dir, artifact_path, folds, parallel, devices):
+    def fake_pool(
+        config_path, output_dir, artifact_path, folds, parallel, devices, cpu_leases
+    ):
         seen["pool_folds"] = [f.slug for f in folds]
         seen["artifact_path"] = Path(artifact_path)
         seen["parallel"] = parallel
@@ -1770,3 +1773,82 @@ def test_loo_cli_resume_rejects_uninitialized_run_dir(capsys, tmp_path):
 
 def test_loo_cli_rejects_config_and_resume_together(tmp_path):
     assert cli.main(["loo", "--config", "x.json", "--resume", str(tmp_path)]) == 1
+
+
+def test_run_loo_cv_affinity_budget(monkeypatch, tmp_path):
+    metadata = _runtime_metadata(_three_parent_collection())
+    _patch_runtime_metadata(monkeypatch, tmp_path, metadata)
+    seen = _patch_dispatch(monkeypatch)
+    monkeypatch.setattr(os, "sched_getaffinity", lambda _: {2, 4, 6, 8}, raising=False)
+    monkeypatch.setattr(os, "sched_setaffinity", lambda *_: None, raising=False)
+    original_pool = loo_mod._dispatch_pool
+
+    def pool(*args, cpu_leases):
+        with cpu_leases.lease() as first, cpu_leases.lease() as second:
+            assert len(first) == len(second) == 2
+            assert set(first).isdisjoint(second)
+        original_pool(*args, cpu_leases)
+
+    monkeypatch.setattr(loo_mod, "_dispatch_pool", pool)
+    cfg = RunConfig(
+        data=DataConfig(prepared=Path("prepared.json")),
+        loo=LooConfig(parallel_folds=2, cpus_per_fold=2),
+    )
+    result = run_loo_cv(
+        cfg=cfg, config_path=tmp_path / "loo-config.json", output_dir=tmp_path
+    )
+    assert result.parallel_folds == 2
+    assert seen["devices"] == 2
+
+    with pytest.raises(ValueError, match="requires 6 CPUs.*allows 4"):
+        run_loo_cv(
+            cfg=cfg.model_copy(
+                update={"loo": LooConfig(parallel_folds=3, cpus_per_fold=2)}
+            ),
+            config_path=tmp_path / "loo-config.json",
+            output_dir=tmp_path,
+        )
+
+
+def test_run_loo_cv_caps_devices_at_cpu_budget(monkeypatch, tmp_path):
+    collection = BioProcessCollection(
+        processes={f"p{i}": _make_process(f"p{i}") for i in range(1, 7)},
+        metadata={},
+    )
+    _patch_runtime_metadata(monkeypatch, tmp_path, _runtime_metadata(collection))
+    seen = _patch_dispatch(monkeypatch)
+    monkeypatch.setattr(os, "sched_getaffinity", lambda _: set(range(8)), raising=False)
+    monkeypatch.setattr(os, "sched_setaffinity", lambda *_: None, raising=False)
+    cfg = RunConfig(
+        data=DataConfig(prepared=Path("prepared.json")),
+        loo=LooConfig(parallel_folds=2, cpus_per_fold=2),
+    )
+    run_loo_cv(cfg=cfg, config_path=tmp_path / "loo-config.json", output_dir=tmp_path)
+    # Uncapped, 8 CPUs over 2 folds would give each fold's batch of 5 four devices.
+    assert seen["devices"] == 2
+
+
+@pytest.mark.parametrize(("holdout_sets", "allowed"), [(None, 3), (3, 5)])
+def test_loo_cli_checks_cpu_budget_before_producer(
+    monkeypatch, tmp_path, holdout_sets, allowed
+):
+    cfg_path = tmp_path / "config.json"
+    _write_min_config(cfg_path)
+    config = json.loads(cfg_path.read_text())
+    config["loo"] = {"parallel_folds": 4, "cpus_per_fold": 2}
+    if holdout_sets is not None:
+        # Fewer folds than parallel_folds: only three leases are needed.
+        config["loo"]["per_fold_holdout_sets"] = [
+            {"test": [f"p{i}"]} for i in range(1, holdout_sets + 1)
+        ]
+    cfg_path.write_text(json.dumps(config))
+    (tmp_path / "prepared.json").write_text("{}")
+    monkeypatch.setattr(
+        os, "sched_getaffinity", lambda _: set(range(allowed)), raising=False
+    )
+    monkeypatch.setattr(os, "sched_setaffinity", lambda *_: None, raising=False)
+    monkeypatch.setattr(cli, "_dispatch_producer", lambda *_a: pytest.fail("produced"))
+    out_dir = tmp_path / "out"
+    with pytest.raises(ValueError, match=f"allows {allowed}"):
+        cli.main(["loo", "--config", str(cfg_path), "--output-dir", str(out_dir)])
+    assert not out_dir.exists()

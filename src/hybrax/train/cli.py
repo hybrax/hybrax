@@ -19,6 +19,7 @@ from hybrax.format.json_io import load_json
 from hybrax.format.serialization import load_process_collection
 
 from .checkpointing import CheckpointWriter, _bundle_prepared_gz
+from .cpu_affinity import check_cpu_budget
 from .forward_plotting import plot_forward_predictions
 from .harness import (
     ForwardConfig,
@@ -50,6 +51,7 @@ from .postprocessing import (
 )
 from .prepare import prepare_artifact
 from .run_config import (
+    LooConfig,
     ModelRef,
     PredictionScope,
     RunConfig,
@@ -1205,6 +1207,17 @@ def _handle_loo(args: argparse.Namespace) -> int:
     cfg = _apply_train_cli_overrides(loaded.config, args, resolve_output_symlinks=False)
     if cfg.data is None:
         raise ValueError("loo command requires a data config section")
+    loo_cfg = cfg.loo or LooConfig()
+    if loo_cfg.cpus_per_fold is not None:
+        # Fail before the producer. Classic LOO's fold count needs the data, so
+        # assume parallel_folds folds there.
+        holdout_sets = loo_cfg.per_fold_holdout_sets
+        check_cpu_budget(
+            loo_cfg.cpus_per_fold,
+            min(loo_cfg.parallel_folds, len(holdout_sets))
+            if holdout_sets is not None
+            else loo_cfg.parallel_folds,
+        )
     output_dir = Path(cfg.output.dir)
 
     config_json = output_dir / "config.json"

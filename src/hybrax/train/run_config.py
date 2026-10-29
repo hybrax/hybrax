@@ -420,6 +420,8 @@ class LooConfig(ConfigBase):
     per process). ``devices_per_fold`` can set each fold's JAX CPU device
     count; otherwise the available JAX CPU device budget is split across
     concurrent folds so that ``parallel_folds * devices_per_fold <= n_cpu``.
+    `cpus_per_fold` optionally leases disjoint allowed CPUs before worker
+    imports; its default leaves affinity unrestricted.
     Set these from what your RAM can hold — there is deliberately no automatic
     RAM sizing.
     """
@@ -427,12 +429,15 @@ class LooConfig(ConfigBase):
     per_fold_holdout_sets: tuple[HoldoutSet, ...] | None = None
     parallel_folds: int = Field(1, gt=0)
     devices_per_fold: int | None = Field(None, gt=0)
+    cpus_per_fold: int | None = Field(None, ge=2)
 
-    @field_validator("parallel_folds", "devices_per_fold", mode="before")
+    @field_validator(
+        "parallel_folds", "devices_per_fold", "cpus_per_fold", mode="before"
+    )
     @classmethod
     def _reject_bool(cls, value: Any) -> Any:
         if isinstance(value, bool):
-            raise ValueError("loo parallel/device counts must be int >= 1")
+            raise ValueError("loo counts must be integers, not bool")
         return value
 
 

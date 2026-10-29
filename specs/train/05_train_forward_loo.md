@@ -188,8 +188,8 @@ optional [`loo`](../../src/hybrax/train/run_config.py) section. The CLI is
   `n_cpu // parallel_folds`, capped at the smallest fold's effective batch
   (`min(train size, train.batch_size)`) since a fold cannot expose more host
   devices than its `pmap` batch. Set `devices_per_fold` to a positive integer to
-  override that derived count. Worker processes are not CPU-pinned; the OS
-  scheduler owns core placement. There is deliberately **no automatic RAM
+  override that derived count. Worker CPU affinity is unrestricted unless
+  `cpus_per_fold` is set. There is deliberately **no automatic RAM
   sizing**.
 - **Holdout evaluation:** each fold uses its `test` set as a diagnostic holdout,
   evaluated at every periodic checkpoint and at the mandatory final checkpoint.
@@ -228,6 +228,21 @@ optional [`loo`](../../src/hybrax/train/run_config.py) section. The CLI is
   each fold's `test` set; a single-fold run reports `NaN` for the cross-fold
   std). Post-hoc metrics honor the stored prediction scope and do not score
   augmented holdout children omitted by `parents`.
+
+### CPU budget for parallel folds
+
+Set `loo.cpus_per_fold` to an integer >= 2 to lease disjoint CPU sets before
+worker imports. The default `null` leaves affinity unrestricted. The budget
+`cpus_per_fold * min(parallel_folds, n_folds)` must fit the parent's allowed
+CPU mask. Linux affinity support is required. The pool prefers distinct
+physical cores using sysfs package/core IDs, falls back to sorted CPU IDs,
+logs each assignment, and reuses sets when workers exit. JAX devices remain a
+separate setting, capped at the per-fold CPU budget when affinity is enabled.
+
+One CPU can fail at warmup in Equinox `error_if` host callbacks with
+`No registered implementation for untyped custom call to
+xla_ffi_python_cpu_callback for Host`. `EQX_ON_ERROR=nan` is diagnostic only;
+it changes error handling and is not a recommended workaround.
 
 ## Recreating predictions after training
 
