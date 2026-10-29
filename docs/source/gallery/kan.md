@@ -235,7 +235,10 @@ effect would actually have.
 :tags: [remove-input]
 
 n_clean = sum(1 for row in edge_rows if row[2] != "no clean match")
-print(f"{n_clean} of l1's {len(edge_rows)} edges matched one of the 5 shapes cleanly (R2 >= 0.9)")
+print(
+    f"{n_clean} of l1's {len(edge_rows)} edges matched one of the 5 shapes "
+    "cleanly (R2 >= 0.9)"
+)
 ```
 
 ## Recovering the Real Rate Law
@@ -260,7 +263,14 @@ whether its own behavior matches.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-TRUE = {"mu_max": 0.45, "Ks": 0.05, "Y_XS": 0.45, "m_s": 0.02, "alpha": 0.08, "beta": 0.006}
+TRUE = {
+    "mu_max": 0.45,
+    "Ks": 0.05,
+    "Y_XS": 0.45,
+    "m_s": 0.02,
+    "alpha": 0.08,
+    "beta": 0.006,
+}
 TRUE_SCALE = {
     "q_biomass": TRUE["mu_max"],
     "q_glucose": -(TRUE["mu_max"] / TRUE["Y_XS"] + TRUE["m_s"]),
@@ -289,7 +299,9 @@ for out_idx, rate in enumerate(["q_biomass", "q_glucose", "q_product"]):
         lo, hi = ranges[species]
         xs = np.linspace(lo, hi, 40)
         ys = np.array([
-            eval_reaction_module([x if n == species else fixed[n] for n in names])[out_idx]
+            eval_reaction_module(
+                [x if n == species else fixed[n] for n in names]
+            )[out_idx]
             for x in xs
         ])
         sweeps[species] = (xs, ys, best_match(xs, ys))
