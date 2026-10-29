@@ -322,7 +322,7 @@ def test_measurement_loss_from_arrays_ignores_padded_rows_via_mask():
         solver_atol=1e-7,
     )
 
-    assert poisoned_total == pytest.approx(base_total, rel=1e-6, abs=1e-6)
+    assert float(poisoned_total) == pytest.approx(float(base_total), rel=1e-6, abs=1e-6)
 
 
 def test_measurement_loss_from_arrays_forwards_nondefault_solver_options(monkeypatch):

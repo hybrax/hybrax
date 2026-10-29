@@ -178,7 +178,10 @@ def test_pilot_is_reused_with_original_normalized_budget(monkeypatch, unit_scale
     fitted = fit_monotone_timeseries_spline(
         TimeSeries(times=x, values=y), rms_tol=tolerance, increasing=True
     )
-    assert received == pytest.approx([(0.001, 64)])
+    assert len(received) == 1
+    budget, target = received[0]
+    assert budget == pytest.approx(0.001)
+    assert target == 64
     assert fitted.metadata["monotone_fit"]["refinements"] > 1
     rms = np.linalg.norm(np.asarray(fitted.evaluate_many(fitted.times)) - y) / np.sqrt(
         len(x)
