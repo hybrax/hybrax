@@ -86,11 +86,11 @@ Module Contents
 
 
    .. py:attribute:: derivative
-      :type:  Callable[[numpy.ndarray], numpy.ndarray]
+      :type:  collections.abc.Callable[[numpy.ndarray], numpy.ndarray]
 
 
    .. py:attribute:: evaluator
-      :type:  Callable[[numpy.ndarray], numpy.ndarray]
+      :type:  collections.abc.Callable[[numpy.ndarray], numpy.ndarray]
 
 
    .. py:attribute:: is_static

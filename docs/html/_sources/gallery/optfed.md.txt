@@ -594,7 +594,11 @@ rows = [
     for name, value in model.reaction_module.parameters.items()
 ]
 numbers = ["Lower", "Fitted", "Upper"]
-display(pd.DataFrame(rows).style.format("{:.3g}", subset=numbers))
+display(
+    pd.DataFrame(rows).style.set_uuid("optfed_parameters").format(
+        "{:.3g}", subset=numbers
+    )
+)
 ```
 
 ```{code-cell} ipython3
@@ -666,7 +670,7 @@ goodness of fit rather than performance on unseen processes.
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-display(comparison.style.format("{:.3g}"))
+display(comparison.style.set_uuid("optfed_comparison").format("{:.3g}"))
 ```
 
 OptFed minimised error in derived rates, while Hybrax fits concentrations

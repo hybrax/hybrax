@@ -644,7 +644,7 @@ at exactly <code class="docutils literal notranslate"><span class="pre">t_b</spa
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Dict[str, Any]</p>
+<dd class="field-even"><p>dict[str, Any]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -657,7 +657,7 @@ at exactly <code class="docutils literal notranslate"><span class="pre">t_b</spa
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p></li>
-<li><p><strong>species_names</strong> (<em>Optional</em><em>[</em><em>List</em><em>[</em><em>str</em><em>]</em><em>]</em>)</p></li>
+<li><p><strong>species_names</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>)</p></li>
 <li><p><strong>cstar_smoothing_s</strong> (<em>float</em>)</p></li>
 </ul>
 </dd>
@@ -679,14 +679,14 @@ No epsilon-offset dense event grid is used.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>inputs</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
-<li><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>BioProcess</em></a><em> | </em><em>None</em>)</p></li>
+<li><p><strong>inputs</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
+<li><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a><em> | </em><em>None</em>)</p></li>
 <li><p><strong>species_name</strong> (<em>str</em><em> | </em><em>None</em>)</p></li>
 <li><p><strong>cstar_smoothing_s</strong> (<em>float</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Dict[str, Any]</p>
+<dd class="field-even"><p>dict[str, Any]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -748,7 +748,7 @@ discrete (<code class="docutils literal notranslate"><span class="pre">is_contin
 <dt class="field-even">Parameters<span class="colon">:</span></dt>
 <dd class="field-even"><ul class="simple">
 <li><p><strong>t_eval</strong> (<em>jax.numpy.ndarray</em>)</p></li>
-<li><p><strong>splines</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
+<li><p><strong>splines</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
@@ -769,7 +769,7 @@ smoothing B-splines require at least four samples.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>ts</strong> (<em>hybrax.format.dataclasses.TimeSeries</em>)</p></li>
-<li><p><strong>boundaries</strong> (<em>Optional</em><em>[</em><em>jax.numpy.ndarray</em><em>]</em>)</p></li>
+<li><p><strong>boundaries</strong> (<em>jax.numpy.ndarray</em><em> | </em><em>None</em>)</p></li>
 <li><p><strong>smoothing_s</strong> (<em>float</em>)</p></li>
 </ul>
 </dd>
@@ -849,7 +849,7 @@ The result is a strictly-increasing array.</p>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>List[hybrax.format.dataclasses.TimeSeries]</p>
+<dd class="field-even"><p>list[hybrax.format.dataclasses.TimeSeries]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -861,8 +861,8 @@ The result is a strictly-increasing array.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>inputs</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
-<li><p><strong>splines</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
+<li><p><strong>inputs</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
+<li><p><strong>splines</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
 <li><p><strong>species_name</strong> (<em>str</em>)</p></li>
 <li><p><strong>cstar_smoothing_s</strong> (<em>float</em>)</p></li>
 </ul>
@@ -980,7 +980,7 @@ The result is a strictly-increasing array.</p>
       
     </aside>
   </div>
-</div><script src="../../../../_static/documentation_options.js?v=95c291f4"></script>
+</div><script src="../../../../_static/documentation_options.js?v=04266cf0"></script>
     <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../../_static/scripts/furo.js?v=46bd48cc"></script>

@@ -166,7 +166,7 @@ Module Contents
 
 
    .. py:attribute:: identity_inputs
-      :type:  Mapping[str, str]
+      :type:  collections.abc.Mapping[str, str]
 
 
 .. py:function:: load_runtime_artifact(path, *, fold_id)

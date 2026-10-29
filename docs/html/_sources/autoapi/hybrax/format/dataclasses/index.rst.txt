@@ -86,27 +86,27 @@ Module Contents
 
 
    .. py:attribute:: discrete_events
-      :type:  Optional[DiscreteEvents]
+      :type:  DiscreteEvents | None
       :value: None
 
 
 
    .. py:attribute:: metadata
-      :type:  Optional[BioProcessMetadata]
+      :type:  BioProcessMetadata | None
 
 
    .. py:attribute:: process_variables
-      :type:  Dict[str, ProcessVariable]
+      :type:  dict[str, ProcessVariable]
 
 
    .. py:attribute:: pseudobatch_transform
-      :type:  Optional[PseudobatchTransform]
+      :type:  PseudobatchTransform | None
       :value: None
 
 
 
    .. py:attribute:: reaction_ode
-      :type:  Optional[ReactionOde]
+      :type:  ReactionOde | None
       :value: None
 
 
@@ -135,31 +135,31 @@ Module Contents
 
 
    .. py:attribute:: case_id
-      :type:  Optional[str]
+      :type:  str | None
       :value: None
 
 
 
    .. py:attribute:: citation
-      :type:  Optional[str]
+      :type:  str | None
       :value: None
 
 
 
    .. py:attribute:: metadata
-      :type:  Optional[Dict]
+      :type:  dict | None
       :value: None
 
 
 
    .. py:attribute:: organism
-      :type:  Optional[str]
+      :type:  str | None
       :value: None
 
 
 
    .. py:attribute:: processes
-      :type:  Dict[str, BioProcess]
+      :type:  dict[str, BioProcess]
 
 
 .. py:class:: BioProcessMetadata
@@ -172,7 +172,7 @@ Module Contents
 
 
    .. py:attribute:: notes
-      :type:  Optional[str]
+      :type:  str | None
       :value: None
 
 
@@ -187,13 +187,13 @@ Module Contents
 
 
    .. py:attribute:: labels
-      :type:  Optional[list]
+      :type:  list | None
       :value: None
 
 
 
    .. py:attribute:: metadata
-      :type:  Optional[dict]
+      :type:  dict | None
       :value: None
 
 
@@ -213,7 +213,7 @@ Module Contents
 
 
    .. py:attribute:: components
-      :type:  Dict[str, FeedMediumComponent]
+      :type:  dict[str, FeedMediumComponent]
 
 
    .. py:attribute:: density
@@ -280,7 +280,7 @@ Module Contents
 
 
    .. py:attribute:: retention
-      :type:  Dict[str, float]
+      :type:  dict[str, float]
 
 
 .. py:class:: ProcessOrdering
@@ -314,39 +314,39 @@ Module Contents
 
 
    .. py:attribute:: name_controlled_Inflows
-      :type:  Tuple[str, ...]
+      :type:  tuple[str, ...]
 
 
    .. py:attribute:: name_controlled_Outflows
-      :type:  Tuple[str, ...]
+      :type:  tuple[str, ...]
 
 
    .. py:attribute:: name_controlled_PVs
-      :type:  Tuple[str, ...]
+      :type:  tuple[str, ...]
 
 
    .. py:attribute:: name_modeled_Inflows
-      :type:  Tuple[str, ...]
+      :type:  tuple[str, ...]
 
 
    .. py:attribute:: name_modeled_Outflows
-      :type:  Tuple[str, ...]
+      :type:  tuple[str, ...]
 
 
    .. py:attribute:: name_modeled_PVs
-      :type:  Tuple[str, ...]
+      :type:  tuple[str, ...]
 
 
    .. py:attribute:: name_modeled_RMCs
-      :type:  Tuple[str, ...]
+      :type:  tuple[str, ...]
 
 
    .. py:attribute:: name_modeled_algebraic
-      :type:  Tuple[str, ...]
+      :type:  tuple[str, ...]
 
 
    .. py:attribute:: name_modeled_rates
-      :type:  Tuple[str, ...]
+      :type:  tuple[str, ...]
 
 
 .. py:class:: ProcessVariable
@@ -387,7 +387,7 @@ Module Contents
 
 
    .. py:attribute:: accumulated_feeds
-      :type:  Dict[str, hybrax.format.time_series.TimeSeries]
+      :type:  dict[str, hybrax.format.time_series.TimeSeries]
 
 
    .. py:attribute:: adf
@@ -395,11 +395,11 @@ Module Contents
 
 
    .. py:attribute:: feed_corrections
-      :type:  Dict[str, hybrax.format.time_series.TimeSeries]
+      :type:  dict[str, hybrax.format.time_series.TimeSeries]
 
 
    .. py:attribute:: sample_compensation
-      :type:  Optional[hybrax.format.time_series.TimeSeries]
+      :type:  hybrax.format.time_series.TimeSeries | None
       :value: None
 
 
@@ -434,15 +434,15 @@ Module Contents
 
 
    .. py:attribute:: algebraic
-      :type:  Dict[str, str]
+      :type:  dict[str, str]
 
 
    .. py:attribute:: derivatives
-      :type:  Dict[str, str]
+      :type:  dict[str, str]
 
 
    .. py:attribute:: rates
-      :type:  Dict[str, Bounds]
+      :type:  dict[str, Bounds]
 
 
 .. py:class:: ReactorMedium
@@ -454,7 +454,7 @@ Module Contents
 
 
    .. py:attribute:: components
-      :type:  Dict[str, ReactorMediumComponent]
+      :type:  dict[str, ReactorMediumComponent]
 
 
    .. py:attribute:: density
@@ -564,7 +564,7 @@ Module Contents
 
 
    .. py:attribute:: volume_changes
-      :type:  Dict[str, VolumeChange]
+      :type:  dict[str, VolumeChange]
 
 
 .. py:class:: VolumeChange

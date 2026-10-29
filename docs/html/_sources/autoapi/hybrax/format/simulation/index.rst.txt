@@ -93,7 +93,7 @@ Module Contents
 
 
    .. py:attribute:: feed_concentrations
-      :type:  Mapping[str, float]
+      :type:  collections.abc.Mapping[str, float]
 
 
    .. py:attribute:: feed_id

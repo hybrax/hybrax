@@ -489,11 +489,11 @@ time) for target j”.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>output_dirs</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><em>Sequence</em><em>[</em><em>str</em><em> | </em><em>pathlib.Path</em><em>]</em>)</p></li>
+<li><p><strong>output_dirs</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><em>collections.abc.Sequence</em><em>[</em><em>str</em><em> | </em><em>pathlib.Path</em><em>]</em>)</p></li>
 <li><p><strong>prepared_json</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p></li>
 <li><p><strong>metrics</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><a class="reference internal" href="#hybrax.train.loo_metrics.MetricFn" title="hybrax.train.loo_metrics.MetricFn"><em>MetricFn</em></a><em>] </em><em>| </em><em>None</em>)</p></li>
 <li><p><strong>extra_metrics</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><a class="reference internal" href="#hybrax.train.loo_metrics.MetricFn" title="hybrax.train.loo_metrics.MetricFn"><em>MetricFn</em></a><em>] </em><em>| </em><em>None</em>)</p></li>
-<li><p><strong>target_names</strong> (<em>Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>target_names</strong> (<em>collections.abc.Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>)</p></li>
 <li><p><strong>include_volume_changes</strong> (<em>bool</em>)</p></li>
 <li><p><strong>include_train</strong> (<em>bool</em>)</p></li>
 <li><p><strong>equal_comparison</strong> (<em>bool</em>)</p></li>
@@ -516,7 +516,7 @@ time) for target j”.</p>
 by <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">loo</span></code>.</p></li>
 <li><p><strong>prepared_json</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>) – path to <code class="docutils literal notranslate"><span class="pre">prepared.json</span></code> <em>or</em> an already-loaded
 <code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcessCollection</span></code>. Source of measured values.</p></li>
-<li><p><strong>target_names</strong> (<em>Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – explicit subset of targets to score. Defaults to the
+<li><p><strong>target_names</strong> (<em>collections.abc.Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>) – explicit subset of targets to score. Defaults to the
 sidecar’s <code class="docutils literal notranslate"><span class="pre">targets</span></code> field, then to any <code class="docutils literal notranslate"><span class="pre">c_&lt;name&gt;</span></code> column
 present in <code class="docutils literal notranslate"><span class="pre">predictions.csv</span></code>.</p></li>
 <li><p><strong>write_outputs</strong> (<em>bool</em>) – when <code class="docutils literal notranslate"><span class="pre">True</span></code>, writes <code class="docutils literal notranslate"><span class="pre">loo_metrics.csv</span></code> and
@@ -546,11 +546,11 @@ measurement point) use <a class="reference internal" href="#hybrax.train.loo_met
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>output_dirs</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><em>Sequence</em><em>[</em><em>str</em><em> | </em><em>pathlib.Path</em><em>]</em>)</p></li>
+<li><p><strong>output_dirs</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><em>collections.abc.Sequence</em><em>[</em><em>str</em><em> | </em><em>pathlib.Path</em><em>]</em>)</p></li>
 <li><p><strong>prepared_json</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p></li>
 <li><p><strong>metrics</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><a class="reference internal" href="#hybrax.train.loo_metrics.MetricFn" title="hybrax.train.loo_metrics.MetricFn"><em>MetricFn</em></a><em>] </em><em>| </em><em>None</em>)</p></li>
 <li><p><strong>extra_metrics</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><a class="reference internal" href="#hybrax.train.loo_metrics.MetricFn" title="hybrax.train.loo_metrics.MetricFn"><em>MetricFn</em></a><em>] </em><em>| </em><em>None</em>)</p></li>
-<li><p><strong>target_names</strong> (<em>Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>target_names</strong> (<em>collections.abc.Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>)</p></li>
 <li><p><strong>include_volume_changes</strong> (<em>bool</em>)</p></li>
 <li><p><strong>include_train</strong> (<em>bool</em>)</p></li>
 <li><p><strong>equal_comparison</strong> (<em>bool</em>)</p></li>
@@ -682,7 +682,7 @@ flags, else None. Banner is suitable for <code class="docutils literal notransla
       
     </aside>
   </div>
-</div><script src="../../../../_static/documentation_options.js?v=95c291f4"></script>
+</div><script src="../../../../_static/documentation_options.js?v=04266cf0"></script>
     <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../../_static/scripts/furo.js?v=46bd48cc"></script>

@@ -465,7 +465,7 @@ augmentation is not supported in v1).</p>
 <code class="docutils literal notranslate"><span class="pre">PASS</span></code> entry when there are none.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Tuple[bool, List[Tuple[bool, str]]]</p>
+<dd class="field-odd"><p>tuple[bool, list[tuple[bool, str]]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -483,7 +483,7 @@ augmentation is not supported in v1).</p>
 <dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">message)</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Tuple[bool, str]</p>
+<dd class="field-odd"><p>tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -497,7 +497,7 @@ augmentation is not supported in v1).</p>
 <dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple[bool, str]</p>
+<dd class="field-even"><p>tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -519,7 +519,7 @@ machinery exists to compute a measured rate value to check against them
 <dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple[bool, str]</p>
+<dd class="field-even"><p>tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -548,7 +548,7 @@ one <code class="docutils literal notranslate"><span class="pre">(check_ok,</spa
 <dd class="field-odd"><p><strong>collection</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple[bool, List[Tuple[bool, str]]]</p>
+<dd class="field-even"><p>tuple[bool, list[tuple[bool, str]]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -562,7 +562,7 @@ one <code class="docutils literal notranslate"><span class="pre">(check_ok,</spa
 <dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple[bool, str]</p>
+<dd class="field-even"><p>tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -596,7 +596,7 @@ present and non-empty; an empty collection returns an empty report.</p>
 <dd class="field-odd"><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">collection</span></code> is not a <code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcessCollection</span></code>.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple[bool, Dict[str, List[Tuple[bool, str]]]]</p>
+<dd class="field-even"><p>tuple[bool, dict[str, list[tuple[bool, str]]]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -613,7 +613,7 @@ and initial volume come from different points in time.</p>
 <dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple[bool, str]</p>
+<dd class="field-even"><p>tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -644,7 +644,7 @@ that is considered “suspiciously close”.  Default is <code class="docutils l
 <dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">message)</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Tuple[bool, str]</p>
+<dd class="field-odd"><p>tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -667,7 +667,7 @@ otherwise be silently ignored rather than doing anything.</p>
 <dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">message)</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Tuple[bool, str]</p>
+<dd class="field-odd"><p>tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -710,7 +710,7 @@ when every individual check passes and <code class="docutils literal notranslate
 <dd class="field-odd"><p><strong>TypeError</strong> – If <code class="docutils literal notranslate"><span class="pre">process</span></code> is not a <code class="xref py py-class docutils literal notranslate"><span class="pre">BioProcess</span></code> instance.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple[bool, List[Tuple[bool, str]]]</p>
+<dd class="field-even"><p>tuple[bool, list[tuple[bool, str]]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -737,7 +737,7 @@ rate name.</p></li>
 <dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple[bool, str]</p>
+<dd class="field-even"><p>tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -755,7 +755,7 @@ zero or one process trivially pass.</p>
 <dd class="field-odd"><p><strong>container</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple[bool, str]</p>
+<dd class="field-even"><p>tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -769,7 +769,7 @@ zero or one process trivially pass.</p>
 <dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple[bool, str]</p>
+<dd class="field-even"><p>tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -795,7 +795,7 @@ zero or one process trivially pass.</p>
 <dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">message)</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Tuple[bool, str]</p>
+<dd class="field-odd"><p>tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -810,7 +810,7 @@ zero or one process trivially pass.</p>
 <dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple[bool, str]</p>
+<dd class="field-even"><p>tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -831,7 +831,7 @@ purely positive or purely negative (never mixed).</p>
 <dd class="field-even"><p>A tuple <code class="docutils literal notranslate"><span class="pre">(is_valid,</span> <span class="pre">message)</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Tuple[bool, str]</p>
+<dd class="field-odd"><p>tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -854,7 +854,7 @@ StaticVariable.</p>
 every declared dynamic feed component uses the matching unit string.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>Tuple[bool, str]</p>
+<dd class="field-odd"><p>tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -873,7 +873,7 @@ here only the last time points are considered.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>) – BioProcess object whose volume changes are validated.</p></li>
-<li><p><strong>final_volume</strong> (<em>Optional</em><em>[</em><em>float</em><em>]</em>) – Expected final volume in the process’s volume unit.  A
+<li><p><strong>final_volume</strong> (<em>float</em><em> | </em><em>None</em>) – Expected final volume in the process’s volume unit.  A
 numeric value must be supplied.  For positive values, checks that the
 sum of all volume changes plus <cite>process.volume.initial_volume</cite> is
 within 5 % of this value.</p></li>
@@ -904,7 +904,7 @@ volume changes, in the process’s volume unit).</p></li>
 <dd class="field-odd"><p><strong>process</strong> (<a class="reference internal" href="../dataclasses/index.html#hybrax.format.dataclasses.BioProcess" title="hybrax.format.dataclasses.BioProcess"><em>hybrax.format.dataclasses.BioProcess</em></a>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>Tuple[bool, str]</p>
+<dd class="field-even"><p>tuple[bool, str]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1003,7 +1003,7 @@ volume changes, in the process’s volume unit).</p></li>
       
     </aside>
   </div>
-</div><script src="../../../../_static/documentation_options.js?v=95c291f4"></script>
+</div><script src="../../../../_static/documentation_options.js?v=04266cf0"></script>
     <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
     <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../../_static/scripts/furo.js?v=46bd48cc"></script>
