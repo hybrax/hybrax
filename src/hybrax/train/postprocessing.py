@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -116,6 +117,18 @@ def aggregate_dense_exports(
     return mean_out, std_out
 
 
+@eqx.filter_jit
+def _unscale_batched_states(unscale_state: Any, SCL_states: jax.Array) -> jax.Array:
+    """Un-scale `[N, n_pred, state]` states in one compiled kernel.
+
+    Eager vmapped dispatch would compile one kernel per primitive of
+    `unscale_state` (six for the default scalers) on first use per shape.
+    A bound method of an equinox module is a pytree, so its arrays stay
+    traced inputs rather than static arguments.
+    """
+    return jax.vmap(jax.vmap(unscale_state))(SCL_states)
+
+
 def _mask_invalid(values: np.ndarray, valid: np.ndarray) -> np.ndarray:
     """Set rows (leading axis) of `values` where `valid` is false to NaN."""
     values = np.asarray(values)
@@ -151,7 +164,9 @@ def dense_exports_from_save_outputs(
     )
     # Un-scale [N, n_pred, state] → physical in one vmapped pass, then to numpy.
     RAW_states = np.asarray(
-        jax.vmap(jax.vmap(module.unscale_state))(prediction_save_outputs.SCL_states)
+        _unscale_batched_states(
+            module.unscale_state, prediction_save_outputs.SCL_states
+        )
     )
     t_np = np.asarray(prediction_t)
     prediction_valid_np = np.asarray(prediction_valid, dtype=bool)
