@@ -133,7 +133,12 @@ def _iter_batched_loss_outputs(
     step: jax.Array | None = None,
     prediction_grid_n: int | None = None,
 ):
-    """Yield fixed-size JIT evaluation batches and their valid process names."""
+    """Yield fixed-size JIT evaluation batches and their valid process names.
+
+    Outputs are fetched to the host as NumPy arrays in one transfer, so the
+    callers' row slicing and selection never dispatch (and on first use
+    compile) eager device kernels.
+    """
     if not process_names:
         raise ValueError("process_names must not be empty")
     unknown = [name for name in process_names if name not in store.process_order]
@@ -172,8 +177,7 @@ def _iter_batched_loss_outputs(
             step=step,
             prediction_grid_n=prediction_grid_n,
         )
-        jax.block_until_ready(outputs[0])
-        yield valid_names, outputs
+        yield valid_names, jax.device_get(outputs)
 
 
 def compute_dense_exports(
