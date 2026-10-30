@@ -35,7 +35,7 @@ learned; scan for your row.
 | write my own reaction ODE instead of the default | [The Bioprocess ODE](../format/bioprocess_ode.md) |
 | model a species that accumulates inside cells | `algebraic` expressions: [The Bioprocess ODE](../format/bioprocess_ode.md) |
 | interpolate a measurement continuously | [Time series and splines](../format/time_series_and_splines.md) |
-| remove dilution from fed-batch concentrations | Pseudobatch: [Time series and splines](../format/time_series_and_splines.md) |
+| remove dilution from fed-batch concentrations | [The pseudobatch transform](../format/pseudobatch_transform.md) |
 | generate synthetic ground-truth data | [Limits and gotchas](../format/limits_and_gotchas.md) and the `Simulation` helpers |
 | give a process variable its own trained dynamics instead of a fixed input | [Gallery: a modeled process variable](../gallery/modeled_pv.md) |
 

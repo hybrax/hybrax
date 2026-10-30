@@ -110,22 +110,17 @@ to be specific *to* otherwise. See [the Bioprocess ODE](../format/bioprocess_ode
 - **Event ordering at a shared timestamp**: **sample first, then bolus.** The offline
   measurement represents the pre-feed reactor state; the bolus then dilutes what is left.
 
-## Pseudobatch, ADF and `pseudobatch_concentration`
+## Pseudobatch transform and ADF
 
-In a fed-batch run, a measured concentration moves for two reasons: the cells did
-something, and the volume changed. The **pseudobatch transform** removes the second one.
+`hybrax.format` includes utilities for the pseudobatch transform, which removes dilution
+effects from fed-batch concentrations. `hybrax.train` does not use it. Two of its terms
+appear elsewhere in these docs:
 
 - **ADF**: accumulated dilution factor, `V(t) / V(0)`.
-- **`pseudobatch_concentration`**: what the concentration *would have been* in a batch
-  run with identical biology. Stored per component under that name.
+- **`pseudobatch_concentration`**: what a concentration would have been in a batch run
+  with identical biology.
 
-`pseudobatch_concentration` curves are smoother, so they spline better, and they make
-batch and fed-batch runs directly comparable. A good sanity check: this trace should
-**not** jump at a pure sampling event. If it does, the volume accounting is wrong.
-
-`hybrax.train` does not use the transform: training solves the ODE on the physical state.
-It is a `hybrax.format` utility for your own analyses; see
-[The pseudobatch transform](../format/pseudobatch_transform.md).
+See [The pseudobatch transform](../format/pseudobatch_transform.md) for details.
 
 ## `hybrax.train` vocabulary
 

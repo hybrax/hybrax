@@ -232,7 +232,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../format/limits_and_gotchas.html">Limits and gotchas</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../format/further_reading.html">Further reading</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
 <ul>
@@ -247,7 +246,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../train/forward.html">Forward</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../train/loo.html">Cross-Validation (LOO)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../train/save_load_predict.html">The Python API</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../train/further_reading.html">Further Reading</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
 <ul>
@@ -489,22 +487,14 @@ longer meaningful.</p>
 method in a few multiply-adds: simple, fast, and clean to vectorize in JAX. B-spline
 basis evaluation requires recursive knot-vector lookups that are harder to vectorize.</p>
 </section>
-<section id="pseudobatch-normalization">
-<h3>4. Pseudobatch normalization<a class="headerlink" href="#pseudobatch-normalization" title="Link to this heading">¶</a></h3>
-<p>Fed-batch processes change volume over time, so observed concentrations are affected by
-dilution in addition to biological activity. The <strong>pseudobatch transform</strong>
-(Hesselberg-Thomsen et al., 2024) converts measured concentrations <code class="docutils literal notranslate"><span class="pre">c(t)</span></code> to
-<code class="docutils literal notranslate"><span class="pre">pseudobatch_concentration(t)</span></code>: what concentrations <em>would have been</em> in a batch process
-with the same biological activity:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">pseudobatch_concentration</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">=</span> <span class="n">c</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">*</span> <span class="n">ADF</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">-</span> <span class="n">feed_correction</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
-</pre></div>
-</div>
-<p>where <code class="docutils literal notranslate"><span class="pre">ADF(t)</span></code> is the accumulative dilution factor (current / initial volume) and
-<code class="docutils literal notranslate"><span class="pre">feed_correction(t)</span></code> accounts for mass added by feed streams. This yields smoother curves
-(better cubic-spline fits), enables fair comparison across batch and fed-batch processes,
-and supports spline segmentation at bolus-event discontinuities. ADF and feed correction
-are piecewise-constant and must be evaluated with <strong>step</strong> (nearest-neighbor)
-interpolation, not linear, to preserve correct discontinuity behavior in the backtransform.</p>
+<section id="pseudobatch-transform-as-a-utility">
+<h3>4. Pseudobatch transform as a utility<a class="headerlink" href="#pseudobatch-transform-as-a-utility" title="Link to this heading">¶</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> can compute the pseudobatch transform (Hesselberg-Thomsen et al., 2024),
+which removes dilution from fed-batch concentrations, for example to compare batch and
+fed-batch runs. Training does not use it; see “Bounded physical-state solve” below for
+why. ADF and the feed correction are piecewise constant and are evaluated with step
+interpolation, which keeps the backtransform exact at feed and sampling events. Details:
+<a class="reference internal" href="../format/pseudobatch_transform.html"><span class="std std-doc">The pseudobatch transform</span></a>.</p>
 </section>
 <section id="validation-first-approach">
 <h3>5. Validation-first approach<a class="headerlink" href="#validation-first-approach" title="Link to this heading">¶</a></h3>
@@ -687,7 +677,7 @@ var always wins). <code class="docutils literal notranslate"><span class="pre">&
 <li><a class="reference internal" href="#hierarchical-data-model">1. Hierarchical data model</a></li>
 <li><a class="reference internal" href="#volume-as-a-first-class-concept">2. Volume as a first-class concept</a></li>
 <li><a class="reference internal" href="#timeseries-structure">3. TimeSeries structure</a></li>
-<li><a class="reference internal" href="#pseudobatch-normalization">4. Pseudobatch normalization</a></li>
+<li><a class="reference internal" href="#pseudobatch-transform-as-a-utility">4. Pseudobatch transform as a utility</a></li>
 <li><a class="reference internal" href="#validation-first-approach">5. Validation-first approach</a></li>
 </ul>
 </li>

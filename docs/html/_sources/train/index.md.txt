@@ -100,12 +100,6 @@ than in ordinary supervised learning.
 | [Cross-Validation](loo.md) | You need to know whether it generalises. |
 | [The Python API](save_load_predict.md) | Loading, predicting and resuming from a script, not the CLI. |
 
-**Reference**
-
-| Page | |
-|---|---|
-| [Further Reading](further_reading.md) | The dense reference and the example projects. |
-
 ## Defaults, and what replacing them costs
 
 You can train with no `custom.py` at all. These are what you get:

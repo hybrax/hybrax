@@ -231,7 +231,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../format/limits_and_gotchas.html">Limits and gotchas</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../format/further_reading.html">Further reading</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
 <ul>
@@ -246,7 +245,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../train/forward.html">Forward</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../train/loo.html">Cross-Validation (LOO)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../train/save_load_predict.html">The Python API</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../train/further_reading.html">Further Reading</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
 <ul>
@@ -478,7 +476,7 @@
 <span class="sd">    """</span>
     <span class="c1"># Bounded physical-state solve (manual jumps at events) — well-conditioned</span>
     <span class="c1"># gradient. Replaces the pseudobatch single-solve whose unbounded accumulator</span>
-    <span class="c1"># corrupted the adjoint (see specs/pseudo_diagnosis.md).</span>
+    <span class="c1"># corrupted the adjoint.</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.physical_solve</span><span class="w"> </span><span class="kn">import</span> <span class="n">solve_physical_states</span>
 
     <span class="n">n_meas_arr</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">n_measured</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>

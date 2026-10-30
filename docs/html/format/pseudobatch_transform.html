@@ -232,7 +232,6 @@
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">The pseudobatch transform</a></li>
 <li class="toctree-l1"><a class="reference internal" href="bioprocess_ode.html">The Bioprocess ODE</a></li>
 <li class="toctree-l1"><a class="reference internal" href="limits_and_gotchas.html">Limits and gotchas</a></li>
-<li class="toctree-l1"><a class="reference internal" href="further_reading.html">Further reading</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
 <ul>
@@ -247,7 +246,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../train/forward.html">Forward</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../train/loo.html">Cross-Validation (LOO)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../train/save_load_predict.html">The Python API</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../train/further_reading.html">Further Reading</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
 <ul>
@@ -376,15 +374,10 @@
           <section class="tex2jax_ignore mathjax_ignore" id="the-pseudobatch-transform">
 <h1>The pseudobatch transform<a class="headerlink" href="#the-pseudobatch-transform" title="Link to this heading">¶</a></h1>
 <blockquote>
-<div><p>How fed-batch dilution is removed from a measured concentration before you fit to it.</p>
+<div><p>Remove dilution effects from concentration data with Hesselberg-Thomsen et al.’s
+pseudobatch transform. <strong>Note:</strong> hybrax does not rely on it for training, but it
+provides utilities for calculating it.</p>
 </div></blockquote>
-<div class="note admonition">
-<p class="admonition-title"><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> does not use this</p>
-<p>Training solves the ODE on the physical state, so you never need to transform your data
-before running <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">prepare</span></code> or <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">train</span></code>. The utilities on this page are for your
-own code that works with <code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> data, for example to compare batch and fed-batch
-runs or to get smoother curves for spline fitting.</p>
-</div>
 <p>In a fed-batch run a measured concentration moves for two reasons: the cells did
 something, and the volume changed. The pseudobatch transform removes the second.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span>pseudobatch_concentration(t) = c(t) · ADF(t) − feed_correction(t)
@@ -486,7 +479,6 @@ machinery this transform builds on.</p></li>
 <li><p><a class="reference internal" href="volume_feeds_events.html"><span class="std std-doc">Volume, feeds and events</span></a>: where the dilution comes from.</p></li>
 <li><p><a class="reference internal" href="../gallery/pseudobatch_splines.html"><span class="std std-doc">Gallery: pseudobatch splines</span></a>: recovering a curve
 through a jump from just 5 measurements, checked against a known ground truth.</p></li>
-<li><p><a class="reference internal" href="../gallery/fed_batch.html"><span class="std std-doc">Gallery: fed-batch</span></a>: the transform on a real process.</p></li>
 <li><p><a class="reference internal" href="../autoapi/hybrax/format/splines/index.html"><span class="doc std std-doc">API reference</span></a>.</p></li>
 </ul>
 </section>

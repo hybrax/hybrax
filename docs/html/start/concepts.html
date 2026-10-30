@@ -232,7 +232,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../format/limits_and_gotchas.html">Limits and gotchas</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../format/further_reading.html">Further reading</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
 <ul>
@@ -247,7 +246,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../train/forward.html">Forward</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../train/loo.html">Cross-Validation (LOO)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../train/save_load_predict.html">The Python API</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../train/further_reading.html">Further Reading</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
 <ul>
@@ -540,21 +538,17 @@ amount and volume fall together.</p></li>
 measurement represents the pre-feed reactor state; the bolus then dilutes what is left.</p></li>
 </ul>
 </section>
-<section id="pseudobatch-adf-and-pseudobatch-concentration">
-<h2>Pseudobatch, ADF and <code class="docutils literal notranslate"><span class="pre">pseudobatch_concentration</span></code><a class="headerlink" href="#pseudobatch-adf-and-pseudobatch-concentration" title="Link to this heading">¶</a></h2>
-<p>In a fed-batch run, a measured concentration moves for two reasons: the cells did
-something, and the volume changed. The <strong>pseudobatch transform</strong> removes the second one.</p>
+<section id="pseudobatch-transform-and-adf">
+<h2>Pseudobatch transform and ADF<a class="headerlink" href="#pseudobatch-transform-and-adf" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> includes utilities for the pseudobatch transform, which removes dilution
+effects from fed-batch concentrations. <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> does not use it. Two of its terms
+appear elsewhere in these docs:</p>
 <ul class="simple">
 <li><p><strong>ADF</strong>: accumulated dilution factor, <code class="docutils literal notranslate"><span class="pre">V(t)</span> <span class="pre">/</span> <span class="pre">V(0)</span></code>.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">pseudobatch_concentration</span></code></strong>: what the concentration <em>would have been</em> in a batch
-run with identical biology. Stored per component under that name.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">pseudobatch_concentration</span></code></strong>: what a concentration would have been in a batch run
+with identical biology.</p></li>
 </ul>
-<p><code class="docutils literal notranslate"><span class="pre">pseudobatch_concentration</span></code> curves are smoother, so they spline better, and they make
-batch and fed-batch runs directly comparable. A good sanity check: this trace should
-<strong>not</strong> jump at a pure sampling event. If it does, the volume accounting is wrong.</p>
-<p><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> does not use the transform: training solves the ODE on the physical state.
-It is a <code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> utility for your own analyses; see
-<a class="reference internal" href="../format/pseudobatch_transform.html"><span class="std std-doc">The pseudobatch transform</span></a>.</p>
+<p>See <a class="reference internal" href="../format/pseudobatch_transform.html"><span class="std std-doc">The pseudobatch transform</span></a> for details.</p>
 </section>
 <section id="hybrax-train-vocabulary">
 <h2><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> vocabulary<a class="headerlink" href="#hybrax-train-vocabulary" title="Link to this heading">¶</a></h2>
@@ -723,7 +717,7 @@ the product, not just the parameter.</p></li>
 <li><a class="reference internal" href="#abbreviations">Abbreviations</a></li>
 <li><a class="reference internal" href="#rates-q-and-r">Rates: <code class="docutils literal notranslate"><span class="pre">q_</span></code> and <code class="docutils literal notranslate"><span class="pre">r_</span></code></a></li>
 <li><a class="reference internal" href="#volume-feeds-and-samples">Volume, feeds and samples</a></li>
-<li><a class="reference internal" href="#pseudobatch-adf-and-pseudobatch-concentration">Pseudobatch, ADF and <code class="docutils literal notranslate"><span class="pre">pseudobatch_concentration</span></code></a></li>
+<li><a class="reference internal" href="#pseudobatch-transform-and-adf">Pseudobatch transform and ADF</a></li>
 <li><a class="reference internal" href="#hybrax-train-vocabulary"><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> vocabulary</a><ul>
 <li><a class="reference internal" href="#scl-and-raw">SCL and RAW</a></li>
 </ul>

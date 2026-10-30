@@ -231,7 +231,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../format/pseudobatch_transform.html">The pseudobatch transform</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../format/bioprocess_ode.html">The Bioprocess ODE</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../format/limits_and_gotchas.html">Limits and gotchas</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../format/further_reading.html">Further reading</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">hybrax.train guide</span></p>
 <ul>
@@ -246,7 +245,6 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../train/forward.html">Forward</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../train/loo.html">Cross-Validation (LOO)</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../train/save_load_predict.html">The Python API</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../train/further_reading.html">Further Reading</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Gallery</span></p>
 <ul>
@@ -487,7 +485,7 @@
     <span class="c1"># ---- train ----</span>
     <span class="n">train_parser</span> <span class="o">=</span> <span class="n">subparsers</span><span class="o">.</span><span class="n">add_parser</span><span class="p">(</span>
         <span class="s2">"train"</span><span class="p">,</span>
-        <span class="n">help</span><span class="o">=</span><span class="s2">"Run minimal one/multi-process training from a prepared artifact."</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">"Train a hybrid model from a prepared artifact."</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="n">train_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
         <span class="s2">"--config"</span><span class="p">,</span>

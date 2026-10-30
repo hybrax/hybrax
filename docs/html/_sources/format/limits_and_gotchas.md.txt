@@ -105,4 +105,3 @@ wrong results.
 - [Errors](../troubleshooting/errors.md): message-to-fix index.
 - [Silent failures](../troubleshooting/silent_failures.md): the `hybrax.train` equivalent of
   this page's middle section.
-- [Further reading](further_reading.md), where the exhaustive reference lives.

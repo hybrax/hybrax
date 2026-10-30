@@ -121,24 +121,14 @@ longer meaningful.
 method in a few multiply-adds: simple, fast, and clean to vectorize in JAX. B-spline
 basis evaluation requires recursive knot-vector lookups that are harder to vectorize.
 
-### 4. Pseudobatch normalization
+### 4. Pseudobatch transform as a utility
 
-Fed-batch processes change volume over time, so observed concentrations are affected by
-dilution in addition to biological activity. The **pseudobatch transform**
-(Hesselberg-Thomsen et al., 2024) converts measured concentrations `c(t)` to
-`pseudobatch_concentration(t)`: what concentrations *would have been* in a batch process
-with the same biological activity:
-
-```
-pseudobatch_concentration(t) = c(t) * ADF(t) - feed_correction(t)
-```
-
-where `ADF(t)` is the accumulative dilution factor (current / initial volume) and
-`feed_correction(t)` accounts for mass added by feed streams. This yields smoother curves
-(better cubic-spline fits), enables fair comparison across batch and fed-batch processes,
-and supports spline segmentation at bolus-event discontinuities. ADF and feed correction
-are piecewise-constant and must be evaluated with **step** (nearest-neighbor)
-interpolation, not linear, to preserve correct discontinuity behavior in the backtransform.
+`hybrax.format` can compute the pseudobatch transform (Hesselberg-Thomsen et al., 2024),
+which removes dilution from fed-batch concentrations, for example to compare batch and
+fed-batch runs. Training does not use it; see "Bounded physical-state solve" below for
+why. ADF and the feed correction are piecewise constant and are evaluated with step
+interpolation, which keeps the backtransform exact at feed and sampling events. Details:
+[The pseudobatch transform](../format/pseudobatch_transform.md).
 
 ### 5. Validation-first approach
 
