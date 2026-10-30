@@ -168,6 +168,6 @@ it before fitting anything.
 ## See also
 
 - [Gallery: fed-batch](../gallery/fed_batch.md): all of this in one worked example.
-- [Time series and splines](time_series_and_splines.md): the pseudobatch transform,
-  which exists precisely because of dilution.
+- [The pseudobatch transform](pseudobatch_transform.md): optional utilities that remove
+  dilution from measured concentrations.
 - [The Bioprocess ODE](bioprocess_ode.md): the terms generated from this description.

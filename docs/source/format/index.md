@@ -33,7 +33,7 @@ of truth for layout everywhere downstream: `hybrax.train` never re-derives it.
 | [Validating and inspecting](validate_and_inspect.md) | Always. Before modeling anything. |
 | [Volume, feeds and events](volume_feeds_events.md) | Your process is not a pure batch. |
 | [Time series and splines](time_series_and_splines.md) | You need continuous interpolation of a measurement. |
-| [The pseudobatch transform](pseudobatch_transform.md) | Your process has feeds and you need to remove dilution before fitting. |
+| [The pseudobatch transform](pseudobatch_transform.md) | You want concentrations without dilution effects. Not needed for training. |
 | [The Bioprocess ODE](bioprocess_ode.md) | You want to see or change the assembled equations. |
 | [Limits and gotchas](limits_and_gotchas.md) | Something you expected to work does not. |
 

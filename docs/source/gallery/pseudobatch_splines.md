@@ -160,5 +160,3 @@ repo root, no docs build required. This page's own executed run is at
   `build_pseudobatch_transform` and `build_backtransform_spline` actually compute.
 - [Time series and splines](../format/time_series_and_splines.md): the segmentation and
   spline-fitting machinery underneath.
-- [Gallery: fed-batch](fed_batch.md): the same transform on a full, trained fed-batch
-  model.

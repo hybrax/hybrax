@@ -118,7 +118,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # ---- train ----
     train_parser = subparsers.add_parser(
         "train",
-        help="Run minimal one/multi-process training from a prepared artifact.",
+        help="Train a hybrid model from a prepared artifact.",
     )
     train_parser.add_argument(
         "--config",

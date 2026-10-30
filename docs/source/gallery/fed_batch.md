@@ -154,6 +154,4 @@ executed run is at `./docs/source/_data/out/runs/gallery_fed_batch/`.
 
 - [Volume, feeds and events](../format/volume_feeds_events.md): the concepts behind this
   dataset.
-- [Time series and splines](../format/time_series_and_splines.md): the pseudobatch
-  transform, which this dataset is exactly the motivating case for.
 - [The Reaction Module](../train/reaction_module.md): `ReactionInputs` in full.

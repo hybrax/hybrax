@@ -12,15 +12,9 @@ kernelspec:
 
 # The pseudobatch transform
 
-> How fed-batch dilution is removed from a measured concentration before you fit to it.
-
-:::{admonition} `hybrax.train` does not use this
-:class: note
-Training solves the ODE on the physical state, so you never need to transform your data
-before running `hybrax prepare` or `hybrax train`. The utilities on this page are for your
-own code that works with `hybrax.format` data, for example to compare batch and fed-batch
-runs or to get smoother curves for spline fitting.
-:::
+> Remove dilution effects from concentration data with Hesselberg-Thomsen et al.'s
+> pseudobatch transform. **Note:** hybrax does not rely on it for training, but it
+> provides utilities for calculating it.
 
 In a fed-batch run a measured concentration moves for two reasons: the cells did
 something, and the volume changed. The pseudobatch transform removes the second.
@@ -117,7 +111,6 @@ does this correctly; it matters if you build your own.
 - [Volume, feeds and events](volume_feeds_events.md): where the dilution comes from.
 - [Gallery: pseudobatch splines](../gallery/pseudobatch_splines.md): recovering a curve
   through a jump from just 5 measurements, checked against a known ground truth.
-- [Gallery: fed-batch](../gallery/fed_batch.md): the transform on a real process.
 - [API reference](../autoapi/hybrax/format/splines/index).
 
 ## References
