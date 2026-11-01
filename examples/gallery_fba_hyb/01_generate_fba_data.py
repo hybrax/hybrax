@@ -16,7 +16,10 @@ Run from the repository root:
 
 uv reads the dependencies above and manages an isolated environment, including
 Cobra's GLPK bindings. The project's pandas dependency does not apply here.
-The bundled XML input and output CSV are resolved relative to this script.
+The model and the output CSV are resolved relative to this script. The model,
+e_coli_core.xml, is downloaded from BiGG Models on first use and checked against
+a pinned SHA-256. BiGG Models permits use for educational, research and
+non-profit purposes only (see https://bigg.ucsd.edu/license) while Hybrax uses MIT.
 Solving 10,000 linear programs takes a couple of minutes. run.py also runs this
 generator, but docs_rebuild.sh uses the frozen surrogate without regenerating it.
 
@@ -39,6 +42,8 @@ genome-scale network -- with freshly-generated data and a freshly-fit
 surrogate rather than reused coefficients.
 """
 
+import hashlib
+import urllib.request
 from pathlib import Path
 
 import cobra
@@ -52,10 +57,24 @@ BIOMASS_RID = "BIOMASS_Ecoli_core_w_GAM"
 ACETATE_RID = "EX_ac_e"
 SUCCINATE_RID = "EX_succ_e"
 HERE = Path(__file__).resolve().parent
+MODEL_PATH = HERE / "e_coli_core.xml"
+MODEL_URL = "https://bigg.ucsd.edu/static/models/e_coli_core.xml"
+MODEL_SHA256 = "b4db506aeed0e434c1f5f1fdd35feda0dfe5d82badcfda0e9d1342335ab31116"
+
+
+def fetch_model():
+    if MODEL_PATH.exists():
+        return
+    data = urllib.request.urlopen(MODEL_URL).read()
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != MODEL_SHA256:
+        raise RuntimeError(f"{MODEL_URL} has SHA-256 {digest}, expected {MODEL_SHA256}")
+    MODEL_PATH.write_bytes(data)
 
 
 def load_model():
-    model = cobra.io.read_sbml_model(str(HERE / "e_coli_core.xml"))
+    fetch_model()
+    model = cobra.io.read_sbml_model(str(MODEL_PATH))
     model.solver = "glpk"
 
     # Glucose as the sole carbon source; uptake bound is set per-sample below.

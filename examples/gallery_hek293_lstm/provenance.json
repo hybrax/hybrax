@@ -1,6 +1,7 @@
 {
   "repository": "https://github.com/jrcramos/Hybrid-modeling-of-bioreactor-with-LSTM",
   "commit": "d4197ed84ba46bfb53c3e4f42cfe00f44916edb5",
+  "license": "GPL-3.0 (copy in LICENSE-GPL-3.0); applies to the source files and the files derived from them",
   "dataset": "nine synthetic HEK293 cultures; not the paper experimental data",
   "files": {
     "source.xlsx": {

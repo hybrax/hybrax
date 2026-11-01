@@ -70,3 +70,15 @@ network access is required to run the example.
 `synthetic-overview.png` and `synthetic-all-states.png`. Run it independently
 to inspect the bundled source data without starting training.
 The narrated example is `docs/source/gallery/hek293_lstm.md`.
+
+## Data license
+
+Files from the source repository, and files derived from them, keep its GPL-3.0
+license rather than Hybrax's MIT license. A copy of the license is in
+`LICENSE-GPL-3.0`. `source-data.mat` is an unmodified copy of `data/data.mat` from
+the pinned commit. The Hybrax authors derived `feed.json` (from `data/data.xlsx`)
+and `matlab-reference.npz` (from `hybrid_LSTM_1.mat`) as recorded in
+`provenance.json`, and `import_from_mat.py` builds `data.json` from
+`source-data.mat` and `feed.json`. `train-config.json` contains normalization
+constants that `import_from_mat.py` computes from the data, so it counts as
+derived as well. The code in this directory is Hybrax's own and MIT-licensed.

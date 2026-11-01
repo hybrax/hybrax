@@ -19,6 +19,7 @@ docs/_scratch/
 !.github/
 !.python-version
 !.readthedocs.yaml
+!.gitignore
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

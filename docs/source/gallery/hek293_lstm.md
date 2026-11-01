@@ -219,6 +219,11 @@ The inputs come from the authors' repository at a pinned commit
   records the source commit, the file hashes, and the workbook cells behind
   `feed.json`.
 
+The source data and the files derived from it are licensed under
+{download}`GPL-3.0 <../../../examples/gallery_hek293_lstm/LICENSE-GPL-3.0>`, the
+license of the source repository, not under Hybrax's MIT license.
+`examples/gallery_hek293_lstm/README.md` lists which files that covers.
+
 `feed.json` lists 25 feed concentrations in the same units as the reactor
 states. Biomass, mAb, lactate, ammonium and several amino acids have a feed
 concentration of zero. The importer checks that the feed names after biomass

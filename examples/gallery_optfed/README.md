@@ -47,12 +47,19 @@ does not require network access.
 The gallery also overlays the original global reduced-model predictions from
 OptFed's rate fit at `alpha=0.2`. `original_predictions.csv` contains 1,000
 trajectory points per process; `original_sampling_predictions.csv` contains
-the predictions at the 83 retained measurement times. The dense curves match
-the published
-`data/all_process_predictions.csv` at the pinned OptFed commit. The
-measurement-time snapshot was exported from locally archived OptFed
-analysis output `dfs_CV.pickle[0.2][7]`; the corresponding dense archive
-was checked against the published curves. These pickle archives are
-not included in the pinned GitHub repository. They use
-hours and g/kg, matching the published mass-based measurements. They are
-reference predictions, not concentration targets or Hybrax-generated fits.
+the predictions at the 83 retained measurement times. Both were extracted
+from the output of `code/01_fit.py` at the pinned OptFed commit
+(`dfs_CV_plot.pickle[0.2][7]` and `dfs_CV.pickle[0.2][7]`); the repository
+does not store this output itself. Re-solving the original OptFed ODE with the
+fitted parameters reproduces the dense curves. Both CSVs use hours and g/kg,
+matching the published mass-based measurements. They are reference
+predictions, not concentration targets or Hybrax-generated fits.
+
+## Data license
+
+The OptFed repository does not specify a license, so its data and the files
+derived from it here (`data.json`, both `original_*predictions.csv` files, and
+the files under `run/` other than `run/README.md` and the copies of `custom.py`
+and `config.json`) are not covered by Hybrax's MIT license; all rights remain
+with the OptFed authors. See `THIRD_PARTY.md` at the repository root. The code in
+this directory and those exceptions are Hybrax's own and MIT-licensed.

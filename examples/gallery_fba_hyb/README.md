@@ -14,7 +14,8 @@ uv run --extra dev python examples/gallery_fba_hyb/run.py
 ```
 
 Run from the repository root. Requires uv. First regenerates
-`01_obj_fba_data.csv.gz` using an isolated environment with Cobra and GLPK.
+`01_obj_fba_data.csv.gz` using an isolated environment with Cobra and GLPK,
+which downloads the metabolic model on first use (see below).
 Then trains with the frozen surrogate, prints R², and writes
 `out/objective_weights.png` (the model's inferred combined-demand coefficients
 over the batch). Outputs land beside this script in `run/` and `out/`.
@@ -23,9 +24,14 @@ over the batch). Outputs land beside this script in `run/` and `out/`.
 
 `01_generate_fba_data.py` and `02_fit_surrogate.py` are the reference chain
 that fit `custom.py`'s frozen `surrogate_fba` coefficients, offline, against
-10,000 real pFBA solves on the bundled `e_coli_core.xml` (Orth, Fleming &
-Palsson 2010). The generated CSV is checked in for use without running the
-generator. `run.py` regenerates it, but does not refit the surrogate.
+10,000 real pFBA solves on `e_coli_core.xml` (Orth, Fleming & Palsson 2010).
+The model is not part of this repository, because BiGG's
+[license](https://bigg.ucsd.edu/license) permits use for educational, research
+and non-profit purposes only, while Hybrax uses the MIT license. Instead, the
+generator downloads it from [BiGG Models](https://bigg.ucsd.edu/models/e_coli_core)
+on first use and checks it against a pinned SHA-256. The generated CSV is
+checked in for use without running the generator. `run.py` regenerates it, but
+does not refit the surrogate.
 To regenerate the CSV alone, run from the repository root:
 
 ```bash

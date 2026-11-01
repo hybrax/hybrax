@@ -80,3 +80,9 @@ fig = bp.plot_process(process)
 
 See the [documentation](https://hybrax.readthedocs.io) for the data structure
 and the training workflow.
+
+## License
+
+Hybrax is released under the MIT license; see [LICENSE](LICENSE). Some example data
+comes from third parties and keeps its original license; see
+[THIRD_PARTY.md](THIRD_PARTY.md).

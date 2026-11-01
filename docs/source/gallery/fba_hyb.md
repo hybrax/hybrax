@@ -201,7 +201,10 @@ all four fitted fluxes). The screen is not a proof that the surrogate stays boun
 everywhere in the box. The fitting scripts live in `examples/gallery_fba_hyb/` for anyone who
 wants to reproduce it; they don't run as part of building these docs, since solving
 10,000 LPs takes a couple of minutes and needs `cobra`, which every doc build should
-not pay for. The coefficients are frozen into `surrogate_fba` above.
+not pay for. The coefficients are frozen into `surrogate_fba` above. The generator
+downloads `e_coli_core.xml` from [BiGG Models](https://bigg.ucsd.edu/models/e_coli_core)
+when it runs; BiGG's [license](https://bigg.ucsd.edu/license) permits educational,
+research and non-profit use only, while Hybrax uses the MIT license.
 
 ## Gotchas
 
