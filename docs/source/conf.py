@@ -123,6 +123,8 @@ napoleon_google_docstring = True
 napoleon_numpy_docstring = False
 napoleon_use_param = napoleon_use_rtype = napoleon_use_ivar = True
 napoleon_preprocess_types = True
+# Render single-backtick spans in docstrings as inline code, like double backticks.
+default_role = "code"
 
 # --- MyST ---
 myst_enable_extensions = [
