@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Self
@@ -36,6 +36,12 @@ class StepRecord:
     # checkpoint boundary; None on intermediate steps.
     holdout_loss: float | None = None
     holdout_label: str | None = None
+    # Holdout breakdowns at the same boundaries as `holdout_loss`, mirroring
+    # `per_target_loss` and `per_process_loss`: mean loss per target over all
+    # holdout processes, and total loss per holdout process. A failed holdout
+    # solve sets every per-target value but only that process's entry to inf.
+    holdout_per_target_loss: tuple[float, ...] | None = None
+    holdout_per_process_loss: Mapping[str, float] | None = None
     # Set only on the final batch row of each epoch; None on intermediate batches.
     epoch_mean_loss: float | None = None
     epoch_time_seconds: float | None = None
@@ -132,6 +138,16 @@ def _row(record: StepRecord, *, strings: bool) -> dict[str, Any]:
     def optional(value):
         return "" if value is None and strings else value
 
+    def numbers(values):
+        if values is None:
+            return optional(None)
+        return ";".join(number(v) for v in values) if strings else list(values)
+
+    def names(values):
+        if values is None:
+            return optional(None)
+        return ";".join(values) if strings else list(values)
+
     return {
         "step": record.step,
         "total_updates": record.total_updates,
@@ -165,6 +181,13 @@ def _row(record: StepRecord, *, strings: bool) -> dict[str, Any]:
         "holdout_label": (
             (record.holdout_label or "") if strings else record.holdout_label
         ),
+        "holdout_per_target_loss": numbers(record.holdout_per_target_loss),
+        "holdout_per_process_loss": numbers(
+            None
+            if record.holdout_per_process_loss is None
+            else record.holdout_per_process_loss.values()
+        ),
+        "holdout_process_names": names(record.holdout_per_process_loss),
         "epoch_mean_loss": (
             number(record.epoch_mean_loss)
             if record.epoch_mean_loss is not None

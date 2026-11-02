@@ -2082,7 +2082,8 @@ def train_collection(
 
     def _evaluate_holdout(step: int):
         if not cfg.holdout_processes:
-            return None, None, None, ()
+            return None, None, None, (), None
+        evaluated_names: list[str] = []
         per_sample_total_parts = []
         per_sample_per_target_parts = []
         failed_names: list[str] = []
@@ -2119,6 +2120,7 @@ def train_collection(
                 )
                 if np.isfinite(fail_time)
             )
+            evaluated_names.extend(valid_names)
             per_sample_total_parts.append(np.asarray(per_sample_total[:valid]))
             per_sample_per_target_parts.append(
                 np.asarray(per_sample_per_target[:valid])
@@ -2144,13 +2146,19 @@ def train_collection(
                     )
                 )
         per_sample_per_target = np.concatenate(per_sample_per_target_parts)
-        holdout_loss = float(np.mean(np.concatenate(per_sample_total_parts)))
+        per_sample_total = np.concatenate(per_sample_total_parts)
+        holdout_loss = float(np.mean(per_sample_total))
         holdout_per_target = tuple(
             float(value) for value in np.mean(per_sample_per_target, axis=0)
         )
         # A failed holdout solve drops its post-failure rows from the loss, which can
         # leave a misleadingly small (even zero) score. Mark the evaluation invalid
-        # instead so checkpoint selection never ranks the candidate.
+        # instead so checkpoint selection never ranks the candidate. Per process,
+        # only the failed processes are marked; the others keep their losses.
+        holdout_per_process = {
+            name: math.inf if name in failed_names else float(value)
+            for name, value in zip(evaluated_names, per_sample_total, strict=True)
+        }
         if failed_names:
             holdout_loss = math.inf
             holdout_per_target = (math.inf,) * len(holdout_per_target)
@@ -2159,6 +2167,7 @@ def train_collection(
             holdout_per_target,
             dense_exports or None,
             tuple(failed_names),
+            holdout_per_process,
         )
 
     with RunLogger(
@@ -2237,12 +2246,14 @@ def train_collection(
 
             holdout_loss, holdout_per_target, holdout_predictions = (None, None, None)
             failed_holdout_names: tuple[str, ...] = ()
+            holdout_per_process = None
             if step in checkpoint_boundaries:
                 (
                     holdout_loss,
                     holdout_per_target,
                     holdout_predictions,
                     failed_holdout_names,
+                    holdout_per_process,
                 ) = _evaluate_holdout(step)
                 if holdout_loss is not None:
                     holdout_per_target_so_far[step] = holdout_per_target
@@ -2270,6 +2281,8 @@ def train_collection(
                     holdout_label=(
                         cfg.holdout_label if holdout_loss is not None else None
                     ),
+                    holdout_per_target_loss=holdout_per_target,
+                    holdout_per_process_loss=holdout_per_process,
                     epoch_mean_loss=epoch_mean_loss,
                     epoch_time_seconds=epoch_time_seconds,
                     grad_norm=float(grad_norm),

@@ -32,6 +32,10 @@ def _record(
         rebuild_count=0,
         holdout_loss=holdout,
         holdout_label="holdout" if holdout is not None else None,
+        holdout_per_target_loss=(holdout,) if holdout is not None else None,
+        holdout_per_process_loss=(
+            {"h1": holdout, "h2": float("inf")} if holdout is not None else None
+        ),
         epoch_mean_loss=float(step) - 0.5 if epoch_end else None,
         epoch_time_seconds=0.2 if epoch_end else None,
         grad_norm=0.3,
@@ -91,6 +95,21 @@ def test_runlogger_persists_batch_and_epoch_fields(tmp_path, caplog):
     assert pd.isna(rows.loc[0, "holdout_loss"])
     assert rows.loc[1, "holdout_loss"] == pytest.approx(0.25)
     assert history["holdout_loss_by_step"] == {2: 0.25}
+    holdout_columns = [
+        "holdout_per_target_loss",
+        "holdout_per_process_loss",
+        "holdout_process_names",
+    ]
+    assert rows.loc[0, holdout_columns].isna().all()
+    assert rows.loc[1, "holdout_per_target_loss"] == 0.25
+    assert rows.loc[1, "holdout_per_process_loss"] == "0.25;inf"
+    assert rows.loc[1, "holdout_process_names"] == "h1;h2"
+    records = [json.loads(x) for x in jsonl_path.read_text().splitlines()]
+    assert records[0]["holdout_per_process_loss"] is None
+    assert records[0]["holdout_process_names"] is None
+    assert records[1]["holdout_per_target_loss"] == [0.25]
+    assert records[1]["holdout_per_process_loss"] == [0.25, None]
+    assert records[1]["holdout_process_names"] == ["h1", "h2"]
     assert any("epoch 1 complete" in record.message for record in caplog.records)
     assert json.loads(jsonl_path.read_text().splitlines()[1])["samples_seen"] == 4
 
@@ -122,6 +141,9 @@ def test_runlogger_csv_pins_exact_metrics_schema(tmp_path):
         "rebuild_count",
         "holdout_loss",
         "holdout_label",
+        "holdout_per_target_loss",
+        "holdout_per_process_loss",
+        "holdout_process_names",
         "epoch_mean_loss",
         "epoch_time_seconds",
         "grad_norm",

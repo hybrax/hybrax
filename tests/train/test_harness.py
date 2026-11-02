@@ -1282,11 +1282,16 @@ def test_holdout_batches_weight_valid_samples_and_ignore_padding(tmp_path, monke
             batch_size=1,
             checkpoint_dir=tmp_path / "checkpoints",
             checkpoint_every=1.0,
+            metrics_csv=str(tmp_path / "metrics.csv"),
         ),
     )
 
     assert result.holdout_loss_by_step[1] == pytest.approx(10.0)
     assert result.holdout_per_target_by_step[1] == pytest.approx((10.0,))
+    row = pd.read_csv(tmp_path / "metrics.csv").iloc[0]
+    assert row["holdout_per_target_loss"] == pytest.approx(10.0)
+    assert row["holdout_per_process_loss"] == "0;0;30"
+    assert row["holdout_process_names"] == "p2;p3;p4"
     assert exported_processes == ["p2"]
 
 
@@ -2143,6 +2148,39 @@ def test_failed_holdout_checkpoint_does_not_displace_valid_best(
         valid.nsmallest(2).index
     )
     assert not (tmp_path / "checkpoints" / "step_00006").exists()
+
+
+def test_failed_holdout_marks_only_its_process_loss(tmp_path, monkeypatch):
+    iterate = harness_module._iter_batched_loss_outputs
+
+    def fail_p4(*args, **kwargs):
+        for names, outputs in iterate(*args, **kwargs):
+            fail = np.full(outputs[-1].shape, np.inf)
+            fail[list(names).index("p4")] = 0.0
+            yield names, (*outputs[:-1], jnp.asarray(fail))
+
+    monkeypatch.setattr(harness_module, "_iter_batched_loss_outputs", fail_p4)
+    metrics = tmp_path / "metrics.csv"
+    train_from_collection(
+        _make_multi_process_collection(4),
+        config=TrainHarnessConfig(
+            process_names=("p1", "p2"),
+            holdout_processes=("p3", "p4"),
+            target_variable_order=("biomass",),
+            target_source="reactor_components",
+            epochs=1,
+            batch_size=2,
+            checkpoint_dir=tmp_path / "checkpoints",
+            checkpoint_every=1,
+            metrics_csv=str(metrics),
+        ),
+    )
+    row = pd.read_csv(metrics).iloc[-1]
+    assert np.isinf(row["holdout_loss"])
+    assert np.isinf(float(row["holdout_per_target_loss"]))
+    assert row["holdout_process_names"] == "p3;p4"
+    p3, p4 = (float(v) for v in row["holdout_per_process_loss"].split(";"))
+    assert np.isfinite(p3) and np.isinf(p4)
 
 
 def test_keep_best_writes_only_new_bests_and_the_final_step(tmp_path, monkeypatch):

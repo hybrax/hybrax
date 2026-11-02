@@ -7,6 +7,13 @@ public API; such entries are marked **Breaking**.
 
 ## [Unreleased]
 
+### Added
+
+- `metrics.csv` and `metrics.jsonl` now break the holdout loss down by target
+  (`holdout_per_target_loss`) and by holdout process (`holdout_per_process_loss`,
+  `holdout_process_names`) at every checkpoint boundary, mirroring the training
+  columns.
+
 ### Changed
 
 - pandas and sympy are no longer capped at the next minor version, so hybrax installs

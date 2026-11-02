@@ -355,7 +355,7 @@ See [The Python API](save_load_predict.md).
 
 | File | Use it for |
 |---|---|
-| `metrics.csv` | Per-epoch loss and gradient norm. The source of truth. |
+| `metrics.csv` | Per-step loss and gradient norm, plus the holdout loss per target and per holdout process at each checkpoint boundary. The source of truth. |
 | `loss_curve.png` | Is it converging? |
 | `grad_norm_curve.png` | Raw gradient norm: is the clip active all the time? |
 | `config.json`, `custom.py` | Exactly what was run. |
