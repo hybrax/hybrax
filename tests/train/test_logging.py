@@ -276,6 +276,23 @@ def test_runlogger_jsonl_normalizes_nonfinite_metrics(tmp_path):
     assert row["per_process_loss"] == [None]
 
 
+def test_runlogger_csv_rows_are_readable_mid_run_and_file_closes(tmp_path):
+    # The CSV stays open across steps; rows must reach disk without finalize().
+    csv_path = tmp_path / "metrics.csv"
+    run = RunLogger(metrics_csv=csv_path)
+    run.start(
+        target_names=("biomass",),
+        process_names=("p1", "p2"),
+        total_updates=2,
+        compile_warmup_seconds=0.0,
+    )
+    run.record_step(_record(1))
+    assert pd.read_csv(csv_path)["step"].tolist() == [1]
+    handle = run._csv_file
+    run.close()
+    assert handle.closed
+
+
 def test_runlogger_close_is_idempotent(tmp_path):
     csv_path = tmp_path / "metrics.csv"
     run = RunLogger(metrics_csv=csv_path)

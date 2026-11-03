@@ -61,6 +61,7 @@ from hybrax.train.model_api import (
     RateModule,
     ReactionOutputs,
     frozen_field,
+    partition_trainable,
     trainable_field,
 )
 from hybrax.train.runtime_artifact import RuntimeArtifact, RuntimeArtifactFold
@@ -69,6 +70,7 @@ from hybrax.train.runtime_context import (
     RuntimeDataContext,
     select_parent_collection,
 )
+from hybrax.train.serialization import load_trained_wrapper
 from hybrax.train.trainer import simulate_measurement_states
 from hybrax.train.training_data import TrainingDataStore
 
@@ -1080,6 +1082,153 @@ def test_harness_batch_stream_falls_back_to_seed_when_batch_seed_none():
     s3 = _build_batch_index_stream(seed=43, **kwargs)
     assert s1.tolist() == s2.tolist()
     assert s1.tolist() != s3.tolist()
+
+
+def test_harness_batch_stream_pins_seeded_order():
+    # Golden values: a change to the RNG or permutation scheme reorders training.
+    stream = _build_batch_index_stream(
+        selected_process_indices=np.asarray([2, 0, 1], dtype=np.int32),
+        epochs=3,
+        batch_size=2,
+        shuffle_batches=True,
+        batch_seed=41,
+        seed=0,
+    )
+    assert isinstance(stream, np.ndarray)
+    assert stream.dtype == np.int32
+    assert stream.tolist() == [[2, 0], [2, 0], [2, 1]]
+
+
+def _assert_same_trainables(a, b):
+    leaves_a = jax.tree.leaves(partition_trainable(a)[0])
+    leaves_b = jax.tree.leaves(partition_trainable(b)[0])
+    for x, y in zip(leaves_a, leaves_b, strict=True):
+        np.testing.assert_array_equal(x, y)
+
+
+@pytest.mark.parametrize("microbatch_size", [None, 2])
+def test_holdout_and_checkpoints_use_the_updated_wrapper(
+    tmp_path, monkeypatch, microbatch_size
+):
+    # The step returns only the trainable params, so the harness must rebuild the
+    # full wrapper before each holdout evaluation and checkpoint write.
+    monkeypatch.setattr(harness_module.jax, "local_device_count", lambda: 1)
+    store = TrainingDataStore.from_collection(
+        _make_multi_process_collection(4),
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    evaluated = []
+    original = harness_module._BATCHED_LOSS_FN_JIT
+
+    def record(wrapper, *args, **kwargs):
+        evaluated.append(wrapper)
+        return original(wrapper, *args, **kwargs)
+
+    monkeypatch.setattr(harness_module, "_BATCHED_LOSS_FN_JIT", record)
+    module = _LinearReactionModule()
+    result = train_collection(
+        store,
+        reaction_module=module,
+        loss_module=_biomass_loss(),
+        config=TrainHarnessConfig(
+            process_names=("p3", "p1", "p2"),
+            holdout_processes=("p4",),
+            epochs=3,
+            batch_size=3,
+            microbatch_size=microbatch_size,
+            learning_rate=0.05,
+            checkpoint_dir=tmp_path,
+            checkpoint_every=1,
+            checkpoint_keep_best=1,
+            checkpoint_select_by="holdout_loss",
+        ),
+    )
+    trained = result.trained_wrapper
+    assert not np.array_equal(trained.reaction_module.model.weight, module.model.weight)
+    # Holdout at the final boundary and the latest checkpoint see the final params.
+    _assert_same_trainables(trained, evaluated[-1])
+    saved = load_trained_wrapper(tmp_path / "latest" / "params.eqx", template=trained)
+    _assert_same_trainables(trained, saved)
+
+
+def test_returned_wrapper_is_updated_without_checkpoints(monkeypatch):
+    monkeypatch.setattr(harness_module.jax, "local_device_count", lambda: 1)
+    store = TrainingDataStore.from_collection(
+        _make_multi_process_collection(3),
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    module = _LinearReactionModule()
+    result = train_collection(
+        store,
+        reaction_module=module,
+        loss_module=_biomass_loss(),
+        config=TrainHarnessConfig(epochs=2, batch_size=3, learning_rate=0.05),
+    )
+    weight = result.trained_wrapper.reaction_module.model.weight
+    assert not np.array_equal(weight, module.model.weight)
+
+
+def test_train_step_routes_batch_rows_cin_and_jump_times(monkeypatch):
+    # Replace the loss with a per-sample fingerprint of the inputs the step hands
+    # it, so each logged per-process loss reveals which rows were gathered.
+    monkeypatch.setattr(harness_module.jax, "local_device_count", lambda: 1)
+    collection = _make_feed_mismatch_collection()
+    collection.processes["p3"] = dataclasses.replace(
+        deepcopy(collection.processes["p2"]),
+        metadata=dataclasses.replace(collection.processes["p2"].metadata, name="p3"),
+    )
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    # Distinct jump times per process (the fixture's are all identical).
+    jump = jnp.broadcast_to(jnp.arange(1, 4)[:, None] / 10, (3, 2))
+    store = eqx.tree_at(lambda s: s.controls_store.jump_ts, store, jump)
+    store = eqx.tree_at(
+        lambda s: s.controls_store.jump_ts_lengths,
+        store,
+        jnp.full((3,), 2, dtype=jnp.int32),
+    )
+
+    def fingerprint(wrapper, batch, cin, cinm, jump_rows, **kwargs):
+        del cinm, kwargs
+        values = (
+            batch.y0_measured[:, 0]
+            + jnp.sum(cin[batch.process_indices], axis=(1, 2))
+            + jnp.sum(jump_rows, axis=1)
+        )
+        loss = jnp.mean(values) + 0 * wrapper.reaction_module.model.weight.sum()
+        return loss, values[:, None], values, jnp.full(values.shape, jnp.inf)
+
+    monkeypatch.setattr(harness_module, "_BATCHED_LOSS_FN", fingerprint)
+    result = train_collection(
+        store,
+        reaction_module=_LinearReactionModule(
+            **_harness_unit_scale_kwargs(collection, "p1")
+        ),
+        loss_module=_biomass_loss(),
+        config=TrainHarnessConfig(
+            process_names=("p3", "p1", "p2"),
+            epochs=2,
+            batch_size=1,
+            shuffle_batches=False,
+            solver_use_jump_ts=True,
+        ),
+    )
+    expected = (
+        np.asarray(store.y0_measured)[:, 0]
+        + np.asarray(store.Cin_controlled_Inflows).sum(axis=(1, 2))
+        + np.asarray(jump).sum(axis=1)
+    )
+    np.testing.assert_allclose(
+        np.asarray(result.per_process_loss_by_step)[:, 0],
+        expected[[2, 0, 1, 2, 0, 1]],
+        rtol=0,
+        atol=1e-14,
+    )
 
 
 def test_harness_config_has_no_drop_last_batch_field():

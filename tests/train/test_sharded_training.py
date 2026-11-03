@@ -205,7 +205,7 @@ def _run(devices: str, *, gspmd: bool = False) -> dict:
     return json.loads(line[len("RESULT_JSON ") :])
 
 
-def _run_telemetry(mode: str) -> dict:
+def _run_telemetry(mode: str, *, padded: bool = False) -> dict:
     assert mode in ("vmap", "pmap", "gspmd", "microbatch")
     devices = "1" if mode in ("vmap", "microbatch") else "2"
     env = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": devices}
@@ -221,9 +221,9 @@ def _run_telemetry(mode: str) -> dict:
             _TELEMETRY_SCRIPT.format(
                 tests_dir=_TESTS_DIR,
                 process_names=("p1", "p3", "p2")
-                if mode == "microbatch"
+                if mode == "microbatch" or padded
                 else ("p2", "p1"),
-                batch_size=3 if mode == "microbatch" else 2,
+                batch_size=3 if mode == "microbatch" or padded else 2,
                 microbatch_size=2 if mode == "microbatch" else None,
             ),
         ],
@@ -263,6 +263,122 @@ def test_failed_sample_telemetry_end_to_end(mode):
     assert row["process_names"] == ["p2", "p1"]
     assert row["n_failed_samples"] == 1
     assert row["failed_processes"] == ["p2"]
+
+
+@pytest.mark.parametrize("mode", ["pmap", "gspmd"])
+def test_failed_sample_telemetry_padded_sharded_batch(mode):
+    # Three rows on two devices: one shard is padded, and the failed sample must
+    # keep its process identity through the per-sample flatten.
+    row = _run_telemetry(mode, padded=True)["row"]
+    assert row["process_names"] == ["p1", "p3", "p2"]
+    assert row["n_failed_samples"] == 1
+    assert row["failed_processes"] == ["p2"]
+
+
+_CHECKPOINT_PARITY_SCRIPT = """
+import copy, dataclasses, json, sys, tempfile
+from pathlib import Path
+sys.path.insert(0, {tests_dir!r})
+import jax
+import numpy as np
+from test_harness import (
+    _LinearReactionModule, _biomass_loss, _harness_unit_scale_kwargs,
+    _make_feed_mismatch_collection,
+)
+from hybrax.train.harness import TrainHarnessConfig, train_collection
+from hybrax.train.model_api import partition_trainable
+from hybrax.train.serialization import load_trained_wrapper
+from hybrax.train.training_data import TrainingDataStore
+
+# Feed fixture: processes have distinct, non-empty Cin rows.
+collection = _make_feed_mismatch_collection()
+for name in ("p3", "p4"):
+    collection.processes[name] = dataclasses.replace(
+        copy.deepcopy(collection.processes["p2"]),
+        metadata=dataclasses.replace(collection.processes["p2"].metadata, name=name),
+    )
+store = TrainingDataStore.from_collection(
+    collection, target_variable_order=["biomass"], target_source="reactor_components"
+)
+real_device_count = jax.local_device_count
+
+
+def train(tmp, *, single_device, microbatch_size):
+    jax.local_device_count = (lambda: 1) if single_device else real_device_count
+    result = train_collection(
+        store,
+        reaction_module=_LinearReactionModule(
+            **_harness_unit_scale_kwargs(collection, "p1")
+        ),
+        loss_module=_biomass_loss(),
+        config=TrainHarnessConfig(
+            process_names=("p3", "p1", "p2"), holdout_processes=("p4",),
+            epochs=3, batch_size=3, microbatch_size=microbatch_size,
+            learning_rate=0.02, shuffle_batches=False,
+            checkpoint_dir=tmp, checkpoint_every=1, checkpoint_keep_best=1,
+            checkpoint_select_by="holdout_loss",
+        ),
+    )
+    jax.local_device_count = real_device_count
+    saved = load_trained_wrapper(
+        Path(tmp) / "latest" / "params.eqx", template=result.trained_wrapper
+    )
+    return [
+        np.asarray(leaf, dtype=float).ravel()
+        for leaf in jax.tree.leaves(
+            (
+                partition_trainable(result.trained_wrapper)[0],
+                partition_trainable(saved)[0],
+                result.mean_loss_by_step,
+                tuple(result.holdout_loss_by_step.values()),
+            )
+        )
+    ]
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    reference = train(Path(tmp) / "ref", single_device=True, microbatch_size=None)
+    actual = train(
+        Path(tmp) / "run", single_device=False, microbatch_size={microbatch_size!r}
+    )
+diffs = [float(np.max(np.abs(a - b))) for a, b in zip(reference, actual, strict=True)]
+print("RESULT_JSON " + json.dumps(
+    {{"devices": jax.device_count(), "max_abs_diff": max(diffs)}}
+))
+"""
+
+
+@pytest.mark.parametrize("mode", ["pmap", "gspmd", "microbatch"])
+def test_sharded_and_microbatch_checkpoints_match_single_device(mode):
+    # Checkpointed and returned params, losses and holdout losses must match the
+    # plain single-device step, with distinct Cin rows per process.
+    env = {
+        **os.environ,
+        "JAX_PLATFORMS": "cpu",
+        "HYBRAX_TRAIN_DEVICES": "1" if mode == "microbatch" else "2",
+    }
+    env.pop("XLA_FLAGS", None)
+    if mode == "gspmd":
+        env["HYBRAX_GSPMD"] = "1"
+    else:
+        env.pop("HYBRAX_GSPMD", None)
+    script = _CHECKPOINT_PARITY_SCRIPT.format(
+        tests_dir=_TESTS_DIR,
+        microbatch_size=2 if mode == "microbatch" else None,
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=600,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr[-3000:]
+    line = next(ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT_JSON "))
+    result = json.loads(line[len("RESULT_JSON ") :])
+    assert result["devices"] == (1 if mode == "microbatch" else 2)
+    assert result["max_abs_diff"] <= 1e-10, result
 
 
 def test_devices_exceeding_processes_shards_over_processes():
