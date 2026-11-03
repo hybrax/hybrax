@@ -426,7 +426,11 @@ below.</p>
 <p>The bundled <a class="reference download internal" download="" href="../_downloads/163f3e980775214b067495c8d6332c05/data.json"><code class="xref download docutils literal notranslate"><span class="pre">data.json</span></code></a>
 is a Hybrax <code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code>. It is generated from the
 four CSVs from the <a class="reference external" href="https://github.com/gschloegel/OptFed/tree/7811f7b9ef76d624f53b852c03d06cb1b5cc96a3/data">OptFed GitHub repo</a>.
-The full importer code is in the collapsible box at the end of this section.</p>
+The full importer code is in the collapsible box at the end of this section.
+The OptFed repository does not specify a license, so its data and the files on
+this page derived from it, including the prediction CSVs further down, are not
+covered by Hybrax’s MIT license; all rights remain with the OptFed authors.
+<code class="docutils literal notranslate"><span class="pre">examples/gallery_optfed/README.md</span></code> lists which files that covers.</p>
 <p>Each process contains the measured glycerol, total biomass, and product
 concentrations, the carbon and base feeds, the sampling withdrawals, and the
 measured temperature. Time zero is induction. OptFed uses a mass-based balance,
@@ -1681,10 +1685,10 @@ measurement rows equally.</p></li>
 Differences in their parameters or trajectories therefore do not establish
 weak identifiability on their own.</p></li>
 <li><p class="sd-card-text">These are measurement-based scores, not quoted cross-validation scores from
-the paper. The reference scores use measurement-time predictions exported
-from archived OptFed analysis outputs, rather than interpolation from the
-plotted curves. These archives are not included in the pinned GitHub commit;
-the bundled CSV makes the comparison reproducible locally.</p></li>
+the paper. The reference scores use measurement-time predictions extracted
+from the output of OptFed’s <code class="docutils literal notranslate"><span class="pre">code/01_fit.py</span></code>, rather than interpolation from
+the plotted curves. The repository does not store this output; the bundled
+CSV lets the comparison run without rerunning the OptFed fit.</p></li>
 </ul>
 </div>
 </details></section>
@@ -1693,8 +1697,9 @@ the bundled CSV makes the comparison reproducible locally.</p></li>
 <p>The following plot compares the fitted Hybrax model, the original OptFed model,
 and the experimental measurements. Original OptFed curves are semi-transparent
 solid lines; Hybrax curves are dashed. The original curves come from the authors’
-global reduced-model fit to derived rates, published in the
-<a class="reference external" href="https://github.com/gschloegel/OptFed/tree/7811f7b9ef76d624f53b852c03d06cb1b5cc96a3">OptFed repository</a>.
+global reduced-model fit to derived rates, computed with the code in the
+<a class="reference external" href="https://github.com/gschloegel/OptFed/tree/7811f7b9ef76d624f53b852c03d06cb1b5cc96a3">OptFed repository</a>,
+which does not include the curves themselves.
 The bundled <a class="reference download internal" download="" href="../_downloads/1738ce07f35efd1085b8988abfb4646f/original_predictions.csv"><code class="xref download docutils literal notranslate"><span class="pre">reference</span> <span class="pre">curves</span></code></a> and
 <a class="reference download internal" download="" href="../_downloads/bef644cdc6ce59f67a3f71218cab4c2a/original_sampling_predictions.csv"><code class="xref download docutils literal notranslate"><span class="pre">measurement-time</span> <span class="pre">predictions</span></code></a> let this
 comparison run without downloading or refitting OptFed.</p>

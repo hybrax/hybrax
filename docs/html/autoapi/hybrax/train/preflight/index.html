@@ -395,7 +395,7 @@
 <p>Each prescribed continuous inflow/outflow is checked independently over its
 training measurement span using Tsit5 and the configured PID settings. The
 endpoint allowance is the known increment’s magnitude times
-<cite>flow_integral_relative_tolerance</cite>, independent of solver tolerances. A zero
+<code class="code docutils literal notranslate"><span class="pre">flow_integral_relative_tolerance</span></code>, independent of solver tolerances. A zero
 increment requires an exactly zero integral. No control knots are added.</p>
 <p>Passing is a preflight diagnostic, not proof of full-model integration accuracy;
 the coupled model takes different adaptive steps. Boluses, samples, modeled

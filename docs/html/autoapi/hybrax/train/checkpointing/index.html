@@ -441,9 +441,9 @@ available) the run’s <code class="docutils literal notranslate"><span class="p
 <dl class="py method">
 <dt class="sig sig-object py" id="hybrax.train.checkpointing.CheckpointWriter.would_save">
 <span class="sig-name descname"><span class="pre">would_save</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">step</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">score</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/checkpointing.html#CheckpointWriter.would_save"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.checkpointing.CheckpointWriter.would_save" title="Link to this definition">¶</a></dt>
-<dd><p>Return whether a checkpoint at <cite>step</cite> would enter the best N.</p>
-<p>Always true when every checkpoint is kept, never with <cite>keep_best=0</cite> or
-a nonfinite score. Callers skip <cite>write</cite> for rejected boundaries; the
+<dd><p>Return whether a checkpoint at <code class="code docutils literal notranslate"><span class="pre">step</span></code> would enter the best N.</p>
+<p>Always true when every checkpoint is kept, never with <code class="code docutils literal notranslate"><span class="pre">keep_best=0</span></code> or
+a nonfinite score. Callers skip <code class="code docutils literal notranslate"><span class="pre">write</span></code> for rejected boundaries; the
 final checkpoint is always written regardless.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>

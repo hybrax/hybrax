@@ -137,6 +137,18 @@ Module Contents
 
 
 
+   .. py:attribute:: holdout_per_process_loss
+      :type:  collections.abc.Mapping[str, float] | None
+      :value: None
+
+
+
+   .. py:attribute:: holdout_per_target_loss
+      :type:  tuple[float, ...] | None
+      :value: None
+
+
+
    .. py:attribute:: mean_loss
       :type:  float
 

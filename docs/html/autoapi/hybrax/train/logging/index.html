@@ -554,6 +554,16 @@ size the console table’s step column.</p></li>
 <dd></dd></dl>
 
 <dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.logging.StepRecord.holdout_per_process_loss">
+<span class="sig-name descname"><span class="pre">holdout_per_process_loss</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">collections.abc.Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.logging.StepRecord.holdout_per_process_loss" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.logging.StepRecord.holdout_per_target_loss">
+<span class="sig-name descname"><span class="pre">holdout_per_target_loss</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.logging.StepRecord.holdout_per_target_loss" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.logging.StepRecord.mean_loss">
 <span class="sig-name descname"><span class="pre">mean_loss</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></span><a class="headerlink" href="#hybrax.train.logging.StepRecord.mean_loss" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -685,6 +695,8 @@ size the console table’s step column.</p></li>
 <li><a class="reference internal" href="#hybrax.train.logging.StepRecord.grad_norm"><code class="docutils literal notranslate"><span class="pre">StepRecord.grad_norm</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.logging.StepRecord.holdout_label"><code class="docutils literal notranslate"><span class="pre">StepRecord.holdout_label</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.logging.StepRecord.holdout_loss"><code class="docutils literal notranslate"><span class="pre">StepRecord.holdout_loss</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.logging.StepRecord.holdout_per_process_loss"><code class="docutils literal notranslate"><span class="pre">StepRecord.holdout_per_process_loss</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.logging.StepRecord.holdout_per_target_loss"><code class="docutils literal notranslate"><span class="pre">StepRecord.holdout_per_target_loss</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.logging.StepRecord.mean_loss"><code class="docutils literal notranslate"><span class="pre">StepRecord.mean_loss</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.logging.StepRecord.per_process_loss"><code class="docutils literal notranslate"><span class="pre">StepRecord.per_process_loss</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.logging.StepRecord.per_target_loss"><code class="docutils literal notranslate"><span class="pre">StepRecord.per_target_loss</span></code></a></li>

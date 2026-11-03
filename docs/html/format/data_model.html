@@ -520,7 +520,9 @@ it controlled, or give it real dynamics.</p>
 <section id="bounds">
 <h2>Bounds<a class="headerlink" href="#bounds" title="Link to this heading">¶</a></h2>
 <p>Every component, process variable and volume can carry <code class="docutils literal notranslate"><span class="pre">bounds=(lo,</span> <span class="pre">hi)</span></code>, with <code class="docutils literal notranslate"><span class="pre">None</span></code>
-meaning unbounded.</p>
+meaning unbounded. Reactor-medium components default to <code class="docutils literal notranslate"><span class="pre">(0.0,</span> <span class="pre">None)</span></code>, because
+concentrations cannot be negative; pass <code class="docutils literal notranslate"><span class="pre">bounds=(None,</span> <span class="pre">None)</span></code> to remove that lower
+bound. Volume and process variables default to unbounded.</p>
 <div class="cell docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">component</span> <span class="o">=</span> <span class="n">hxf</span><span class="o">.</span><span class="n">ReactorMediumComponent</span><span class="p">(</span>
@@ -536,6 +538,15 @@ meaning unbounded.</p>
 They exist so downstream consumers (<code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code>’s loss module in particular) can build
 soft penalties from a declaration you made once, in the data, instead of duplicating it
 in every training config.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> does not use bounds by default either: the default training loss
+ignores them, and nothing clamps model predictions. Validation only flags measurements
+that fall outside their bounds. To penalize predictions outside the bounds, build the
+loss with <code class="docutils literal notranslate"><span class="pre">hybrax.train.BoundsViolationLossModule</span></code> in your <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>; the
+<a class="reference internal" href="../gallery/hek293_lstm.html#discourage-negative-concentrations"><span class="std std-ref">HEK293 gallery example</span></a>
+shows how.</p>
+</div>
 </section>
 <section id="units">
 <h2>Units<a class="headerlink" href="#units" title="Link to this heading">¶</a></h2>

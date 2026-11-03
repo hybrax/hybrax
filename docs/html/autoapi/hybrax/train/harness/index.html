@@ -1009,7 +1009,7 @@ same order — or the call fails with an explicit error.</p>
 <li><p><strong>collection</strong> (<a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>) – Evaluation-only process collection to forward-solve.</p></li>
 <li><p><strong>model_path</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>) – Path to the trained model’s run/checkpoint directory.</p></li>
 <li><p><strong>config</strong> (<a class="reference internal" href="#hybrax.train.harness.ForwardConfig" title="hybrax.train.harness.ForwardConfig"><em>ForwardConfig</em></a><em> | </em><em>None</em>) – Forward-run settings (evaluated processes, target layout, solver),
-or <cite>None</cite> for defaults.</p></li>
+or <code class="code docutils literal notranslate"><span class="pre">None</span></code> for defaults.</p></li>
 <li><p><strong>custom_py</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><em>None</em>) – Override for the recorded <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> path, or <code class="docutils literal notranslate"><span class="pre">None</span></code>
 to use the one the run recorded.</p></li>
 <li><p><strong>training_process_names</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>) – Restrict reconstruction to this subset of the
@@ -1019,7 +1019,7 @@ model’s original training processes, or <code class="docutils literal notransl
 <li><p><strong>custom_module</strong> (<em>Any</em><em> | </em><em>None</em>) – Pre-loaded custom module, or <code class="docutils literal notranslate"><span class="pre">None</span></code> to load it from
 <code class="docutils literal notranslate"><span class="pre">custom_py</span></code>/the recorded path.</p></li>
 <li><p><strong>prediction_process_names</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>) – Subset of the evaluated processes to export;
-<cite>None</cite> exports every evaluated process.</p></li>
+<code class="code docutils literal notranslate"><span class="pre">None</span></code> exports every evaluated process.</p></li>
 <li><p><strong>prediction_grid_n</strong> (<em>int</em>) – Size of the evenly-spaced prediction grid; see
 <a class="reference internal" href="#hybrax.train.harness.model_predict" title="hybrax.train.harness.model_predict"><code class="xref py py-func docutils literal notranslate"><span class="pre">model_predict()</span></code></a>’s <code class="docutils literal notranslate"><span class="pre">grid_n</span></code>.</p></li>
 </ul>

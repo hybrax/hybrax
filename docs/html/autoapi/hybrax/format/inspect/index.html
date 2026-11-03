@@ -475,9 +475,9 @@ closed immediately, freeing its memory; nothing is returned.</p></li>
 <li><p><strong>verbosity</strong> (<em>int</em>) – <p>Detail level (1=minimal, 2=medium, 3=full)</p>
 <ul>
 <li><p>Level 3 (most verbose): everything in level 2, plus the citation
-(when <cite>case_id</cite> is set), per-process datapoint counts, and total
+(when <code class="code docutils literal notranslate"><span class="pre">case_id</span></code> is set), per-process datapoint counts, and total
 datapoints</p></li>
-<li><p>Level 2 (mid verbose): organism (when <cite>case_id</cite> is set; otherwise
+<li><p>Level 2 (mid verbose): organism (when <code class="code docutils literal notranslate"><span class="pre">case_id</span></code> is set; otherwise
 metadata keys, if any) and process names</p></li>
 <li><p>Level 1 (least verbose): case_id/label and process count only</p></li>
 </ul>
@@ -543,11 +543,11 @@ V separately with <em>Additions</em> (Inflow sum) and <em>Removals</em>
 <dl class="field-list simple">
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>ValueError</strong> – if <cite>process.reaction_ode</cite> is unset, the collection has no
+<li><p><strong>ValueError</strong> – if <code class="code docutils literal notranslate"><span class="pre">process.reaction_ode</span></code> is unset, the collection has no
 processes, or a multi-process container’s processes do not share
-equivalent <cite>reaction_ode</cite> blocks.</p></li>
-<li><p><strong>TypeError</strong> – if <cite>target</cite> is neither a <cite>BioProcess</cite> nor a
-<cite>BioProcessCollection</cite>.</p></li>
+equivalent <code class="code docutils literal notranslate"><span class="pre">reaction_ode</span></code> blocks.</p></li>
+<li><p><strong>TypeError</strong> – if <code class="code docutils literal notranslate"><span class="pre">target</span></code> is neither a <code class="code docutils literal notranslate"><span class="pre">BioProcess</span></code> nor a
+<code class="code docutils literal notranslate"><span class="pre">BioProcessCollection</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Parameters<span class="colon">:</span></dt>

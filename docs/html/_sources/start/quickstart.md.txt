@@ -228,7 +228,7 @@ for path in sorted((WORK / "run").rglob("*")):
 | File | What it is |
 |---|---|
 | `config.json`, `custom.py` | Exactly what was run. Every run directory is self-contained. |
-| `metrics.csv` | Per-epoch loss and gradient norm. |
+| `metrics.csv` | Per-step loss and gradient norm. |
 | `loss_curve.png`, `grad_norm_curve.png` | The same, plotted. |
 | `model/params.eqx` | The trained parameters: only the trainable ones. |
 | `forward/` | The output of step 4: dense trajectories, rates, and (when requested) one panel figure per process. |

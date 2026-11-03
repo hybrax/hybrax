@@ -505,9 +505,9 @@ stateful latent observable is not emitted via
 <span class="sig-name descname"><span class="pre">physical_rhs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">y_phys</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">control_time</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/wrapper.html#HybridOdeWrapper.physical_rhs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.wrapper.HybridOdeWrapper.physical_rhs" title="Link to this definition">¶</a></dt>
 <dd><p>Return the derivative of the physical and latent state vector.</p>
 <p>Continuous part only — discrete boluses/samples are handled as jumps.</p>
-<p><cite>control_time</cite>, if given, is the time used to evaluate the controls
-(controlled inflows/outflows and PVs) instead of <cite>t</cite>. The reaction module
-still sees <cite>t</cite>. <cite>solve_physical_states</cite> passes <cite>t</cite> clipped to the solve
+<p><code class="code docutils literal notranslate"><span class="pre">control_time</span></code>, if given, is the time used to evaluate the controls
+(controlled inflows/outflows and PVs) instead of <code class="code docutils literal notranslate"><span class="pre">t</span></code>. The reaction module
+still sees <code class="code docutils literal notranslate"><span class="pre">t</span></code>. <code class="code docutils literal notranslate"><span class="pre">solve_physical_states</span></code> passes <code class="code docutils literal notranslate"><span class="pre">t</span></code> clipped to the solve
 window: some implicit solvers (e.g. Kvaerno4/5) evaluate stages past
 the step end, so in the final step the RHS can be queried after t1.
 Control splines would extrapolate their last cubic there, and those

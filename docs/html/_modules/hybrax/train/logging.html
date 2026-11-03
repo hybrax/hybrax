@@ -371,7 +371,7 @@
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Mapping</span><span class="p">,</span> <span class="n">Sequence</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Self</span>
@@ -405,6 +405,12 @@
     <span class="c1"># checkpoint boundary; None on intermediate steps.</span>
     <span class="n">holdout_loss</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">holdout_label</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># Holdout breakdowns at the same boundaries as `holdout_loss`, mirroring</span>
+    <span class="c1"># `per_target_loss` and `per_process_loss`: mean loss per target over all</span>
+    <span class="c1"># holdout processes, and total loss per holdout process. A failed holdout</span>
+    <span class="c1"># solve sets every per-target value but only that process's entry to inf.</span>
+    <span class="n">holdout_per_target_loss</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">holdout_per_process_loss</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="c1"># Set only on the final batch row of each epoch; None on intermediate batches.</span>
     <span class="n">epoch_mean_loss</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">epoch_time_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
@@ -502,6 +508,16 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">optional</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
         <span class="k">return</span> <span class="s2">""</span> <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">strings</span> <span class="k">else</span> <span class="n">value</span>
 
+    <span class="k">def</span><span class="w"> </span><span class="nf">numbers</span><span class="p">(</span><span class="n">values</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">values</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">optional</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">";"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">number</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">values</span><span class="p">)</span> <span class="k">if</span> <span class="n">strings</span> <span class="k">else</span> <span class="nb">list</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">names</span><span class="p">(</span><span class="n">values</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">values</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">optional</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">";"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">values</span><span class="p">)</span> <span class="k">if</span> <span class="n">strings</span> <span class="k">else</span> <span class="nb">list</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
+
     <span class="k">return</span> <span class="p">{</span>
         <span class="s2">"step"</span><span class="p">:</span> <span class="n">record</span><span class="o">.</span><span class="n">step</span><span class="p">,</span>
         <span class="s2">"total_updates"</span><span class="p">:</span> <span class="n">record</span><span class="o">.</span><span class="n">total_updates</span><span class="p">,</span>
@@ -535,6 +551,13 @@
         <span class="s2">"holdout_label"</span><span class="p">:</span> <span class="p">(</span>
             <span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">holdout_label</span> <span class="ow">or</span> <span class="s2">""</span><span class="p">)</span> <span class="k">if</span> <span class="n">strings</span> <span class="k">else</span> <span class="n">record</span><span class="o">.</span><span class="n">holdout_label</span>
         <span class="p">),</span>
+        <span class="s2">"holdout_per_target_loss"</span><span class="p">:</span> <span class="n">numbers</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">holdout_per_target_loss</span><span class="p">),</span>
+        <span class="s2">"holdout_per_process_loss"</span><span class="p">:</span> <span class="n">numbers</span><span class="p">(</span>
+            <span class="kc">None</span>
+            <span class="k">if</span> <span class="n">record</span><span class="o">.</span><span class="n">holdout_per_process_loss</span> <span class="ow">is</span> <span class="kc">None</span>
+            <span class="k">else</span> <span class="n">record</span><span class="o">.</span><span class="n">holdout_per_process_loss</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+        <span class="p">),</span>
+        <span class="s2">"holdout_process_names"</span><span class="p">:</span> <span class="n">names</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">holdout_per_process_loss</span><span class="p">),</span>
         <span class="s2">"epoch_mean_loss"</span><span class="p">:</span> <span class="p">(</span>
             <span class="n">number</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">epoch_mean_loss</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">record</span><span class="o">.</span><span class="n">epoch_mean_loss</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>

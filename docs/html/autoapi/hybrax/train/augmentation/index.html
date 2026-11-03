@@ -408,7 +408,7 @@ onto that grid with Gaussian noise added. Other modeled states with fitted
 splines are resampled onto the child’s grid without noise; other states are
 copied from the parent unchanged. Resampled reactor-medium values are
 clipped to be non-negative before the optional custom hook, whose results
-are not clipped again. Mutates <cite>collection.processes</cite> in place with
+are not clipped again. Mutates <code class="code docutils literal notranslate"><span class="pre">collection.processes</span></code> in place with
 the new children and also returns <code class="docutils literal notranslate"><span class="pre">collection</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -431,7 +431,7 @@ the same shape with only finite values.</p></li>
 process, a requested state cannot be augmented (controlled PV,
 unmodeled, or spline-less), the degenerate case <code class="docutils literal notranslate"><span class="pre">t0</span> <span class="pre">==</span> <span class="pre">t_end</span></code>,
 the requested grid spacing cannot be represented, no acceptable
-child grid is found within the attempt limit, a <cite>measured</cite> initial
+child grid is found within the attempt limit, a <code class="code docutils literal notranslate"><span class="pre">measured</span></code> initial
 value has no observation at the process start, or a custom
 <code class="docutils literal notranslate"><span class="pre">augment_state_values</span></code> hook returns a mismatched shape or
 non-finite values.</p>

@@ -119,6 +119,10 @@ The bundled {download}`data.json <../../../examples/gallery_optfed/data.json>`
 is a Hybrax `BioProcessCollection`. It is generated from the
 four CSVs from the [OptFed GitHub repo](https://github.com/gschloegel/OptFed/tree/7811f7b9ef76d624f53b852c03d06cb1b5cc96a3/data).
 The full importer code is in the collapsible box at the end of this section.
+The OptFed repository does not specify a license, so its data and the files on
+this page derived from it, including the prediction CSVs further down, are not
+covered by Hybrax's MIT license; all rights remain with the OptFed authors.
+`examples/gallery_optfed/README.md` lists which files that covers.
 
 Each process contains the measured glycerol, total biomass, and product
 concentrations, the carbon and base feeds, the sampling withdrawals, and the
@@ -692,10 +696,10 @@ each other over a narrow temperature range.
   Differences in their parameters or trajectories therefore do not establish
   weak identifiability on their own.
 - These are measurement-based scores, not quoted cross-validation scores from
-  the paper. The reference scores use measurement-time predictions exported
-  from archived OptFed analysis outputs, rather than interpolation from the
-  plotted curves. These archives are not included in the pinned GitHub commit;
-  the bundled CSV makes the comparison reproducible locally.
+  the paper. The reference scores use measurement-time predictions extracted
+  from the output of OptFed's `code/01_fit.py`, rather than interpolation from
+  the plotted curves. The repository does not store this output; the bundled
+  CSV lets the comparison run without rerunning the OptFed fit.
 
 ````
 
@@ -704,8 +708,9 @@ each other over a narrow temperature range.
 The following plot compares the fitted Hybrax model, the original OptFed model,
 and the experimental measurements. Original OptFed curves are semi-transparent
 solid lines; Hybrax curves are dashed. The original curves come from the authors'
-global reduced-model fit to derived rates, published in the
-[OptFed repository](https://github.com/gschloegel/OptFed/tree/7811f7b9ef76d624f53b852c03d06cb1b5cc96a3).
+global reduced-model fit to derived rates, computed with the code in the
+[OptFed repository](https://github.com/gschloegel/OptFed/tree/7811f7b9ef76d624f53b852c03d06cb1b5cc96a3),
+which does not include the curves themselves.
 The bundled {download}`reference curves
 <../../../examples/gallery_optfed/original_predictions.csv>` and
 {download}`measurement-time predictions

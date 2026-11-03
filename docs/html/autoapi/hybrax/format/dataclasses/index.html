@@ -478,7 +478,7 @@ inherit the parent’s structural identity (control/state schema,
 medium semantics) and must be grouped with the parent for any
 train/eval split so synthetic siblings cannot leak into a fold whose
 parent is held out.</p>
-<p>Instances are produced by <cite>hybrax.train.augmentation</cite>.</p>
+<p>Instances are produced by <code class="code docutils literal notranslate"><span class="pre">hybrax.train.augmentation</span></code>.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.format.dataclasses.AugmentedBioProcess.parent_process">
 <span class="sig-name descname"><span class="pre">parent_process</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.AugmentedBioProcess.parent_process" title="Link to this definition">¶</a></dt>
@@ -804,9 +804,9 @@ derivatives); the remaining <code class="docutils literal notranslate"><span cla
 <dt class="sig sig-object py" id="hybrax.format.dataclasses.PseudobatchTransform">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">PseudobatchTransform</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#PseudobatchTransform"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.PseudobatchTransform" title="Link to this definition">¶</a></dt>
 <dd><p>Process-level pseudobatch transform bundle.</p>
-<p><cite>adf</cite> stores the shared accumulated dilution factor. <cite>feed_corrections</cite>
+<p><code class="code docutils literal notranslate"><span class="pre">adf</span></code> stores the shared accumulated dilution factor. <code class="code docutils literal notranslate"><span class="pre">feed_corrections</span></code>
 stores species-specific feed corrections needed to map between transformed
-and real concentration. <cite>sample_compensation</cite> and <cite>accumulated_feeds</cite> store
+and real concentration. <code class="code docutils literal notranslate"><span class="pre">sample_compensation</span></code> and <code class="code docutils literal notranslate"><span class="pre">accumulated_feeds</span></code> store
 optional helper traces for transparency/debugging.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.format.dataclasses.PseudobatchTransform.accumulated_feeds">
