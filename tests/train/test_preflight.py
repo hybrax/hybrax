@@ -359,7 +359,8 @@ def test_training_gate_precedes_warmup_and_uses_configured_jump_flag(monkeypatch
     def warmup_sentinel(*args, **kwargs):
         raise AssertionError("Reached training warmup")
 
-    monkeypatch.setattr(TrainingDataStore, "gather_batch", warmup_sentinel)
+    # The train step gathers its first batch while it is traced for warmup.
+    monkeypatch.setattr(TrainingDataStore, "_gather_batch_rows", warmup_sentinel)
     config = TrainHarnessConfig(
         process_names=("pulse",),
         epochs=1,

@@ -611,7 +611,7 @@ def _build_batch_index_stream(
     shuffle_batches: bool,
     batch_seed: int | None,
     seed: int,
-) -> jax.Array:
+) -> np.ndarray:
     selected_indices = np.asarray(selected_process_indices, dtype=np.int32)
     if selected_indices.ndim != 1 or selected_indices.size == 0:
         raise ValueError("selected_process_indices must be a non-empty 1D array")
@@ -630,7 +630,9 @@ def _build_batch_index_stream(
             else np.array(selected_indices, copy=True)
         )
         epochs_indices.append(indices[:used].reshape(batches_per_epoch, batch_size))
-    return jnp.asarray(np.stack(epochs_indices).reshape(-1, batch_size))
+    # Host-side on purpose: the loop hands each row to the step function, which
+    # gathers the batch itself, so no per-step eager JAX slicing is needed.
+    return np.stack(epochs_indices).reshape(-1, batch_size)
 
 
 def _resolve_checkpoint_every(every: float | None, *, epochs: int) -> float:
@@ -1410,7 +1412,7 @@ def train_collection(
         flow_integral_relative_tolerance=cfg.flow_integral_relative_tolerance,
     )
 
-    warmup_batch = store.gather_batch(batch_index_stream[0])
+    warmup_batch_indices = batch_index_stream[0]
 
     # Per-target labels come straight from the loss module — one panel/column
     # per named loss term, in declared order.
@@ -1443,23 +1445,37 @@ def train_collection(
         wrapper,
         trainable_params,
         optimizer_state,
-        warmup_batch,
+        warmup_batch_indices,
         jnp.asarray(0, dtype=jnp.int32),
     )
 
     def _make_batched_step():
+        # Flatten once: per-process metadata must not be traversed on every step.
+        array_store, static_store = eqx.partition(store, eqx.is_array)
+        flat_store_arrays, store_treedef = jtu.tree_flatten(array_store)
+
         def _step_fn(
             current_wrapper: HybridOdeWrapper,
             current_trainable_params: eqx.Module,
             current_optimizer_state: optax.OptState,
-            current_batch,
+            current_batch_indices,
             step: jax.Array,
+            *,
+            store_arrays: tuple[jax.Array, ...],
         ):
+            current_store = eqx.combine(
+                jtu.tree_unflatten(store_treedef, store_arrays), static_store
+            )
+            # Gathering inside the jitted step replaces ~20 small eager dispatches
+            # per update with fused in-graph gathers.
+            current_batch = current_store._gather_batch_rows(current_batch_indices)
             jump_ts_rows = None
             if cfg.solver_use_jump_ts:
                 jump_ts_rows = clamp_padded_time_rows(
-                    store.controls_store.jump_ts[current_batch.process_indices],
-                    store.controls_store.jump_ts_lengths[current_batch.process_indices],
+                    current_store.controls_store.jump_ts[current_batch.process_indices],
+                    current_store.controls_store.jump_ts_lengths[
+                        current_batch.process_indices
+                    ],
                 )
 
             del current_wrapper  # whole-wrapper partition: combine reconstructs it
@@ -1478,8 +1494,8 @@ def train_collection(
                 ) = effective_batched_loss_fn(
                     candidate_wrapper,
                     current_batch,
-                    batched_Cin,
-                    batched_Cin_modeled,
+                    current_store.Cin_controlled_Inflows,
+                    current_store.Cin_modeled_Inflows,
                     jump_ts_rows,
                     max_solver_steps=int(cfg.solver_max_steps),
                     solver_rtol=float(cfg.solver_rtol),
@@ -1523,7 +1539,9 @@ def train_collection(
                 per_sample_fail,
             )
 
-        return eqx.filter_jit(_step_fn)
+        # Bind outside filter_jit so the store arrays become dynamic inputs,
+        # rather than compiler constants whose payload grows with the full store.
+        return partial(eqx.filter_jit(_step_fn), store_arrays=tuple(flat_store_arrays))
 
     def _make_sharded_step():
         """Data-parallel step: shard the batch across local devices via pmap,
@@ -1674,10 +1692,13 @@ def train_collection(
             current_wrapper,
             current_trainable_params,
             current_optimizer_state,
-            current_batch,
+            current_batch_indices,
             step,
         ):
             del current_wrapper
+            current_batch = store._gather_batch_rows(
+                jnp.asarray(current_batch_indices, dtype=jnp.int32)
+            )
             jump_ts_rows = None
             if use_jump:
                 jump_ts_rows = clamp_padded_time_rows(
@@ -1921,10 +1942,13 @@ def train_collection(
             current_wrapper,
             current_trainable_params,
             current_optimizer_state,
-            current_batch,
+            current_batch_indices,
             step,
         ):
             del current_wrapper
+            current_batch = store._gather_batch_rows(
+                jnp.asarray(current_batch_indices, dtype=jnp.int32)
+            )
             jump_ts_rows = None
             if use_jump:
                 jump_ts_rows = clamp_padded_time_rows(
@@ -2064,7 +2088,7 @@ def train_collection(
         wrapper,
         trainable_params,
         optimizer_state,
-        warmup_batch,
+        warmup_batch_indices,
         jnp.asarray(0, dtype=jnp.int32),
     )
     jax.block_until_ready(warmup_loss)
@@ -2188,12 +2212,12 @@ def train_collection(
             step = step_index + 1
             epoch = step_index // batches_per_epoch + 1
             batch_in_epoch = step_index % batches_per_epoch + 1
-            batch = store.gather_batch(batch_index_stream[step_index])
+            batch_indices = batch_index_stream[step_index]
             current_signature = summarize_train_step_input_signature(
                 wrapper,
                 trainable_params,
                 optimizer_state,
-                batch,
+                batch_indices,
                 jnp.asarray(step, dtype=jnp.int32),
             )
             if current_signature != train_step_input_signature:
@@ -2215,32 +2239,32 @@ def train_collection(
                 wrapper,
                 trainable_params,
                 optimizer_state,
-                batch,
+                batch_indices,
                 jnp.asarray(step, dtype=jnp.int32),
             )
-            jax.block_until_ready(loss)
+            # One device->host fetch for every value the host loop needs.
+            loss, per_target_loss, per_sample_loss, grad_norm, per_sample_fail = (
+                jax.device_get(
+                    (loss, per_target_loss, per_sample_loss, grad_norm, per_sample_fail)
+                )
+            )
             step_dt = time.perf_counter() - t0
+            loss = float(loss)
+            grad_norm = float(grad_norm)
             epoch_training_seconds += step_dt
-            epoch_losses.append(float(loss))
+            epoch_losses.append(loss)
 
-            per_target_values = tuple(
-                float(value) for value in np.asarray(per_target_loss).tolist()
-            )
-            per_process_values = tuple(
-                float(value) for value in np.asarray(per_sample_loss).tolist()
-            )
+            per_target_values = tuple(per_target_loss.tolist())
+            per_process_values = tuple(per_sample_loss.tolist())
             batch_names = tuple(
-                store.process_order[int(index)]
-                for index in np.asarray(batch.process_indices).tolist()
+                store.process_order[int(index)] for index in batch_indices.tolist()
             )
             # A finite fail_time flags a sample whose ODE solve bailed mid-
             # trajectory (post-failure points were dropped from the loss). Name
             # the affected processes so the logger can report how often it happens.
             failed_process_names = tuple(
                 name
-                for name, ft in zip(
-                    batch_names, np.asarray(per_sample_fail).reshape(-1).tolist()
-                )
+                for name, ft in zip(batch_names, per_sample_fail.reshape(-1).tolist())
                 if np.isfinite(ft)
             )
 
@@ -2270,7 +2294,7 @@ def train_collection(
                     epoch=epoch,
                     batch_in_epoch=batch_in_epoch,
                     samples_seen=step * effective_batch_size,
-                    mean_loss=float(loss),
+                    mean_loss=loss,
                     per_target_loss=per_target_values,
                     per_process_loss=per_process_values,
                     target_names=tuple(_target_labels),
@@ -2285,7 +2309,7 @@ def train_collection(
                     holdout_per_process_loss=holdout_per_process,
                     epoch_mean_loss=epoch_mean_loss,
                     epoch_time_seconds=epoch_time_seconds,
-                    grad_norm=float(grad_norm),
+                    grad_norm=grad_norm,
                     failed_process_names=failed_process_names,
                     failed_holdout_names=failed_holdout_names,
                 )
@@ -2298,7 +2322,7 @@ def train_collection(
                 score = (
                     {
                         "holdout_loss": holdout_loss,
-                        "train_loss": float(loss),
+                        "train_loss": loss,
                         "epoch_mean_loss": epoch_mean_loss,
                     }[policy.select_by]
                     if policy.select_by is not None
@@ -2316,7 +2340,7 @@ def train_collection(
                         samples_seen=step * effective_batch_size,
                         wrapper=wrapper,
                         opt_state=optimizer_state,
-                        mean_loss=float(loss),
+                        mean_loss=loss,
                         holdout_loss=holdout_loss,
                         holdout_predictions=holdout_predictions,
                         score=score,

@@ -907,6 +907,10 @@ class TrainingDataStore(eqx.Module):
         if bool(jnp.any(indices < 0)) or bool(jnp.any(indices >= n_processes)):
             raise IndexError("process index out of range in process_indices")
 
+        return self._gather_batch_rows(indices)
+
+    def _gather_batch_rows(self, indices: jax.Array) -> BatchTrainingData:
+        """Gather already-validated, int32 process-index rows (traceable)."""
         return BatchTrainingData(
             process_indices=indices,
             controls=self.controls_store._gather_batch_rows(indices),

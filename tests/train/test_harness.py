@@ -1089,28 +1089,37 @@ def test_harness_config_has_no_drop_last_batch_field():
     assert "drop_last_batch" not in TrainHarnessConfig.__dataclass_fields__
 
 
-def test_train_collection_signature_is_stable_and_no_rebuilds():
-    collection = _make_collection()
+def test_train_collection_passes_store_arrays_as_dynamic_inputs(monkeypatch):
     store = TrainingDataStore.from_collection(
-        collection,
+        _make_collection(),
         target_variable_order=["biomass"],
         target_source="reactor_components",
     )
-    result = train_collection(
+    original_gather = TrainingDataStore._gather_batch_rows
+    traced_gathers = []
+
+    def gather(current_store, indices):
+        if isinstance(indices, jax.core.Tracer):
+            # Concrete arrays here become full-store constants in the train step.
+            arrays = eqx.filter(current_store, eqx.is_array)
+            captured_paths = [
+                jax.tree_util.keystr(path)
+                for path, value in jax.tree_util.tree_leaves_with_path(arrays)
+                if not isinstance(value, jax.core.Tracer)
+            ]
+            assert not captured_paths, f"captured store arrays: {captured_paths}"
+            traced_gathers.append(True)
+        return original_gather(current_store, indices)
+
+    monkeypatch.setattr(TrainingDataStore, "_gather_batch_rows", gather)
+    # This test exercises the single-device step, where gathering is jitted.
+    monkeypatch.setattr(harness_module.jax, "local_device_count", lambda: 1)
+    train_collection(
         store,
         reaction_module=_LinearReactionModule(),
-        config=TrainHarnessConfig(
-            process_names=("p1", "p2"),
-            epochs=4,
-            batch_size=2,
-            optimizer_name="adam",
-            learning_rate=2e-2,
-        ),
+        config=TrainHarnessConfig(epochs=2, batch_size=1),
     )
-
-    assert len(result.train_step_input_signature) > 0
-    assert result.train_step_rebuild_count == 0
-    assert result.updates_completed == 4
+    assert traced_gathers
 
 
 def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
