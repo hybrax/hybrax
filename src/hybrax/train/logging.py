@@ -30,7 +30,6 @@ class StepRecord:
     target_names: tuple[str, ...]
     process_names: tuple[str, ...]  # batch composition for this step
     step_dt: float  # wall time (seconds)
-    rebuild_count: int  # cumulative
     # Holdout / validation loss, populated only when a holdout is evaluated at a
     # checkpoint boundary; None on intermediate steps.
     holdout_loss: float | None = None
@@ -171,7 +170,6 @@ def _row(record: StepRecord, *, strings: bool) -> dict[str, Any]:
             ";".join(record.process_names) if strings else list(record.process_names)
         ),
         "step_dt": f"{record.step_dt:.6f}" if strings else record.step_dt,
-        "rebuild_count": record.rebuild_count,
         "holdout_loss": (
             number(record.holdout_loss)
             if record.holdout_loss is not None
@@ -266,7 +264,6 @@ class RunLogger:
             "per_process_loss_by_step": [],
             "holdout_loss_by_step": {},
             "holdout_label": None,
-            "train_step_rebuild_count": 0,
             "grad_norm_by_step": [],
         }
         self._target_names: tuple[str, ...] = ()
@@ -319,15 +316,6 @@ class RunLogger:
             ", ".join(self._target_names),
             len(process_names),
             compile_warmup_seconds,
-        )
-
-    def record_rebuild(self, step_index: int) -> None:
-        """Log and count a train-step JIT rebuild at ``step_index``."""
-        self._history["train_step_rebuild_count"] += 1
-        self._logger.warning(
-            "train-step rebuilt at step=%d (rebuild_count=%d)",
-            step_index,
-            self._history["train_step_rebuild_count"],
         )
 
     def record_step(self, record: StepRecord) -> None:
@@ -446,5 +434,4 @@ _DUMMY_RECORD = StepRecord(
     target_names=(),
     process_names=(),
     step_dt=0.0,
-    rebuild_count=0,
 )

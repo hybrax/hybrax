@@ -493,8 +493,6 @@ def _stub_train_result() -> TrainHarnessResult:
         per_process_loss_by_step=(),
         compile_warmup_seconds=0.0,
         step_time_seconds=(),
-        train_step_input_signature=(),
-        train_step_rebuild_count=0,
     )
 
 

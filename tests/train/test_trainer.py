@@ -25,7 +25,6 @@ from hybrax.format.dataclasses import (
 )
 from hybrax.format.mechanistic import build_rhs_ode
 from hybrax.train.defaults import DefaultLossModule
-from hybrax.train.harness import summarize_train_step_input_signature
 from hybrax.train.model_api import (
     AffineScaler,
     LossInputs,
@@ -257,17 +256,6 @@ def _build_wrapper_and_process(module_cls=_LinearReactionModule, process_name="p
 
 def _build_aux_wrapper_and_process():
     return _build_wrapper_and_process(_AuxReactionModule)
-
-
-def test_train_step_input_signature_summary_tracks_hashable_scalar_values():
-    sig_a = summarize_train_step_input_signature("adam", 1e-3, 42)
-    sig_b = summarize_train_step_input_signature("adam", 2e-3, 42)
-    assert sig_a != sig_b
-
-
-def test_train_step_input_signature_summary_handles_none():
-    sig = summarize_train_step_input_signature(None)
-    assert sig == (("none",),)
 
 
 def test_clamp_padded_time_rows_repeats_last_active_timestamp():

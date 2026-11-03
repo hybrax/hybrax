@@ -492,7 +492,6 @@ def test_microbatch_harness_preserves_updates_and_checkpoint_state(
             if jnp.issubdtype(x.dtype, jnp.integer)
         ]
         assert counts and all(count == 3 for count in counts)
-        assert result.train_step_rebuild_count == 0
         assert result.batch_process_names_by_step == (("p3", "p1", "p2"),) * 3
         rows = [
             json.loads(line)

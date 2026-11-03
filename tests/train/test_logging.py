@@ -33,7 +33,6 @@ def _record(
         target_names=("biomass",),
         process_names=("p1", "p2"),
         step_dt=0.1,
-        rebuild_count=0,
         holdout_loss=holdout,
         holdout_label="holdout" if holdout is not None else None,
         holdout_per_target_loss=(holdout,) if holdout is not None else None,
@@ -142,7 +141,6 @@ def test_runlogger_csv_pins_exact_metrics_schema(tmp_path):
         "target_names",
         "process_names",
         "step_dt",
-        "rebuild_count",
         "holdout_loss",
         "holdout_label",
         "holdout_per_target_loss",
@@ -293,17 +291,7 @@ def test_runlogger_close_is_idempotent(tmp_path):
     run.close()  # a second close must be a no-op, not raise
 
 
-def test_runlogger_record_rebuild_and_start_guard(caplog):
+def test_runlogger_start_guard():
     run = RunLogger()
     with pytest.raises(RuntimeError, match="start"):
         run.record_step(_record(1))
-    caplog.set_level(logging.WARNING, logger="hybrax.train.harness")
-    with run:
-        run.start(
-            target_names=("biomass",),
-            process_names=("p1",),
-            total_updates=1,
-            compile_warmup_seconds=0.0,
-        )
-        run.record_rebuild(1)
-        assert run.finalize()["train_step_rebuild_count"] == 1

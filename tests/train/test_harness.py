@@ -613,8 +613,6 @@ def test_train_collection_single_process_loss_decreases():
     assert all(dt > 0.0 for dt in result.step_time_seconds)
     assert len(result.batch_process_names_by_step) == 8
     assert all(names == ("p1",) for names in result.batch_process_names_by_step)
-    assert result.train_step_rebuild_count == 0
-    assert len(result.train_step_input_signature) > 0
 
 
 def test_train_collection_runs_with_nonzero_affine_state_offset():
@@ -678,7 +676,6 @@ def test_train_collection_multi_process_tracks_per_process_histories():
     assert all(
         set(names) == {"p1", "p2"} for names in result.batch_process_names_by_step
     )
-    assert result.train_step_rebuild_count == 0
 
 
 def test_store_rejects_different_biological_equations():

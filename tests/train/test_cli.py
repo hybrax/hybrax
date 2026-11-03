@@ -37,8 +37,6 @@ def _stub_train_result() -> TrainHarnessResult:
         per_process_loss_by_step=((1.0,), (0.5,)),
         compile_warmup_seconds=0.1,
         step_time_seconds=(0.01, 0.01),
-        train_step_input_signature=(("array", (1,), "int32"),),
-        train_step_rebuild_count=1,
     )
 
 

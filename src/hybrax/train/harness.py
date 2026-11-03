@@ -393,8 +393,6 @@ class TrainHarnessResult:
     per_process_loss_by_step: tuple[tuple[float, ...], ...]
     compile_warmup_seconds: float
     step_time_seconds: tuple[float, ...]
-    train_step_input_signature: tuple[object, ...]
-    train_step_rebuild_count: int
     # Per-target training-loss breakdown: tuple of length n_targets per step.
     per_target_loss_by_step: tuple[tuple[float, ...], ...] = ()
     target_names: tuple[str, ...] = ()
@@ -431,27 +429,6 @@ def _ensure_process_names(
         raise ValueError(f"unknown process names in process_names: {missing}")
 
     return selected
-
-
-def summarize_train_step_input_signature(*values: object) -> tuple[object, ...]:
-    """Return a stable pytree leaf-shape/type summary for train-step inputs."""
-    leaves = jtu.tree_leaves(values, is_leaf=lambda value: value is None)
-    signature: list[object] = []
-    for leaf in leaves:
-        if leaf is None:
-            signature.append(("none",))
-            continue
-        if hasattr(leaf, "shape") and hasattr(leaf, "dtype"):
-            signature.append(("array", tuple(leaf.shape), str(leaf.dtype)))
-            continue
-        try:
-            hash(leaf)
-        except TypeError:
-            signature.append(("object", type(leaf).__name__))
-            continue
-        signature.append(("scalar", type(leaf).__name__, repr(leaf)))
-        continue
-    return tuple(signature)
 
 
 def build_solver_for_run(
@@ -1441,13 +1418,6 @@ def train_collection(
             grad_clip_norm=float(cfg.grad_clip_norm),
         )
     optimizer_state = optimizer.init(trainable_params)
-    train_step_input_signature = summarize_train_step_input_signature(
-        wrapper,
-        trainable_params,
-        optimizer_state,
-        warmup_batch_indices,
-        jnp.asarray(0, dtype=jnp.int32),
-    )
 
     def _make_batched_step():
         # Flatten once: per-process metadata must not be traversed on every step.
@@ -1455,7 +1425,6 @@ def train_collection(
         flat_store_arrays, store_treedef = jtu.tree_flatten(array_store)
 
         def _step_fn(
-            current_wrapper: HybridOdeWrapper,
             current_trainable_params: eqx.Module,
             current_optimizer_state: optax.OptState,
             current_batch_indices,
@@ -1477,8 +1446,6 @@ def train_collection(
                         current_batch.process_indices
                     ],
                 )
-
-            del current_wrapper  # whole-wrapper partition: combine reconstructs it
 
             def _loss_fn(trainable_params: eqx.Module) -> jax.Array:
                 candidate_wrapper = eqx.combine(trainable_params, trainable_static)
@@ -1527,9 +1494,7 @@ def train_collection(
                 params=current_trainable_params,
             )
             trainable_updated = eqx.apply_updates(current_trainable_params, updates)
-            wrapper_updated = eqx.combine(trainable_updated, trainable_static)
             return (
-                wrapper_updated,
                 trainable_updated,
                 loss,
                 per_target_loss,
@@ -1689,13 +1654,11 @@ def train_collection(
             return loss, grads, per_target, per_sample, per_sample_fail
 
         def _step_fn(
-            current_wrapper,
             current_trainable_params,
             current_optimizer_state,
             current_batch_indices,
             step,
         ):
-            del current_wrapper
             current_batch = store._gather_batch_rows(
                 jnp.asarray(current_batch_indices, dtype=jnp.int32)
             )
@@ -1749,9 +1712,7 @@ def train_collection(
                 grads, current_optimizer_state, params=current_trainable_params
             )
             trainable_updated = eqx.apply_updates(current_trainable_params, updates)
-            wrapper_updated = eqx.combine(trainable_updated, trainable_static)
             return (
-                wrapper_updated,
                 trainable_updated,
                 loss,
                 per_target_loss,
@@ -1939,13 +1900,11 @@ def train_collection(
             )
 
         def _step_fn(
-            current_wrapper,
             current_trainable_params,
             current_optimizer_state,
             current_batch_indices,
             step,
         ):
-            del current_wrapper
             current_batch = store._gather_batch_rows(
                 jnp.asarray(current_batch_indices, dtype=jnp.int32)
             )
@@ -2013,9 +1972,7 @@ def train_collection(
                 )
             per_sample_loss = per_sample.reshape(-1)[:bs]
             per_sample_fail = per_sample_fail.reshape(-1)[:bs]
-            wrapper_updated = eqx.combine(trainable_updated, trainable_static)
             return (
-                wrapper_updated,
                 trainable_updated,
                 loss,
                 per_target_loss,
@@ -2052,7 +2009,6 @@ def train_collection(
             "gspmd" if _use_gspmd else "pmap",
         )
     step_fn = _make_step()
-    rebuild_count = 0
 
     logger.info(
         "train harness setup: processes=%s, targets=%s source=%s epochs=%d "
@@ -2076,7 +2032,6 @@ def train_collection(
     logger.info("JIT compiling train step (warmup)...")
     warmup_t0 = time.perf_counter()
     (
-        _warmup_wrapper,
         _warmup_trainable,
         warmup_loss,
         _warmup_pt,
@@ -2085,7 +2040,6 @@ def train_collection(
         _warmup_grad_norm,
         _warmup_fail,
     ) = step_fn(
-        wrapper,
         trainable_params,
         optimizer_state,
         warmup_batch_indices,
@@ -2213,21 +2167,8 @@ def train_collection(
             epoch = step_index // batches_per_epoch + 1
             batch_in_epoch = step_index % batches_per_epoch + 1
             batch_indices = batch_index_stream[step_index]
-            current_signature = summarize_train_step_input_signature(
-                wrapper,
-                trainable_params,
-                optimizer_state,
-                batch_indices,
-                jnp.asarray(step, dtype=jnp.int32),
-            )
-            if current_signature != train_step_input_signature:
-                step_fn = _make_step()
-                rebuild_count += 1
-                run_log.record_rebuild(step)
-
             t0 = time.perf_counter()
             (
-                wrapper,
                 trainable_params,
                 loss,
                 per_target_loss,
@@ -2236,7 +2177,6 @@ def train_collection(
                 grad_norm,
                 per_sample_fail,
             ) = step_fn(
-                wrapper,
                 trainable_params,
                 optimizer_state,
                 batch_indices,
@@ -2272,6 +2212,9 @@ def train_collection(
             failed_holdout_names: tuple[str, ...] = ()
             holdout_per_process = None
             if step in checkpoint_boundaries:
+                # The step only returns the trainable half; the full wrapper is
+                # needed for holdout evaluation and checkpoints only.
+                wrapper = eqx.combine(trainable_params, trainable_static)
                 (
                     holdout_loss,
                     holdout_per_target,
@@ -2300,7 +2243,6 @@ def train_collection(
                     target_names=tuple(_target_labels),
                     process_names=batch_names,
                     step_dt=step_dt,
-                    rebuild_count=rebuild_count,
                     holdout_loss=holdout_loss,
                     holdout_label=(
                         cfg.holdout_label if holdout_loss is not None else None
@@ -2362,9 +2304,8 @@ def train_collection(
         history = run_log.finalize()
 
     return TrainHarnessResult(
-        trained_wrapper=wrapper,
+        trained_wrapper=eqx.combine(trainable_params, trainable_static),
         compile_warmup_seconds=float(warmup_compile_seconds),
-        train_step_input_signature=train_step_input_signature,
         updates_completed=total_updates,
         holdout_per_target_by_step=holdout_per_target_so_far,
         **history,
