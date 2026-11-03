@@ -152,10 +152,10 @@ config = {
     "data": {"prepared": "prepared", "processes": list(train_names)},
     "custom_py": "custom.py",
     "train": {
-        "epochs": 20000,
+        "epochs": 2000,
         "seed": 0,
         "allow_stateful_models": True,
-        "learning_rate": 5e-5,
+        "learning_rate": 1e-3,
         "devices": 1,
         "holdout_processes": ["Br7"],
     },
@@ -163,7 +163,6 @@ config = {
         "every": 10,
         "keep_best": 20,
         "select_by": "holdout_loss",
-        "bundle_prepared": False,
     },
     "output": {"dir": "run"},
     "custom": {
@@ -175,3 +174,11 @@ config = {
 }
 
 (WORK / "train-config.json").write_text(json.dumps(config, indent=2) + "\n")
+
+# Fine-tune the selected checkpoint with a soft penalty on negative concentrations.
+# run.py passes that checkpoint to `hybrax train` via `--init-from`.
+config["custom_py"] = "custom_nonneg.py"
+config["train"] |= {"epochs": 1000, "learning_rate": 1e-4}
+config["output"]["dir"] = "run-nonneg"
+config["custom"]["nonnegativity_weight"] = 10
+(WORK / "train-config-nonneg.json").write_text(json.dumps(config, indent=2) + "\n")

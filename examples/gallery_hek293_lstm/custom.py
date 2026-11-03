@@ -1,6 +1,6 @@
 """Use a native LSTM with z-scored inputs and MATLAB's max-normalized loss.
 
-Hybrax discovers the three hooks below through ``custom_py`` in the config.
+Hybrax discovers the three hooks below through `custom_py` in the config.
 At model setup they construct fixed scalers, the reaction module and the loss.
 Concentrations and volume are z-scored by the framework; time is z-scored in
 input_features. All means and sample SDs use all nine cultures, matching MATLAB's

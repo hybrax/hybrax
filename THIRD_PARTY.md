@@ -19,8 +19,8 @@ the last section.
     `hybrid_LSTM_1.mat` as recorded in `provenance.json`;
   - `data.json`, which `import_from_mat.py` converts from `source-data.mat` and
     `feed.json`;
-  - `train-config.json`, whose normalization constants `import_from_mat.py`
-    computes from the data.
+  - `train-config.json` and `train-config-nonneg.json`, whose normalization
+    constants `import_from_mat.py` computes from the data.
 
   The built docs (`docs/html/`) serve copies of `source-data.mat`, `feed.json` and
   `matlab-reference.npz` as downloads and show plots and tables computed from the data.

@@ -101,31 +101,55 @@ def test_hek_loss_masks_invalid_measurements_and_has_restoring_gradient(loss):
     assert float(jax.grad(fit)(-6.0)) == pytest.approx(-0.08)
 
 
-def test_hek_results_select_finite_validation_nmse(tmp_path):
+def test_hek_nonneg_penalty_uses_the_fit_max_normalization():
+    custom = load_example("custom_nonneg")
+    # Bound records follow the ODE's species order; look them up by name.
+    records = (("lwr_bnd/B", "state", 1, 1.0, 0.0), ("lwr_bnd/A", "state", 0, 1.0, 0.0))
+    # Distinct SD / max ratios, so mixing up the bound order changes the result.
+    ratio = jnp.array([2.0, 4.0]) / jnp.array([10.0, 80.0])
+    loss = custom.MatlabLoss(("A", "B"), ratio, records, weight=10.0)
+    inputs = inputs_for([[2, 4, 1], [-2, 4, 1], [2, -8, 1]])
+    named = eqx.filter_jit(loss)(inputs).named_losses
+    # One undershoot each, divided by the maxima 10 and 80, squared, averaged over
+    # the three measurement times and weighted by 10.
+    assert float(named["lwr_bnd/A"]) == pytest.approx(10 * (2 / 10) ** 2 / 3)
+    assert float(named["lwr_bnd/B"]) == pytest.approx(10 * (8 / 80) ** 2 / 3)
+
+
+def write_metrics(run, holdout):
+    """Write a two-target metrics.csv with penalty terms and Br7 evaluations."""
+    run.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        {
+            "epoch": [1, 2, 3, 4],
+            "mean_loss": [0.4, 0.3, 0.2, 0.1],
+            "per_target_loss": ["0.4;0.2;0;0", "0.3;0.1;0;0", "0.2;0;0;1", "0;0;0;0"],
+            "target_names": ["A;B;lwr_bnd/A;lwr_bnd/B"] * 4,
+            "holdout_loss": [np.mean(row) if row else np.nan for row in holdout],
+            "holdout_per_target_loss": [
+                ";".join(map(str, row)) if row else "" for row in holdout
+            ],
+        }
+    ).to_csv(run / "metrics.csv", index=False)
+
+
+def test_hek_results_split_fit_and_penalty_and_select_by_full_loss(tmp_path):
     results = load_example("results")
     run = tmp_path / "run"
-    (run / "checkpoints/step_00030").mkdir(parents=True)
-    metrics = pd.DataFrame(
-        {
-            "epoch": [1, 10, 20, 30],
-            "mean_loss": [0.4, 0.3, 0.2, 0.1],
-            "holdout_loss": [np.nan, np.inf, 0.2, 0.1],
-            "target_names": ["A;B"] * 4,
-        }
-    )
-    metrics.to_csv(run / "metrics.csv", index=False)
-    curves = results.evaluate_checkpoints(tmp_path)
-    assert list(curves.columns) == ["Train NMSE", "Br7 NMSE"]
-    assert results.select_checkpoint(tmp_path, curves) == 30
-    metrics.holdout_loss = [np.nan, np.inf, np.inf, np.inf]
-    metrics.to_csv(run / "metrics.csv", index=False)
+    (run / "checkpoints/step_00004").mkdir(parents=True)
+    # Epoch 2 has the best fit, epoch 4 the best fit + penalty.
+    write_metrics(run, [[], [0.1, 0.1, 0.4, 0.4], [np.inf] * 4, [0.2, 0.2, 0.0, 0.0]])
+    curves = results.read_loss_curves(tmp_path)
+    np.testing.assert_allclose(curves["Train NMSE"], [0.3, 0.2, 0.1, 0.0])
+    np.testing.assert_allclose(curves["Br7 NMSE"], [np.nan, 0.1, np.inf, 0.2])
+    np.testing.assert_allclose(curves["Br7 penalty"], [np.nan, 0.4, np.inf, 0.0])
+    assert results.select_checkpoint(tmp_path) == 4
+    write_metrics(run, [[], [np.inf] * 4, [np.inf] * 4, [np.inf] * 4])
     with pytest.raises(AssertionError, match="No successful Br7"):
-        results.evaluate_checkpoints(tmp_path)
+        results.read_loss_curves(tmp_path)
 
 
-def test_hek_comparison_scores_pool_splits_and_reuse_saved_validation(
-    tmp_path, monkeypatch
-):
+def test_hek_scores_pool_splits_at_measurement_times(tmp_path, monkeypatch):
     results = load_example("results")
     truth = np.tile([2.0, 10.0], (3, 1))
     times = np.array([0.0, 12.0, 24.0])
@@ -134,55 +158,25 @@ def test_hek_comparison_scores_pool_splits_and_reuse_saved_validation(
     monkeypatch.setattr(
         results, "load_benchmark", lambda _: (source, reference, np.array([2.0, 10.0]))
     )
-    wrapper = SimpleNamespace(modeled_RMC_names=["B", "A"])
-    config = SimpleNamespace(custom=SimpleNamespace(state_names=["A", "B"]))
-    monkeypatch.setattr(results.hxt, "model_load", lambda _: (wrapper, config))
-    monkeypatch.setattr(
-        results.hxf.serialization, "load_process_collection", lambda _: source
-    )
-    predictions = {}
-    test_errors = {"Br5": 10.0, "Br6": 20.0, "Br8": 40.0}
-    for name in ("Br1", "Br2", "Br3", "Br4", "Br9", "Br5", "Br6", "Br8"):
-        error = [0.0, test_errors[name]] if name in test_errors else [2.0, 0.0]
-        values = truth + error
+    errors = {"Br5": 10.0, "Br6": 20.0, "Br8": 40.0, "Br7": 20.0}
+    dense = {}
+    for name in results.CULTURES:
+        values = truth + ([0.0, errors[name]] if name in errors else [-2.0, 0.0])
         values[0] += 10000  # The initial condition must not affect any score.
-        # Include an extra event-time row; scoring must select measurement times.
-        values = np.insert(values, 2, [1000.0, 1000.0], axis=0)
-        predictions[name] = SimpleNamespace(
-            t=np.array([0.0, 12.0, 12.0, 24.0]),
-            c_species=values[:, ::-1],
-            prediction_valid=np.ones(4, dtype=bool),
-        )
-
-    def predict(model, cfg, collection, *, process_names, grid_n):
-        assert model is wrapper and cfg is config and collection is source
-        assert process_names == tuple(predictions)
-        assert grid_n == 21
-        return predictions
-
-    monkeypatch.setattr(results.hxt, "model_predict", predict)
-    checkpoint = tmp_path / "run/checkpoints/step_00030"
-    checkpoint.mkdir(parents=True)
-    validation = truth + [2.0, 20.0]
-    validation[0] += 10000
-    pd.DataFrame(
-        {
-            "process": ["Br7"] * 3,
-            "t": times,
-            "prediction_valid": [True] * 3,
-            "c_A": validation[:, 0],
-            "c_B": validation[:, 1],
-        }
-    ).to_csv(checkpoint / "holdout_predictions.csv", index=False)
-    scores = results.score_selected_checkpoint(tmp_path, 30)
-    assert scores.loc["Training", "Hybrax"] == pytest.approx(np.sqrt(0.5))
-    assert scores.loc["Validation (Br7)", "Hybrax"] == pytest.approx(np.sqrt(2.5))
+        # An extra dense row between samples must not affect any score either.
+        values = np.insert(values, 2, [-1000.0, 1000.0], axis=0)
+        dense[name] = (np.array([0.0, 12.0, 18.0, 24.0]), values)
+    scores = results.score(tmp_path, {"Hybrax": dense}, "scores.csv", True)
+    hybrax = scores.loc["Hybrax"]
+    assert hybrax["NRMSE", "Train"] == pytest.approx(np.sqrt(0.5))
+    assert hybrax["NRMSE", "Validation (Br7)"] == pytest.approx(np.sqrt(2.0))
     # Pool errors over cultures before taking the root: (1² + 2² + 4²) / (3 * 2).
-    assert scores.loc["Test", "Hybrax"] == pytest.approx(np.sqrt(3.5))
-    np.testing.assert_allclose(scores.MATLAB, 1.0)
-    pd.testing.assert_frame_equal(
-        pd.read_csv(tmp_path / "comparison-scores.csv", index_col=0), scores
+    assert hybrax["NRMSE", "Test"] == pytest.approx(np.sqrt(3.5))
+    np.testing.assert_allclose(scores.loc["MATLAB", "NRMSE"], 1.0)
+    # Training predicts A = 0 at both post-initial samples: no undershoot.
+    assert hybrax["Undershoot [%]", "Train"] == 0.0
+    dense["Br1"][1][1, 0] = -1.0  # 50% of A's maximum, one of four values.
+    scores = results.score(tmp_path, {"Hybrax": dense}, "scores.csv", True)
+    assert scores.loc["Hybrax", ("Undershoot [%]", "Train")] == pytest.approx(
+        50 / (5 * 2 * 2)
     )
-    predictions["Br5"].prediction_valid[-1] = False
-    with pytest.raises(AssertionError, match="Br5"):
-        results.score_selected_checkpoint(tmp_path, 30)

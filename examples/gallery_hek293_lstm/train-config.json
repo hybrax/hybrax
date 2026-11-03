@@ -11,10 +11,10 @@
   },
   "custom_py": "custom.py",
   "train": {
-    "epochs": 20000,
+    "epochs": 2000,
     "seed": 0,
     "allow_stateful_models": true,
-    "learning_rate": 5e-05,
+    "learning_rate": 0.001,
     "devices": 1,
     "holdout_processes": [
       "Br7"
@@ -23,8 +23,7 @@
   "checkpoint": {
     "every": 10,
     "keep_best": 20,
-    "select_by": "holdout_loss",
-    "bundle_prepared": false
+    "select_by": "holdout_loss"
   },
   "output": {
     "dir": "run"
