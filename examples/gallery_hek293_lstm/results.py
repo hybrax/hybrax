@@ -5,6 +5,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import plot_cultures
 from scipy.io import loadmat
 
 import hybrax.format as hxf
@@ -16,12 +17,7 @@ SPLITS = {
     "Test": ("Br5", "Br6", "Br8"),
 }
 CULTURES = tuple(f"Br{i}" for i in range(1, 10))
-COLORS = {
-    "Data": "#242a29",
-    "MATLAB": "#276d9d",
-    "Hybrax": "#b54e28",
-    "Hybrax, fine-tuned": "#17613f",
-}
+COLORS = {label: style["color"] for label, style in plot_cultures.STYLES.items()}
 
 
 def load_benchmark(work):
@@ -237,78 +233,39 @@ def score(work, models, name, with_undershoot=False):
     return scores
 
 
-def bold(text):
-    """Typeset `text` in bold with matplotlib's mathtext."""
-    return r"$\bf{" + text.replace(" ", r"\ ").replace("-", r"\text{-}") + "}$"
+def test_predictions(work, models):
+    """Collect test-culture data and predictions in `plot_cultures` format.
+
+    MATLAB's saved predictions exist only at the measurement times.
+    """
+    source, reference, maxima = load_benchmark(Path(work))
+    states = list(np.atleast_1d(source[0].names))
+    states[0] = "biomass"
+    data, matlab = {}, {}
+    for culture in SPLITS["Test"]:
+        index = CULTURES.index(culture)
+        time = source[index].time
+        data[culture] = (time, source[index].conc.T)
+        matlab[culture] = (time, reference[index])
+    models = {"MATLAB": matlab} | {
+        label: {c: dense[c] for c in SPLITS["Test"]} for label, dense in models.items()
+    }
+    return data, models, states, maxima
 
 
-def plot_test_cultures(work, models, name, states=("biomass", "mAb", "Glc")):
+def plot_test_cultures(work, models, name):
     """Plot the test cultures' main states for MATLAB and each Hybrax model.
 
-    Panel titles give each model's NRMSE for that culture and state, with the
-    lowest in bold.
+    Saves the plotted data to `test-predictions.npz` first and plots from that
+    file, so the file always matches the plot. Each call replaces the file, so
+    it holds the models of the last plot. `plot_cultures.py` can redraw it
+    without Hybrax, e.g. for a paper figure.
     """
-    work = Path(work)
-    source, reference, maxima = load_benchmark(work)
-    names = list(np.atleast_1d(source[0].names))
-    names[0] = "biomass"
-    tests = SPLITS["Test"]
-    figure, axes = plt.subplots(len(tests), len(states), figsize=(13, 9.5))
-    for row, culture in zip(axes, tests, strict=True):
-        index = CULTURES.index(culture)
-        batch = source[index]
-        for axis, state in zip(row, states, strict=True):
-            column = names.index(state)
-            truth = batch.conc[column]
-            at_samples = {"MATLAB": reference[index, :, column]}
-            axis.plot(
-                batch.time,
-                reference[index, :, column],
-                "--",
-                color=COLORS["MATLAB"],
-                label="MATLAB",
-            )
-            for label, dense in models.items():
-                t, values = dense[culture]
-                axis.plot(t, values[:, column], color=COLORS[label], label=label)
-                at_samples[label] = values[np.searchsorted(t, batch.time), column]
-            axis.plot(
-                batch.time,
-                truth,
-                "o",
-                color=COLORS["Data"],
-                markerfacecolor="white",
-                markersize=3.5,
-                label="Synthetic data",
-            )
-            axis.axhline(0, color="#999999", linewidth=0.6)
-            errors = {
-                label.removeprefix("Hybrax, "): round(
-                    np.sqrt(np.mean(((value - truth) / maxima[column])[1:] ** 2)), 3
-                )
-                for label, value in at_samples.items()
-            }
-            scores = " · ".join(
-                bold(f"{label} {error:.3f}")
-                if error == min(errors.values())
-                else f"{label} {error:.3f}"
-                for label, error in errors.items()
-            )
-            axis.set_title(f"{culture}, {state}\n{scores}", fontsize=8.5)
-            axis.set(
-                xlabel="Time [h]",
-                ylabel="g/L" if column == 0 else "mg/L" if column == 1 else "mM",
-            )
-            axis.grid(alpha=0.15)
-            axis.spines[["top", "right"]].set_visible(False)
-    handles, labels = axes[0, 0].get_legend_handles_labels()
-    # A handle-less entry explains the numbers in the panel titles.
-    handles.append(plt.Line2D([], [], linestyle="none"))
-    labels.append("Titles: NRMSE")
-    figure.legend(handles, labels, loc="upper center", ncol=len(labels), frameon=False)
-    figure.tight_layout(rect=(0, 0, 1, 0.96))
-    figure.savefig(Path(work) / name, dpi=160, facecolor="white")
-    plt.close(figure)
+    path = Path(work) / "test-predictions.npz"
+    plot_cultures.save_predictions(path, *test_predictions(work, models))
+    plot_cultures.plot_test_cultures(
+        *plot_cultures.load_predictions(path), Path(work) / name, figsize=(10, 7.4)
+    )
 
 
 if __name__ == "__main__":

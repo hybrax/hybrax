@@ -1,6 +1,7 @@
 """HEK loss preserves MATLAB normalization and finite checkpoint selection."""
 
 import importlib.util
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,6 +18,9 @@ EXAMPLE = Path(__file__).resolve().parents[2] / "examples/gallery_hek293_lstm"
 
 
 def load_example(name):
+    # Example scripts import their sibling modules, as when run from there.
+    if str(EXAMPLE) not in sys.path:
+        sys.path.insert(0, str(EXAMPLE))
     spec = importlib.util.spec_from_file_location(f"hek_{name}", EXAMPLE / f"{name}.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -180,3 +184,23 @@ def test_hek_scores_pool_splits_at_measurement_times(tmp_path, monkeypatch):
     assert scores.loc["Hybrax", ("Undershoot [%]", "Train")] == pytest.approx(
         50 / (5 * 2 * 2)
     )
+
+
+def test_hek_bundled_test_predictions_replot_without_hybrax(tmp_path):
+    plot = load_example("plot_cultures")
+    data, models, states, maxima = plot.load_predictions(
+        EXAMPLE / "test-predictions.npz"
+    )
+    assert list(data) == ["Br5", "Br6", "Br8"]
+    assert list(models) == ["MATLAB", "Hybrax", "Hybrax, fine-tuned"]
+    # The export carries MATLAB's saved predictions unchanged.
+    reference = np.load(EXAMPLE / "matlab-reference.npz")["predictions"]
+    for index, culture in ((4, "Br5"), (5, "Br6"), (7, "Br8")):
+        np.testing.assert_array_equal(models["MATLAB"][culture][1], reference[index])
+    plot.save_predictions(tmp_path / "copy.npz", data, models, states, maxima)
+    copy = plot.load_predictions(tmp_path / "copy.npz")
+    np.testing.assert_array_equal(
+        copy[1]["Hybrax"]["Br6"][1], models["Hybrax"]["Br6"][1]
+    )
+    plot.plot_test_cultures(*copy, tmp_path / "plot.png", row_labels=("1", "2", "3"))
+    assert (tmp_path / "plot.png").stat().st_size > 0

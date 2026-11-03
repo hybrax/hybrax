@@ -115,7 +115,7 @@ WORK.mkdir(parents=True, exist_ok=True)
 REUSE_RUN = os.environ.get("HYBRAX_HEK293_REUSE_RUN") == "1"
 for filename in (
     "import_from_mat.py", "plot_data.py", "custom.py", "custom_nonneg.py",
-    "results.py",
+    "results.py", "plot_cultures.py",
     "source-data.mat", "feed.json",
     "matlab-reference.npz", "provenance.json", "prepare-config.json",
     "train-config.json", "train-config-nonneg.json",
@@ -684,7 +684,9 @@ for Hybrax and MATLAB to `comparison-scores.csv`:
 The plot shows biomass, mAb and glucose on the three test cultures. Open circles
 are synthetic measurements, solid lines are Hybrax predictions and dashed lines
 are the MATLAB predictions. Each panel title gives both models' NRMSE for that
-culture and state, with the best model in bold (all of them if tied).
+culture and state in the line colors, with an asterisk on the lowest (on all of
+them if tied). The legend gives the NRMSE over all 25 states of the test
+cultures.
 
 ```{code-cell} ipython3
 :tags: [remove-stderr]
@@ -812,7 +814,7 @@ display(comparison_nonneg.style.set_uuid("hek_nonneg").format("{:.4f}"))
 The fine-tuned model still fits about as well as MATLAB's, and its predictions
 fall below zero much less than before on the training and test cultures (on Br7,
 the reduction is smaller). The test plot from before, with the fine-tuned model
-added in green, shows the smaller mAb dips. The penalty is soft, so some small
+added as a blue dash-dotted line, shows the smaller mAb dips. The penalty is soft, so some small
 dips remain. We could increase the penalty further or ramp it up slowly, but
 this is left as an exercise for the reader.
 
@@ -839,7 +841,9 @@ runs `results.py`. It replaces any existing `prepared/`, `run/` and
 `test-cultures.png` for the main model, `run-nonneg-loss-curves.png`,
 `nonneg-scores.csv` and `nonneg-test-cultures.png` for the fine-tuned model, and
 `loss-curves.csv` and `selected-checkpoint.txt` for each run (with a
-`run-nonneg-` prefix for the fine-tuned one). Everything runs from the bundled
+`run-nonneg-` prefix for the fine-tuned one). The test plots are drawn from
+`test-predictions.npz`, which `results.py` writes first, so `plot_cultures.py`
+can redraw them without Hybrax. Everything runs from the bundled
 inputs, without MATLAB or network access. This page's executed runs are in
 `docs/source/_data/out/runs/gallery_hek293_lstm/run/` and `run-nonneg/`.
 
@@ -861,6 +865,13 @@ inputs, without MATLAB or network access. This page's executed runs are in
 ```{literalinclude} ../../../examples/gallery_hek293_lstm/results.py
 :language: python
 :caption: results.py
+```
+````
+
+````{dropdown} Test-culture plots: plot_cultures.py
+```{literalinclude} ../../../examples/gallery_hek293_lstm/plot_cultures.py
+:language: python
+:caption: plot_cultures.py
 ```
 ````
 

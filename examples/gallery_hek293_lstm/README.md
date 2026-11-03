@@ -48,6 +48,19 @@ Hybrax and MATLAB NRMSE for the training, Br7 and test cultures to
 `comparison-scores.csv`, and adds the fine-tuned model and the mean undershoot
 below zero in `nonneg-scores.csv`. `test-cultures.png` and
 `nonneg-test-cultures.png` plot biomass, mAb and glucose on the test cultures.
+Before each test plot, `results.py` saves the test-culture data and
+predictions to `test-predictions.npz` and then plots from that file, so the
+bundled file holds exactly what `nonneg-test-cultures.png` shows: MATLAB and
+both selected checkpoints. `plot_cultures.py` draws the plots and needs only
+NumPy and Matplotlib, so the file can be replotted without Hybrax or the
+trained models:
+
+```python
+import plot_cultures
+
+predictions = plot_cultures.load_predictions("test-predictions.npz")
+plot_cultures.plot_test_cultures(*predictions, "test-cultures.pdf")
+```
 Loss curves and selected epochs are written per run, with a `run-nonneg-`
 prefix for the fine-tuned run.
 
