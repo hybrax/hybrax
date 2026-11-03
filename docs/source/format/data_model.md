@@ -142,7 +142,9 @@ it controlled, or give it real dynamics.
 ## Bounds
 
 Every component, process variable and volume can carry `bounds=(lo, hi)`, with `None`
-meaning unbounded.
+meaning unbounded. Reactor-medium components default to `(0.0, None)`, because
+concentrations cannot be negative; pass `bounds=(None, None)` to remove that lower
+bound. Volume and process variables default to unbounded.
 
 ```{code-cell} ipython3
 component = hxf.ReactorMediumComponent(
@@ -156,6 +158,15 @@ component = hxf.ReactorMediumComponent(
 They exist so downstream consumers (`hybrax.train`'s loss module in particular) can build
 soft penalties from a declaration you made once, in the data, instead of duplicating it
 in every training config.
+
+:::{note}
+`hybrax.train` does not use bounds by default either: the default training loss
+ignores them, and nothing clamps model predictions. Validation only flags measurements
+that fall outside their bounds. To penalize predictions outside the bounds, build the
+loss with `hybrax.train.BoundsViolationLossModule` in your `custom.py`; the
+[HEK293 gallery example](../gallery/hek293_lstm.md#discourage-negative-concentrations)
+shows how.
+:::
 
 ## Units
 

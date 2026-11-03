@@ -35,8 +35,9 @@ loadings then maps these seven mode rates back onto the reaction terms for all
 The authors' experimental measurements are not in their public repository, so
 this example uses the synthetic data they provide instead: nine HEK293 cultures
 with 25 extracellular states [<a href="#ref-code">2</a>]. Here four PCA modes
-capture 99.66% of the normalized reacted-amount squared magnitude, so the ANN
-learns four rates that drive all 25 concentration balances.
+account for 99.66% of the normalized reacted amounts (see
+[The model](#the-model) for how this is measured), so the ANN learns four rates
+that drive all 25 concentration balances.
 
 This page is an illustrative example of how to implement a model similar to the
 authors' in Hybrax. For the sake of simplicity, we do not reproduce their custom
@@ -350,9 +351,12 @@ directions. The LSTM learns four instantaneous, biomass-specific coefficients
 concentration. It does not predict the cumulative PCA scores `z`.
 Hybrax integrates concentrations and adds feed and dilution separately.
 
-**Keep the approximation limits in mind.** The four directions capture 99.66%
-of the normalized cumulative-amount squared magnitude. This does not guarantee
-equally accurate instantaneous reaction rates.
+**Keep the approximation limits in mind.** The four directions account for
+99.66% of the sum of squares of the normalized cumulative reacted amounts; the
+remaining 0.34% is the squared error of the four-mode reconstruction. Because
+this PCA does not subtract column means, the figure is not a share of variance
+in the strict sense. It also does not guarantee equally accurate instantaneous
+reaction rates.
 ```
 
 The network learns the rates of these four modes, while the PCA matrix stays
@@ -449,7 +453,7 @@ default output head with a 4-to-4 linear layer that reads only the hidden
 state. It retains the default head's hidden-state weight columns and biases.
 After construction, the hook multiplies the LSTM input weights, recurrent
 weights and head weights by 0.1, leaving biases unchanged. The model has 532
-trainable parameters.
+trainable parameters; Ramos et al.'s MATLAB network has 614.
 
 The `input_features` override assembles those 27 standardized features:
 
@@ -521,9 +525,18 @@ above, so its residuals are differences of z-scores. The original MATLAB code
 instead divides each physical residual by that state's maximum concentration
 across all nine cultures, which we will reproduce here.
 
-Recall that the mean cancels when two z-scores are subtracted and multiplying
-the result by `SD / maximum` therefore gives the physical residual divided by
-the maximum:
+The loss excludes the first measurement, which prescribes the initial condition.
+The normalized mean squared error (NMSE) averages the squared normalized
+residuals over all 25 states and the 20 post-initial measurements. Every state
+has equal weight. NRMSE is its square root. Training, Br7 checkpoint selection
+and the reported comparisons all use this normalization.
+
+To get there from the scaled residuals, note that the mean cancels when two
+z-scores of the same state are subtracted:
+$(x - \mathrm{mean})/\mathrm{SD} - (y - \mathrm{mean})/\mathrm{SD} = (x - y)/\mathrm{SD}$.
+Multiplying this residual by `SD / maximum` therefore gives the physical
+residual divided by the maximum. `MatlabLoss` applies that ratio to the default
+loss:
 
 ```{literalinclude} ../../../examples/gallery_hek293_lstm/custom.py
 :language: python
@@ -534,12 +547,6 @@ the maximum:
 :language: python
 :pyobject: build_loss_module
 ```
-
-The loss excludes the first measurement, which prescribes the initial condition.
-The normalized mean squared error (NMSE) averages the squared normalized
-residuals over all 25 states and the 20 post-initial measurements. Every state
-has equal weight. NRMSE is its square root. Training, Br7 checkpoint selection
-and the reported comparisons all use this normalization.
 
 ````{dropdown} Complete custom.py
 ```{literalinclude} ../../../examples/gallery_hek293_lstm/custom.py
