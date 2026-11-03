@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import subprocess
+import sys
 from dataclasses import replace
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -166,6 +170,32 @@ def test_runlogger_writes_every_batch_and_truncates_existing_csv(tmp_path):
         for step in range(1, 4):
             run.record_step(_record(step))
     assert len(pd.read_csv(path)) == 3
+
+
+def test_runlogger_csv_is_utf8_under_ascii_locale(tmp_path):
+    path = tmp_path / "metrics.csv"
+    script = f"""
+import dataclasses, locale, sys
+sys.path.insert(0, {str(Path(__file__).parent)!r})
+from test_logging import _record
+from hybrax.train.logging import RunLogger
+assert locale.getpreferredencoding(False).lower() not in ("utf-8", "utf8")
+with RunLogger(metrics_csv={str(path)!r}) as run:
+    run.start(
+        target_names=("biomass",),
+        process_names=("culture_\\u03bc", "p2"),
+        total_updates=1,
+        compile_warmup_seconds=0.0,
+    )
+    run.record_step(
+        dataclasses.replace(_record(1), process_names=("culture_\\u03bc", "p2"))
+    )
+"""
+    env = {**os.environ, "LC_ALL": "C", "PYTHONUTF8": "0", "PYTHONCOERCECLOCALE": "0"}
+    subprocess.run([sys.executable, "-c", script], env=env, check=True)
+    assert pd.read_csv(path, encoding="utf-8").loc[0, "process_names"] == (
+        "culture_\u03bc;p2"
+    )
 
 
 def test_runlogger_reports_failed_segments(caplog):

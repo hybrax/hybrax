@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
+import csv
 import logging
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Self
-
-import pandas as pd
 
 from .serialization import dumps_json
 
@@ -256,6 +255,8 @@ class RunLogger:
         self._decimals = int(log_decimals)
         self._logger = logging.getLogger(logger_name)
         self._formatter: _ConsoleTableFormatter | None = None
+        self._csv_file = None
+        self._csv_writer = None
         self._jsonl_file = None
         self._history: dict[str, Any] = {
             "mean_loss_by_step": [],
@@ -301,9 +302,15 @@ class RunLogger:
         )
         if self._metrics_csv_path is not None:
             self._metrics_csv_path.parent.mkdir(parents=True, exist_ok=True)
-            pd.DataFrame(columns=_row(_DUMMY_RECORD, strings=True)).to_csv(
-                self._metrics_csv_path, index=False
+            # Line-buffered so the file stays tail-able and crash-safe without
+            # reopening it on every step.
+            # Explicit UTF-8 like pandas' to_csv; the locale default may not
+            # encode non-ASCII process or target names.
+            self._csv_file = self._metrics_csv_path.open(
+                "w", encoding="utf-8", newline="", buffering=1
             )
+            self._csv_writer = csv.writer(self._csv_file, lineterminator="\n")
+            self._csv_writer.writerow(_row(_DUMMY_RECORD, strings=True))
         if self._metrics_jsonl_path is not None:
             self._metrics_jsonl_path.parent.mkdir(parents=True, exist_ok=True)
             self._jsonl_file = self._metrics_jsonl_path.open("w")
@@ -388,10 +395,8 @@ class RunLogger:
                 record.epoch_mean_loss,
                 record.epoch_time_seconds,
             )
-        if self._metrics_csv_path is not None:
-            pd.DataFrame([_row(record, strings=True)]).to_csv(
-                self._metrics_csv_path, mode="a", header=False, index=False
-            )
+        if self._csv_writer is not None:
+            self._csv_writer.writerow(_row(record, strings=True).values())
         if self._jsonl_file is not None:
             self._jsonl_file.write(dumps_json(_row(record, strings=False)) + "\n")
 
@@ -402,6 +407,8 @@ class RunLogger:
             Every ``_history`` series (loss, timing, per-process/per-target
             breakdowns, holdout results) plus ``target_names``.
         """
+        if self._csv_file is not None:
+            self._csv_file.flush()
         if self._jsonl_file is not None:
             self._jsonl_file.flush()
         return self.snapshot()
@@ -417,7 +424,11 @@ class RunLogger:
         return history
 
     def close(self) -> None:
-        """Close the JSONL file handle, if one is open."""
+        """Close the CSV and JSONL file handles, if open."""
+        if self._csv_file is not None:
+            self._csv_file.close()
+            self._csv_file = None
+            self._csv_writer = None
         if self._jsonl_file is not None:
             self._jsonl_file.close()
             self._jsonl_file = None
