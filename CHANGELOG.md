@@ -21,6 +21,18 @@ public API; such entries are marked **Breaking**.
 - jax now needs at least 0.9, the oldest version hybrax is tested with. The upper
   bound (`<0.10.1`) stays.
 - jaxlib is no longer a direct dependency; jax installs the matching jaxlib itself.
+- Training updates spend far less time outside the compiled step: the batch is
+  gathered inside the jitted step, step outputs are fetched in one transfer, and
+  `metrics.csv` rows are written to an open file instead of through pandas. On a
+  165-process benchmark this cut the host overhead per update from about 40 ms to
+  under 1 ms (1.44x faster updates). Results are unchanged.
+
+### Removed
+
+- **Breaking:** the `rebuild_count` column of `metrics.csv` and `metrics.jsonl`,
+  and the `train_step_rebuild_count` and `train_step_input_signature` fields of
+  `TrainHarnessResult`. The train step's input shapes are fixed, so it was never
+  rebuilt and these were always 0 or constant.
 
 ## [0.1.0] - 2026-10-29
 
