@@ -230,13 +230,14 @@ def score(work, models, name):
     return scores
 
 
-def test_scores(work, models, name):
-    """Score NRMSE and undershoot on the test cultures only."""
+def penalty_scores(work, models, name):
+    """Score Br7 NRMSE, and NRMSE and undershoot on the test cultures."""
     source, values, maxima = measurement_values(work, models)
     tests = SPLITS["Test"]
     scores = pd.DataFrame(
         {
             label: {
+                "Br7 NRMSE": nrmse(source, prediction, maxima, ("Br7",)),
                 "Test NRMSE": nrmse(source, prediction, maxima, tests),
                 "Test undershoot [%]": undershoot(prediction, maxima, tests),
             }
@@ -293,5 +294,5 @@ if __name__ == "__main__":
     plot_test_cultures(work, main, "test-cultures.png")
     penalty = predict_cultures(work, "run-nonneg", epochs["run-nonneg"])
     both = main | {"Hybrax with penalty": penalty}
-    print(test_scores(work, both, "nonneg-scores.csv"))
+    print(penalty_scores(work, both, "nonneg-scores.csv"))
     plot_test_cultures(work, both, "nonneg-test-cultures.png")

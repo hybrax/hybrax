@@ -177,16 +177,17 @@ def test_hek_scores_pool_splits_at_measurement_times(tmp_path, monkeypatch):
     # Pool errors over cultures before taking the root: (1² + 2² + 4²) / (3 * 2).
     assert hybrax["Test"] == pytest.approx(np.sqrt(3.5))
     np.testing.assert_allclose(scores.loc["MATLAB"], 1.0)
-    tests = results.test_scores(tmp_path, {"Hybrax": dense}, "tests.csv")
+    tests = results.penalty_scores(tmp_path, {"Hybrax": dense}, "tests.csv")
+    assert tests.loc["Hybrax", "Br7 NRMSE"] == pytest.approx(np.sqrt(2.0))
     assert tests.loc["Hybrax", "Test NRMSE"] == pytest.approx(np.sqrt(3.5))
     # The test cultures predict A = 2 after t=0: no undershoot.
     assert tests.loc["Hybrax", "Test undershoot [%]"] == 0.0
     dense["Br5"][1][1, 0] = -1.0  # 50% of A's maximum, one of 12 values.
-    tests = results.test_scores(tmp_path, {"Hybrax": dense}, "tests.csv")
+    tests = results.penalty_scores(tmp_path, {"Hybrax": dense}, "tests.csv")
     assert tests.loc["Hybrax", "Test undershoot [%]"] == pytest.approx(50 / 12)
     # Training-culture undershoot does not count.
     dense["Br1"][1][1, 0] = -1.0
-    tests = results.test_scores(tmp_path, {"Hybrax": dense}, "tests.csv")
+    tests = results.penalty_scores(tmp_path, {"Hybrax": dense}, "tests.csv")
     assert tests.loc["Hybrax", "Test undershoot [%]"] == pytest.approx(50 / 12)
 
 

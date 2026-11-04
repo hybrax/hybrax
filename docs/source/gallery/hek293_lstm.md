@@ -137,8 +137,8 @@ def hxt_cli(command, config, *args):
 
 sys.path.insert(0, str(WORK))
 from results import (
-    plot_loss_curves, plot_test_cultures, predict_cultures, score,
-    select_checkpoint, test_scores,
+    penalty_scores, plot_loss_curves, plot_test_cultures, predict_cultures,
+    score, select_checkpoint,
 )
 
 subprocess.run([sys.executable, "import_from_mat.py"], cwd=WORK, env=ENV, check=True)
@@ -788,7 +788,7 @@ error until about epoch 1,100. After that, both change little. Checkpoint
 selection again uses the lowest Br7 loss, which includes the penalty.
 
 The table compares the penalized model with the model from before and with
-MATLAB on the test cultures. "Undershoot" is the amount by which a prediction
+MATLAB on Br7 and the test cultures. "Undershoot" is the amount by which a prediction
 falls below zero, as a percentage of the state's maximum, averaged over all
 states and measurement times (predictions at or above zero count as zero):
 
@@ -799,7 +799,7 @@ print(f"Selected checkpoint: epoch {selected_nonneg:,}")
 both = main_model | {
     "Hybrax with penalty": predict_cultures(WORK, "run-nonneg", selected_nonneg)
 }
-comparison_nonneg = test_scores(WORK, both, "nonneg-scores.csv")
+comparison_nonneg = penalty_scores(WORK, both, "nonneg-scores.csv")
 display(comparison_nonneg.style.set_uuid("hek_nonneg").format("{:.4f}"))
 ```
 

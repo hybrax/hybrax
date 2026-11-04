@@ -43,8 +43,8 @@ loss including the penalty.
 `results.py` reads the loss curves from `metrics.csv`, selects the checkpoints,
 and simulates all nine cultures with each selected checkpoint. It writes
 Hybrax and MATLAB NRMSE for the training, Br7 and test cultures to
-`comparison-scores.csv`. `nonneg-scores.csv` compares all three models on the
-test cultures, with their NRMSE and mean undershoot below zero.
+`comparison-scores.csv`. `nonneg-scores.csv` compares all three models by
+their Br7 NRMSE and by their test NRMSE and mean undershoot below zero.
 `test-cultures.png` and `nonneg-test-cultures.png` plot biomass, mAb and
 glucose on the test cultures.
 Before each test plot, `results.py` saves the test-culture data and
