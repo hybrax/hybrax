@@ -29,8 +29,8 @@ run directory (config.json, custom.py, metrics.csv, checkpoints/, model/)
 optional predictions.csv / prediction plots / loss curves / losses.csv / loo summary
 ```
 
-All subcommands are config-driven (`--config run.json`), with documented CLI
-options for selected overrides. See
+All subcommands except `plot` are config-driven (`--config run.json`), with
+documented CLI options for selected overrides. See
 [03_data_preparation.md](03_data_preparation.md) for prepare and
 [05_train_forward_loo.md](05_train_forward_loo.md) for train/forward/loo
 internals.
@@ -153,6 +153,20 @@ Top-level `config.json` anchors the expected artifact identity; the artifact
 manifest is authoritative for runtime inputs and folds. Per-fold completion
 records bind to that identity and fold ID. Missing or incomplete records are
 rerun, while present malformed or mismatched identity records fail loudly.
+
+### `hybrax plot`
+
+Draw a run's training plots from its `metrics.csv`, also while training is
+still running. Training itself draws them only after the final update.
+
+| Argument | Meaning |
+|---|---|
+| `RUN` | A run directory, or the path to a `metrics.csv`. The plots are written next to `metrics.csv`. |
+| `--kind` | `loss` (`loss_curve.png`) or `grad-norm` (`grad_norm_curve.png`); repeatable. Default: all kinds. |
+
+Training and the command share the writers in `postprocessing.TRAINING_PLOTS`;
+new kinds are added there. A last row without its closing newline is skipped.
+A file without the training columns, or without complete step rows, exits 1.
 
 ## Run directory layout
 

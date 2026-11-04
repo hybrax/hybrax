@@ -1,8 +1,9 @@
-"""The ``hybrax`` command line: ``prepare``, ``train``, ``forward``, and ``loo``."""
+"""The `hybrax` command line: `prepare`, `train`, `forward`, `loo`, and `plot`."""
 
 from __future__ import annotations
 
 import argparse
+import csv
 import logging
 import os
 import shutil
@@ -40,7 +41,12 @@ from .loo import (
     run_loo_cv,
     train_prepared_fold,
 )
-from .postprocessing import aggregate_dense_exports, export_predictions_csv
+from .postprocessing import (
+    TRAINING_PLOTS,
+    aggregate_dense_exports,
+    export_predictions_csv,
+    read_training_history,
+)
 from .prepare import prepare_artifact
 from .run_config import (
     ModelRef,
@@ -261,6 +267,37 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Python logging level.",
     )
     loo_parser.set_defaults(handler=_handle_loo)
+
+    # ---- plot ----
+    plot_parser = subparsers.add_parser(
+        "plot",
+        help=(
+            "Draw a run's training plots from its metrics.csv. Works while "
+            "training is still running."
+        ),
+    )
+    plot_parser.add_argument(
+        "run",
+        metavar="RUN",
+        help=(
+            "Run directory, or the path to a metrics.csv. The plots are written "
+            "next to metrics.csv."
+        ),
+    )
+    plot_parser.add_argument(
+        "--kind",
+        action="append",
+        choices=list(TRAINING_PLOTS),
+        default=None,
+        help="Plot to draw; repeat for several. Default: all of them.",
+    )
+    plot_parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="Python logging level.",
+    )
+    plot_parser.set_defaults(handler=_handle_plot)
 
     return parser
 
@@ -1258,6 +1295,20 @@ def _handle_loo(args: argparse.Namespace) -> int:
         result.devices_per_fold,
         result.aggregate,
     )
+    return 0
+
+
+def _handle_plot(args: argparse.Namespace) -> int:
+    _configure_logging(args.log_level)
+    run = Path(args.run)
+    metrics_csv = run / "metrics.csv" if run.is_dir() else run
+    try:
+        history = read_training_history(metrics_csv)
+    except (OSError, ValueError, csv.Error) as exc:
+        logging.getLogger(__name__).error("plot: %s", exc)
+        return 1
+    for kind in dict.fromkeys(args.kind or TRAINING_PLOTS):
+        TRAINING_PLOTS[kind](history, metrics_csv.parent)
     return 0
 
 

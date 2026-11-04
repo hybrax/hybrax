@@ -71,10 +71,9 @@ from .model_api import (
     partition_trainable,
 )
 from .postprocessing import (
+    TRAINING_PLOTS,
     DenseProcessExport,
     dense_exports_from_save_outputs,
-    plot_grad_norm_curve,
-    plot_loss_curve,
 )
 from .preflight import check_continuous_flow_integration
 from .run_config import CheckpointConfig, RunConfig
@@ -2288,9 +2287,8 @@ def train_collection(
             # Drawn once at the end: a 50-panel loss plot takes seconds, and
             # training would wait for every redraw.
             _write_training_plots(
-                history=history,
-                holdout_per_target_by_step=holdout_per_target_so_far,
-                output_dir=Path(cfg.checkpoint_dir).parent,
+                {**history, "holdout_per_target_by_step": holdout_per_target_so_far},
+                Path(cfg.checkpoint_dir).parent,
             )
 
     return TrainHarnessResult(
@@ -2302,37 +2300,14 @@ def train_collection(
     )
 
 
-def _write_training_plots(
-    *,
-    history: dict[str, Any],
-    holdout_per_target_by_step: dict[int, tuple[float, ...]],
-    output_dir: Path,
-) -> None:
-    """Write the run-level loss and gradient-norm plots."""
-    step = len(history["mean_loss_by_step"])
-    try:
-        plot_loss_curve(
-            history["mean_loss_by_step"],
-            output_dir / "loss_curve.png",
-            title=f"Training loss (through step {step})",
-            per_target_loss_by_step=history["per_target_loss_by_step"],
-            target_names=history["target_names"],
-            monitor_loss_by_step=history["holdout_loss_by_step"] or None,
-            monitor_per_target_by_step=holdout_per_target_by_step or None,
-            monitor_label=history["holdout_label"],
-        )
-    except Exception:
-        # A diagnostic PNG must not fail an otherwise valid training run.
-        logger.exception("failed to write loss curve")
-
-    try:
-        plot_grad_norm_curve(
-            history["grad_norm_by_step"],
-            output_dir / "grad_norm_curve.png",
-            title=f"Gradient norm (through step {step})",
-        )
-    except Exception:
-        logger.exception("failed to write gradient norm curve")
+def _write_training_plots(history: dict[str, Any], output_dir: Path) -> None:
+    """Write the run-level training plots, logging instead of raising."""
+    for kind, write in TRAINING_PLOTS.items():
+        try:
+            write(history, output_dir)
+        except Exception:
+            # A diagnostic PNG must not fail an otherwise valid training run.
+            logger.exception("failed to write the %s training plot", kind)
 
 
 @dataclass(frozen=True)

@@ -360,6 +360,16 @@ See [The Python API](save_load_predict.md).
 | `grad_norm_curve.png` | Raw gradient norm: is the clip active all the time? |
 | `config.json`, `custom.py` | Exactly what was run. |
 
+The two plots are drawn once, when training finishes. To see them during a run, or
+for a run that stopped early, draw them from `metrics.csv`:
+
+```bash
+hybrax plot run/                 # or the path to a metrics.csv
+hybrax plot run/ --kind loss     # only loss_curve.png; also: grad-norm
+```
+
+This writes the same files next to `metrics.csv` and does not interrupt training.
+
 Trajectories, rates and per-process figures are not part of `train`'s own output:
 point [`forward`](forward.md) at the run directory (`output.predictions` and
 `output.plots`) to get those. **Judge the fit by the rates**, not only the

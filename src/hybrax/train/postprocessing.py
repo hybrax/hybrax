@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -472,6 +474,112 @@ def plot_grad_norm_curve(
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
     logger.info("gradient norm curve saved to %s", output_path)
+
+
+def write_loss_curve(history: Mapping[str, Any], output_dir: Path) -> Path:
+    """Write `loss_curve.png` from a training history into `output_dir`."""
+    path = Path(output_dir) / "loss_curve.png"
+    plot_loss_curve(
+        history["mean_loss_by_step"],
+        path,
+        title=f"Training loss (through step {len(history['mean_loss_by_step'])})",
+        per_target_loss_by_step=history["per_target_loss_by_step"],
+        target_names=history["target_names"],
+        monitor_loss_by_step=history["holdout_loss_by_step"] or None,
+        monitor_per_target_by_step=history["holdout_per_target_by_step"] or None,
+        monitor_label=history["holdout_label"],
+    )
+    return path
+
+
+def write_grad_norm_curve(history: Mapping[str, Any], output_dir: Path) -> Path:
+    """Write `grad_norm_curve.png` from a training history into `output_dir`."""
+    path = Path(output_dir) / "grad_norm_curve.png"
+    plot_grad_norm_curve(
+        history["grad_norm_by_step"],
+        path,
+        title=f"Gradient norm (through step {len(history['mean_loss_by_step'])})",
+    )
+    return path
+
+
+# Run-level training plots by `hybrax plot --kind` name. Training draws all of
+# them once at the end; `hybrax plot` redraws them from `metrics.csv`.
+TRAINING_PLOTS: dict[str, Callable[[Mapping[str, Any], Path], Path]] = {
+    "loss": write_loss_curve,
+    "grad-norm": write_grad_norm_curve,
+}
+
+
+_HISTORY_COLUMNS = (
+    "step",
+    "mean_loss",
+    "per_target_loss",
+    "target_names",
+    "grad_norm",
+    "holdout_loss",
+    "holdout_label",
+)
+
+
+def read_training_history(metrics_csv: str | Path) -> dict[str, Any]:
+    """Read the plotted series of a training history back from `metrics.csv`.
+
+    Returns the keys the `TRAINING_PLOTS` writers use. The file may still be
+    written to, so a last row without its closing newline is skipped. The
+    `holdout_per_target_loss` column is optional, since older runs lack it.
+
+    Raises:
+        ValueError: If the file is not a training `metrics.csv` or holds no
+            complete step row.
+    """
+    data = Path(metrics_csv).read_bytes()
+    # Cut at the last newline: a byte, so never inside a UTF-8 character.
+    text = data[: data.rfind(b"\n") + 1].decode("utf-8")
+    reader = csv.reader(io.StringIO(text), strict=True)
+    records = []
+    try:
+        records.extend(reader)
+    except csv.Error:
+        # A quoted field with a newline can still be open at the cut. Only
+        # that last record may be unfinished; anything earlier is corrupt.
+        if reader.line_num < text.count("\n"):
+            raise
+    if not records:
+        raise ValueError(f"{metrics_csv} holds no training steps yet")
+    header, *body = records
+    missing = [column for column in _HISTORY_COLUMNS if column not in header]
+    if missing:
+        raise ValueError(f"{metrics_csv} is missing metrics.csv columns {missing}")
+    rows = [dict(zip(header, record, strict=True)) for record in body]
+    if not rows:
+        raise ValueError(f"{metrics_csv} holds no training steps yet")
+
+    def floats(cell: str | None) -> tuple[float, ...]:
+        return tuple(float(value) for value in cell.split(";")) if cell else ()
+
+    def at_holdout_steps(column: str, parse: Callable[[str], Any]) -> dict[int, Any]:
+        return {int(row["step"]): parse(row[column]) for row in rows if row.get(column)}
+
+    names = rows[0]["target_names"]
+    return {
+        "mean_loss_by_step": tuple(float(row["mean_loss"]) for row in rows),
+        "per_target_loss_by_step": tuple(
+            floats(row["per_target_loss"]) for row in rows
+        ),
+        "target_names": tuple(names.split(";")) if names else (),
+        "grad_norm_by_step": tuple(
+            float(row["grad_norm"]) for row in rows if row["grad_norm"]
+        ),
+        "holdout_loss_by_step": at_holdout_steps("holdout_loss", float),
+        "holdout_per_target_by_step": at_holdout_steps(
+            "holdout_per_target_loss", floats
+        ),
+        "holdout_label": next(
+            (row["holdout_label"] for row in reversed(rows) if row["holdout_label"]),
+            None,
+        ),
+    }
 
 
 def plot_cross_fold_loss_curves(

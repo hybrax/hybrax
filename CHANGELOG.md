@@ -13,6 +13,9 @@ public API; such entries are marked **Breaking**.
   (`holdout_per_target_loss`) and by holdout process (`holdout_per_process_loss`,
   `holdout_process_names`) at every checkpoint boundary, mirroring the training
   columns.
+- `hybrax plot RUN_DIR` draws `loss_curve.png` and `grad_norm_curve.png` from a
+  run's `metrics.csv`, also while training is still running. `--kind loss` or
+  `--kind grad-norm` draws only one of them.
 
 ### Changed
 

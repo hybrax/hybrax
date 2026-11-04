@@ -385,9 +385,9 @@ def test_training_plots_once_after_the_final_update(monkeypatch, tmp_path: Path)
     def record_grad_norm_plot(grad_norms, *_args, **_kwargs):
         plotted_grad_norm_steps.append(len(grad_norms))
 
-    monkeypatch.setattr("hybrax.train.harness.plot_loss_curve", record_loss_plot)
+    monkeypatch.setattr("hybrax.train.postprocessing.plot_loss_curve", record_loss_plot)
     monkeypatch.setattr(
-        "hybrax.train.harness.plot_grad_norm_curve", record_grad_norm_plot
+        "hybrax.train.postprocessing.plot_grad_norm_curve", record_grad_norm_plot
     )
 
     _run_train(checkpoint_dir=tmp_path / "checkpoints", checkpoint_every=1, epochs=3)
@@ -403,8 +403,8 @@ def test_training_without_checkpoints_writes_no_plots(monkeypatch, tmp_path: Pat
     def record_plot(*args, **_kwargs):
         plotted.append(args)
 
-    monkeypatch.setattr("hybrax.train.harness.plot_loss_curve", record_plot)
-    monkeypatch.setattr("hybrax.train.harness.plot_grad_norm_curve", record_plot)
+    monkeypatch.setattr("hybrax.train.postprocessing.plot_loss_curve", record_plot)
+    monkeypatch.setattr("hybrax.train.postprocessing.plot_grad_norm_curve", record_plot)
 
     _run_train(checkpoint_dir=None, checkpoint_every=1, epochs=2)
 
@@ -414,8 +414,8 @@ def test_training_without_checkpoints_writes_no_plots(monkeypatch, tmp_path: Pat
 @pytest.mark.parametrize(
     ("plotter", "message"),
     [
-        ("plot_loss_curve", "failed to write loss curve"),
-        ("plot_grad_norm_curve", "failed to write gradient norm curve"),
+        ("plot_loss_curve", "failed to write the loss training plot"),
+        ("plot_grad_norm_curve", "failed to write the grad-norm training plot"),
     ],
 )
 def test_training_survives_plot_failure(
@@ -424,7 +424,7 @@ def test_training_survives_plot_failure(
     def fail_plot(*_args, **_kwargs):
         raise OSError("disk full")
 
-    monkeypatch.setattr(f"hybrax.train.harness.{plotter}", fail_plot)
+    monkeypatch.setattr(f"hybrax.train.postprocessing.{plotter}", fail_plot)
 
     result = _run_train(
         checkpoint_dir=tmp_path / "checkpoints", checkpoint_every=1, epochs=1
