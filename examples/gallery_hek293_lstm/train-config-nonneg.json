@@ -11,17 +11,17 @@
   },
   "custom_py": "custom_nonneg.py",
   "train": {
-    "epochs": 1000,
+    "epochs": 2000,
     "seed": 0,
     "allow_stateful_models": true,
-    "learning_rate": 0.0001,
+    "learning_rate": 0.001,
     "devices": 1,
     "holdout_processes": [
       "Br7"
     ]
   },
   "checkpoint": {
-    "every": 10,
+    "every": 50,
     "keep_best": 20,
     "select_by": "holdout_loss"
   },
@@ -141,6 +141,6 @@
       1.0757387263020903,
       72.8566064704017
     ],
-    "nonnegativity_weight": 10
+    "nonnegativity_weight": 20
   }
 }

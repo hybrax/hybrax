@@ -58,12 +58,13 @@ in `examples/gallery_hek293_lstm/`:
 > [Stateful models](stateful.md) explains recurrent reaction modules in more
 > depth.
 
-1. **Import** (`import_from_mat.py`; creates `data.json`, `train-config.json`).
-   The importer reads the authors' MAT file and converts the nine cultures into
-   a Hybrax `BioProcessCollection` with concentrations, reactor volume, feed and
-   feed composition. It computes the PCA reaction matrix and stores it in every
-   process as a `ReactionOde`. It also writes the training configuration,
-   because the config carries statistics computed from all nine cultures (see
+1. **Import** (`import_from_mat.py`; creates `data.json`, `train-config.json`,
+   `train-config-nonneg.json`). The importer reads the authors' MAT file and
+   converts the nine cultures into a Hybrax `BioProcessCollection` with
+   concentrations, reactor volume, feed and feed composition. It computes the
+   PCA reaction matrix and stores it in every process as a `ReactionOde`. It
+   also writes the training configurations, because they carry statistics
+   computed from all nine cultures (see
    [Validate the data and train the model](#validate-the-data-and-train-the-model)
    for why).
 2. **Prepare** (`prepare-config.json`; creates `prepared/prepared.json`).
@@ -78,21 +79,21 @@ in `examples/gallery_hek293_lstm/`:
    its hook functions by name. Here they build the LSTM reaction module, the
    input scaling, and a loss that uses the same max-normalized concentration
    errors as MATLAB. Training writes losses and checkpoints to `run/`. The
-   config requests 2,000 epochs with validation every 10 epochs.
+   config requests 2,000 epochs with validation every 50 epochs.
 4. **Results** (`plot_data.py`, `results.py`; creates results CSVs and plot
    PNGs). `plot_data.py` plots the source data before training. `results.py`
    selects the checkpoint with the lowest validation loss and compares it with
    the authors' saved MATLAB predictions.
-5. **Fine-tune** (`train-config-nonneg.json`, `custom_nonneg.py`; creates
-   `run-nonneg/`). Starts from the selected checkpoint with `--init-from` and
-   adds a penalty on negative concentrations to the loss. `results.py` then
-   compares the fine-tuned model with the first one and with MATLAB. See
+5. **Train with a penalty** (`train-config-nonneg.json`, `custom_nonneg.py`;
+   creates `run-nonneg/`). Trains a second model the same way, with a penalty
+   on negative concentrations added to the loss. `results.py` then compares it
+   with the first model and with MATLAB. See
    [Discourage negative concentrations](#discourage-negative-concentrations).
 
 The data therefore flow from `source-data.mat` through the importer to
 `data.json`, through `hybrax prepare` to `prepared/`, and through
-`hybrax train` to `run/` and, for the fine-tune, `run-nonneg/`. The `run.py`
-script runs all steps in order.
+`hybrax train` to `run/` and, for the penalized model, `run-nonneg/`. The
+`run.py` script runs all steps in order.
 
 ```{code-cell} ipython3
 :tags: [remove-cell]
@@ -137,7 +138,7 @@ def hxt_cli(command, config, *args):
 sys.path.insert(0, str(WORK))
 from results import (
     plot_loss_curves, plot_test_cultures, predict_cultures, score,
-    select_checkpoint,
+    select_checkpoint, test_scores,
 )
 
 subprocess.run([sys.executable, "import_from_mat.py"], cwd=WORK, env=ENV, check=True)
@@ -263,8 +264,8 @@ All nine cultures go into `data.json`. The split lives in the training
 configuration: `data.processes` lists the training cultures and
 `train.holdout_processes` names Br7. This makes Hybrax simulate Br7 with the
 current model and evaluate the same loss used for training at each checkpoint
-boundary. Br7 is not used for gradient updates. Here `checkpoint.every=10` means
-this happens every 10 epochs. With `checkpoint.select_by="holdout_loss"` and
+boundary. Br7 is not used for gradient updates. Here `checkpoint.every=50` means
+this happens every 50 epochs. With `checkpoint.select_by="holdout_loss"` and
 `checkpoint.keep_best=20`, Hybrax retains the 20 checkpoints with the lowest Br7
 losses, plus the final checkpoint.
 
@@ -604,7 +605,7 @@ fit PCA and all other preprocessing on the training cultures only).
 The rest of the config sets up the run. Training uses the five training cultures
 in every update for 2,000 epochs, with seed 0 and Adam at a constant learning
 rate of `1e-3`. Hybrax evaluates Br7 at every checkpoint, which here means every
-10 epochs. It keeps the 20 checkpoints with the lowest Br7 losses plus the final
+50 epochs. It keeps the 20 checkpoints with the lowest Br7 losses plus the final
 one. The test cultures are not part of training at all.
 
 To run the steps yourself, switch to the example directory, regenerate the
@@ -718,7 +719,7 @@ concentration lower bounds:
 :pyobject: build_loss_module
 ```
 
-We give negative concentrations 10 times as much weight as regular residuals.
+We give negative concentrations 20 times as much weight as regular residuals.
 The weight is `nonnegativity_weight` in the config's `custom` block, so you
 can easily try other values. For this number to mean what it says, the penalty
 has to use the same normalization as the fit loss, so `MatlabLoss` rescales the
@@ -730,23 +731,19 @@ penalty terms to divide by the state's maximum instead, like the fit residuals:
 ```
 
 The loss now has 50 terms, 25 fits and 25 penalties. Hybrax averages them,
-which scales both kinds of terms equally and keeps the 10× ratio.
+which scales both kinds of terms equally and keeps the 20× ratio.
 
-### Fine-tune the trained model
+### Train with the penalty
 
-We could train a new model with the negativity penalty from scratch, but instead
-we'll show how to do fine-tuning in Hybrax and use the selected checkpoint from
-above as a base for the follow-up training round. Because it was trained already
-and we don't want to change the weights too much, we use a 10× lower learning
-rate of `1e-4` and train for another 1,000 epochs. `train-config-nonneg.json`
-differs from `train-config.json` only in these settings:
+We train a new model with the penalty from scratch, with the same settings as
+before. `train-config-nonneg.json` differs from `train-config.json` only in the
+custom code, the output directory and the penalty weight:
 
 ```json
 {
   "custom_py": "custom_nonneg.py",
-  "train": {"epochs": 1000, "learning_rate": 0.0001},
   "output": {"dir": "run-nonneg"},
-  "custom": {"nonnegativity_weight": 10}
+  "custom": {"nonnegativity_weight": 20}
 }
 ```
 
@@ -757,23 +754,20 @@ differs from `train-config.json` only in these settings:
 ```
 ````
 
-`hybrax train --init-from <dir>` starts the run from the parameters in a
-checkpoint directory. It uses a fresh optimizer state, so it is meant for
-fine-tuning like this, not for exactly resuming an interrupted run. Here we
-point it at the checkpoint selected above, from epoch 1,910:
-
 ```bash
-hybrax train --config train-config-nonneg.json --init-from run/checkpoints/step_01910
+hybrax train --config train-config-nonneg.json
 ```
+
+Alternatively, we could use `hybrax train --init-from <dir>` to fine-tune the
+model we trained above with the penalty added to the loss, which is also a
+valid approach. In this example, training from scratch gave a better balance
+between fit and negative predictions, so we do that instead.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
 
-# The command above names the selected epoch; fail loudly if a retrain changes it.
-assert selected_epoch == 1910, selected_epoch
-init_from = f"run/checkpoints/step_{selected_epoch:05d}"
 if not REUSE_RUN:
-    hxt_cli("train", "train-config-nonneg.json", "--init-from", init_from)
+    hxt_cli("train", "train-config-nonneg.json")
 print("Run directory: ../_data/out/runs/gallery_hek293_lstm/run-nonneg")
 ```
 
@@ -781,42 +775,39 @@ print("Run directory: ../_data/out/runs/gallery_hek293_lstm/run-nonneg")
 :tags: [remove-stderr]
 
 selected_nonneg = select_checkpoint(WORK, "run-nonneg")
-plot_loss_curves(WORK, "run-nonneg", log_scale=False)
+plot_loss_curves(WORK, "run-nonneg")
 display(Image(filename=str(WORK / "run-nonneg-loss-curves.png")))
 ```
 
 Solid lines show the NRMSE of the concentration fit, as before. The thin dashed
 lines, *Hybrax, fit + penalty*, are the square root of the fit NMSE plus the
-penalty, in the same units. On the training cultures, the penalty drops quickly,
-while the fit gets worse at first and then partially recovers without reaching
-its initial level: this is the trade-off for fewer negative predictions.
-Checkpoint selection again uses the lowest Br7 loss, which includes the penalty.
-After about epoch 400, the Br7 penalty grows again while the fit changes little,
-so the selected checkpoint is not the last one. At the selected checkpoint, the
-Br7 fit error is even slightly lower than before.
+penalty, in the same units. On the training cultures, the penalty is small
+throughout, so the two lines almost coincide. On Br7, the penalty is larger
+than the fit error early on. After a brief rise, it falls together with the fit
+error until about epoch 1,100. After that, both change little. Checkpoint
+selection again uses the lowest Br7 loss, which includes the penalty.
 
-The table compares the fine-tuned model with the model from before and with
-MATLAB. "Undershoot" is the amount by which a prediction falls below zero, as a
-percentage of the state's maximum, averaged over all states and measurement
-times (predictions at or above zero count as zero):
+The table compares the penalized model with the model from before and with
+MATLAB on the test cultures. "Undershoot" is the amount by which a prediction
+falls below zero, as a percentage of the state's maximum, averaged over all
+states and measurement times (predictions at or above zero count as zero):
 
 ```{code-cell} ipython3
 :tags: [remove-stderr]
 
 print(f"Selected checkpoint: epoch {selected_nonneg:,}")
 both = main_model | {
-    "Hybrax, fine-tuned": predict_cultures(WORK, "run-nonneg", selected_nonneg)
+    "Hybrax with penalty": predict_cultures(WORK, "run-nonneg", selected_nonneg)
 }
-comparison_nonneg = score(WORK, both, "nonneg-scores.csv", with_undershoot=True)
+comparison_nonneg = test_scores(WORK, both, "nonneg-scores.csv")
 display(comparison_nonneg.style.set_uuid("hek_nonneg").format("{:.4f}"))
 ```
 
-The fine-tuned model still fits about as well as MATLAB's, and its predictions
-fall below zero much less than before on the training and test cultures (on Br7,
-the reduction is smaller). The test plot from before, with the fine-tuned model
-added as a blue dash-dotted line, shows the smaller mAb dips. The penalty is soft, so some small
-dips remain. We could increase the penalty further or ramp it up slowly, but
-this is left as an exercise for the reader.
+The penalized model fits the test cultures about as well as MATLAB's, slightly
+worse than the model without the penalty, and its predictions fall below zero
+much less than either. The test plot from before, with the penalized model
+added as a blue dash-dotted line, shows the smaller mAb dips. The penalty is
+soft, so some small dips remain.
 
 ```{code-cell} ipython3
 :tags: [remove-stderr]
@@ -835,16 +826,16 @@ python run.py
 
 The script regenerates `data.json`, `train-config.json` and
 `train-config-nonneg.json`, plots the source data, prepares the collection,
-trains the main model, fine-tunes its selected checkpoint with the penalty, and
-runs `results.py`. It replaces any existing `prepared/`, `run/` and
-`run-nonneg/`. It writes `loss-curves.png`, `comparison-scores.csv` and
-`test-cultures.png` for the main model, `run-nonneg-loss-curves.png`,
-`nonneg-scores.csv` and `nonneg-test-cultures.png` for the fine-tuned model, and
-`loss-curves.csv` and `selected-checkpoint.txt` for each run (with a
-`run-nonneg-` prefix for the fine-tuned one). The test plots are drawn from
-`test-predictions.npz`, which `results.py` writes first, so `plot_cultures.py`
-can redraw them without Hybrax. Everything runs from the bundled
-inputs, without MATLAB or network access. This page's executed runs are in
+trains the models without and with the penalty, and runs `results.py`. It
+replaces any existing `prepared/`, `run/` and `run-nonneg/`. It writes
+`loss-curves.png`, `comparison-scores.csv` and `test-cultures.png` for the main
+model, `run-nonneg-loss-curves.png`, `nonneg-scores.csv` and
+`nonneg-test-cultures.png` for the penalized model, and `loss-curves.csv` and
+`selected-checkpoint.txt` for each run (with a `run-nonneg-` prefix for the
+penalized one). The test plots are drawn from `test-predictions.npz`, which
+`results.py` writes first, so `plot_cultures.py` can redraw them without
+Hybrax. Everything runs from the bundled inputs, without MATLAB or network
+access. This page's executed runs are in
 `docs/source/_data/out/runs/gallery_hek293_lstm/run/` and `run-nonneg/`.
 
 ````{dropdown} run.py
@@ -900,7 +891,7 @@ benchmark. Preprocessing uses all nine cultures, including the held-out
 cultures, which constitutes data leakage. Best practice would be to only use the
 five training cultures for PCA and defining scaling factors, but we stuck to the
 same procedure as the original MATLAB code. Neither model keeps concentrations
-non-negative on its own. Fine-tuning with a soft penalty from the built-in
+non-negative on its own. Training with a soft penalty from the built-in
 `BoundsViolationLossModule` reduces the negative predictions while keeping the
 fit comparable to MATLAB's.
 

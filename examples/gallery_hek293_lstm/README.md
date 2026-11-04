@@ -19,10 +19,10 @@ python run.py
 
 The script regenerates data and configs, plots the source trajectories,
 prepares the collection, and trains 2,000 epochs with constant learning rate
-`1e-3` and seed 0. It evaluates Br7 every 10 epochs and keeps the best 20
+`1e-3` and seed 0. It evaluates Br7 every 50 epochs and keeps the best 20
 checkpoints plus the final one.
-It then fine-tunes the selected checkpoint with a penalty on negative
-concentrations into `run-nonneg/`, as described below. Existing `prepared/`,
+It then trains a second model the same way, with a penalty on negative
+concentrations, into `run-nonneg/`, as described below. Existing `prepared/`,
 `run/` and `run-nonneg/` outputs are replaced.
 
 Checkpoint selection minimizes the Br7 loss. In the main run this is the NMSE:
@@ -36,18 +36,17 @@ negative concentrations.
 `custom_nonneg.py` is a copy of `custom.py` whose loss adds one soft-penalty
 term per concentration, built by Hybrax's `BoundsViolationLossModule` from the
 zero lower bounds in the data. The penalty uses the same max normalization as
-the fit, and `custom.nonnegativity_weight` in `train-config-nonneg.json` (10)
-sets its weight relative to the fit residuals. `run.py` starts this run with
-`--init-from` from the main run's selected checkpoint, which resets the
-optimizer state, and trains 1,000 epochs at learning rate `1e-4`. Its selection
-minimizes the Br7 loss including the penalty.
+the fit, and `custom.nonnegativity_weight` in `train-config-nonneg.json` (20)
+sets its weight relative to the fit residuals. Its selection minimizes the Br7
+loss including the penalty.
 
 `results.py` reads the loss curves from `metrics.csv`, selects the checkpoints,
 and simulates all nine cultures with each selected checkpoint. It writes
 Hybrax and MATLAB NRMSE for the training, Br7 and test cultures to
-`comparison-scores.csv`, and adds the fine-tuned model and the mean undershoot
-below zero in `nonneg-scores.csv`. `test-cultures.png` and
-`nonneg-test-cultures.png` plot biomass, mAb and glucose on the test cultures.
+`comparison-scores.csv`. `nonneg-scores.csv` compares all three models on the
+test cultures, with their NRMSE and mean undershoot below zero.
+`test-cultures.png` and `nonneg-test-cultures.png` plot biomass, mAb and
+glucose on the test cultures.
 Before each test plot, `results.py` saves the test-culture data and
 predictions to `test-predictions.npz` and then plots from that file, so the
 bundled file holds exactly what `nonneg-test-cultures.png` shows: MATLAB and
@@ -62,7 +61,7 @@ predictions = plot_cultures.load_predictions("test-predictions.npz")
 plot_cultures.plot_test_cultures(*predictions, "test-cultures.pdf")
 ```
 Loss curves and selected epochs are written per run, with a `run-nonneg-`
-prefix for the fine-tuned run.
+prefix for the penalized run.
 
 `import_from_mat.py` converts the data, computes the 25×4 PCA matrix and the
 all-nine statistics, and writes `train-config.json` and `train-config-nonneg.json`. It writes the
@@ -74,16 +73,13 @@ and overrides the forward pass to send only hidden state to the head. All
 three weight matrices start at 0.1 times their initialized values; biases are
 unchanged. The model has 532 trainable parameters.
 
-`run.py` runs the full pipeline. To run the steps by hand, replace `<epoch>`
-with the main run's selected epoch, zero-padded to five digits;
-`python -c "from results import select_checkpoint; print(select_checkpoint('.'))"`
-prints it after the first training run:
+`run.py` runs the full pipeline. To run the steps by hand:
 
 ```bash
 python import_from_mat.py
 hybrax prepare --config prepare-config.json
 hybrax train --config train-config.json
-hybrax train --config train-config-nonneg.json --init-from run/checkpoints/step_<epoch>
+hybrax train --config train-config-nonneg.json
 python results.py
 ```
 

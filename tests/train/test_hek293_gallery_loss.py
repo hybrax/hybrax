@@ -170,20 +170,24 @@ def test_hek_scores_pool_splits_at_measurement_times(tmp_path, monkeypatch):
         # An extra dense row between samples must not affect any score either.
         values = np.insert(values, 2, [-1000.0, 1000.0], axis=0)
         dense[name] = (np.array([0.0, 12.0, 18.0, 24.0]), values)
-    scores = results.score(tmp_path, {"Hybrax": dense}, "scores.csv", True)
+    scores = results.score(tmp_path, {"Hybrax": dense}, "scores.csv")
     hybrax = scores.loc["Hybrax"]
-    assert hybrax["NRMSE", "Train"] == pytest.approx(np.sqrt(0.5))
-    assert hybrax["NRMSE", "Validation (Br7)"] == pytest.approx(np.sqrt(2.0))
+    assert hybrax["Train"] == pytest.approx(np.sqrt(0.5))
+    assert hybrax["Validation (Br7)"] == pytest.approx(np.sqrt(2.0))
     # Pool errors over cultures before taking the root: (1² + 2² + 4²) / (3 * 2).
-    assert hybrax["NRMSE", "Test"] == pytest.approx(np.sqrt(3.5))
-    np.testing.assert_allclose(scores.loc["MATLAB", "NRMSE"], 1.0)
-    # Training predicts A = 0 at both post-initial samples: no undershoot.
-    assert hybrax["Undershoot [%]", "Train"] == 0.0
-    dense["Br1"][1][1, 0] = -1.0  # 50% of A's maximum, one of four values.
-    scores = results.score(tmp_path, {"Hybrax": dense}, "scores.csv", True)
-    assert scores.loc["Hybrax", ("Undershoot [%]", "Train")] == pytest.approx(
-        50 / (5 * 2 * 2)
-    )
+    assert hybrax["Test"] == pytest.approx(np.sqrt(3.5))
+    np.testing.assert_allclose(scores.loc["MATLAB"], 1.0)
+    tests = results.test_scores(tmp_path, {"Hybrax": dense}, "tests.csv")
+    assert tests.loc["Hybrax", "Test NRMSE"] == pytest.approx(np.sqrt(3.5))
+    # The test cultures predict A = 2 after t=0: no undershoot.
+    assert tests.loc["Hybrax", "Test undershoot [%]"] == 0.0
+    dense["Br5"][1][1, 0] = -1.0  # 50% of A's maximum, one of 12 values.
+    tests = results.test_scores(tmp_path, {"Hybrax": dense}, "tests.csv")
+    assert tests.loc["Hybrax", "Test undershoot [%]"] == pytest.approx(50 / 12)
+    # Training-culture undershoot does not count.
+    dense["Br1"][1][1, 0] = -1.0
+    tests = results.test_scores(tmp_path, {"Hybrax": dense}, "tests.csv")
+    assert tests.loc["Hybrax", "Test undershoot [%]"] == pytest.approx(50 / 12)
 
 
 def test_hek_bundled_test_predictions_replot_without_hybrax(tmp_path):
@@ -192,7 +196,7 @@ def test_hek_bundled_test_predictions_replot_without_hybrax(tmp_path):
         EXAMPLE / "test-predictions.npz"
     )
     assert list(data) == ["Br5", "Br6", "Br8"]
-    assert list(models) == ["MATLAB", "Hybrax", "Hybrax, fine-tuned"]
+    assert list(models) == ["MATLAB", "Hybrax", "Hybrax with penalty"]
     # The export carries MATLAB's saved predictions unchanged.
     reference = np.load(EXAMPLE / "matlab-reference.npz")["predictions"]
     for index, culture in ((4, "Br5"), (5, "Br6"), (7, "Br8")):

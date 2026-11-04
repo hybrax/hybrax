@@ -5,8 +5,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-from results import select_checkpoint
-
 HERE = Path(__file__).resolve().parent
 ENV = os.environ | {
     "JAX_PLATFORMS": "cpu",
@@ -29,12 +27,5 @@ if __name__ == "__main__":
     run("plot_data.py")
     hybrax("prepare", "prepare-config.json")
     hybrax("train", "train-config.json")
-    # Fine-tune the checkpoint with the lowest Br7 loss, not the final weights.
-    epoch = select_checkpoint(HERE)
-    hybrax(
-        "train",
-        "train-config-nonneg.json",
-        "--init-from",
-        f"run/checkpoints/step_{epoch:05d}",
-    )
+    hybrax("train", "train-config-nonneg.json")
     run("results.py")

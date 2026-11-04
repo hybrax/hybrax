@@ -21,7 +21,7 @@
     ]
   },
   "checkpoint": {
-    "every": 10,
+    "every": 50,
     "keep_best": 20,
     "select_by": "holdout_loss"
   },

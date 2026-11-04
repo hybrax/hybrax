@@ -85,7 +85,7 @@ def select_checkpoint(work, run="run"):
     return epoch
 
 
-def plot_loss_curves(work, run="run", log_scale=True):
+def plot_loss_curves(work, run="run"):
     """Plot training and Br7 NRMSE with the saved MATLAB model as a reference.
 
     With a penalty, dashed lines add it to the fit error, in the same units. On
@@ -117,7 +117,7 @@ def plot_loss_curves(work, run="run", log_scale=True):
             title=group,
             xlabel="Epoch",
             ylabel="NRMSE, all 25 states",
-            yscale="log" if log_scale else "linear",
+            yscale="log",
         )
         if penalized:
             total = np.sqrt(curves[f"{group} NMSE"] + curves[f"{group} penalty"])
@@ -141,11 +141,7 @@ def plot_loss_curves(work, run="run", log_scale=True):
         color=COLORS["Hybrax"],
         label=f"Selected epoch {selected:,}",
     )
-    if penalized:
-        # Sit between the fit-only and fit + penalty lines.
-        axes[1].legend(frameon=False, loc="center right", bbox_to_anchor=(1, 0.36))
-    else:
-        axes[1].legend(frameon=False)
+    axes[1].legend(frameon=False, loc="upper right")
     figure.tight_layout()
     figure.savefig(
         output_path(work, run, "loss-curves.png"), dpi=160, facecolor="white"
@@ -204,31 +200,49 @@ def undershoot(values, maxima, cultures):
     return np.mean(np.maximum(-values[index, 1:], 0) / maxima * 100)
 
 
-def score(work, models, name, with_undershoot=False):
-    """Score MATLAB and Hybrax predictions at the measurement times of each split.
+def measurement_values(work, models):
+    """MATLAB and Hybrax predictions at the measurement times, as culture arrays.
 
     `models` maps labels to dense predictions from `predict_cultures`.
     """
-    work = Path(work)
-    source, reference, maxima = load_benchmark(work)
+    source, reference, maxima = load_benchmark(Path(work))
     values = {"MATLAB": reference} | {
         label: at_measurements(source, dense) for label, dense in models.items()
     }
-    rows = {}
     for label, prediction in values.items():
         assert np.isfinite(prediction).all(), label
-        rows[label] = {
-            ("NRMSE", split): nrmse(source, prediction, maxima, cultures)
-            for split, cultures in SPLITS.items()
-        }
-        if with_undershoot:
-            rows[label] |= {
-                ("Undershoot [%]", split): undershoot(prediction, maxima, cultures)
+    return source, values, maxima
+
+
+def score(work, models, name):
+    """Score MATLAB and Hybrax NRMSE at the measurement times of each split."""
+    source, values, maxima = measurement_values(work, models)
+    scores = pd.DataFrame(
+        {
+            label: {
+                split: nrmse(source, prediction, maxima, cultures)
                 for split, cultures in SPLITS.items()
             }
-    scores = pd.DataFrame(rows).T
-    if not with_undershoot:
-        scores.columns = scores.columns.droplevel(0)
+            for label, prediction in values.items()
+        }
+    ).T
+    scores.to_csv(Path(work) / name)
+    return scores
+
+
+def test_scores(work, models, name):
+    """Score NRMSE and undershoot on the test cultures only."""
+    source, values, maxima = measurement_values(work, models)
+    tests = SPLITS["Test"]
+    scores = pd.DataFrame(
+        {
+            label: {
+                "Test NRMSE": nrmse(source, prediction, maxima, tests),
+                "Test undershoot [%]": undershoot(prediction, maxima, tests),
+            }
+            for label, prediction in values.items()
+        }
+    ).T
     scores.to_csv(Path(work) / name)
     return scores
 
@@ -272,12 +286,12 @@ if __name__ == "__main__":
     work = Path(__file__).resolve().parent
     epochs = {run: select_checkpoint(work, run) for run in ("run", "run-nonneg")}
     for run, epoch in epochs.items():
-        plot_loss_curves(work, run, log_scale=run == "run")
+        plot_loss_curves(work, run)
         print(f"{run}: checkpoint at epoch {epoch:,}")
     main = {"Hybrax": predict_cultures(work, "run", epochs["run"])}
     print(score(work, main, "comparison-scores.csv"))
     plot_test_cultures(work, main, "test-cultures.png")
-    fine_tuned = predict_cultures(work, "run-nonneg", epochs["run-nonneg"])
-    both = main | {"Hybrax, fine-tuned": fine_tuned}
-    print(score(work, both, "nonneg-scores.csv", with_undershoot=True))
+    penalty = predict_cultures(work, "run-nonneg", epochs["run-nonneg"])
+    both = main | {"Hybrax with penalty": penalty}
+    print(test_scores(work, both, "nonneg-scores.csv"))
     plot_test_cultures(work, both, "nonneg-test-cultures.png")

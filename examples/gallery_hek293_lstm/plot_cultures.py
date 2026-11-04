@@ -17,9 +17,8 @@ from matplotlib.offsetbox import AnchoredOffsetbox, HPacker, TextArea
 STYLES = {
     "MATLAB": {"color": "#737373", "linestyle": "--", "zorder": 1},
     "Hybrax": {"color": "#BE5400", "linestyle": "-", "zorder": 2},
-    "Hybrax, fine-tuned": {"color": "#0072B2", "linestyle": "-.", "zorder": 3},
+    "Hybrax with penalty": {"color": "#0072B2", "linestyle": "-.", "zorder": 3},
 }
-LEGEND = {"Hybrax, fine-tuned": "Hybrax, fine-tuned with penalty"}
 DATA_COLOR = "#242a29"
 STATES = {"biomass": "Biomass [g/L]", "mAb": "mAb [mg/L]", "Glc": "Glucose [mM]"}
 
@@ -166,9 +165,7 @@ def plot_test_cultures(
     }
     handles, labels = axes[0, 0].get_legend_handles_labels()
     labels = [
-        f"{LEGEND.get(label, label)} ({totals[label]:.3f})"
-        if label in totals
-        else label
+        f"{label} ({totals[label]:.3f})" if label in totals else label
         for label in labels
     ]
     figure.legend(
