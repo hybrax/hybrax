@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import dataclasses
 import json
 from pathlib import Path
@@ -29,7 +30,11 @@ from hybrax.format.dataclasses import (
 from hybrax.format.serialization import save_process_collection
 from hybrax.format.splines import fit_monotone_timeseries_spline
 from hybrax.train.controls import select_control_sources
-from hybrax.train.controls_store import ControlsStore
+from hybrax.train.controls_store import (
+    BATCH_ROW_FIELDS,
+    BatchControls,
+    ControlsStore,
+)
 from hybrax.train.prepare import prepare_artifact
 from hybrax.train.run_config import load_prepare_config
 from hybrax.train.trainer import _BatchIndexedControls
@@ -306,6 +311,96 @@ def test_combined_controls_preserve_values_rates_and_padded_batch_rows(side, sca
     values, rates = jax.jit(jax.vmap(evaluate_selected))(rows)
     np.testing.assert_allclose(values, expected_values)
     np.testing.assert_allclose(rates, expected_rates)
+
+
+def test_batch_row_fields_name_every_array_field():
+    """Guard: every array field of `BatchControls` is in `BATCH_ROW_FIELDS`.
+
+    The trainer's per-sample adapter selects the sample's row of exactly the
+    listed fields and then reads row 0. An unlisted per-sample field would pass
+    through unsliced, and every sample would silently use the first sample's
+    row. Training raises nothing in that case; only this test fails. A new
+    collection-wide array also fails here, on purpose: decide how the adapter
+    and the pmap/GSPMD padding should treat it before changing this test.
+    """
+    array_fields = [
+        field.name
+        for field in dataclasses.fields(BatchControls)
+        if not field.metadata.get("static", False)
+    ]
+    assert sorted(array_fields) == sorted(BATCH_ROW_FIELDS)
+
+
+def test_batch_row_fields_have_one_row_per_process():
+    """Guard: every field in `BATCH_ROW_FIELDS` has one row per process.
+
+    Gathering a batch and the trainer's per-sample adapter both index the
+    leading axis of each listed field as if it counted processes. A field
+    listed by mistake, such as a collection-wide array, would be indexed
+    along an unrelated axis. When the shapes happen to fit, training raises
+    nothing and silently uses the wrong values; only this test fails. Two
+    collection sizes make it unlikely that such an axis matches by chance.
+    """
+    collection = _make_two_process_collection()
+    third = copy.deepcopy(collection.processes["p1"])
+    third.metadata.name = "p3"
+    collection.processes["p3"] = third
+
+    for n_processes in (2, 3):
+        names = list(collection.processes)[:n_processes]
+        store = ControlsStore.from_collection(
+            dataclasses.replace(
+                collection,
+                processes={name: collection.processes[name] for name in names},
+            )
+        )
+        for name in BATCH_ROW_FIELDS:
+            assert getattr(store, name).shape[0] == n_processes, name
+
+
+@pytest.mark.parametrize("batch_size", [1, 3])
+def test_selected_controls_hold_only_their_own_row(batch_size):
+    """Guard: the per-sample adapter keeps the sample's row of every field.
+
+    The solve reads the adapter's controls at a fixed row 0, so a field left
+    unselected would silently give every sample the first sample's row.
+    """
+    rng = np.random.default_rng(0)
+    # Inner axes as long as the batch, so a shape check could not tell them apart.
+    rows = {
+        name: jnp.asarray(rng.normal(size=(batch_size, batch_size, 2)))
+        for name in BATCH_ROW_FIELDS
+    }
+    batch = BatchControls(
+        **rows,
+        spline_indices=(0,),
+        linear_indices=(),
+        continuity_side="left",
+        name_controlled_Inflows=("feed",),
+        name_controlled_Outflows=(),
+        name_controlled_PVs=(),
+        max_event_gap_fraction=0.5,
+        max_measurements_per_event_gap=7,
+    )
+
+    def select(row):
+        return _BatchIndexedControls(batch, row).batch_controls
+
+    selected = jax.jit(jax.vmap(select))(jnp.arange(batch_size))
+
+    for name in BATCH_ROW_FIELDS:
+        np.testing.assert_array_equal(
+            getattr(selected, name), rows[name][:, None], err_msg=name
+        )
+    for name in (
+        "spline_indices",
+        "linear_indices",
+        "continuity_side",
+        "name_controlled_Inflows",
+        "max_event_gap_fraction",
+        "max_measurements_per_event_gap",
+    ):
+        assert getattr(selected, name) == getattr(batch, name), name
 
 
 @pytest.mark.parametrize(

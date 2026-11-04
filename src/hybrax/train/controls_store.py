@@ -667,6 +667,27 @@ class PerProcessControls(eqx.Module):
         return self._eval_values(t_arr)[..., start : start + n_pvs]
 
 
+# The array fields of `BatchControls`. Each holds one row per batch sample:
+# `ControlsStore._gather_batch_rows` gathers exactly these, and the trainer's
+# per-sample adapter selects one row of each. A new array field must be added
+# here, or the adapter would read row 0 of it for every sample.
+BATCH_ROW_FIELDS = (
+    "spline_breaks",
+    "spline_coeffs",
+    "linear_grid",
+    "control_values",
+    "control_derivatives",
+    "min_V",
+    "sample_event_times",
+    "sample_event_volumes",
+    "sample_event_mask",
+    "bolus_event_times",
+    "bolus_event_volumes",
+    "bolus_event_Cin",
+    "bolus_event_mask",
+)
+
+
 class BatchControls(eqx.Module):
     """Batch-row controls evaluator with index-based runtime lookup.
 
@@ -1393,25 +1414,13 @@ class ControlsStore(eqx.Module):
     def _gather_batch_rows(self, indices: jax.Array) -> BatchControls:
         """Gather already-validated, int32 process-index rows."""
         return BatchControls(
-            spline_breaks=self.spline_breaks[indices],
-            spline_coeffs=self.spline_coeffs[indices],
-            linear_grid=self.linear_grid[indices],
-            control_values=self.control_values[indices],
-            control_derivatives=self.control_derivatives[indices],
+            **{name: getattr(self, name)[indices] for name in BATCH_ROW_FIELDS},
             spline_indices=self.spline_indices,
             linear_indices=self.linear_indices,
             continuity_side=self.continuity_side,
             name_controlled_Inflows=self.name_controlled_Inflows,
             name_controlled_Outflows=self.name_controlled_Outflows,
             name_controlled_PVs=self.name_controlled_PVs,
-            min_V=self.min_V[indices],
-            sample_event_times=self.sample_event_times[indices],
-            sample_event_volumes=self.sample_event_volumes[indices],
-            sample_event_mask=self.sample_event_mask[indices],
-            bolus_event_times=self.bolus_event_times[indices],
-            bolus_event_volumes=self.bolus_event_volumes[indices],
-            bolus_event_Cin=self.bolus_event_Cin[indices],
-            bolus_event_mask=self.bolus_event_mask[indices],
             max_event_gap_fraction=self.max_event_gap_fraction,
             max_measurements_per_event_gap=self.max_measurements_per_event_gap,
         )

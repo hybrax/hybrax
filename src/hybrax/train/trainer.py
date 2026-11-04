@@ -9,6 +9,7 @@ by the device-sharded (pmap and GSPMD) training steps.
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable
 
 import diffrax
@@ -18,7 +19,7 @@ import jax.numpy as jnp
 import jax.tree_util as jtu
 
 from .constants import DEFAULT_SOLVER
-from .controls_store import BatchControls
+from .controls_store import BATCH_ROW_FIELDS, BatchControls
 from .model_api import LossInputs
 from .physical_solve import within_fail_time
 from .training_data import (
@@ -188,71 +189,50 @@ class _BatchIndexedControls(eqx.Module):
     """Select a singleton controls batch before entering the per-sample solve."""
 
     batch_controls: BatchControls
-    row_idx: int = eqx.field(static=True)
 
     def __init__(self, batch_controls: BatchControls, row_idx: jax.Array):
-        # Keep the batch axis so the existing evaluators and event accessors can
-        # use a static row index throughout the solve, including its adjoint.
-        self.batch_controls = jtu.tree_map(lambda x: x[row_idx][None], batch_controls)
-        self.row_idx = 0
+        # Keep a batch axis of one so the evaluators and event accessors read the
+        # static row 0 throughout the solve, including its adjoint.
+        rows = {
+            name: getattr(batch_controls, name)[row_idx][None]
+            for name in BATCH_ROW_FIELDS
+        }
+        self.batch_controls = dataclasses.replace(batch_controls, **rows)
 
     def evaluate(self, t_arr, states=None) -> tuple[jax.Array, jax.Array]:
-        return self.batch_controls.evaluate(self.row_idx, t_arr, states)
-
-    def eval_controlled_Inflows_cumulative(self, t_arr, states) -> jax.Array:
-        return self.batch_controls.eval_controlled_Inflows_cumulative(
-            self.row_idx, t_arr, states
-        )
-
-    def eval_controlled_Inflows_rates(self, t_arr, states) -> jax.Array:
-        return self.batch_controls.eval_controlled_Inflows_rates(
-            self.row_idx, t_arr, states
-        )
-
-    def eval_controlled_Outflows_cumulative(self, t_arr, states) -> jax.Array:
-        return self.batch_controls.eval_controlled_Outflows_cumulative(
-            self.row_idx, t_arr, states
-        )
-
-    def eval_controlled_Outflows_rates(self, t_arr, states) -> jax.Array:
-        return self.batch_controls.eval_controlled_Outflows_rates(
-            self.row_idx, t_arr, states
-        )
-
-    def eval_controlled_PVs(self, t_arr, states) -> jax.Array:
-        return self.batch_controls.eval_controlled_PVs(self.row_idx, t_arr, states)
+        return self.batch_controls.evaluate(0, t_arr, states)
 
     @property
     def min_V(self) -> jax.Array:
-        return self.batch_controls.min_V[self.row_idx]
+        return self.batch_controls.min_V[0]
 
     @property
     def sample_event_times(self) -> jax.Array:
-        return self.batch_controls.sample_event_times[self.row_idx]
+        return self.batch_controls.sample_event_times[0]
 
     @property
     def sample_event_volumes(self) -> jax.Array:
-        return self.batch_controls.sample_event_volumes[self.row_idx]
+        return self.batch_controls.sample_event_volumes[0]
 
     @property
     def sample_event_mask(self) -> jax.Array:
-        return self.batch_controls.sample_event_mask[self.row_idx]
+        return self.batch_controls.sample_event_mask[0]
 
     @property
     def bolus_event_times(self) -> jax.Array:
-        return self.batch_controls.bolus_event_times[self.row_idx]
+        return self.batch_controls.bolus_event_times[0]
 
     @property
     def bolus_event_volumes(self) -> jax.Array:
-        return self.batch_controls.bolus_event_volumes[self.row_idx]
+        return self.batch_controls.bolus_event_volumes[0]
 
     @property
     def bolus_event_Cin(self) -> jax.Array:
-        return self.batch_controls.bolus_event_Cin[self.row_idx]
+        return self.batch_controls.bolus_event_Cin[0]
 
     @property
     def bolus_event_mask(self) -> jax.Array:
-        return self.batch_controls.bolus_event_mask[self.row_idx]
+        return self.batch_controls.bolus_event_mask[0]
 
     @property
     def max_event_gap_fraction(self) -> float:
