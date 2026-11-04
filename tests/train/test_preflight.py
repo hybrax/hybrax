@@ -116,7 +116,7 @@ def test_explicit_jump_times_are_used_only_when_enabled():
         )
 
 
-def test_scalar_solver_uses_configured_tolerances(monkeypatch):
+def test_solver_uses_configured_tolerances(monkeypatch):
     store = _store(
         _process(
             "linear",
@@ -133,8 +133,8 @@ def test_scalar_solver_uses_configured_tolerances(monkeypatch):
     monkeypatch.setattr(diffrax, "PIDController", record_controller)
     monkeypatch.setattr(
         preflight,
-        "_integrate_flow",
-        eqx.filter_jit(preflight._integrate_flow.__wrapped__),
+        "_integrate_controls",
+        eqx.filter_jit(preflight._integrate_controls.__wrapped__),
     )
     configured = [(2e-5, 3e-7), (4e-8, 5e-10)]
     for rtol, atol in configured:
@@ -174,8 +174,8 @@ def test_different_jump_counts_reuse_solver_compilation(monkeypatch):
     # A fresh JIT wrapper makes the compilation counter independent of other tests.
     monkeypatch.setattr(
         preflight,
-        "_integrate_flow",
-        eqx.filter_jit(preflight._integrate_flow.__wrapped__),
+        "_integrate_controls",
+        eqx.filter_jit(preflight._integrate_controls.__wrapped__),
     )
     preflight.check_continuous_flow_integration(
         store, tuple(p.metadata.name for p in processes), **SETTINGS
@@ -241,16 +241,19 @@ def test_mixed_controls_offsets_subspan_and_padded_process(monkeypatch):
         )
     store = _store(short, long)
     observed = []
-    original = preflight._integrate_flow
+    original = preflight._integrate_controls
 
     def record(*args, **kwargs):
         integrated, expected, result = original(*args, **kwargs)
-        observed.append((float(integrated), float(expected)))
+        observed.append((np.asarray(integrated), np.asarray(expected)))
         return integrated, expected, result
 
-    monkeypatch.setattr(preflight, "_integrate_flow", record)
+    monkeypatch.setattr(preflight, "_integrate_controls", record)
     preflight.check_continuous_flow_integration(store, ("short",), **SETTINGS)
-    np.testing.assert_allclose(observed, [[3.25, 3.25], [-2.0, -2.0]], atol=1e-10)
+    # One joint solve (temperature included); only the feed and bleed are returned.
+    [(integrated, expected)] = observed
+    np.testing.assert_allclose(integrated, [3.25, -2.0], atol=1e-10)
+    np.testing.assert_allclose(expected, [3.25, -2.0], atol=1e-10)
 
 
 def test_step_budget_failure_rejected_even_when_endpoint_matches():
@@ -285,14 +288,14 @@ def test_relative_allowance_is_configurable_and_independent_of_solver(
     store = _store(_process("flow", {"feed": _flow("feed", _pulse())}))
     monkeypatch.setattr(
         preflight,
-        "_integrate_flow",
+        "_integrate_controls",
         lambda *args, **kwargs: (
-            expected * 1.0005,
-            expected,
+            jnp.asarray([expected * 1.0005]),
+            jnp.asarray([expected]),
             diffrax.RESULTS.successful,
         ),
     )
-    # 0.05% error: inside default 0.1%, outside custom 0.01%, at any flow scale.
+    # 0.05% error: inside default 1%, outside custom 0.01%, at any flow scale.
     for solver_rtol, solver_atol in [(1e-2, 1.0), (1e-10, 1e-12)]:
         settings = {**SETTINGS, "rtol": solver_rtol, "atol": solver_atol}
         preflight.check_continuous_flow_integration(store, ("flow",), **settings)
@@ -310,8 +313,12 @@ def test_zero_expected_increment_requires_exact_agreement(monkeypatch, integrate
     store = _store(_process("zero", {"feed": _flow("feed", _pulse())}))
     monkeypatch.setattr(
         preflight,
-        "_integrate_flow",
-        lambda *args, **kwargs: (integrated, 0.0, diffrax.RESULTS.successful),
+        "_integrate_controls",
+        lambda *args, **kwargs: (
+            jnp.asarray([integrated]),
+            jnp.asarray([0.0]),
+            diffrax.RESULTS.successful,
+        ),
     )
     if integrated == 0.0:
         preflight.check_continuous_flow_integration(store, ("zero",), **SETTINGS)
@@ -339,7 +346,7 @@ def test_single_measurement_has_no_flow_interval(monkeypatch):
     def unexpected_solve(*args, **kwargs):
         raise AssertionError("A zero-span interval must not run the solver")
 
-    monkeypatch.setattr(preflight, "_integrate_flow", unexpected_solve)
+    monkeypatch.setattr(preflight, "_integrate_controls", unexpected_solve)
     preflight.check_continuous_flow_integration(store, ("single",), **SETTINGS)
 
 
@@ -385,8 +392,12 @@ def test_training_gate_precedes_warmup_and_uses_configured_jump_flag(monkeypatch
         )
     monkeypatch.setattr(
         preflight,
-        "_integrate_flow",
-        lambda *args, **kwargs: (1.005, 1.0, diffrax.RESULTS.successful),
+        "_integrate_controls",
+        lambda *args, **kwargs: (
+            jnp.asarray([1.02]),
+            jnp.asarray([1.0]),
+            diffrax.RESULTS.successful,
+        ),
     )
     with pytest.raises(ValueError, match="Continuous-flow preflight failed"):
         train_collection(store, reaction_module=module, config=config)
@@ -394,7 +405,7 @@ def test_training_gate_precedes_warmup_and_uses_configured_jump_flag(monkeypatch
         train_collection(
             store,
             reaction_module=module,
-            config=replace(config, flow_integral_relative_tolerance=1e-2),
+            config=replace(config, flow_integral_relative_tolerance=5e-2),
         )
     for invalid in (0.0, -1.0, np.nan, np.inf):
         with pytest.raises(ValueError, match="flow_integral_relative_tolerance"):
@@ -425,8 +436,70 @@ def test_nonfinite_integral_cannot_pass(monkeypatch, integrated, expected):
     )
     monkeypatch.setattr(
         preflight,
-        "_integrate_flow",
-        lambda *args, **kwargs: (integrated, expected, diffrax.RESULTS.successful),
+        "_integrate_controls",
+        lambda *args, **kwargs: (
+            jnp.asarray([integrated]),
+            jnp.asarray([expected]),
+            diffrax.RESULTS.successful,
+        ),
     )
     with pytest.raises(ValueError, match="process 'finite'"):
         preflight.check_continuous_flow_integration(store, ("finite",), **SETTINGS)
+
+
+def _zigzag_temperature(knots):
+    # Linear interpolation: the value has a kink at every knot.
+    times = np.linspace(0.0, 2.0, knots)
+    return ProcessVariable(
+        name="temperature",
+        unit="C",
+        is_controlled=True,
+        values=TimeSeries(times=times, values=30.0 + np.arange(knots) % 2),
+    )
+
+
+def _pulse_with_temperature(knots):
+    process = _process("pulse", {"feed": _flow("feed", _pulse())})
+    process.process_variables["temperature"] = _zigzag_temperature(knots)
+    return _store(process)
+
+
+def test_other_controls_shape_the_shared_solver_steps():
+    # A feed-only solve steps over the pulse. A temperature with many kinks forces
+    # short steps for the whole joint solve, so the pulse is resolved.
+    alone = _store(_process("pulse", {"feed": _flow("feed", _pulse())}))
+    with pytest.raises(ValueError, match="flow 'feed'.*integrated=0, "):
+        preflight.check_continuous_flow_integration(alone, ("pulse",), **SETTINGS)
+    preflight.check_continuous_flow_integration(
+        _pulse_with_temperature(201), ("pulse",), **SETTINGS
+    )
+
+
+def test_process_variables_enter_as_values_not_rates():
+    # The training RHS sees temperature values, whose kinks are mild. Integrating
+    # their step-shaped derivative instead would resolve this pulse too, so a pass
+    # here would mean the check refines steps more than training does.
+    with pytest.raises(ValueError, match="flow 'feed'.*integrated=0, "):
+        preflight.check_continuous_flow_integration(
+            _pulse_with_temperature(41), ("pulse",), **SETTINGS
+        )
+
+
+def test_every_flow_of_a_joint_solve_is_checked(monkeypatch):
+    process = _process(
+        "two",
+        {"feed": _flow("feed", _pulse()), "bleed": _flow("bleed", _pulse(-1), Outflow)},
+    )
+    monkeypatch.setattr(
+        preflight,
+        "_integrate_controls",
+        lambda *args, **kwargs: (
+            jnp.asarray([0.01, -0.02]),
+            jnp.asarray([0.01, -0.01]),
+            diffrax.RESULTS.successful,
+        ),
+    )
+    with pytest.raises(ValueError, match="flow 'bleed'"):
+        preflight.check_continuous_flow_integration(
+            _store(process), ("two",), **SETTINGS
+        )

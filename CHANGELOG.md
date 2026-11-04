@@ -41,6 +41,14 @@ public API; such entries are marked **Breaking**.
   controls are mixed and several processes are solved together. There, rounding
   differences grew to about 1e-5 relative in the training loss after 20 updates
   and about 1e-4 relative in the final holdout loss.
+- The continuous-flow preflight now integrates all of a process's controls in one
+  solve (flow rates, and process-variable values as the training equations use
+  them), then checks each flow's integral separately. A feed-only solve could take
+  much larger steps than training ever does and reject feeds that training
+  integrates accurately.
+- The default `train.flow_integral_relative_tolerance` is now `1e-2` (1%), up from
+  `1e-3`. Training also adapts its steps to the state dynamics, so it usually takes
+  shorter steps and integrates the flows more accurately than the preflight does.
 
 ### Removed
 

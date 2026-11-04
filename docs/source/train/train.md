@@ -22,16 +22,20 @@ The other three training hooks have their own pages:
 [Scaling](scaling.md).
 
 Before training warmup, Hybrax checks each selected process's prescribed continuous
-inflows and outflows independently. A scalar Tsit5 solve integrates each runtime
-flow rate over the measurement span, using the configured solver tolerances, step
-budget, and jump times. Its result must match the cumulative endpoint difference
-within `train.flow_integral_relative_tolerance * abs(expected_increment)`.
-The default relative tolerance is `1e-3` (0.1%), independent of solver tolerances;
-a zero expected increment requires an exactly zero integral. A mismatch or
-scalar solver failure stops training with the process and flow names. This check
-excludes modeled flows and discrete events.
+inflows and outflows. One Tsit5 solve integrates all of the process's runtime
+controls together over the measurement span, in the form training uses them: the
+flow rates and the process-variable values. It uses the configured solver
+tolerances, step budget, and jump times, so the step sizes depend on every
+control, as they do in training. Each flow's
+integral must then match its cumulative endpoint difference within
+`train.flow_integral_relative_tolerance * abs(expected_increment)`.
+The default relative tolerance is `1e-2` (1%), independent of solver tolerances;
+a zero expected increment requires an exactly zero integral. Process variables
+only shape the steps; their integrals are not checked. A mismatch or solver
+failure stops training with the process and flow names. This check excludes
+modeled flows and discrete events.
 Passing does not certify the coupled model's integration accuracy, because that
-solve takes different adaptive steps.
+solve also adapts its steps to the state dynamics.
 
 ## What one step does
 

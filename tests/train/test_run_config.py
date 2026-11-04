@@ -471,9 +471,9 @@ def test_retention_and_holdout_config_mapping(tmp_path):
 
 def test_flow_integral_tolerance_config_mapping_and_roundtrip(tmp_path):
     default = RunConfig()
-    assert default.train.flow_integral_relative_tolerance == 1e-3
+    assert default.train.flow_integral_relative_tolerance == 1e-2
     default_harness = train_harness_config_from_run_config(default, run_dir=tmp_path)
-    assert default_harness.flow_integral_relative_tolerance == 1e-3
+    assert default_harness.flow_integral_relative_tolerance == 1e-2
     cfg = RunConfig.model_validate(
         {"train": {"flow_integral_relative_tolerance": 2e-4}}
     )

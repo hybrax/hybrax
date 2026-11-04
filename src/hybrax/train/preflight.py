@@ -1,4 +1,4 @@
-"""Pre-training scalar checks of prescribed continuous-flow integration."""
+"""Pre-training check of prescribed continuous-flow integration."""
 
 from __future__ import annotations
 
@@ -22,17 +22,29 @@ from .training_data import TrainingDataStore
 # with the actual training controls and settings; passing during prepare would not
 # establish that the eventual training run integrates the flows correctly.
 @eqx.filter_jit
-def _integrate_flow(controls, flow_index, t0, t1, jump_ts, *, max_steps, rtol, atol):
-    """Use the training rate evaluator without biology or state-jump callbacks."""
+def _integrate_controls(controls, n_flows, t0, t1, jump_ts, *, max_steps, rtol, atol):
+    """Integrate all controls in one solve, in the form the training RHS uses them.
+
+    The first `n_flows` columns are cumulative flows; the RHS uses their rates, so
+    their derivatives are integrated. The remaining process-variable columns enter
+    the RHS as values, so their values are integrated. Either way, a control that
+    changes often forces shorter steps for all columns, as in training. Uses the
+    training evaluators without biology or state-jump callbacks. Returns the flow
+    integrals, their expected increments and the solver result.
+    """
+
+    def rhs(t, y, args):
+        rates = controls._eval_derivatives(0, t)[:n_flows]
+        return jnp.concatenate([rates, controls._eval_values(0, t)[n_flows:]])
+
+    expected = (controls._eval_values(0, t1) - controls._eval_values(0, t0))[:n_flows]
     solution = diffrax.diffeqsolve(
-        diffrax.ODETerm(
-            lambda t, y, args: controls._eval_derivatives(0, t)[flow_index]
-        ),
+        diffrax.ODETerm(rhs),
         diffrax.Tsit5(),
         t0=t0,
         t1=t1,
         dt0=(t1 - t0) * INITIAL_STEP_FRACTION,
-        y0=jnp.zeros((), dtype=t0.dtype),
+        y0=jnp.zeros_like(controls._eval_values(0, t0)),
         stepsize_controller=diffrax.PIDController(
             rtol=rtol, atol=atol, jump_ts=jump_ts
         ),
@@ -40,11 +52,7 @@ def _integrate_flow(controls, flow_index, t0, t1, jump_ts, *, max_steps, rtol, a
         saveat=diffrax.SaveAt(t1=True),
         throw=False,
     )
-    expected = (
-        controls._eval_values(0, t1)[flow_index]
-        - controls._eval_values(0, t0)[flow_index]
-    )
-    return solution.ys[0], expected, solution.result
+    return solution.ys[0, :n_flows], expected, solution.result
 
 
 def check_continuous_flow_integration(
@@ -57,17 +65,21 @@ def check_continuous_flow_integration(
     use_jump_ts: bool,
     flow_integral_relative_tolerance: float = DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE,
 ) -> None:
-    """Reject scalar flow solves that miss their known cumulative increment.
+    """Reject prescribed continuous flows whose integral misses its increment.
 
-    Each prescribed continuous inflow/outflow is checked independently over its
-    training measurement span using Tsit5 and the configured PID settings. The
-    endpoint allowance is the known increment's magnitude times
+    All controls of a process are integrated together in one Tsit5 solve over its
+    training measurement span with the configured PID settings: the continuous
+    inflow and outflow rates, and the process-variable values, as the training RHS
+    uses them. The step sizes therefore reflect every control, as in training.
+    Each inflow/outflow integral is then checked separately against its known
+    increment. The allowance is the increment's magnitude times
     `flow_integral_relative_tolerance`, independent of solver tolerances. A zero
-    increment requires an exactly zero integral. No control knots are added.
+    increment requires an exactly zero integral. Process variables only shape the
+    steps; their integrals are not checked. No control knots are added.
 
     Passing is a preflight diagnostic, not proof of full-model integration accuracy;
-    the coupled model takes different adaptive steps. Boluses, samples, modeled
-    flows, and process-variable controls are not scalar continuous flows.
+    the coupled model also adapts its steps to the state dynamics. Boluses,
+    samples and modeled flows are not prescribed continuous flows.
     """
     controls_store = store.controls_store
     flow_names = (
@@ -92,18 +104,20 @@ def check_continuous_flow_integration(
             if use_jump_ts and controls_store.jump_ts.shape[1]
             else None
         )
+        integrals, increments, result = _integrate_controls(
+            controls,
+            len(flow_names),
+            t0,
+            t1,
+            jump_ts,
+            max_steps=max_steps,
+            rtol=rtol,
+            atol=atol,
+        )
+        # Flow columns come first, in `flow_names` order.
         for flow_index, flow_name in enumerate(flow_names):
-            integrated, expected, result = _integrate_flow(
-                controls,
-                jnp.asarray(flow_index),
-                t0,
-                t1,
-                jump_ts,
-                max_steps=max_steps,
-                rtol=rtol,
-                atol=atol,
-            )
-            integrated, expected = float(integrated), float(expected)
+            integrated = float(integrals[flow_index])
+            expected = float(increments[flow_index])
             tolerance = flow_integral_relative_tolerance * abs(expected)
             if result != diffrax.RESULTS.successful or not (
                 math.isfinite(integrated)
@@ -132,13 +146,13 @@ def check_continuous_flow_integration(
                     "Training stopped because this flow could not be integrated "
                     f"reliably. {summary}\n\n"
                     "More details:\n"
-                    "Before training, Hybrax integrates each prescribed continuous "
-                    "flow independently and compares it with the cumulative "
-                    "increment represented by that runtime control over the interval "
-                    "above. The allowed absolute error is "
-                    "train.flow_integral_relative_tolerance times the magnitude of "
-                    "the expected increment. Failed solves and nonfinite values "
-                    "also reject.\n\n"
+                    "Before training, Hybrax integrates all runtime controls of the "
+                    "process together and compares each prescribed continuous flow's "
+                    "integral with the cumulative increment represented by that "
+                    "runtime control over the interval above. The allowed absolute "
+                    "error is train.flow_integral_relative_tolerance times the "
+                    "magnitude of the expected increment. Failed solves and nonfinite "
+                    "values also reject.\n\n"
                     "For raw cumulative data, linear interpolation produces a "
                     "constant rate between consecutive timestamps. An adaptive "
                     "solver can step across short feed intervals or abrupt rate "
@@ -159,8 +173,8 @@ def check_continuous_flow_integration(
                     "appropriate. Tighter tolerances alone may still miss a pulse "
                     "if no solver evaluations encounter it.\n\n"
                     "4. If the discrepancy is physically acceptable, adjust "
-                    "train.flow_integral_relative_tolerance (default: 1e-3, or "
-                    "0.1%). This acceptance threshold is independent of solver "
+                    "train.flow_integral_relative_tolerance (default: 1e-2, or "
+                    "1%). This acceptance threshold is independent of solver "
                     "tolerances. Increasing it does not improve integration; do "
                     "not use it to conceal substantial missed flow.\n\n"
                     "The expected increment comes from the control used by "
