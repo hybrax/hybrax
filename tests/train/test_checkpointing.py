@@ -23,11 +23,7 @@ from hybrax.format.dataclasses import (
     Volume,
 )
 from hybrax.train.checkpointing import CheckpointWriter, save_model
-from hybrax.train.harness import (
-    TrainHarnessConfig,
-    _plot_boundaries,
-    train_collection,
-)
+from hybrax.train.harness import TrainHarnessConfig, train_collection
 from hybrax.train.model_api import (
     RateModule,
     ReactionOutputs,
@@ -97,11 +93,6 @@ def test_downsample_keeps_extremes_and_nan_gaps():
     assert {100.0, 0.01} <= set(ys[np.isfinite(ys)])
     assert 7001 in xs[np.isnan(ys)]
     np.testing.assert_array_equal(_downsample(x[:100], y[:100])[1], y[:100])
-
-
-def test_plot_boundaries_thin_to_about_100_and_keep_the_final_step():
-    assert _plot_boundaries(frozenset({1, 2, 3})) == {1, 2, 3}
-    assert _plot_boundaries(frozenset(range(1, 1006))) == {*range(11, 1006, 11), 1005}
 
 
 # --------------------------------------------------------------------------
@@ -384,7 +375,7 @@ def test_training_writes_run_level_training_plots(tmp_path: Path):
     assert not (tmp_path / "predictions.csv").exists()
 
 
-def test_training_refreshes_plots_at_plot_boundaries(monkeypatch, tmp_path: Path):
+def test_training_plots_once_after_the_final_update(monkeypatch, tmp_path: Path):
     plotted_loss_steps = []
     plotted_grad_norm_steps = []
 
@@ -399,28 +390,35 @@ def test_training_refreshes_plots_at_plot_boundaries(monkeypatch, tmp_path: Path
         "hybrax.train.harness.plot_grad_norm_curve", record_grad_norm_plot
     )
 
-    monkeypatch.setattr(
-        "hybrax.train.harness._plot_boundaries",
-        lambda boundaries: _plot_boundaries(boundaries, redraws=2),
-    )
-
     _run_train(checkpoint_dir=tmp_path / "checkpoints", checkpoint_every=1, epochs=3)
 
-    assert plotted_loss_steps == [2, 3]
-    assert plotted_grad_norm_steps == [2, 3]
+    assert plotted_loss_steps == [3]
+    assert plotted_grad_norm_steps == [3]
+
+
+def test_training_without_checkpoints_writes_no_plots(monkeypatch, tmp_path: Path):
+    # Record rather than raise: the harness catches exceptions from plotting.
+    plotted = []
+
+    def record_plot(*args, **_kwargs):
+        plotted.append(args)
+
+    monkeypatch.setattr("hybrax.train.harness.plot_loss_curve", record_plot)
+    monkeypatch.setattr("hybrax.train.harness.plot_grad_norm_curve", record_plot)
+
+    _run_train(checkpoint_dir=None, checkpoint_every=1, epochs=2)
+
+    assert plotted == []
 
 
 @pytest.mark.parametrize(
     ("plotter", "message"),
     [
-        ("plot_loss_curve", "failed to write loss curve at checkpoint"),
-        (
-            "plot_grad_norm_curve",
-            "failed to write gradient norm curve at checkpoint",
-        ),
+        ("plot_loss_curve", "failed to write loss curve"),
+        ("plot_grad_norm_curve", "failed to write gradient norm curve"),
     ],
 )
-def test_training_survives_checkpoint_plot_failure(
+def test_training_survives_plot_failure(
     monkeypatch, tmp_path, caplog, plotter, message
 ):
     def fail_plot(*_args, **_kwargs):

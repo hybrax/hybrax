@@ -641,16 +641,6 @@ def _checkpoint_update_boundaries(
         k = max(k + 1, quotient.numerator // quotient.denominator + 1)
 
 
-def _plot_boundaries(boundaries: frozenset[int], redraws: int = 100) -> frozenset[int]:
-    """Thin checkpoint boundaries to about `redraws` plot refreshes.
-
-    Keeps every k-th boundary and always the last one (the final step).
-    """
-    ordered = sorted(boundaries)
-    every = max(1, -(-len(ordered) // redraws))
-    return frozenset(ordered[every - 1 :: every]) | frozenset(ordered[-1:])
-
-
 def _require_stateful_opt_in(reaction_module, allow_stateful_models: bool) -> None:
     """Reject a stateful (``n_latent > 0``) module unless opt-in is set."""
     if reaction_module.n_latent > 0 and not allow_stateful_models:
@@ -1330,7 +1320,6 @@ def train_collection(
         if checkpoint_enabled
         else frozenset()
     )
-    plot_boundaries = _plot_boundaries(checkpoint_boundaries)
     if checkpoint_enabled and cfg.checkpoint_every is None:
         logger.info(
             "checkpoint_every is null; using sensible automatic default "
@@ -2293,15 +2282,16 @@ def train_collection(
                         step,
                         score,
                     )
-            if checkpoint_writer is not None and step in plot_boundaries:
-                _write_training_plots(
-                    history=run_log.snapshot(),
-                    holdout_per_target_by_step=holdout_per_target_so_far,
-                    output_dir=Path(cfg.checkpoint_dir).parent,
-                    step=step,
-                )
 
         history = run_log.finalize()
+        if checkpoint_writer is not None:
+            # Drawn once at the end: a 50-panel loss plot takes seconds, and
+            # training would wait for every redraw.
+            _write_training_plots(
+                history=history,
+                holdout_per_target_by_step=holdout_per_target_so_far,
+                output_dir=Path(cfg.checkpoint_dir).parent,
+            )
 
     return TrainHarnessResult(
         trained_wrapper=eqx.combine(trainable_params, trainable_static),
@@ -2317,9 +2307,9 @@ def _write_training_plots(
     history: dict[str, Any],
     holdout_per_target_by_step: dict[int, tuple[float, ...]],
     output_dir: Path,
-    step: int,
 ) -> None:
-    """Refresh the run-level training plots at a checkpoint boundary."""
+    """Write the run-level loss and gradient-norm plots."""
+    step = len(history["mean_loss_by_step"])
     try:
         plot_loss_curve(
             history["mean_loss_by_step"],
@@ -2333,7 +2323,7 @@ def _write_training_plots(
         )
     except Exception:
         # A diagnostic PNG must not fail an otherwise valid training run.
-        logger.exception("failed to write loss curve at checkpoint")
+        logger.exception("failed to write loss curve")
 
     try:
         plot_grad_norm_curve(
@@ -2342,7 +2332,7 @@ def _write_training_plots(
             title=f"Gradient norm (through step {step})",
         )
     except Exception:
-        logger.exception("failed to write gradient norm curve at checkpoint")
+        logger.exception("failed to write gradient norm curve")
 
 
 @dataclass(frozen=True)

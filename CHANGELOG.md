@@ -26,6 +26,10 @@ public API; such entries are marked **Breaking**.
   `metrics.csv` rows are written to an open file instead of through pandas. On a
   165-process benchmark this cut the host overhead per update from about 40 ms to
   under 1 ms (1.44x faster updates). Results are unchanged.
+- `loss_curve.png` and `grad_norm_curve.png` are drawn once, when training
+  finishes, instead of being redrawn at checkpoint boundaries. Training waited
+  for every redraw, which took up to 15 s with many loss terms and about a fifth
+  of a long run's time.
 
 ### Removed
 
