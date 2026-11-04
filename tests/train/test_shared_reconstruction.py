@@ -556,6 +556,10 @@ def test_loo_fold_models_load_through_the_shared_path(tmp_path: Path):
         fold_dir = output_dir / "folds" / slug
         document = json.loads((fold_dir / "config.json").read_text())
         assert document["inputs"]["prepared_input"]["content_hash"] == expected_hash
+        # Each fold draws its training plots at the end, into the fold dir only.
+        for name in ("loss_curve.png", "grad_norm_curve.png"):
+            assert (fold_dir / name).read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+        assert not tuple((fold_dir / "checkpoints").rglob("*.png"))
         for target in (fold_dir, fold_dir / "checkpoints" / "latest"):
             wrapper, config = hybrax.train.model_load(target)
             assert config.data.processes == trained_on
