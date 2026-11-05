@@ -55,7 +55,7 @@ hybrax's own architecture and training loop, as closely as that allows.
 | [PLS-dFBA](pls_dfba.md) | FBA-Hyb extended with a PLS-inspired component (a low-rank linear map, no neural network) that reads media composition alongside state. |
 | [KAN Models](kan.md) | Learnable univariate functions on edges, mostly summed but partly combined multiplicatively at nodes, occupying a reaction module's slot instead of a neural network, with each edge's learned curve matched against a shape library after training. |
 | [OptFed mechanistic model](optfed.md) | Import published fed-batch measurements and fit eleven mechanistic parameters directly to concentrations, using temperature and feed controls. |
-| [OptFed with neural kinetics](optfed_neural.md) | Keep OptFed's balances, uptake saturation and yields, but let a 59-weight neural network supply uptake capacity and glycerol allocation. |
+| [OptFed with neural kinetics](optfed_neural.md) | Keep OptFed's balances, uptake saturation and yields, but let a 59-parameter neural network supply uptake capacity and glycerol allocation. |
 | [HEK293: PCA reaction modes with an LSTM](hek293_lstm.md) | A 27-input LSTM with four PCA reaction modes, evaluated against the authors' MATLAB model on public synthetic cultures. |
 
 ## See Also

@@ -1,7 +1,7 @@
 # Gallery: OptFed with neural kinetics
 
 Replace the kinetic rate laws of the OptFed mechanistic example with a small
-neural network: two hidden layers of four `tanh` units, 59 weights. The network
+neural network: two hidden layers of four `tanh` units, 59 parameters. The network
 predicts a glycerol uptake capacity and two allocation fractions (maintenance,
 then product). OptFed's fixed glycerol half-saturation constant, allocation order
 and yields turn these into the three rates. A latent state tracks OptFed's

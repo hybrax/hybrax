@@ -35,9 +35,12 @@ formation.
 This structure ensures that all rates and concentrations stay non-negative.
 
 The model also tracks the cumulative generation count as a latent state,
-using OptFed's equation. OptFed uses this count to allow the model to describe
-production inhibition later in the run and we pass it to the network as input
-as well.
+using OptFed's equation. This means that the hybrid model tracks an additional
+state for internal use that is neither a concentration nor measured. Hybrax
+requires an explicit opt-in for such a state, which is why the training config
+below sets `allow_stateful_models`. OptFed uses this count to allow the model to
+describe production inhibition later in the run and we pass it to the network as
+input as well.
 
 ## How the pieces fit
 
@@ -155,7 +158,8 @@ Train with Adam for 500 epochs at a constant learning rate of `0.03`. Omitting
 `batch_size` uses all twelve processes in each update, so 500 epochs give 500
 updates. Save a checkpoint every 10 epochs. The solver (Kvaerno5 with
 `rtol=1e-4`, `atol=1e-6`), the state scales that weight the default
-concentration loss, and the control scales all match the mechanistic example.
+concentration loss, and the control scales all match the
+[mechanistic example](optfed.md#prepare-and-fit-concentrations).
 Because the model has a latent state, the generation count, the config sets
 `allow_stateful_models`.
 
@@ -237,6 +241,8 @@ for name, frame in (("Original OptFed", reference), ("Neural kinetics", points))
     ratio_r2, ratio_nrmse = normalized_scores(frame, ["P_X"])
     comparison.append({
         "Model": name, "Total R²": total_r2, "Total NRMSE": total_nrmse,
+        "X R²": normalized_scores(frame, ["biomass"])[0],
+        "P R²": normalized_scores(frame, ["product"])[0],
         "P/X R²": ratio_r2, "P/X NRMSE": ratio_nrmse,
     })
 comparison = pd.DataFrame(comparison).set_index("Model")
@@ -245,9 +251,13 @@ comparison = pd.DataFrame(comparison).set_index("Model")
 ## Compare with OptFed
 
 The table scores the fitted network (labelled "Neural kinetics") and the
-original OptFed model on the same
-83 measurement rows, using the score definitions of the
-[mechanistic example](optfed.md#prepare-and-fit-concentrations).
+original OptFed model on the same 83 measurement rows, using the score
+definitions of the
+[mechanistic example](optfed.md#prepare-and-fit-concentrations). The X, P and P/X
+R² of the original model reproduce the values of 0.83, 0.82 and 0.73 reported in
+Fig. 2b of the OptFed paper \[[1](#ref-optfed-neural)\]. The
+[mechanistic example](optfed.md#compare-with-optfed) fits the same data with its
+eleven parameters and reaches similar results.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -322,7 +332,7 @@ hybrax forward --config forward-config.json --output-dir run/forward
 The bundled forward configuration loads `run`, which points to its latest
 checkpoint. After a refit, that is the final epoch. To simulate a specific
 checkpoint, set `models` to its directory, for example
-`["run/checkpoints/step_00470"]`.
+`["run/checkpoints/step_00500"]`.
 
 The optional `run.py` script prepares, trains, selects the checkpoint with the
 lowest concentration NRMSE, and runs that checkpoint:

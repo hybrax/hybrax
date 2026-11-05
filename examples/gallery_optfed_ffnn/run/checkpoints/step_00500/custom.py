@@ -49,7 +49,7 @@ class NeuralReactionModule(RateModule):
             [
                 inputs.SCL_modeled_RMCs,
                 inputs.SCL_controlled_PVs,
-                jnp.maximum(inputs.SCL_latent, 0.0),
+                inputs.SCL_latent,
             ]
         )
         raw = self.network(features)
