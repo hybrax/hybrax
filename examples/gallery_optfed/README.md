@@ -11,14 +11,15 @@ From this directory:
 python run.py
 ```
 
-The run uses 200 full-batch Adam epochs, gradient clipping at `0.05`, and linear
-learning-rate decay from `0.05` to `0.0001`. It saves every 10 epochs and selects
+The run uses 500 full-batch Adam epochs at a constant learning rate of `0.03`.
+It saves every 10 epochs and selects
 the checkpoint with lowest concentration NRMSE on the training measurements.
 The `build_solver` hook selects Kvaerno5 for training and evaluation, with
-`rtol=1e-7`, `atol=1e-9`. The importer fits
-monotone cubic splines to cumulative carbon and base feeds with an RMS error
-budget of `1e-4 kg`, preserving both endpoints and the total feed. Temperature
-uses cubic interpolation with `s=0`, matching OptFed. The temperature curve is fitted
+`rtol=1e-4`, `atol=1e-6`. Allow about 15 minutes on one CPU device.
+The importer fits monotone cubic splines to cumulative carbon and base feeds with
+an RMS error budget of `1e-4 kg`, preserving both endpoints and the total feed.
+Temperature uses cubic interpolation with `s=0`, matching OptFed. The temperature
+curve is fitted
 to the full online trace, then restricted to each process interval without
 refitting. Hybrax holds control values and rates at the solve-window endpoints
 when solver stages query outside that window. Feed traces

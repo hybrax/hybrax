@@ -98,7 +98,7 @@ def select_checkpoint(run, collection):
     (run / "selection.json").write_text(
         json.dumps(
             {
-                "checkpoint": str(selected.resolve()),
+                "checkpoint": str(selected.relative_to(run)),
                 "concentration_nrmse": best_nrmse,
             },
             indent=2,

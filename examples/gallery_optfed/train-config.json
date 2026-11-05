@@ -10,17 +10,16 @@
   },
   "custom_py": "custom.py",
   "train": {
-    "epochs": 200,
+    "epochs": 500,
     "seed": 0,
-    "learning_rate": 0.05,
-    "grad_clip_norm": 0.05,
+    "learning_rate": 0.03,
     "allow_stateful_models": true,
     "shuffle": false
   },
   "solver": {
     "max_steps": 100000,
-    "rtol": 1e-07,
-    "atol": 1e-09
+    "rtol": 1e-4,
+    "atol": 1e-6
   },
   "checkpoint": {
     "every": 10

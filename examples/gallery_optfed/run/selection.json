@@ -1,4 +1,4 @@
 {
-  "checkpoint": "checkpoints/step_00200",
-  "concentration_nrmse": 0.0817740065508655
+  "checkpoint": "checkpoints/step_00500",
+  "concentration_nrmse": 0.08055648311975987
 }

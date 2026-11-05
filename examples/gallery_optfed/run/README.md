@@ -1,7 +1,8 @@
 # Bundled OptFed checkpoint
 
-Selected step 200 from the completed 200-update fit with linear learning-rate
-decay from 0.05 to 0.0001. Training concentration NRMSE was 0.0817740066.
+Selected step 500 from the completed 500-update fit at a constant learning rate
+of 0.03, with Kvaerno5 at `rtol=1e-4`, `atol=1e-6`. Training concentration
+NRMSE was 0.0805564831.
 The prepared data and model implementation are bundled for portable loading.
 
 The fit used the current `data.json` and `custom.py` in this example and is the

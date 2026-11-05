@@ -1,8 +1,8 @@
 {
   "status": "complete",
-  "started_at": "2026-10-22T16:55:38+0200",
+  "started_at": "2026-11-05T14:53:12+0100",
   "cli_argv": [
-    "/work/t3code-workspaces/hybrax-2/src/hybrax/train/cli.py",
+    "/data/worktrees/hybrax-2/t3-bf0b97bd/src/hybrax/train/cli.py",
     "train",
     "--config",
     "train-config.json",
@@ -21,24 +21,24 @@
     },
     "custom_py": "custom.py",
     "train": {
-      "epochs": 200,
+      "epochs": 500,
       "seed": 0,
       "optimizer": "adam",
-      "learning_rate": 0.05,
-      "grad_clip_norm": 0.05,
+      "learning_rate": 0.03,
+      "grad_clip_norm": 1000.0,
       "batch_size": null,
       "microbatch_size": null,
       "shuffle": false,
       "batch_seed": null,
       "devices": 1,
       "allow_stateful_models": true,
-      "flow_integral_relative_tolerance": 0.001,
+      "flow_integral_relative_tolerance": 0.01,
       "holdout_processes": null
     },
     "solver": {
       "max_steps": 100000,
-      "rtol": 1e-07,
-      "atol": 1e-09,
+      "rtol": 0.0001,
+      "atol": 1e-06,
       "jump_ts": true
     },
     "checkpoint": {
@@ -65,19 +65,19 @@
     },
     "custom_py": {
       "bundled": "custom.py",
-      "file_hash": "sha256:baf99c540e64699c7094f7e2e777519db385f05a778305a894c301755c7b5cb8"
+      "file_hash": "sha256:5f852f9c614a1e190707a184689fd359c1135dcf841c20ee500681e020e5dee9"
     }
   },
   "environment": {
     "python": "3.13.15",
-    "hybrax": "0.1.0",
+    "hybrax": "0.1.1.dev36+g6159097f0",
     "jax": "0.10.0",
     "optax": "0.2.8",
     "equinox": "0.13.8",
     "diffrax": "0.7.2",
     "pydantic": "2.13.4"
   },
-  "finished_at": "2026-10-22T17:20:04+0200",
-  "updates_completed": 200,
-  "final_mean_loss": 0.006665913196897054
+  "finished_at": "2026-11-05T15:01:19+0100",
+  "updates_completed": 500,
+  "final_mean_loss": 0.006471456207211985
 }

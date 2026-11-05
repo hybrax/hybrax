@@ -189,15 +189,6 @@ def build_solver(config):
     return diffrax.Kvaerno5()
 
 
-def build_learning_rate(config, train_cfg, total_updates):
-    """Linearly decay from the configured learning rate to 1e-4."""
-    del config
-    return lambda step: (
-        train_cfg.learning_rate
-        + (1e-4 - train_cfg.learning_rate) * step / (total_updates - 1)
-    )
-
-
 def estimate_all_scales(runtime_data, target_names, config):
     """Scale states and measured controls to order-one solver values."""
     del target_names, config
