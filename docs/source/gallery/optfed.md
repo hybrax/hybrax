@@ -662,6 +662,8 @@ for name, frame in (("Original OptFed", reference), ("Hybrax", points)):
     ratio_r2, ratio_nrmse = normalized_scores(frame, ["P_X"])
     comparison.append({
         "Model": name, "Total R²": total_r2, "Total NRMSE": total_nrmse,
+        "X R²": normalized_scores(frame, ["biomass"])[0],
+        "P R²": normalized_scores(frame, ["product"])[0],
         "P/X R²": ratio_r2, "P/X NRMSE": ratio_nrmse,
     })
 comparison = pd.DataFrame(comparison).set_index("Model")
@@ -672,8 +674,13 @@ comparison = pd.DataFrame(comparison).set_index("Model")
 Fitting concentrations directly, Hybrax reproduces the measurements somewhat
 more closely than the published OptFed model, for the concentrations and for
 the product-to-biomass ratio. The table scores both models on the same
-measurements. These are the processes used for training, so the scores measure
-goodness of fit rather than performance on unseen processes.
+measurements. The X, P and P/X R² of the original model are the fit R² values
+of 0.83, 0.82 and 0.73 reported in Fig. 2b of the OptFed paper
+\[[1](#ref-optfed)\]. The other scores of the original model are computed from
+predictions that we obtained by running the authors' fitting script
+(`code/01_fit.py`) from the OptFed repository. These are the processes used for
+training, so the scores measure goodness of fit rather than performance on
+unseen processes.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
@@ -699,11 +706,10 @@ each other over a narrow temperature range.
 - The two fits also differ in optimizer, feed splines, and sampling treatment.
   Differences in their parameters or trajectories therefore do not establish
   weak identifiability on their own.
-- These are measurement-based scores, not quoted cross-validation scores from
-  the paper. The reference scores use measurement-time predictions extracted
-  from the output of OptFed's `code/01_fit.py`, rather than interpolation from
-  the plotted curves. The repository does not store this output; the bundled
-  CSV lets the comparison run without rerunning the OptFed fit.
+- The reference scores use predictions at the measurement times rather than
+  interpolation from the plotted curves. The OptFed repository does not store
+  these predictions; the bundled CSV lets the comparison run without rerunning
+  the OptFed fit.
 
 ````
 

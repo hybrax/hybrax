@@ -254,10 +254,13 @@ The table scores the fitted network (labelled "Neural kinetics") and the
 original OptFed model on the same 83 measurement rows, using the score
 definitions of the
 [mechanistic example](optfed.md#prepare-and-fit-concentrations). The X, P and P/X
-R² of the original model reproduce the values of 0.83, 0.82 and 0.73 reported in
-Fig. 2b of the OptFed paper \[[1](#ref-optfed-neural)\]. The
-[mechanistic example](optfed.md#compare-with-optfed) fits the same data with its
-eleven parameters and reaches similar results.
+R² of the original model are the fit R² values of 0.83, 0.82 and 0.73 reported in
+Fig. 2b of the OptFed paper \[[1](#ref-optfed-neural)\]. The other scores of the
+original model are computed from predictions that we obtained by running the
+authors' fitting script (`code/01_fit.py`) from the OptFed repository.
+
+The [mechanistic example](optfed.md#compare-with-optfed) fits the same data with
+its eleven parameters and reaches similar results.
 
 ```{code-cell} ipython3
 :tags: [remove-input]
