@@ -96,5 +96,6 @@ The five tutorials use one batch dataset and nothing else. Everything below is i
 | A PLS-shaped component reading media composition alongside state | [PLS-dFBA](../gallery/pls_dfba.md) |
 | Learnable per-edge functions (a KAN) instead of a neural network's fixed activations | [A KAN model](../gallery/kan.md) |
 | Fit an eleven-parameter mechanistic model directly to concentrations with temperature and feed controls | [OptFed](../gallery/optfed.md) |
+| Replace a mechanistic model's rate laws with a small neural network, keeping its mass balances | [OptFed with neural kinetics](../gallery/optfed_neural.md) |
 | An LSTM that learns four PCA reaction-mode rates driving 25 concentration balances | [HEK293: PCA reaction modes with an LSTM](../gallery/hek293_lstm.md) |
 | One declared rate feeding two coupled derivatives at once | [Glutamine degradation](../gallery/glutamine_decay.md) |

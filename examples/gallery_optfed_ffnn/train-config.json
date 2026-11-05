@@ -1,0 +1,31 @@
+{
+  "data": {
+    "prepared": "prepared",
+    "targets": [
+      "biomass",
+      "glycerol",
+      "product"
+    ],
+    "target_source": "reactor_components"
+  },
+  "custom_py": "custom.py",
+  "train": {
+    "epochs": 500,
+    "seed": 0,
+    "learning_rate": 0.03,
+    "allow_stateful_models": true,
+    "shuffle": false
+  },
+  "solver": {
+    "max_steps": 100000,
+    "rtol": 1e-4,
+    "atol": 1e-6
+  },
+  "checkpoint": {
+    "every": 10
+  },
+  "output": {
+    "dir": "run",
+    "predictions": "parents"
+  }
+}

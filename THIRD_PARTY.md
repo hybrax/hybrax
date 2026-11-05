@@ -48,6 +48,10 @@ the last section.
   of `data.json` and both prediction files as downloads and show plots and tables
   computed from them.
 
+  `examples/gallery_optfed_ffnn/` trains a neural variant of the model on the same
+  `data.json`. Its `run/` falls under the same terms, with the same exceptions, and
+  the built docs show plots and tables computed from the data.
+
 ## E. coli core metabolic model (BiGG Models)
 
 `examples/gallery_fba_hyb/01_generate_fba_data.py` downloads `e_coli_core.xml` from

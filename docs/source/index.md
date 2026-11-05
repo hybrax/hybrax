@@ -119,6 +119,7 @@ FBA-Hyb <gallery/fba_hyb>
 PLS-dFBA <gallery/pls_dfba>
 KAN Models <gallery/kan>
 OptFed mechanistic model <gallery/optfed>
+OptFed with neural kinetics <gallery/optfed_neural>
 HEK293: PCA reaction modes with an LSTM <gallery/hek293_lstm>
 ```
 

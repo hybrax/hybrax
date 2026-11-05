@@ -1,0 +1,83 @@
+{
+  "status": "complete",
+  "started_at": "2026-11-05T14:53:13+0100",
+  "cli_argv": [
+    "/data/worktrees/hybrax-2/t3-bf0b97bd/src/hybrax/train/cli.py",
+    "train",
+    "--config",
+    "train-config.json",
+    "--overwrite"
+  ],
+  "config": {
+    "data": {
+      "prepared": "prepared.json.gz",
+      "processes": null,
+      "targets": [
+        "biomass",
+        "glycerol",
+        "product"
+      ],
+      "target_source": "reactor_components"
+    },
+    "custom_py": "custom.py",
+    "train": {
+      "epochs": 500,
+      "seed": 0,
+      "optimizer": "adam",
+      "learning_rate": 0.03,
+      "grad_clip_norm": 1000.0,
+      "batch_size": null,
+      "microbatch_size": null,
+      "shuffle": false,
+      "batch_seed": null,
+      "devices": 1,
+      "allow_stateful_models": true,
+      "flow_integral_relative_tolerance": 0.01,
+      "holdout_processes": null
+    },
+    "solver": {
+      "max_steps": 100000,
+      "rtol": 0.0001,
+      "atol": 1e-06,
+      "jump_ts": true
+    },
+    "checkpoint": {
+      "every": 10.0,
+      "bundle_prepared": true,
+      "keep_best": null,
+      "select_by": null
+    },
+    "output": {
+      "dir": "run",
+      "predictions": "parents"
+    },
+    "logging": {
+      "decimals": 4
+    },
+    "prepare": null,
+    "custom": null,
+    "loo": null
+  },
+  "inputs": {
+    "prepared_input": {
+      "path": "prepared.json.gz",
+      "content_hash": "sha256:3adba59ed831f27b67dfc143f104bf77cbb23e7fc0e91e8a239df65a85c4fc87"
+    },
+    "custom_py": {
+      "bundled": "custom.py",
+      "file_hash": "sha256:7bb2e459cdfa6f9637a6e05064d0bb2d24db652b1039d06d716e00bbd2d95dd9"
+    }
+  },
+  "environment": {
+    "python": "3.13.15",
+    "hybrax": "0.1.1.dev36+g6159097f0",
+    "jax": "0.10.0",
+    "optax": "0.2.8",
+    "equinox": "0.13.8",
+    "diffrax": "0.7.2",
+    "pydantic": "2.13.4"
+  },
+  "finished_at": "2026-11-05T15:01:11+0100",
+  "updates_completed": 500,
+  "final_mean_loss": 0.006909909710927595
+}
