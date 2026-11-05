@@ -11,9 +11,9 @@ hybrax.train.controls_store
 
    - ``ControlPartition`` / ``derive_control_partition`` — split a process's controls
      into the direct-spline and linear-interpolant groups the solver consumes.
-   - ``PerProcessControls`` — a single process's controls as JAX arrays, with
-     semantic per-axis ``eval_controlled_*`` accessors (RAW, unscaled) consumed by
-     ``HybridOdeWrapper``.
+   - ``PerProcessControls`` — a single process's controls as JAX arrays, with a
+     combined ``evaluate`` method and per-axis ``eval_controlled_*`` accessors, all
+     returning RAW, unscaled controls.
    - ``BatchControls`` — the same evaluator, indexed by batch row, for a padded
      batch of processes trained together.
    - ``ControlsStore`` — the collection-level loader: reads every process's raw
@@ -26,6 +26,14 @@ hybrax.train.controls_store
    ``*_event_*`` arrays this module also loads, via ``controls.py``'s
    ``collect_discrete_event_metadata``.
 
+
+
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.controls_store.BATCH_ROW_FIELDS
 
 
 Classes
@@ -103,6 +111,15 @@ Module Contents
       RAW controlled process-variable value for batch row ``row_idx`` at
       ``t_arr``. See :meth:`eval_controlled_Inflows_cumulative` for the
       arguments.
+
+
+
+   .. py:method:: evaluate(row_idx, t, states=None)
+
+      Return RAW values and derivatives for one row in flow/PV order.
+
+      Scalar queries return vectors; a query vector returns two matrices.
+      `states` is reserved for state-dependent controls and is unused.
 
 
 
@@ -394,9 +411,11 @@ Module Contents
 
    Column axis follows
    ``[name_controlled_Inflows | name_controlled_Outflows | name_controlled_PVs]``
-   matching hybrax.format `ControlSplines`. All columns are consumed through
-   the per-axis `eval_controlled_*` accessors, which the wrapper scales into
-   `ReactionInputs`. Discrete bolus/sample events are NOT controls here;
+   matching hybrax.format `ControlSplines`. The wrapper uses `evaluate` to
+   fetch values and derivatives together, then scales them into `ReactionInputs`.
+   Per-axis `eval_controlled_*` accessors remain for callers outside the
+   solve, such as scale setup in a `custom.py`.
+   Discrete bolus/sample events are NOT controls here;
    the callbacks solve applies them as state jumps from the `*_event_*`
    arrays. `jump_ts` carries genuine vector-field discontinuity times
    (`BioProcess.discrete_events`) for the adaptive solver.
@@ -442,6 +461,15 @@ Module Contents
 
       RAW controlled process-variable value at ``t_arr``. See
       :meth:`eval_controlled_Inflows_cumulative` for the arguments.
+
+
+
+   .. py:method:: evaluate(ts, states=None)
+
+      Return RAW values and derivatives in Inflows, Outflows, PVs order.
+
+      Scalar queries return vectors; a query vector returns two matrices.
+      `states` is reserved for state-dependent controls and is unused.
 
 
 
@@ -610,5 +638,9 @@ Module Contents
 
    Used at the runtime-artifact trust boundary to check a stored split against its
    parent collection, because `ControlsStore.__post_init__` validates structure only.
+
+
+.. py:data:: BATCH_ROW_FIELDS
+   :value: ('spline_breaks', 'spline_coeffs', 'linear_grid', 'control_values', 'control_derivatives',...
 
 

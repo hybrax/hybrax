@@ -5,7 +5,7 @@ hybrax.train.preflight
 
 .. autoapi-nested-parse::
 
-   Pre-training scalar checks of prescribed continuous-flow integration.
+   Pre-training check of prescribed continuous-flow integration.
 
 
 
@@ -22,16 +22,20 @@ Module Contents
 
 .. py:function:: check_continuous_flow_integration(store, process_names, *, max_steps, rtol, atol, use_jump_ts, flow_integral_relative_tolerance = DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE)
 
-   Reject scalar flow solves that miss their known cumulative increment.
+   Reject prescribed continuous flows whose integral misses its increment.
 
-   Each prescribed continuous inflow/outflow is checked independently over its
-   training measurement span using Tsit5 and the configured PID settings. The
-   endpoint allowance is the known increment's magnitude times
+   All controls of a process are integrated together in one Tsit5 solve over its
+   training measurement span with the configured PID settings: the continuous
+   inflow and outflow rates, and the process-variable values, as the training RHS
+   uses them. The step sizes therefore reflect every control, as in training.
+   Each inflow/outflow integral is then checked separately against its known
+   increment. The allowance is the increment's magnitude times
    `flow_integral_relative_tolerance`, independent of solver tolerances. A zero
-   increment requires an exactly zero integral. No control knots are added.
+   increment requires an exactly zero integral. Process variables only shape the
+   steps; their integrals are not checked. No control knots are added.
 
    Passing is a preflight diagnostic, not proof of full-model integration accuracy;
-   the coupled model takes different adaptive steps. Boluses, samples, modeled
-   flows, and process-variable controls are not scalar continuous flows.
+   the coupled model also adapts its steps to the state dynamics. Boluses,
+   samples and modeled flows are not prescribed continuous flows.
 
 

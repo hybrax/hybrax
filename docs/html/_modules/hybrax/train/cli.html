@@ -263,6 +263,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">KAN Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed.html">OptFed mechanistic model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed_neural.html">OptFed with neural kinetics</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/hek293_lstm.html">HEK293: PCA reaction modes with an LSTM</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
@@ -365,11 +366,12 @@
         </div>
         <article role="main" id="furo-main-content">
           <h1>Source code for hybrax.train.cli</h1><div class="highlight"><pre>
-<span></span><span class="sd">"""The ``hybrax`` command line: ``prepare``, ``train``, ``forward``, and ``loo``."""</span>
+<span></span><span class="sd">"""The `hybrax` command line: `prepare`, `train`, `forward`, `loo`, and `plot`."""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">csv</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
@@ -407,7 +409,12 @@
     <span class="n">run_loo_cv</span><span class="p">,</span>
     <span class="n">train_prepared_fold</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.postprocessing</span><span class="w"> </span><span class="kn">import</span> <span class="n">aggregate_dense_exports</span><span class="p">,</span> <span class="n">export_predictions_csv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.postprocessing</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">TRAINING_PLOTS</span><span class="p">,</span>
+    <span class="n">aggregate_dense_exports</span><span class="p">,</span>
+    <span class="n">export_predictions_csv</span><span class="p">,</span>
+    <span class="n">read_training_history</span><span class="p">,</span>
+<span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.prepare</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_artifact</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.run_config</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">ModelRef</span><span class="p">,</span>
@@ -628,6 +635,37 @@
         <span class="n">help</span><span class="o">=</span><span class="s2">"Python logging level."</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="n">loo_parser</span><span class="o">.</span><span class="n">set_defaults</span><span class="p">(</span><span class="n">handler</span><span class="o">=</span><span class="n">_handle_loo</span><span class="p">)</span>
+
+    <span class="c1"># ---- plot ----</span>
+    <span class="n">plot_parser</span> <span class="o">=</span> <span class="n">subparsers</span><span class="o">.</span><span class="n">add_parser</span><span class="p">(</span>
+        <span class="s2">"plot"</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">"Draw a run's training plots from its metrics.csv. Works while "</span>
+            <span class="s2">"training is still running."</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">plot_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"run"</span><span class="p">,</span>
+        <span class="n">metavar</span><span class="o">=</span><span class="s2">"RUN"</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">"Run directory, or the path to a metrics.csv. The plots are written "</span>
+            <span class="s2">"next to metrics.csv."</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">plot_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"--kind"</span><span class="p">,</span>
+        <span class="n">action</span><span class="o">=</span><span class="s2">"append"</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="n">TRAINING_PLOTS</span><span class="p">),</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">"Plot to draw; repeat for several. Default: all of them."</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">plot_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">"--log-level"</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">"INFO"</span><span class="p">,</span>
+        <span class="n">choices</span><span class="o">=</span><span class="p">[</span><span class="s2">"DEBUG"</span><span class="p">,</span> <span class="s2">"INFO"</span><span class="p">,</span> <span class="s2">"WARNING"</span><span class="p">,</span> <span class="s2">"ERROR"</span><span class="p">],</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">"Python logging level."</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">plot_parser</span><span class="o">.</span><span class="n">set_defaults</span><span class="p">(</span><span class="n">handler</span><span class="o">=</span><span class="n">_handle_plot</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">parser</span>
 
@@ -1625,6 +1663,20 @@
         <span class="n">result</span><span class="o">.</span><span class="n">devices_per_fold</span><span class="p">,</span>
         <span class="n">result</span><span class="o">.</span><span class="n">aggregate</span><span class="p">,</span>
     <span class="p">)</span>
+    <span class="k">return</span> <span class="mi">0</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_handle_plot</span><span class="p">(</span><span class="n">args</span><span class="p">:</span> <span class="n">argparse</span><span class="o">.</span><span class="n">Namespace</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+    <span class="n">_configure_logging</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">log_level</span><span class="p">)</span>
+    <span class="n">run</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">run</span><span class="p">)</span>
+    <span class="n">metrics_csv</span> <span class="o">=</span> <span class="n">run</span> <span class="o">/</span> <span class="s2">"metrics.csv"</span> <span class="k">if</span> <span class="n">run</span><span class="o">.</span><span class="n">is_dir</span><span class="p">()</span> <span class="k">else</span> <span class="n">run</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">history</span> <span class="o">=</span> <span class="n">read_training_history</span><span class="p">(</span><span class="n">metrics_csv</span><span class="p">)</span>
+    <span class="k">except</span> <span class="p">(</span><span class="ne">OSError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">,</span> <span class="n">csv</span><span class="o">.</span><span class="n">Error</span><span class="p">)</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">"plot: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">exc</span><span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span>
+    <span class="k">for</span> <span class="n">kind</span> <span class="ow">in</span> <span class="nb">dict</span><span class="o">.</span><span class="n">fromkeys</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">kind</span> <span class="ow">or</span> <span class="n">TRAINING_PLOTS</span><span class="p">):</span>
+        <span class="n">TRAINING_PLOTS</span><span class="p">[</span><span class="n">kind</span><span class="p">](</span><span class="n">history</span><span class="p">,</span> <span class="n">metrics_csv</span><span class="o">.</span><span class="n">parent</span><span class="p">)</span>
     <span class="k">return</span> <span class="mi">0</span>
 
 

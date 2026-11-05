@@ -263,6 +263,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">KAN Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed.html">OptFed mechanistic model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed_neural.html">OptFed with neural kinetics</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/hek293_lstm.html">HEK293: PCA reaction modes with an LSTM</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
@@ -754,19 +755,14 @@
         <span class="n">RAW_latent</span> <span class="o">=</span> <span class="n">y_phys</span><span class="p">[</span><span class="n">n_phys</span><span class="p">:]</span>
         <span class="n">RAW_RMC_rhs</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">RAW_RMCs</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
 
-        <span class="n">RAW_controlled_Inflows_cumulative</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_Inflows_cumulative</span><span class="p">(</span><span class="n">control_t</span><span class="p">,</span> <span class="n">y_phys</span><span class="p">)</span>
-        <span class="p">)</span>
-        <span class="n">RAW_controlled_Inflows_rates</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_Inflows_rates</span><span class="p">(</span>
-            <span class="n">control_t</span><span class="p">,</span> <span class="n">y_phys</span>
-        <span class="p">)</span>
-        <span class="n">RAW_controlled_Outflows_cumulative</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_Outflows_cumulative</span><span class="p">(</span><span class="n">control_t</span><span class="p">,</span> <span class="n">y_phys</span><span class="p">)</span>
-        <span class="p">)</span>
-        <span class="n">RAW_controlled_Outflows_rates</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_Outflows_rates</span><span class="p">(</span>
-            <span class="n">control_t</span><span class="p">,</span> <span class="n">y_phys</span>
-        <span class="p">)</span>
-        <span class="n">RAW_controlled_PVs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_PVs</span><span class="p">(</span><span class="n">control_t</span><span class="p">,</span> <span class="n">y_phys</span><span class="p">)</span>
+        <span class="n">control_values</span><span class="p">,</span> <span class="n">control_rates</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">control_t</span><span class="p">,</span> <span class="n">y_phys</span><span class="p">)</span>
+        <span class="n">n_in</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_controlled_Inflows</span>
+        <span class="n">n_flow</span> <span class="o">=</span> <span class="n">n_in</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_controlled_Outflows</span>
+        <span class="n">RAW_controlled_Inflows_cumulative</span> <span class="o">=</span> <span class="n">control_values</span><span class="p">[:</span><span class="n">n_in</span><span class="p">]</span>
+        <span class="n">RAW_controlled_Inflows_rates</span> <span class="o">=</span> <span class="n">control_rates</span><span class="p">[:</span><span class="n">n_in</span><span class="p">]</span>
+        <span class="n">RAW_controlled_Outflows_cumulative</span> <span class="o">=</span> <span class="n">control_values</span><span class="p">[</span><span class="n">n_in</span><span class="p">:</span><span class="n">n_flow</span><span class="p">]</span>
+        <span class="n">RAW_controlled_Outflows_rates</span> <span class="o">=</span> <span class="n">control_rates</span><span class="p">[</span><span class="n">n_in</span><span class="p">:</span><span class="n">n_flow</span><span class="p">]</span>
+        <span class="n">RAW_controlled_PVs</span> <span class="o">=</span> <span class="n">control_values</span><span class="p">[</span><span class="n">n_flow</span><span class="p">:]</span>
         <span class="n">RAW_controlled_Inflows_Cin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span>
         <span class="n">RAW_modeled_Inflows_Cin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rhs_ode</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span>
 
@@ -886,19 +882,14 @@
         <span class="p">]</span>
         <span class="n">RAW_latent</span> <span class="o">=</span> <span class="n">y_phys</span><span class="p">[</span><span class="n">n_phys</span><span class="p">:]</span>
 
-        <span class="n">RAW_controlled_Inflows_cumulative</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_Inflows_cumulative</span><span class="p">(</span><span class="n">t_arr</span><span class="p">,</span> <span class="n">y_phys</span><span class="p">)</span>
-        <span class="p">)</span>
-        <span class="n">RAW_controlled_Inflows_rates</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_Inflows_rates</span><span class="p">(</span>
-            <span class="n">t_arr</span><span class="p">,</span> <span class="n">y_phys</span>
-        <span class="p">)</span>
-        <span class="n">RAW_controlled_Outflows_cumulative</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_Outflows_cumulative</span><span class="p">(</span><span class="n">t_arr</span><span class="p">,</span> <span class="n">y_phys</span><span class="p">)</span>
-        <span class="p">)</span>
-        <span class="n">RAW_controlled_Outflows_rates</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_Outflows_rates</span><span class="p">(</span>
-            <span class="n">t_arr</span><span class="p">,</span> <span class="n">y_phys</span>
-        <span class="p">)</span>
-        <span class="n">RAW_controlled_PVs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">eval_controlled_PVs</span><span class="p">(</span><span class="n">t_arr</span><span class="p">,</span> <span class="n">y_phys</span><span class="p">)</span>
+        <span class="n">control_values</span><span class="p">,</span> <span class="n">control_rates</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">controls</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="n">t_arr</span><span class="p">,</span> <span class="n">y_phys</span><span class="p">)</span>
+        <span class="n">n_in</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_controlled_Inflows</span>
+        <span class="n">n_flow</span> <span class="o">=</span> <span class="n">n_in</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_controlled_Outflows</span>
+        <span class="n">RAW_controlled_Inflows_cumulative</span> <span class="o">=</span> <span class="n">control_values</span><span class="p">[:</span><span class="n">n_in</span><span class="p">]</span>
+        <span class="n">RAW_controlled_Inflows_rates</span> <span class="o">=</span> <span class="n">control_rates</span><span class="p">[:</span><span class="n">n_in</span><span class="p">]</span>
+        <span class="n">RAW_controlled_Outflows_cumulative</span> <span class="o">=</span> <span class="n">control_values</span><span class="p">[</span><span class="n">n_in</span><span class="p">:</span><span class="n">n_flow</span><span class="p">]</span>
+        <span class="n">RAW_controlled_Outflows_rates</span> <span class="o">=</span> <span class="n">control_rates</span><span class="p">[</span><span class="n">n_in</span><span class="p">:</span><span class="n">n_flow</span><span class="p">]</span>
+        <span class="n">RAW_controlled_PVs</span> <span class="o">=</span> <span class="n">control_values</span><span class="p">[</span><span class="n">n_flow</span><span class="p">:]</span>
         <span class="n">inputs</span> <span class="o">=</span> <span class="n">ReactionInputs</span><span class="p">(</span>
             <span class="n">SCL_modeled_RMCs</span><span class="o">=</span><span class="n">module</span><span class="o">.</span><span class="n">scale_modeled_RMCs</span><span class="p">(</span><span class="n">RAW_RMCs</span><span class="p">),</span>
             <span class="n">SCL_modeled_PVs</span><span class="o">=</span><span class="n">module</span><span class="o">.</span><span class="n">scale_modeled_PVs</span><span class="p">(</span><span class="n">RAW_PVs</span><span class="p">),</span>

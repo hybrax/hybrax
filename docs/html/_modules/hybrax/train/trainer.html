@@ -263,6 +263,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">KAN Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed.html">OptFed mechanistic model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed_neural.html">OptFed with neural kinetics</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/hek293_lstm.html">HEK293: PCA reaction modes with an LSTM</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
@@ -376,6 +377,7 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">dataclasses</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">diffrax</span>
@@ -385,7 +387,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.tree_util</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jtu</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">.constants</span><span class="w"> </span><span class="kn">import</span> <span class="n">DEFAULT_SOLVER</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.controls_store</span><span class="w"> </span><span class="kn">import</span> <span class="n">BatchControls</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.controls_store</span><span class="w"> </span><span class="kn">import</span> <span class="n">BATCH_ROW_FIELDS</span><span class="p">,</span> <span class="n">BatchControls</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.model_api</span><span class="w"> </span><span class="kn">import</span> <span class="n">LossInputs</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.physical_solve</span><span class="w"> </span><span class="kn">import</span> <span class="n">within_fail_time</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.training_data</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
@@ -561,65 +563,53 @@
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">_BatchIndexedControls</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""Lightweight per-sample controls adapter for batched loss evaluation."""</span>
+<span class="w">    </span><span class="sd">"""Select a singleton controls batch before entering the per-sample solve."""</span>
 
     <span class="n">batch_controls</span><span class="p">:</span> <span class="n">BatchControls</span>
-    <span class="n">row_idx</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">eval_controlled_Inflows_cumulative</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">eval_controlled_Inflows_cumulative</span><span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span>
-        <span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">batch_controls</span><span class="p">:</span> <span class="n">BatchControls</span><span class="p">,</span> <span class="n">row_idx</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">):</span>
+        <span class="c1"># Keep a batch axis of one so the evaluators and event accessors read the</span>
+        <span class="c1"># static row 0 throughout the solve, including its adjoint.</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">name</span><span class="p">:</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">batch_controls</span><span class="p">,</span> <span class="n">name</span><span class="p">)[</span><span class="n">row_idx</span><span class="p">][</span><span class="kc">None</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">BATCH_ROW_FIELDS</span>
+        <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span> <span class="o">=</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="n">batch_controls</span><span class="p">,</span> <span class="o">**</span><span class="n">rows</span><span class="p">)</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">eval_controlled_Inflows_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">eval_controlled_Inflows_rates</span><span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span>
-        <span class="p">)</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">eval_controlled_Outflows_cumulative</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">eval_controlled_Outflows_cumulative</span><span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span>
-        <span class="p">)</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">eval_controlled_Outflows_rates</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">eval_controlled_Outflows_rates</span><span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span>
-        <span class="p">)</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">eval_controlled_PVs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">eval_controlled_PVs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">row_idx</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">evaluate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">evaluate</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">t_arr</span><span class="p">,</span> <span class="n">states</span><span class="p">)</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">min_V</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">min_V</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">row_idx</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">min_V</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">sample_event_times</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">sample_event_times</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">row_idx</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">sample_event_times</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">sample_event_volumes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">sample_event_volumes</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">row_idx</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">sample_event_volumes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">sample_event_mask</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">sample_event_mask</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">row_idx</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">sample_event_mask</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">bolus_event_times</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">bolus_event_times</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">row_idx</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">bolus_event_times</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">bolus_event_volumes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">bolus_event_volumes</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">row_idx</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">bolus_event_volumes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">bolus_event_Cin</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">bolus_event_Cin</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">row_idx</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">bolus_event_Cin</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">bolus_event_mask</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">bolus_event_mask</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">row_idx</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">batch_controls</span><span class="o">.</span><span class="n">bolus_event_mask</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
     <span class="nd">@property</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">max_event_gap_fraction</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>

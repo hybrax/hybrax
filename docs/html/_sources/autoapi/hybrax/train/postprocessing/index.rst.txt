@@ -14,6 +14,7 @@ Attributes
 
 .. autoapisummary::
 
+   hybrax.train.postprocessing.TRAINING_PLOTS
    hybrax.train.postprocessing.logger
 
 
@@ -39,8 +40,11 @@ Functions
    hybrax.train.postprocessing.plot_cross_fold_loss_curves
    hybrax.train.postprocessing.plot_grad_norm_curve
    hybrax.train.postprocessing.plot_loss_curve
+   hybrax.train.postprocessing.read_training_history
    hybrax.train.postprocessing.render_control_diagnostics
    hybrax.train.postprocessing.save_model_metadata
+   hybrax.train.postprocessing.write_grad_norm_curve
+   hybrax.train.postprocessing.write_loss_curve
 
 
 Module Contents
@@ -218,6 +222,18 @@ Module Contents
    broken down per target, not just in total.
 
 
+.. py:function:: read_training_history(metrics_csv)
+
+   Read the plotted series of a training history back from `metrics.csv`.
+
+   Returns the keys the `TRAINING_PLOTS` writers use. The file may still be
+   written to, so a last row without its closing newline is skipped. The
+   `holdout_per_target_loss` column is optional, since older runs lack it.
+
+   :raises ValueError: If the file is not a training `metrics.csv` or holds no
+       complete step row.
+
+
 .. py:function:: render_control_diagnostics(diagnostics, output_dir)
 
    Render one figure overlaying, per control: the raw measured samples, the
@@ -229,6 +245,19 @@ Module Contents
 
    Write a small JSON sidecar next to a saved model.
 
+
+.. py:function:: write_grad_norm_curve(history, output_dir)
+
+   Write `grad_norm_curve.png` from a training history into `output_dir`.
+
+
+.. py:function:: write_loss_curve(history, output_dir)
+
+   Write `loss_curve.png` from a training history into `output_dir`.
+
+
+.. py:data:: TRAINING_PLOTS
+   :type:  dict[str, collections.abc.Callable[[collections.abc.Mapping[str, Any], pathlib.Path], pathlib.Path]]
 
 .. py:data:: logger
 

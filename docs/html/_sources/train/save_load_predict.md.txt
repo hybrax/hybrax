@@ -28,8 +28,8 @@ run/
 ├── metrics.csv          per-step loss and timing
 ├── losses.csv           final per-process, per-target loss
 ├── predictions.csv      dense trajectories, if output.predictions selects any
-├── loss_curve.png
-├── grad_norm_curve.png
+├── loss_curve.png       drawn at the end; hybrax plot redraws both
+├── grad_norm_curve.png  drawn at the end
 ├── model/
 │   ├── params.eqx       trainable parameters only
 │   └── opt_state.eqx    optimizer state, for resuming

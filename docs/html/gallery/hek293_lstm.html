@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Errors" href="../troubleshooting/errors.html"><link rel="prev" title="OptFed mechanistic model" href="optfed.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="Errors" href="../troubleshooting/errors.html"><link rel="prev" title="OptFed with neural kinetics" href="optfed_neural.html">
         <link rel="prefetch" href="../_static/hybrax_logo.png" as="image">
 
     <link rel="shortcut icon" href="../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
@@ -264,6 +264,7 @@
 <li class="toctree-l1"><a class="reference internal" href="pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="kan.html">KAN Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="optfed.html">OptFed mechanistic model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="optfed_neural.html">OptFed with neural kinetics</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">HEK293: PCA reaction modes with an LSTM</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
@@ -414,12 +415,13 @@ in <code class="docutils literal notranslate"><span class="pre">examples/gallery
 depth.</p>
 </div></blockquote>
 <ol class="arabic simple">
-<li><p><strong>Import</strong> (<code class="docutils literal notranslate"><span class="pre">import_from_mat.py</span></code>; creates <code class="docutils literal notranslate"><span class="pre">data.json</span></code>, <code class="docutils literal notranslate"><span class="pre">train-config.json</span></code>).
-The importer reads the authors’ MAT file and converts the nine cultures into
-a Hybrax <code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code> with concentrations, reactor volume, feed and
-feed composition. It computes the PCA reaction matrix and stores it in every
-process as a <code class="docutils literal notranslate"><span class="pre">ReactionOde</span></code>. It also writes the training configuration,
-because the config carries statistics computed from all nine cultures (see
+<li><p><strong>Import</strong> (<code class="docutils literal notranslate"><span class="pre">import_from_mat.py</span></code>; creates <code class="docutils literal notranslate"><span class="pre">data.json</span></code>, <code class="docutils literal notranslate"><span class="pre">train-config.json</span></code>,
+<code class="docutils literal notranslate"><span class="pre">train-config-nonneg.json</span></code>). The importer reads the authors’ MAT file and
+converts the nine cultures into a Hybrax <code class="docutils literal notranslate"><span class="pre">BioProcessCollection</span></code> with
+concentrations, reactor volume, feed and feed composition. It computes the
+PCA reaction matrix and stores it in every process as a <code class="docutils literal notranslate"><span class="pre">ReactionOde</span></code>. It
+also writes the training configurations, because they carry statistics
+computed from all nine cultures (see
 <a class="reference internal" href="#validate-the-data-and-train-the-model">Validate the data and train the model</a>
 for why).</p></li>
 <li><p><strong>Prepare</strong> (<code class="docutils literal notranslate"><span class="pre">prepare-config.json</span></code>; creates <code class="docutils literal notranslate"><span class="pre">prepared/prepared.json</span></code>).
@@ -434,21 +436,21 @@ the training-ready artifact. Training reads this artifact (rather than
 its hook functions by name. Here they build the LSTM reaction module, the
 input scaling, and a loss that uses the same max-normalized concentration
 errors as MATLAB. Training writes losses and checkpoints to <code class="docutils literal notranslate"><span class="pre">run/</span></code>. The
-config requests 2,000 epochs with validation every 10 epochs.</p></li>
+config requests 2,000 epochs with validation every 50 epochs.</p></li>
 <li><p><strong>Results</strong> (<code class="docutils literal notranslate"><span class="pre">plot_data.py</span></code>, <code class="docutils literal notranslate"><span class="pre">results.py</span></code>; creates results CSVs and plot
 PNGs). <code class="docutils literal notranslate"><span class="pre">plot_data.py</span></code> plots the source data before training. <code class="docutils literal notranslate"><span class="pre">results.py</span></code>
 selects the checkpoint with the lowest validation loss and compares it with
 the authors’ saved MATLAB predictions.</p></li>
-<li><p><strong>Fine-tune</strong> (<code class="docutils literal notranslate"><span class="pre">train-config-nonneg.json</span></code>, <code class="docutils literal notranslate"><span class="pre">custom_nonneg.py</span></code>; creates
-<code class="docutils literal notranslate"><span class="pre">run-nonneg/</span></code>). Starts from the selected checkpoint with <code class="docutils literal notranslate"><span class="pre">--init-from</span></code> and
-adds a penalty on negative concentrations to the loss. <code class="docutils literal notranslate"><span class="pre">results.py</span></code> then
-compares the fine-tuned model with the first one and with MATLAB. See
+<li><p><strong>Train with a penalty</strong> (<code class="docutils literal notranslate"><span class="pre">train-config-nonneg.json</span></code>, <code class="docutils literal notranslate"><span class="pre">custom_nonneg.py</span></code>;
+creates <code class="docutils literal notranslate"><span class="pre">run-nonneg/</span></code>). Trains a second model the same way, with a penalty
+on negative concentrations added to the loss. <code class="docutils literal notranslate"><span class="pre">results.py</span></code> then compares it
+with the first model and with MATLAB. See
 <a class="reference internal" href="#discourage-negative-concentrations">Discourage negative concentrations</a>.</p></li>
 </ol>
 <p>The data therefore flow from <code class="docutils literal notranslate"><span class="pre">source-data.mat</span></code> through the importer to
 <code class="docutils literal notranslate"><span class="pre">data.json</span></code>, through <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">prepare</span></code> to <code class="docutils literal notranslate"><span class="pre">prepared/</span></code>, and through
-<code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">train</span></code> to <code class="docutils literal notranslate"><span class="pre">run/</span></code> and, for the fine-tune, <code class="docutils literal notranslate"><span class="pre">run-nonneg/</span></code>. The <code class="docutils literal notranslate"><span class="pre">run.py</span></code>
-script runs all steps in order.</p>
+<code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">train</span></code> to <code class="docutils literal notranslate"><span class="pre">run/</span></code> and, for the penalized model, <code class="docutils literal notranslate"><span class="pre">run-nonneg/</span></code>. The
+<code class="docutils literal notranslate"><span class="pre">run.py</span></code> script runs all steps in order.</p>
 </section>
 <section id="import-the-synthetic-cultures">
 <h2>Import the synthetic cultures<a class="headerlink" href="#import-the-synthetic-cultures" title="Link to this heading">¶</a></h2>
@@ -827,7 +829,7 @@ match the MAT file’s state order.</p>
         <span class="s2">"holdout_processes"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"Br7"</span><span class="p">],</span>
     <span class="p">},</span>
     <span class="s2">"checkpoint"</span><span class="p">:</span> <span class="p">{</span>
-        <span class="s2">"every"</span><span class="p">:</span> <span class="mi">10</span><span class="p">,</span>
+        <span class="s2">"every"</span><span class="p">:</span> <span class="mi">50</span><span class="p">,</span>
         <span class="s2">"keep_best"</span><span class="p">:</span> <span class="mi">20</span><span class="p">,</span>
         <span class="s2">"select_by"</span><span class="p">:</span> <span class="s2">"holdout_loss"</span><span class="p">,</span>
     <span class="p">},</span>
@@ -842,12 +844,10 @@ match the MAT file’s state order.</p>
 
 <span class="p">(</span><span class="n">WORK</span> <span class="o">/</span> <span class="s2">"train-config.json"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
 
-<span class="c1"># Fine-tune the selected checkpoint with a soft penalty on negative concentrations.</span>
-<span class="c1"># run.py passes that checkpoint to `hybrax train` via `--init-from`.</span>
+<span class="c1"># Same training run with a soft penalty on negative concentrations.</span>
 <span class="n">config</span><span class="p">[</span><span class="s2">"custom_py"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"custom_nonneg.py"</span>
-<span class="n">config</span><span class="p">[</span><span class="s2">"train"</span><span class="p">]</span> <span class="o">|=</span> <span class="p">{</span><span class="s2">"epochs"</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span> <span class="s2">"learning_rate"</span><span class="p">:</span> <span class="mf">1e-4</span><span class="p">}</span>
 <span class="n">config</span><span class="p">[</span><span class="s2">"output"</span><span class="p">][</span><span class="s2">"dir"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"run-nonneg"</span>
-<span class="n">config</span><span class="p">[</span><span class="s2">"custom"</span><span class="p">][</span><span class="s2">"nonnegativity_weight"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="n">config</span><span class="p">[</span><span class="s2">"custom"</span><span class="p">][</span><span class="s2">"nonnegativity_weight"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">20</span>
 <span class="p">(</span><span class="n">WORK</span> <span class="o">/</span> <span class="s2">"train-config-nonneg.json"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -884,8 +884,8 @@ match the MAT file’s state order.</p>
 configuration: <code class="docutils literal notranslate"><span class="pre">data.processes</span></code> lists the training cultures and
 <code class="docutils literal notranslate"><span class="pre">train.holdout_processes</span></code> names Br7. This makes Hybrax simulate Br7 with the
 current model and evaluate the same loss used for training at each checkpoint
-boundary. Br7 is not used for gradient updates. Here <code class="docutils literal notranslate"><span class="pre">checkpoint.every=10</span></code> means
-this happens every 10 epochs. With <code class="docutils literal notranslate"><span class="pre">checkpoint.select_by=&quot;holdout_loss&quot;</span></code> and
+boundary. Br7 is not used for gradient updates. Here <code class="docutils literal notranslate"><span class="pre">checkpoint.every=50</span></code> means
+this happens every 50 epochs. With <code class="docutils literal notranslate"><span class="pre">checkpoint.select_by=&quot;holdout_loss&quot;</span></code> and
 <code class="docutils literal notranslate"><span class="pre">checkpoint.keep_best=20</span></code>, Hybrax retains the 20 checkpoints with the lowest Br7
 losses, plus the final checkpoint.</p>
 <p>The test cultures appear in neither list, so Hybrax never fits or validates on
@@ -1574,7 +1574,7 @@ fit PCA and all other preprocessing on the training cultures only).</p>
 <span class="w">    </span><span class="p">]</span>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"checkpoint"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">"every"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"every"</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"keep_best"</span><span class="p">:</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"select_by"</span><span class="p">:</span><span class="w"> </span><span class="s2">"holdout_loss"</span>
 <span class="w">  </span><span class="p">},</span>
@@ -1702,7 +1702,7 @@ fit PCA and all other preprocessing on the training cultures only).</p>
 <p>The rest of the config sets up the run. Training uses the five training cultures
 in every update for 2,000 epochs, with seed 0 and Adam at a constant learning
 rate of <code class="docutils literal notranslate"><span class="pre">1e-3</span></code>. Hybrax evaluates Br7 at every checkpoint, which here means every
-10 epochs. It keeps the 20 checkpoints with the lowest Br7 losses plus the final
+50 epochs. It keeps the 20 checkpoints with the lowest Br7 losses plus the final
 one. The test cultures are not part of training at all.</p>
 <p>To run the steps yourself, switch to the example directory, regenerate the
 dataset and config, prepare, and train:</p>
@@ -1733,7 +1733,7 @@ of the loss, and select the checkpoint with the lowest Br7 loss:</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<img alt="../_images/20e01f228cc787bfa66c94077ee067c1c26eec867c843ebd7467197b7ff0463e.png" src="../_images/20e01f228cc787bfa66c94077ee067c1c26eec867c843ebd7467197b7ff0463e.png" />
+<img alt="../_images/3f2ee28215bf278e29060ec4780b41c724c19ffb8716598b5858aa093134138e.png" src="../_images/3f2ee28215bf278e29060ec4780b41c724c19ffb8716598b5858aa093134138e.png" />
 </div>
 </div>
 <p>The dashed horizontal lines show the final scores of Ramos et al.’s saved
@@ -1757,7 +1757,7 @@ selected Hybrax checkpoint is comparable to the saved MATLAB model:</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: epoch 1,910
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: epoch 1,900
 </pre></div>
 </div>
 <div class="output text_html"><style type="text/css">
@@ -1806,31 +1806,18 @@ for Hybrax and MATLAB to <code class="docutils literal notranslate"><span class=
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(((</span><span class="n">values</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="o">-</span> <span class="n">truth</span><span class="p">[</span><span class="n">index</span><span class="p">])</span> <span class="o">/</span> <span class="n">maxima</span><span class="p">)[:,</span> <span class="mi">1</span><span class="p">:]</span> <span class="o">**</span> <span class="mi">2</span><span class="p">))</span>
 </pre></div>
 </div>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">score</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">with_undershoot</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""Score MATLAB and Hybrax predictions at the measurement times of each split.</span>
-
-<span class="sd">    `models` maps labels to dense predictions from `predict_cultures`.</span>
-<span class="sd">    """</span>
-    <span class="n">work</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">work</span><span class="p">)</span>
-    <span class="n">source</span><span class="p">,</span> <span class="n">reference</span><span class="p">,</span> <span class="n">maxima</span> <span class="o">=</span> <span class="n">load_benchmark</span><span class="p">(</span><span class="n">work</span><span class="p">)</span>
-    <span class="n">values</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"MATLAB"</span><span class="p">:</span> <span class="n">reference</span><span class="p">}</span> <span class="o">|</span> <span class="p">{</span>
-        <span class="n">label</span><span class="p">:</span> <span class="n">at_measurements</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">dense</span><span class="p">)</span> <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">dense</span> <span class="ow">in</span> <span class="n">models</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
-    <span class="p">}</span>
-    <span class="n">rows</span> <span class="o">=</span> <span class="p">{}</span>
-    <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">prediction</span> <span class="ow">in</span> <span class="n">values</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-        <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">prediction</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">(),</span> <span class="n">label</span>
-        <span class="n">rows</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="p">(</span><span class="s2">"NRMSE"</span><span class="p">,</span> <span class="n">split</span><span class="p">):</span> <span class="n">nrmse</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">prediction</span><span class="p">,</span> <span class="n">maxima</span><span class="p">,</span> <span class="n">cultures</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">split</span><span class="p">,</span> <span class="n">cultures</span> <span class="ow">in</span> <span class="n">SPLITS</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
-        <span class="p">}</span>
-        <span class="k">if</span> <span class="n">with_undershoot</span><span class="p">:</span>
-            <span class="n">rows</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">|=</span> <span class="p">{</span>
-                <span class="p">(</span><span class="s2">"Undershoot [%]"</span><span class="p">,</span> <span class="n">split</span><span class="p">):</span> <span class="n">undershoot</span><span class="p">(</span><span class="n">prediction</span><span class="p">,</span> <span class="n">maxima</span><span class="p">,</span> <span class="n">cultures</span><span class="p">)</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">score</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Score MATLAB and Hybrax NRMSE at the measurement times of each split."""</span>
+    <span class="n">source</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">maxima</span> <span class="o">=</span> <span class="n">measurement_values</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">models</span><span class="p">)</span>
+    <span class="n">scores</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="n">label</span><span class="p">:</span> <span class="p">{</span>
+                <span class="n">split</span><span class="p">:</span> <span class="n">nrmse</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">prediction</span><span class="p">,</span> <span class="n">maxima</span><span class="p">,</span> <span class="n">cultures</span><span class="p">)</span>
                 <span class="k">for</span> <span class="n">split</span><span class="p">,</span> <span class="n">cultures</span> <span class="ow">in</span> <span class="n">SPLITS</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
             <span class="p">}</span>
-    <span class="n">scores</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="n">with_undershoot</span><span class="p">:</span>
-        <span class="n">scores</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="n">scores</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">droplevel</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">prediction</span> <span class="ow">in</span> <span class="n">values</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="p">}</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">T</span>
     <span class="n">scores</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">work</span><span class="p">)</span> <span class="o">/</span> <span class="n">name</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">scores</span>
 </pre></div>
@@ -1850,7 +1837,7 @@ cultures.</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<img alt="../_images/8e14a64a3e811750e84afd0db6460971efb5fc21dcda5208cd17ee0970b8f814.png" src="../_images/8e14a64a3e811750e84afd0db6460971efb5fc21dcda5208cd17ee0970b8f814.png" />
+<img alt="../_images/b53c08f1121f738f98a29b849b9ea650b40787bc3121f7362724afc8efe4cd95.png" src="../_images/b53c08f1121f738f98a29b849b9ea650b40787bc3121f7362724afc8efe4cd95.png" />
 </div>
 </div>
 </section>
@@ -1892,7 +1879,7 @@ concentration lower bounds:</p>
     <span class="p">)</span>
 </pre></div>
 </div>
-<p>We give negative concentrations 10 times as much weight as regular residuals.
+<p>We give negative concentrations 20 times as much weight as regular residuals.
 The weight is <code class="docutils literal notranslate"><span class="pre">nonnegativity_weight</span></code> in the config’s <code class="docutils literal notranslate"><span class="pre">custom</span></code> block, so you
 can easily try other values. For this number to mean what it says, the penalty
 has to use the same normalization as the fit loss, so <code class="docutils literal notranslate"><span class="pre">MatlabLoss</span></code> rescales the
@@ -1933,20 +1920,16 @@ penalty terms to divide by the state’s maximum instead, like the fit residuals
 </pre></div>
 </div>
 <p>The loss now has 50 terms, 25 fits and 25 penalties. Hybrax averages them,
-which scales both kinds of terms equally and keeps the 10× ratio.</p>
-<section id="fine-tune-the-trained-model">
-<h3>Fine-tune the trained model<a class="headerlink" href="#fine-tune-the-trained-model" title="Link to this heading">¶</a></h3>
-<p>We could train a new model with the negativity penalty from scratch, but instead
-we’ll show how to do fine-tuning in Hybrax and use the selected checkpoint from
-above as a base for the follow-up training round. Because it was trained already
-and we don’t want to change the weights too much, we use a 10× lower learning
-rate of <code class="docutils literal notranslate"><span class="pre">1e-4</span></code> and train for another 1,000 epochs. <code class="docutils literal notranslate"><span class="pre">train-config-nonneg.json</span></code>
-differs from <code class="docutils literal notranslate"><span class="pre">train-config.json</span></code> only in these settings:</p>
+which scales both kinds of terms equally and keeps the 20× ratio.</p>
+<section id="train-with-the-penalty">
+<h3>Train with the penalty<a class="headerlink" href="#train-with-the-penalty" title="Link to this heading">¶</a></h3>
+<p>We train a new model with the penalty from scratch, with the same settings as
+before. <code class="docutils literal notranslate"><span class="pre">train-config-nonneg.json</span></code> differs from <code class="docutils literal notranslate"><span class="pre">train-config.json</span></code> only in the
+custom code, the output directory and the penalty weight:</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">"custom_py"</span><span class="p">:</span><span class="w"> </span><span class="s2">"custom_nonneg.py"</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"epochs"</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span><span class="w"> </span><span class="nt">"learning_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0001</span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"output"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"dir"</span><span class="p">:</span><span class="w"> </span><span class="s2">"run-nonneg"</span><span class="p">},</span>
-<span class="w">  </span><span class="nt">"custom"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"nonnegativity_weight"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">}</span>
+<span class="w">  </span><span class="nt">"custom"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"nonnegativity_weight"</span><span class="p">:</span><span class="w"> </span><span class="mi">20</span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -1968,17 +1951,17 @@ differs from <code class="docutils literal notranslate"><span class="pre">train-
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"custom_py"</span><span class="p">:</span><span class="w"> </span><span class="s2">"custom_nonneg.py"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">"epochs"</span><span class="p">:</span><span class="w"> </span><span class="mi">1000</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"epochs"</span><span class="p">:</span><span class="w"> </span><span class="mi">2000</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"seed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"allow_stateful_models"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"learning_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.0001</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"learning_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.001</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"devices"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"holdout_processes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">      </span><span class="s2">"Br7"</span>
 <span class="w">    </span><span class="p">]</span>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"checkpoint"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">"every"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"every"</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"keep_best"</span><span class="p">:</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"select_by"</span><span class="p">:</span><span class="w"> </span><span class="s2">"holdout_loss"</span>
 <span class="w">  </span><span class="p">},</span>
@@ -2098,20 +2081,20 @@ differs from <code class="docutils literal notranslate"><span class="pre">train-
 <span class="w">      </span><span class="mf">1.0757387263020903</span><span class="p">,</span>
 <span class="w">      </span><span class="mf">72.8566064704017</span>
 <span class="w">    </span><span class="p">],</span>
-<span class="w">    </span><span class="nt">"nonnegativity_weight"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span>
+<span class="w">    </span><span class="nt">"nonnegativity_weight"</span><span class="p">:</span><span class="w"> </span><span class="mi">20</span>
 <span class="w">  </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
 </div>
 </div>
 </div>
-</details><p><code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">train</span> <span class="pre">--init-from</span> <span class="pre">&lt;dir&gt;</span></code> starts the run from the parameters in a
-checkpoint directory. It uses a fresh optimizer state, so it is meant for
-fine-tuning like this, not for exactly resuming an interrupted run. Here we
-point it at the checkpoint selected above, from epoch 1,910:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="w"> </span>train-config-nonneg.json<span class="w"> </span>--init-from<span class="w"> </span>run/checkpoints/step_01910
+</details><div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="w"> </span>train-config-nonneg.json
 </pre></div>
 </div>
+<p>Alternatively, we could use <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">train</span> <span class="pre">--init-from</span> <span class="pre">&lt;dir&gt;</span></code> to fine-tune the
+model we trained above with the penalty added to the loss, which is also a
+valid approach. In this example, training from scratch gave a better balance
+between fit and negative predictions, so we do that instead.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Run directory: ../_data/out/runs/gallery_hek293_lstm/run-nonneg
@@ -2122,41 +2105,39 @@ point it at the checkpoint selected above, from epoch 1,910:</p>
 <div class="cell tag_remove-stderr docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">selected_nonneg</span> <span class="o">=</span> <span class="n">select_checkpoint</span><span class="p">(</span><span class="n">WORK</span><span class="p">,</span> <span class="s2">"run-nonneg"</span><span class="p">)</span>
-<span class="n">plot_loss_curves</span><span class="p">(</span><span class="n">WORK</span><span class="p">,</span> <span class="s2">"run-nonneg"</span><span class="p">,</span> <span class="n">log_scale</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="n">plot_loss_curves</span><span class="p">(</span><span class="n">WORK</span><span class="p">,</span> <span class="s2">"run-nonneg"</span><span class="p">)</span>
 <span class="n">display</span><span class="p">(</span><span class="n">Image</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">WORK</span> <span class="o">/</span> <span class="s2">"run-nonneg-loss-curves.png"</span><span class="p">)))</span>
 </pre></div>
 </div>
 </div>
 <div class="cell_output docutils container">
-<img alt="../_images/8355c4f5df9ec40e7226106029975c2c4bff8e4cd71c5827b8bdac3551bc74c7.png" src="../_images/8355c4f5df9ec40e7226106029975c2c4bff8e4cd71c5827b8bdac3551bc74c7.png" />
+<img alt="../_images/6583dc5d5469eb5b5460c604790a04b9adccf0baa85663d991e471cac5779af8.png" src="../_images/6583dc5d5469eb5b5460c604790a04b9adccf0baa85663d991e471cac5779af8.png" />
 </div>
 </div>
 <p>Solid lines show the NRMSE of the concentration fit, as before. The thin dashed
 lines, <em>Hybrax, fit + penalty</em>, are the square root of the fit NMSE plus the
-penalty, in the same units. On the training cultures, the penalty drops quickly,
-while the fit gets worse at first and then partially recovers without reaching
-its initial level: this is the trade-off for fewer negative predictions.
-Checkpoint selection again uses the lowest Br7 loss, which includes the penalty.
-After about epoch 400, the Br7 penalty grows again while the fit changes little,
-so the selected checkpoint is not the last one. At the selected checkpoint, the
-Br7 fit error is even slightly lower than before.</p>
-<p>The table compares the fine-tuned model with the model from before and with
-MATLAB. “Undershoot” is the amount by which a prediction falls below zero, as a
-percentage of the state’s maximum, averaged over all states and measurement
-times (predictions at or above zero count as zero):</p>
+penalty, in the same units. On the training cultures, the penalty is small
+throughout, so the two lines almost coincide. On Br7, the penalty is larger
+than the fit error early on. After a brief rise, it falls together with the fit
+error until about epoch 1,100. After that, both change little. Checkpoint
+selection again uses the lowest Br7 loss, which includes the penalty.</p>
+<p>The table compares the penalized model with the model from before and with
+MATLAB on Br7 and the test cultures. “Undershoot” is the amount by which a prediction
+falls below zero, as a percentage of the state’s maximum, averaged over all
+states and measurement times (predictions at or above zero count as zero):</p>
 <div class="cell tag_remove-stderr docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Selected checkpoint: epoch </span><span class="si">{</span><span class="n">selected_nonneg</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
 <span class="n">both</span> <span class="o">=</span> <span class="n">main_model</span> <span class="o">|</span> <span class="p">{</span>
-    <span class="s2">"Hybrax, fine-tuned"</span><span class="p">:</span> <span class="n">predict_cultures</span><span class="p">(</span><span class="n">WORK</span><span class="p">,</span> <span class="s2">"run-nonneg"</span><span class="p">,</span> <span class="n">selected_nonneg</span><span class="p">)</span>
+    <span class="s2">"Hybrax with penalty"</span><span class="p">:</span> <span class="n">predict_cultures</span><span class="p">(</span><span class="n">WORK</span><span class="p">,</span> <span class="s2">"run-nonneg"</span><span class="p">,</span> <span class="n">selected_nonneg</span><span class="p">)</span>
 <span class="p">}</span>
-<span class="n">comparison_nonneg</span> <span class="o">=</span> <span class="n">score</span><span class="p">(</span><span class="n">WORK</span><span class="p">,</span> <span class="n">both</span><span class="p">,</span> <span class="s2">"nonneg-scores.csv"</span><span class="p">,</span> <span class="n">with_undershoot</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">comparison_nonneg</span> <span class="o">=</span> <span class="n">penalty_scores</span><span class="p">(</span><span class="n">WORK</span><span class="p">,</span> <span class="n">both</span><span class="p">,</span> <span class="s2">"nonneg-scores.csv"</span><span class="p">)</span>
 <span class="n">display</span><span class="p">(</span><span class="n">comparison_nonneg</span><span class="o">.</span><span class="n">style</span><span class="o">.</span><span class="n">set_uuid</span><span class="p">(</span><span class="s2">"hek_nonneg"</span><span class="p">)</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="s2">"</span><span class="si">{:.4f}</span><span class="s2">"</span><span class="p">))</span>
 </pre></div>
 </div>
 </div>
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: epoch 380
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: epoch 1,900
 </pre></div>
 </div>
 <div class="output text_html"><style type="text/css">
@@ -2165,57 +2146,39 @@ times (predictions at or above zero count as zero):</p>
   <thead>
     <tr>
       <th class="blank level0" >&nbsp;</th>
-      <th id="T_hek_nonneg_level0_col0" class="col_heading level0 col0" colspan="3">NRMSE</th>
-      <th id="T_hek_nonneg_level0_col3" class="col_heading level0 col3" colspan="3">Undershoot [%]</th>
-    </tr>
-    <tr>
-      <th class="blank level1" >&nbsp;</th>
-      <th id="T_hek_nonneg_level1_col0" class="col_heading level1 col0" >Train</th>
-      <th id="T_hek_nonneg_level1_col1" class="col_heading level1 col1" >Validation (Br7)</th>
-      <th id="T_hek_nonneg_level1_col2" class="col_heading level1 col2" >Test</th>
-      <th id="T_hek_nonneg_level1_col3" class="col_heading level1 col3" >Train</th>
-      <th id="T_hek_nonneg_level1_col4" class="col_heading level1 col4" >Validation (Br7)</th>
-      <th id="T_hek_nonneg_level1_col5" class="col_heading level1 col5" >Test</th>
+      <th id="T_hek_nonneg_level0_col0" class="col_heading level0 col0" >Br7 NRMSE</th>
+      <th id="T_hek_nonneg_level0_col1" class="col_heading level0 col1" >Test NRMSE</th>
+      <th id="T_hek_nonneg_level0_col2" class="col_heading level0 col2" >Test undershoot [%]</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <th id="T_hek_nonneg_level0_row0" class="row_heading level0 row0" >MATLAB</th>
-      <td id="T_hek_nonneg_row0_col0" class="data row0 col0" >0.0326</td>
-      <td id="T_hek_nonneg_row0_col1" class="data row0 col1" >0.0576</td>
-      <td id="T_hek_nonneg_row0_col2" class="data row0 col2" >0.0376</td>
-      <td id="T_hek_nonneg_row0_col3" class="data row0 col3" >0.1651</td>
-      <td id="T_hek_nonneg_row0_col4" class="data row0 col4" >0.3039</td>
-      <td id="T_hek_nonneg_row0_col5" class="data row0 col5" >0.1332</td>
+      <td id="T_hek_nonneg_row0_col0" class="data row0 col0" >0.0576</td>
+      <td id="T_hek_nonneg_row0_col1" class="data row0 col1" >0.0376</td>
+      <td id="T_hek_nonneg_row0_col2" class="data row0 col2" >0.1332</td>
     </tr>
     <tr>
       <th id="T_hek_nonneg_level0_row1" class="row_heading level0 row1" >Hybrax</th>
-      <td id="T_hek_nonneg_row1_col0" class="data row1 col0" >0.0317</td>
-      <td id="T_hek_nonneg_row1_col1" class="data row1 col1" >0.0567</td>
-      <td id="T_hek_nonneg_row1_col2" class="data row1 col2" >0.0348</td>
-      <td id="T_hek_nonneg_row1_col3" class="data row1 col3" >0.1719</td>
-      <td id="T_hek_nonneg_row1_col4" class="data row1 col4" >0.5407</td>
-      <td id="T_hek_nonneg_row1_col5" class="data row1 col5" >0.1498</td>
+      <td id="T_hek_nonneg_row1_col0" class="data row1 col0" >0.0567</td>
+      <td id="T_hek_nonneg_row1_col1" class="data row1 col1" >0.0348</td>
+      <td id="T_hek_nonneg_row1_col2" class="data row1 col2" >0.1496</td>
     </tr>
     <tr>
-      <th id="T_hek_nonneg_level0_row2" class="row_heading level0 row2" >Hybrax, fine-tuned</th>
-      <td id="T_hek_nonneg_row2_col0" class="data row2 col0" >0.0343</td>
-      <td id="T_hek_nonneg_row2_col1" class="data row2 col1" >0.0549</td>
-      <td id="T_hek_nonneg_row2_col2" class="data row2 col2" >0.0369</td>
-      <td id="T_hek_nonneg_row2_col3" class="data row2 col3" >0.0338</td>
-      <td id="T_hek_nonneg_row2_col4" class="data row2 col4" >0.3334</td>
-      <td id="T_hek_nonneg_row2_col5" class="data row2 col5" >0.0583</td>
+      <th id="T_hek_nonneg_level0_row2" class="row_heading level0 row2" >Hybrax with penalty</th>
+      <td id="T_hek_nonneg_row2_col0" class="data row2 col0" >0.0582</td>
+      <td id="T_hek_nonneg_row2_col1" class="data row2 col1" >0.0375</td>
+      <td id="T_hek_nonneg_row2_col2" class="data row2 col2" >0.0420</td>
     </tr>
   </tbody>
 </table>
 </div></div>
 </div>
-<p>The fine-tuned model still fits about as well as MATLAB’s, and its predictions
-fall below zero much less than before on the training and test cultures (on Br7,
-the reduction is smaller). The test plot from before, with the fine-tuned model
-added as a blue dash-dotted line, shows the smaller mAb dips. The penalty is soft, so some small
-dips remain. We could increase the penalty further or ramp it up slowly, but
-this is left as an exercise for the reader.</p>
+<p>The penalized model fits the test cultures about as well as MATLAB’s, slightly
+worse than the model without the penalty, and its predictions fall below zero
+much less than either. The test plot from before, with the penalized model
+added as a blue dash-dotted line, shows the smaller mAb dips. The penalty is
+soft, so some small dips remain.</p>
 <div class="cell tag_remove-stderr docutils container">
 <div class="cell_input docutils container">
 <div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plot_test_cultures</span><span class="p">(</span><span class="n">WORK</span><span class="p">,</span> <span class="n">both</span><span class="p">,</span> <span class="s2">"nonneg-test-cultures.png"</span><span class="p">)</span>
@@ -2224,7 +2187,7 @@ this is left as an exercise for the reader.</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<img alt="../_images/3ae9a62f61d090486d59f9ea1f728cd524fde83e8efd85526af95ff9306c6459.png" src="../_images/3ae9a62f61d090486d59f9ea1f728cd524fde83e8efd85526af95ff9306c6459.png" />
+<img alt="../_images/cc3268d8aeeb7dbee4c496c8090c5b9be683bc1c3b2859189c827c9c65f016c5.png" src="../_images/cc3268d8aeeb7dbee4c496c8090c5b9be683bc1c3b2859189c827c9c65f016c5.png" />
 </div>
 </div>
 </section>
@@ -2237,16 +2200,16 @@ this is left as an exercise for the reader.</p>
 </div>
 <p>The script regenerates <code class="docutils literal notranslate"><span class="pre">data.json</span></code>, <code class="docutils literal notranslate"><span class="pre">train-config.json</span></code> and
 <code class="docutils literal notranslate"><span class="pre">train-config-nonneg.json</span></code>, plots the source data, prepares the collection,
-trains the main model, fine-tunes its selected checkpoint with the penalty, and
-runs <code class="docutils literal notranslate"><span class="pre">results.py</span></code>. It replaces any existing <code class="docutils literal notranslate"><span class="pre">prepared/</span></code>, <code class="docutils literal notranslate"><span class="pre">run/</span></code> and
-<code class="docutils literal notranslate"><span class="pre">run-nonneg/</span></code>. It writes <code class="docutils literal notranslate"><span class="pre">loss-curves.png</span></code>, <code class="docutils literal notranslate"><span class="pre">comparison-scores.csv</span></code> and
-<code class="docutils literal notranslate"><span class="pre">test-cultures.png</span></code> for the main model, <code class="docutils literal notranslate"><span class="pre">run-nonneg-loss-curves.png</span></code>,
-<code class="docutils literal notranslate"><span class="pre">nonneg-scores.csv</span></code> and <code class="docutils literal notranslate"><span class="pre">nonneg-test-cultures.png</span></code> for the fine-tuned model, and
-<code class="docutils literal notranslate"><span class="pre">loss-curves.csv</span></code> and <code class="docutils literal notranslate"><span class="pre">selected-checkpoint.txt</span></code> for each run (with a
-<code class="docutils literal notranslate"><span class="pre">run-nonneg-</span></code> prefix for the fine-tuned one). The test plots are drawn from
-<code class="docutils literal notranslate"><span class="pre">test-predictions.npz</span></code>, which <code class="docutils literal notranslate"><span class="pre">results.py</span></code> writes first, so <code class="docutils literal notranslate"><span class="pre">plot_cultures.py</span></code>
-can redraw them without Hybrax. Everything runs from the bundled
-inputs, without MATLAB or network access. This page’s executed runs are in
+trains the models without and with the penalty, and runs <code class="docutils literal notranslate"><span class="pre">results.py</span></code>. It
+replaces any existing <code class="docutils literal notranslate"><span class="pre">prepared/</span></code>, <code class="docutils literal notranslate"><span class="pre">run/</span></code> and <code class="docutils literal notranslate"><span class="pre">run-nonneg/</span></code>. It writes
+<code class="docutils literal notranslate"><span class="pre">loss-curves.png</span></code>, <code class="docutils literal notranslate"><span class="pre">comparison-scores.csv</span></code> and <code class="docutils literal notranslate"><span class="pre">test-cultures.png</span></code> for the main
+model, <code class="docutils literal notranslate"><span class="pre">run-nonneg-loss-curves.png</span></code>, <code class="docutils literal notranslate"><span class="pre">nonneg-scores.csv</span></code> and
+<code class="docutils literal notranslate"><span class="pre">nonneg-test-cultures.png</span></code> for the penalized model, and <code class="docutils literal notranslate"><span class="pre">loss-curves.csv</span></code> and
+<code class="docutils literal notranslate"><span class="pre">selected-checkpoint.txt</span></code> for each run (with a <code class="docutils literal notranslate"><span class="pre">run-nonneg-</span></code> prefix for the
+penalized one). The test plots are drawn from <code class="docutils literal notranslate"><span class="pre">test-predictions.npz</span></code>, which
+<code class="docutils literal notranslate"><span class="pre">results.py</span></code> writes first, so <code class="docutils literal notranslate"><span class="pre">plot_cultures.py</span></code> can redraw them without
+Hybrax. Everything runs from the bundled inputs, without MATLAB or network
+access. This page’s executed runs are in
 <code class="docutils literal notranslate"><span class="pre">docs/source/_data/out/runs/gallery_hek293_lstm/run/</span></code> and <code class="docutils literal notranslate"><span class="pre">run-nonneg/</span></code>.</p>
 <details class="sd-sphinx-override sd-dropdown sd-card sd-mb-3">
 <summary class="sd-summary-title sd-card-header">
@@ -2259,8 +2222,6 @@ inputs, without MATLAB or network access. This page’s executed runs are in
 <span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-
-<span class="kn">from</span><span class="w"> </span><span class="nn">results</span><span class="w"> </span><span class="kn">import</span> <span class="n">select_checkpoint</span>
 
 <span class="n">HERE</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span><span class="o">.</span><span class="n">parent</span>
 <span class="n">ENV</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span> <span class="o">|</span> <span class="p">{</span>
@@ -2284,14 +2245,7 @@ inputs, without MATLAB or network access. This page’s executed runs are in
     <span class="n">run</span><span class="p">(</span><span class="s2">"plot_data.py"</span><span class="p">)</span>
     <span class="n">hybrax</span><span class="p">(</span><span class="s2">"prepare"</span><span class="p">,</span> <span class="s2">"prepare-config.json"</span><span class="p">)</span>
     <span class="n">hybrax</span><span class="p">(</span><span class="s2">"train"</span><span class="p">,</span> <span class="s2">"train-config.json"</span><span class="p">)</span>
-    <span class="c1"># Fine-tune the checkpoint with the lowest Br7 loss, not the final weights.</span>
-    <span class="n">epoch</span> <span class="o">=</span> <span class="n">select_checkpoint</span><span class="p">(</span><span class="n">HERE</span><span class="p">)</span>
-    <span class="n">hybrax</span><span class="p">(</span>
-        <span class="s2">"train"</span><span class="p">,</span>
-        <span class="s2">"train-config-nonneg.json"</span><span class="p">,</span>
-        <span class="s2">"--init-from"</span><span class="p">,</span>
-        <span class="sa">f</span><span class="s2">"run/checkpoints/step_</span><span class="si">{</span><span class="n">epoch</span><span class="si">:</span><span class="s2">05d</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
-    <span class="p">)</span>
+    <span class="n">hybrax</span><span class="p">(</span><span class="s2">"train"</span><span class="p">,</span> <span class="s2">"train-config-nonneg.json"</span><span class="p">)</span>
     <span class="n">run</span><span class="p">(</span><span class="s2">"results.py"</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -2477,7 +2431,7 @@ inputs, without MATLAB or network access. This page’s executed runs are in
     <span class="k">return</span> <span class="n">epoch</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">plot_loss_curves</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">run</span><span class="o">=</span><span class="s2">"run"</span><span class="p">,</span> <span class="n">log_scale</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">plot_loss_curves</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">run</span><span class="o">=</span><span class="s2">"run"</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Plot training and Br7 NRMSE with the saved MATLAB model as a reference.</span>
 
 <span class="sd">    With a penalty, dashed lines add it to the fit error, in the same units. On</span>
@@ -2509,7 +2463,7 @@ inputs, without MATLAB or network access. This page’s executed runs are in
             <span class="n">title</span><span class="o">=</span><span class="n">group</span><span class="p">,</span>
             <span class="n">xlabel</span><span class="o">=</span><span class="s2">"Epoch"</span><span class="p">,</span>
             <span class="n">ylabel</span><span class="o">=</span><span class="s2">"NRMSE, all 25 states"</span><span class="p">,</span>
-            <span class="n">yscale</span><span class="o">=</span><span class="s2">"log"</span> <span class="k">if</span> <span class="n">log_scale</span> <span class="k">else</span> <span class="s2">"linear"</span><span class="p">,</span>
+            <span class="n">yscale</span><span class="o">=</span><span class="s2">"log"</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="k">if</span> <span class="n">penalized</span><span class="p">:</span>
             <span class="n">total</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">curves</span><span class="p">[</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">group</span><span class="si">}</span><span class="s2"> NMSE"</span><span class="p">]</span> <span class="o">+</span> <span class="n">curves</span><span class="p">[</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">group</span><span class="si">}</span><span class="s2"> penalty"</span><span class="p">])</span>
@@ -2533,11 +2487,7 @@ inputs, without MATLAB or network access. This page’s executed runs are in
         <span class="n">color</span><span class="o">=</span><span class="n">COLORS</span><span class="p">[</span><span class="s2">"Hybrax"</span><span class="p">],</span>
         <span class="n">label</span><span class="o">=</span><span class="sa">f</span><span class="s2">"Selected epoch </span><span class="si">{</span><span class="n">selected</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">"</span><span class="p">,</span>
     <span class="p">)</span>
-    <span class="k">if</span> <span class="n">penalized</span><span class="p">:</span>
-        <span class="c1"># Sit between the fit-only and fit + penalty lines.</span>
-        <span class="n">axes</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">frameon</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">loc</span><span class="o">=</span><span class="s2">"center right"</span><span class="p">,</span> <span class="n">bbox_to_anchor</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.36</span><span class="p">))</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="n">axes</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">frameon</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">axes</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span><span class="n">frameon</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">loc</span><span class="o">=</span><span class="s2">"upper right"</span><span class="p">)</span>
     <span class="n">figure</span><span class="o">.</span><span class="n">tight_layout</span><span class="p">()</span>
     <span class="n">figure</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span>
         <span class="n">output_path</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">run</span><span class="p">,</span> <span class="s2">"loss-curves.png"</span><span class="p">),</span> <span class="n">dpi</span><span class="o">=</span><span class="mi">160</span><span class="p">,</span> <span class="n">facecolor</span><span class="o">=</span><span class="s2">"white"</span>
@@ -2596,31 +2546,50 @@ inputs, without MATLAB or network access. This page’s executed runs are in
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="o">-</span><span class="n">values</span><span class="p">[</span><span class="n">index</span><span class="p">,</span> <span class="mi">1</span><span class="p">:],</span> <span class="mi">0</span><span class="p">)</span> <span class="o">/</span> <span class="n">maxima</span> <span class="o">*</span> <span class="mi">100</span><span class="p">)</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">score</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">with_undershoot</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""Score MATLAB and Hybrax predictions at the measurement times of each split.</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">measurement_values</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">models</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""MATLAB and Hybrax predictions at the measurement times, as culture arrays.</span>
 
 <span class="sd">    `models` maps labels to dense predictions from `predict_cultures`.</span>
 <span class="sd">    """</span>
-    <span class="n">work</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">work</span><span class="p">)</span>
-    <span class="n">source</span><span class="p">,</span> <span class="n">reference</span><span class="p">,</span> <span class="n">maxima</span> <span class="o">=</span> <span class="n">load_benchmark</span><span class="p">(</span><span class="n">work</span><span class="p">)</span>
+    <span class="n">source</span><span class="p">,</span> <span class="n">reference</span><span class="p">,</span> <span class="n">maxima</span> <span class="o">=</span> <span class="n">load_benchmark</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">work</span><span class="p">))</span>
     <span class="n">values</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"MATLAB"</span><span class="p">:</span> <span class="n">reference</span><span class="p">}</span> <span class="o">|</span> <span class="p">{</span>
         <span class="n">label</span><span class="p">:</span> <span class="n">at_measurements</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">dense</span><span class="p">)</span> <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">dense</span> <span class="ow">in</span> <span class="n">models</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
     <span class="p">}</span>
-    <span class="n">rows</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">prediction</span> <span class="ow">in</span> <span class="n">values</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
         <span class="k">assert</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">prediction</span><span class="p">)</span><span class="o">.</span><span class="n">all</span><span class="p">(),</span> <span class="n">label</span>
-        <span class="n">rows</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="p">(</span><span class="s2">"NRMSE"</span><span class="p">,</span> <span class="n">split</span><span class="p">):</span> <span class="n">nrmse</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">prediction</span><span class="p">,</span> <span class="n">maxima</span><span class="p">,</span> <span class="n">cultures</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">split</span><span class="p">,</span> <span class="n">cultures</span> <span class="ow">in</span> <span class="n">SPLITS</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
-        <span class="p">}</span>
-        <span class="k">if</span> <span class="n">with_undershoot</span><span class="p">:</span>
-            <span class="n">rows</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">|=</span> <span class="p">{</span>
-                <span class="p">(</span><span class="s2">"Undershoot [%]"</span><span class="p">,</span> <span class="n">split</span><span class="p">):</span> <span class="n">undershoot</span><span class="p">(</span><span class="n">prediction</span><span class="p">,</span> <span class="n">maxima</span><span class="p">,</span> <span class="n">cultures</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">source</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">maxima</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">score</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Score MATLAB and Hybrax NRMSE at the measurement times of each split."""</span>
+    <span class="n">source</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">maxima</span> <span class="o">=</span> <span class="n">measurement_values</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">models</span><span class="p">)</span>
+    <span class="n">scores</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="n">label</span><span class="p">:</span> <span class="p">{</span>
+                <span class="n">split</span><span class="p">:</span> <span class="n">nrmse</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">prediction</span><span class="p">,</span> <span class="n">maxima</span><span class="p">,</span> <span class="n">cultures</span><span class="p">)</span>
                 <span class="k">for</span> <span class="n">split</span><span class="p">,</span> <span class="n">cultures</span> <span class="ow">in</span> <span class="n">SPLITS</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
             <span class="p">}</span>
-    <span class="n">scores</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="n">with_undershoot</span><span class="p">:</span>
-        <span class="n">scores</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="n">scores</span><span class="o">.</span><span class="n">columns</span><span class="o">.</span><span class="n">droplevel</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">prediction</span> <span class="ow">in</span> <span class="n">values</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="p">}</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">T</span>
+    <span class="n">scores</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">work</span><span class="p">)</span> <span class="o">/</span> <span class="n">name</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">scores</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">penalty_scores</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Score Br7 NRMSE, and NRMSE and undershoot on the test cultures."""</span>
+    <span class="n">source</span><span class="p">,</span> <span class="n">values</span><span class="p">,</span> <span class="n">maxima</span> <span class="o">=</span> <span class="n">measurement_values</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">models</span><span class="p">)</span>
+    <span class="n">tests</span> <span class="o">=</span> <span class="n">SPLITS</span><span class="p">[</span><span class="s2">"Test"</span><span class="p">]</span>
+    <span class="n">scores</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="n">label</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">"Br7 NRMSE"</span><span class="p">:</span> <span class="n">nrmse</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">prediction</span><span class="p">,</span> <span class="n">maxima</span><span class="p">,</span> <span class="p">(</span><span class="s2">"Br7"</span><span class="p">,)),</span>
+                <span class="s2">"Test NRMSE"</span><span class="p">:</span> <span class="n">nrmse</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">prediction</span><span class="p">,</span> <span class="n">maxima</span><span class="p">,</span> <span class="n">tests</span><span class="p">),</span>
+                <span class="s2">"Test undershoot [%]"</span><span class="p">:</span> <span class="n">undershoot</span><span class="p">(</span><span class="n">prediction</span><span class="p">,</span> <span class="n">maxima</span><span class="p">,</span> <span class="n">tests</span><span class="p">),</span>
+            <span class="p">}</span>
+            <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">prediction</span> <span class="ow">in</span> <span class="n">values</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="p">}</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">T</span>
     <span class="n">scores</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">work</span><span class="p">)</span> <span class="o">/</span> <span class="n">name</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">scores</span>
 
@@ -2664,14 +2633,14 @@ inputs, without MATLAB or network access. This page’s executed runs are in
     <span class="n">work</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="vm">__file__</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">()</span><span class="o">.</span><span class="n">parent</span>
     <span class="n">epochs</span> <span class="o">=</span> <span class="p">{</span><span class="n">run</span><span class="p">:</span> <span class="n">select_checkpoint</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">run</span><span class="p">)</span> <span class="k">for</span> <span class="n">run</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"run"</span><span class="p">,</span> <span class="s2">"run-nonneg"</span><span class="p">)}</span>
     <span class="k">for</span> <span class="n">run</span><span class="p">,</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="n">epochs</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-        <span class="n">plot_loss_curves</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">run</span><span class="p">,</span> <span class="n">log_scale</span><span class="o">=</span><span class="n">run</span> <span class="o">==</span> <span class="s2">"run"</span><span class="p">)</span>
+        <span class="n">plot_loss_curves</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">run</span><span class="p">)</span>
         <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">run</span><span class="si">}</span><span class="s2">: checkpoint at epoch </span><span class="si">{</span><span class="n">epoch</span><span class="si">:</span><span class="s2">,</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="n">main</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"Hybrax"</span><span class="p">:</span> <span class="n">predict_cultures</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="s2">"run"</span><span class="p">,</span> <span class="n">epochs</span><span class="p">[</span><span class="s2">"run"</span><span class="p">])}</span>
     <span class="nb">print</span><span class="p">(</span><span class="n">score</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">main</span><span class="p">,</span> <span class="s2">"comparison-scores.csv"</span><span class="p">))</span>
     <span class="n">plot_test_cultures</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">main</span><span class="p">,</span> <span class="s2">"test-cultures.png"</span><span class="p">)</span>
-    <span class="n">fine_tuned</span> <span class="o">=</span> <span class="n">predict_cultures</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="s2">"run-nonneg"</span><span class="p">,</span> <span class="n">epochs</span><span class="p">[</span><span class="s2">"run-nonneg"</span><span class="p">])</span>
-    <span class="n">both</span> <span class="o">=</span> <span class="n">main</span> <span class="o">|</span> <span class="p">{</span><span class="s2">"Hybrax, fine-tuned"</span><span class="p">:</span> <span class="n">fine_tuned</span><span class="p">}</span>
-    <span class="nb">print</span><span class="p">(</span><span class="n">score</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">both</span><span class="p">,</span> <span class="s2">"nonneg-scores.csv"</span><span class="p">,</span> <span class="n">with_undershoot</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+    <span class="n">penalty</span> <span class="o">=</span> <span class="n">predict_cultures</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="s2">"run-nonneg"</span><span class="p">,</span> <span class="n">epochs</span><span class="p">[</span><span class="s2">"run-nonneg"</span><span class="p">])</span>
+    <span class="n">both</span> <span class="o">=</span> <span class="n">main</span> <span class="o">|</span> <span class="p">{</span><span class="s2">"Hybrax with penalty"</span><span class="p">:</span> <span class="n">penalty</span><span class="p">}</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">penalty_scores</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">both</span><span class="p">,</span> <span class="s2">"nonneg-scores.csv"</span><span class="p">))</span>
     <span class="n">plot_test_cultures</span><span class="p">(</span><span class="n">work</span><span class="p">,</span> <span class="n">both</span><span class="p">,</span> <span class="s2">"nonneg-test-cultures.png"</span><span class="p">)</span>
 </pre></div>
 </div>
@@ -2701,9 +2670,8 @@ inputs, without MATLAB or network access. This page’s executed runs are in
 <span class="n">STYLES</span> <span class="o">=</span> <span class="p">{</span>
     <span class="s2">"MATLAB"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"color"</span><span class="p">:</span> <span class="s2">"#737373"</span><span class="p">,</span> <span class="s2">"linestyle"</span><span class="p">:</span> <span class="s2">"--"</span><span class="p">,</span> <span class="s2">"zorder"</span><span class="p">:</span> <span class="mi">1</span><span class="p">},</span>
     <span class="s2">"Hybrax"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"color"</span><span class="p">:</span> <span class="s2">"#BE5400"</span><span class="p">,</span> <span class="s2">"linestyle"</span><span class="p">:</span> <span class="s2">"-"</span><span class="p">,</span> <span class="s2">"zorder"</span><span class="p">:</span> <span class="mi">2</span><span class="p">},</span>
-    <span class="s2">"Hybrax, fine-tuned"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"color"</span><span class="p">:</span> <span class="s2">"#0072B2"</span><span class="p">,</span> <span class="s2">"linestyle"</span><span class="p">:</span> <span class="s2">"-."</span><span class="p">,</span> <span class="s2">"zorder"</span><span class="p">:</span> <span class="mi">3</span><span class="p">},</span>
+    <span class="s2">"Hybrax with penalty"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"color"</span><span class="p">:</span> <span class="s2">"#0072B2"</span><span class="p">,</span> <span class="s2">"linestyle"</span><span class="p">:</span> <span class="s2">"-."</span><span class="p">,</span> <span class="s2">"zorder"</span><span class="p">:</span> <span class="mi">3</span><span class="p">},</span>
 <span class="p">}</span>
-<span class="n">LEGEND</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"Hybrax, fine-tuned"</span><span class="p">:</span> <span class="s2">"Hybrax, fine-tuned with penalty"</span><span class="p">}</span>
 <span class="n">DATA_COLOR</span> <span class="o">=</span> <span class="s2">"#242a29"</span>
 <span class="n">STATES</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"biomass"</span><span class="p">:</span> <span class="s2">"Biomass [g/L]"</span><span class="p">,</span> <span class="s2">"mAb"</span><span class="p">:</span> <span class="s2">"mAb [mg/L]"</span><span class="p">,</span> <span class="s2">"Glc"</span><span class="p">:</span> <span class="s2">"Glucose [mM]"</span><span class="p">}</span>
 
@@ -2850,9 +2818,7 @@ inputs, without MATLAB or network access. This page’s executed runs are in
     <span class="p">}</span>
     <span class="n">handles</span><span class="p">,</span> <span class="n">labels</span> <span class="o">=</span> <span class="n">axes</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">get_legend_handles_labels</span><span class="p">()</span>
     <span class="n">labels</span> <span class="o">=</span> <span class="p">[</span>
-        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">LEGEND</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">label</span><span class="p">,</span><span class="w"> </span><span class="n">label</span><span class="p">)</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">totals</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">)"</span>
-        <span class="k">if</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">totals</span>
-        <span class="k">else</span> <span class="n">label</span>
+        <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">label</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">totals</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">)"</span> <span class="k">if</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">totals</span> <span class="k">else</span> <span class="n">label</span>
         <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">labels</span>
     <span class="p">]</span>
     <span class="n">figure</span><span class="o">.</span><span class="n">legend</span><span class="p">(</span>
@@ -3102,7 +3068,7 @@ benchmark. Preprocessing uses all nine cultures, including the held-out
 cultures, which constitutes data leakage. Best practice would be to only use the
 five training cultures for PCA and defining scaling factors, but we stuck to the
 same procedure as the original MATLAB code. Neither model keeps concentrations
-non-negative on its own. Fine-tuning with a soft penalty from the built-in
+non-negative on its own. Training with a soft penalty from the built-in
 <code class="docutils literal notranslate"><span class="pre">BoundsViolationLossModule</span></code> reduces the negative predictions while keeping the
 fit comparable to MATLAB’s.</p>
 </section>
@@ -3149,14 +3115,14 @@ preparation.</p>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>
-          <a class="prev-page" href="optfed.html">
+          <a class="prev-page" href="optfed_neural.html">
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
               <div class="page-info">
                 <div class="context">
                   <span>Previous</span>
                 </div>
                 
-                <div class="title">OptFed mechanistic model</div>
+                <div class="title">OptFed with neural kinetics</div>
                 
               </div>
             </a>
@@ -3213,7 +3179,7 @@ preparation.</p>
 <li><a class="reference internal" href="#loss-curves">Loss curves</a></li>
 <li><a class="reference internal" href="#compare-with-matlab">Compare with MATLAB</a></li>
 <li><a class="reference internal" href="#discourage-negative-concentrations">Discourage negative concentrations</a><ul>
-<li><a class="reference internal" href="#fine-tune-the-trained-model">Fine-tune the trained model</a></li>
+<li><a class="reference internal" href="#train-with-the-penalty">Train with the penalty</a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#run-the-example-locally">Run the example locally</a></li>

@@ -24,7 +24,7 @@ Module Contents
 ---------------
 
 .. py:data:: DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE
-   :value: 0.001
+   :value: 0.01
 
 
 .. py:data:: DEFAULT_SOLVER

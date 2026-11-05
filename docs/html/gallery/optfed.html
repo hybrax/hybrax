@@ -3,7 +3,7 @@
   <head><meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="HEK293: PCA reaction modes with an LSTM" href="hek293_lstm.html"><link rel="prev" title="A KAN model" href="kan.html">
+<link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="OptFed with neural kinetics" href="optfed_neural.html"><link rel="prev" title="A KAN model" href="kan.html">
         <link rel="prefetch" href="../_static/hybrax_logo.png" as="image">
 
     <link rel="shortcut icon" href="../_static/favicon.png"><!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
@@ -264,6 +264,7 @@
 <li class="toctree-l1"><a class="reference internal" href="pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="kan.html">KAN Models</a></li>
 <li class="toctree-l1 current current-page"><a class="current reference internal" href="#">OptFed mechanistic model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="optfed_neural.html">OptFed with neural kinetics</a></li>
 <li class="toctree-l1"><a class="reference internal" href="hek293_lstm.html">HEK293: PCA reaction modes with an LSTM</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
@@ -409,8 +410,8 @@ rather than <code class="docutils literal notranslate"><span class="pre">data.js
 <li><p><strong>Train</strong> (<code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">train</span></code>, <code class="docutils literal notranslate"><span class="pre">train-config.json</span></code> + <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>). The config
 points to <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>, and Hybrax looks up its hook functions by name.
 Here <code class="docutils literal notranslate"><span class="pre">build_reaction_module</span></code> returns the mechanistic <code class="docutils literal notranslate"><span class="pre">RateModule</span></code> that
-computes the named rates, and the other hooks choose the solver, the
-learning-rate schedule, and the scales.</p></li>
+computes the named rates, and the other hooks choose the solver and the
+scales.</p></li>
 <li><p><strong>Forward</strong> (<code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">forward</span></code>, <code class="docutils literal notranslate"><span class="pre">forward-config.json</span></code>). Forward simulates the
 fitted model and writes trajectories and plots.</p></li>
 </ol>
@@ -1305,15 +1306,6 @@ integers rather than arrays, so they are not trained either.</p>
     <span class="k">return</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">Kvaerno5</span><span class="p">()</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">build_learning_rate</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">train_cfg</span><span class="p">,</span> <span class="n">total_updates</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""Linearly decay from the configured learning rate to 1e-4."""</span>
-    <span class="k">del</span> <span class="n">config</span>
-    <span class="k">return</span> <span class="k">lambda</span> <span class="n">step</span><span class="p">:</span> <span class="p">(</span>
-        <span class="n">train_cfg</span><span class="o">.</span><span class="n">learning_rate</span>
-        <span class="o">+</span> <span class="p">(</span><span class="mf">1e-4</span> <span class="o">-</span> <span class="n">train_cfg</span><span class="o">.</span><span class="n">learning_rate</span><span class="p">)</span> <span class="o">*</span> <span class="n">step</span> <span class="o">/</span> <span class="p">(</span><span class="n">total_updates</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-    <span class="p">)</span>
-
-
 <span class="k">def</span><span class="w"> </span><span class="nf">estimate_all_scales</span><span class="p">(</span><span class="n">runtime_data</span><span class="p">,</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Scale states and measured controls to order-one solver values."""</span>
     <span class="k">del</span> <span class="n">target_names</span><span class="p">,</span> <span class="n">config</span>
@@ -1385,14 +1377,13 @@ absolute value, with a floor of <code class="docutils literal notranslate"><span
 readings, not from the fitted splines: feed-rate scales use finite differences
 of the raw cumulative feed readings. Temperature is therefore divided by its
 maximum in Kelvin. The reaction-rate scales are fixed at 1.</p>
-<p>Use Adam for 200 epochs, with gradient clipping configured at <code class="docutils literal notranslate"><span class="pre">0.05</span></code> and linear
-learning-rate decay from <code class="docutils literal notranslate"><span class="pre">0.05</span></code> to <code class="docutils literal notranslate"><span class="pre">0.0001</span></code>, supplied by the
-<code class="docutils literal notranslate"><span class="pre">build_learning_rate</span></code> hook in <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>. The default loss compares
+<p>Use Adam for 500 epochs at a constant learning rate of <code class="docutils literal notranslate"><span class="pre">0.03</span></code>.
+The default loss compares
 predicted concentrations with the supplied measurements. No rate targets are
 constructed.
 Omitting <code class="docutils literal notranslate"><span class="pre">batch_size</span></code> uses all twelve processes in each update, so
-200 epochs give 200 updates. Save a checkpoint every 10 epochs.
-Training and evaluation use Kvaerno5 with <code class="docutils literal notranslate"><span class="pre">rtol=1e-7</span></code> and <code class="docutils literal notranslate"><span class="pre">atol=1e-9</span></code>.
+500 epochs give 500 updates. Save a checkpoint every 10 epochs.
+Training and evaluation use Kvaerno5 with <code class="docutils literal notranslate"><span class="pre">rtol=1e-4</span></code> and <code class="docutils literal notranslate"><span class="pre">atol=1e-6</span></code>.
 The <code class="docutils literal notranslate"><span class="pre">build_solver</span></code> hook in <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> selects this solver:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">build_solver</span><span class="p">(</span><span class="n">config</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">"""Use an implicit solver for the stiff glycerol balance near depletion."""</span>
@@ -1405,12 +1396,11 @@ is stiff. With the half-saturation constant fixed at <span class="math notransla
 uptake drops from its maximum to zero within a tiny glycerol range, so near
 depletion glycerol changes on time scales far shorter than the process. An
 explicit solver would need very small steps there.
-Before training, Hybrax checks whether each continuous feed integrates to its
-known cumulative increment within 0.1%. The smoothed feeds pass this preflight
-with these solver settings. This diagnostic does not guarantee coupled-model
-accuracy, so we also check reactor mass against the feed and withdrawal balance.
-Allow several minutes for the full fit on CPU. The training command streams
-progress to the terminal.</p>
+Before training, Hybrax integrates all controls together and checks whether each
+continuous feed integrates to its known cumulative increment within 1%. The
+smoothed feeds pass this preflight with these solver settings. This diagnostic
+does not guarantee coupled-model accuracy, so we also check reactor mass against
+the feed and withdrawal balance.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"prepared"</span><span class="p">:</span><span class="w"> </span><span class="s2">"prepared"</span><span class="p">,</span>
@@ -1423,17 +1413,16 @@ progress to the terminal.</p>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"custom_py"</span><span class="p">:</span><span class="w"> </span><span class="s2">"custom.py"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">"epochs"</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"epochs"</span><span class="p">:</span><span class="w"> </span><span class="mi">500</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"seed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"learning_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.05</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"grad_clip_norm"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.05</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"learning_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.03</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"allow_stateful_models"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"shuffle"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"solver"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"max_steps"</span><span class="p">:</span><span class="w"> </span><span class="mi">100000</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"rtol"</span><span class="p">:</span><span class="w"> </span><span class="mf">1e-07</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"atol"</span><span class="p">:</span><span class="w"> </span><span class="mf">1e-09</span>
+<span class="w">    </span><span class="nt">"rtol"</span><span class="p">:</span><span class="w"> </span><span class="mf">1e-4</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"atol"</span><span class="p">:</span><span class="w"> </span><span class="mf">1e-6</span>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"checkpoint"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"every"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span>
@@ -1449,7 +1438,8 @@ progress to the terminal.</p>
 To simulate it immediately, skip to the forward command in
 <a class="reference internal" href="#run-the-example-locally">Run the example locally</a>.</p>
 <p>To refit the model, switch to the example directory, prepare the data, and train.
-The <code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> flag replaces the bundled run with the new fit:</p>
+Training takes about 10 minutes on one CPU device and streams progress to the
+terminal. The <code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> flag replaces the bundled run with the new fit:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>examples/gallery_optfed
 hybrax<span class="w"> </span>prepare<span class="w"> </span>--config<span class="w"> </span>prepare-config.json<span class="w"> </span>--output-dir<span class="w"> </span>prepared
 hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="w"> </span>train-config.json<span class="w"> </span>--overwrite
@@ -1457,7 +1447,7 @@ hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.144931 last_mean_loss=0.00666591 delta=-0.138266
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.144949 last_mean_loss=0.00647146 delta=-0.138478
 Run directory: docs/source/_data/out/runs/gallery_optfed/run/
 </pre></div>
 </div>
@@ -1492,11 +1482,11 @@ uses the pooled, scaled scores.</p>
 </div>
 </details><div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: step_00200
-biomass    R2 = 0.8428
-glycerol   R2 = 0.9531
-product    R2 = 0.8468
-P_X        R2 = 0.8147
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: step_00500
+biomass    R2 = 0.8630
+glycerol   R2 = 0.9498
+product    R2 = 0.8481
+P_X        R2 = 0.8157
 </pre></div>
 </div>
 </div>
@@ -1524,7 +1514,7 @@ P_X        R2 = 0.8147
       <td id="T_optfed_parameters_row0_col0" class="data row0 col0" >activation_energy</td>
       <td id="T_optfed_parameters_row0_col1" class="data row0 col1" >J/mol</td>
       <td id="T_optfed_parameters_row0_col2" class="data row0 col2" >1e+04</td>
-      <td id="T_optfed_parameters_row0_col3" class="data row0 col3" >5e+04</td>
+      <td id="T_optfed_parameters_row0_col3" class="data row0 col3" >5.02e+04</td>
       <td id="T_optfed_parameters_row0_col4" class="data row0 col4" >1e+05</td>
     </tr>
     <tr>
@@ -1540,7 +1530,7 @@ P_X        R2 = 0.8147
       <td id="T_optfed_parameters_row2_col0" class="data row2 col0" >generation_inhibition</td>
       <td id="T_optfed_parameters_row2_col1" class="data row2 col1" >generations</td>
       <td id="T_optfed_parameters_row2_col2" class="data row2 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row2_col3" class="data row2 col3" >1.54</td>
+      <td id="T_optfed_parameters_row2_col3" class="data row2 col3" >1.53</td>
       <td id="T_optfed_parameters_row2_col4" class="data row2 col4" >1e+04</td>
     </tr>
     <tr>
@@ -1548,7 +1538,7 @@ P_X        R2 = 0.8147
       <td id="T_optfed_parameters_row3_col0" class="data row3 col0" >glycerol_inhibition</td>
       <td id="T_optfed_parameters_row3_col1" class="data row3 col1" >g/kg</td>
       <td id="T_optfed_parameters_row3_col2" class="data row3 col2" >1e-05</td>
-      <td id="T_optfed_parameters_row3_col3" class="data row3 col3" >173</td>
+      <td id="T_optfed_parameters_row3_col3" class="data row3 col3" >307</td>
       <td id="T_optfed_parameters_row3_col4" class="data row3 col4" >1e+04</td>
     </tr>
     <tr>
@@ -1556,7 +1546,7 @@ P_X        R2 = 0.8147
       <td id="T_optfed_parameters_row4_col0" class="data row4 col0" >inactivation_enthalpy</td>
       <td id="T_optfed_parameters_row4_col1" class="data row4 col1" >J/mol</td>
       <td id="T_optfed_parameters_row4_col2" class="data row4 col2" >1e+05</td>
-      <td id="T_optfed_parameters_row4_col3" class="data row4 col3" >3.23e+06</td>
+      <td id="T_optfed_parameters_row4_col3" class="data row4 col3" >3.78e+06</td>
       <td id="T_optfed_parameters_row4_col4" class="data row4 col4" >1e+07</td>
     </tr>
     <tr>
@@ -1564,7 +1554,7 @@ P_X        R2 = 0.8147
       <td id="T_optfed_parameters_row5_col0" class="data row5 col0" >maintenance</td>
       <td id="T_optfed_parameters_row5_col1" class="data row5 col1" >g_G/(g_A h)</td>
       <td id="T_optfed_parameters_row5_col2" class="data row5 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row5_col3" class="data row5 col3" >0.00558</td>
+      <td id="T_optfed_parameters_row5_col3" class="data row5 col3" >0.00451</td>
       <td id="T_optfed_parameters_row5_col4" class="data row5 col4" >1</td>
     </tr>
     <tr>
@@ -1572,7 +1562,7 @@ P_X        R2 = 0.8147
       <td id="T_optfed_parameters_row6_col0" class="data row6 col0" >product_maintenance</td>
       <td id="T_optfed_parameters_row6_col1" class="data row6 col1" >g_X/g_P</td>
       <td id="T_optfed_parameters_row6_col2" class="data row6 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row6_col3" class="data row6 col3" >17.7</td>
+      <td id="T_optfed_parameters_row6_col3" class="data row6 col3" >21.7</td>
       <td id="T_optfed_parameters_row6_col4" class="data row6 col4" >1e+06</td>
     </tr>
     <tr>
@@ -1580,7 +1570,7 @@ P_X        R2 = 0.8147
       <td id="T_optfed_parameters_row7_col0" class="data row7 col0" >production_half_saturation</td>
       <td id="T_optfed_parameters_row7_col1" class="data row7 col1" >g_G/(g_A h)</td>
       <td id="T_optfed_parameters_row7_col2" class="data row7 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row7_col3" class="data row7 col3" >0.249</td>
+      <td id="T_optfed_parameters_row7_col3" class="data row7 col3" >0.277</td>
       <td id="T_optfed_parameters_row7_col4" class="data row7 col4" >100</td>
     </tr>
     <tr>
@@ -1588,7 +1578,7 @@ P_X        R2 = 0.8147
       <td id="T_optfed_parameters_row8_col0" class="data row8 col0" >production_max</td>
       <td id="T_optfed_parameters_row8_col1" class="data row8 col1" >g_G/g_A</td>
       <td id="T_optfed_parameters_row8_col2" class="data row8 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row8_col3" class="data row8 col3" >2.46e-09</td>
+      <td id="T_optfed_parameters_row8_col3" class="data row8 col3" >2.77e-09</td>
       <td id="T_optfed_parameters_row8_col4" class="data row8 col4" >1e-05</td>
     </tr>
     <tr>
@@ -1596,7 +1586,7 @@ P_X        R2 = 0.8147
       <td id="T_optfed_parameters_row9_col0" class="data row9 col0" >uptake_maintenance</td>
       <td id="T_optfed_parameters_row9_col1" class="data row9 col1" >g_A h/g_G</td>
       <td id="T_optfed_parameters_row9_col2" class="data row9 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row9_col3" class="data row9 col3" >28.8</td>
+      <td id="T_optfed_parameters_row9_col3" class="data row9 col3" >30.1</td>
       <td id="T_optfed_parameters_row9_col4" class="data row9 col4" >1e+06</td>
     </tr>
     <tr>
@@ -1604,7 +1594,7 @@ P_X        R2 = 0.8147
       <td id="T_optfed_parameters_row10_col0" class="data row10 col0" >uptake_max</td>
       <td id="T_optfed_parameters_row10_col1" class="data row10 col1" >g_G/(g_A h)</td>
       <td id="T_optfed_parameters_row10_col2" class="data row10 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row10_col3" class="data row10 col3" >0.471</td>
+      <td id="T_optfed_parameters_row10_col3" class="data row10 col3" >0.442</td>
       <td id="T_optfed_parameters_row10_col4" class="data row10 col4" >1</td>
     </tr>
   </tbody>
@@ -1613,7 +1603,7 @@ P_X        R2 = 0.8147
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Maximum reactor-mass error at exported times: 5.81279e-06 kg
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Maximum reactor-mass error at exported times: 0.00145011 kg
 </pre></div>
 </div>
 </div>
@@ -1621,8 +1611,9 @@ P_X        R2 = 0.8147
 </section>
 <section id="compare-with-optfed">
 <h2>Compare with OptFed<a class="headerlink" href="#compare-with-optfed" title="Link to this heading">¶</a></h2>
-<p>Fitting concentrations directly, Hybrax reproduces the measurements about as
-well as the published OptFed model. The table scores both models on the same
+<p>Fitting concentrations directly, Hybrax reproduces the measurements somewhat
+more closely than the published OptFed model, for the concentrations and for
+the product-to-biomass ratio. The table scores both models on the same
 measurements. These are the processes used for training, so the scores measure
 goodness of fit rather than performance on unseen processes.</p>
 <div class="cell tag_remove-input docutils container">
@@ -1656,9 +1647,9 @@ goodness of fit rather than performance on unseen processes.</p>
     </tr>
     <tr>
       <th id="T_optfed_comparison_level0_row1" class="row_heading level0 row1" >Hybrax</th>
-      <td id="T_optfed_comparison_row1_col0" class="data row1 col0" >0.877</td>
-      <td id="T_optfed_comparison_row1_col1" class="data row1 col1" >0.0818</td>
-      <td id="T_optfed_comparison_row1_col2" class="data row1 col2" >0.815</td>
+      <td id="T_optfed_comparison_row1_col0" class="data row1 col0" >0.881</td>
+      <td id="T_optfed_comparison_row1_col1" class="data row1 col1" >0.0806</td>
+      <td id="T_optfed_comparison_row1_col2" class="data row1 col2" >0.816</td>
       <td id="T_optfed_comparison_row1_col3" class="data row1 col3" >0.127</td>
     </tr>
   </tbody>
@@ -1705,7 +1696,7 @@ The bundled <a class="reference download internal" download="" href="../_downloa
 comparison run without downloading or refitting OptFed.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/a4a47d7e1df3de97de1931bf0dee21d41660cbd4bd1b6c54ac7b20d4c412a85d.png" src="../_images/a4a47d7e1df3de97de1931bf0dee21d41660cbd4bd1b6c54ac7b20d4c412a85d.png" />
+<img alt="../_images/33673e57d499d30195eb2f9d5957bf67df27c9adae9042dff0f4f9b156d8c752.png" src="../_images/33673e57d499d30195eb2f9d5957bf67df27c9adae9042dff0f4f9b156d8c752.png" />
 </div>
 </div>
 </section>
@@ -1719,7 +1710,7 @@ same directory:</p>
 </div>
 <p>The bundled forward configuration loads <code class="docutils literal notranslate"><span class="pre">run</span></code>. To evaluate a specific checkpoint,
 set its <code class="docutils literal notranslate"><span class="pre">models</span></code> entry to that checkpoint directory, for example
-<code class="docutils literal notranslate"><span class="pre">[&quot;run/checkpoints/step_00200&quot;]</span></code>. Use the checkpoint selected by concentration
+<code class="docutils literal notranslate"><span class="pre">[&quot;run/checkpoints/step_00500&quot;]</span></code>. Use the checkpoint selected by concentration
 NRMSE to reproduce the comparison above.</p>
 <p>The optional <code class="docutils literal notranslate"><span class="pre">run.py</span></code> script automates preparation, training, checkpoint
 selection, and forward simulation:</p>
@@ -1759,12 +1750,12 @@ purification and characterization of a universal binding ligand.
       <footer>
         
         <div class="related-pages">
-          <a class="next-page" href="hek293_lstm.html">
+          <a class="next-page" href="optfed_neural.html">
               <div class="page-info">
                 <div class="context">
                   <span>Next</span>
                 </div>
-                <div class="title">HEK293: PCA reaction modes with an LSTM</div>
+                <div class="title">OptFed with neural kinetics</div>
               </div>
               <svg class="furo-related-icon"><use href="#svg-arrow-right"></use></svg>
             </a>

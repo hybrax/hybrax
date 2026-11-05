@@ -262,6 +262,7 @@
 <li class="toctree-l1"><a class="reference internal" href="gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="gallery/kan.html">KAN Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="gallery/optfed.html">OptFed mechanistic model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="gallery/optfed_neural.html">OptFed with neural kinetics</a></li>
 <li class="toctree-l1"><a class="reference internal" href="gallery/hek293_lstm.html">HEK293: PCA reaction modes with an LSTM</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
@@ -497,6 +498,8 @@
         <li><a href="autoapi/hybrax/train/logging/index.html#hybrax.train.logging.StepRecord.batch_in_epoch">batch_in_epoch (hybrax.train.logging.StepRecord attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessResult.batch_process_names_by_step">batch_process_names_by_step (hybrax.train.harness.TrainHarnessResult attribute)</a>
+</li>
+        <li><a href="autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.BATCH_ROW_FIELDS">BATCH_ROW_FIELDS (in module hybrax.train.controls_store)</a>
 </li>
         <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessConfig.batch_seed">batch_seed (hybrax.train.harness.TrainHarnessConfig attribute)</a>
 
@@ -1050,10 +1053,16 @@
           <li><a href="autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.PerProcessControls.eval_controlled_PVs">(hybrax.train.controls_store.PerProcessControls method)</a>
 </li>
         </ul></li>
+        <li><a href="autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries.evaluate">evaluate() (hybrax.format.time_series.timeseries.TimeSeries method)</a>
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.BatchControls.evaluate">(hybrax.train.controls_store.BatchControls method)</a>
+</li>
+          <li><a href="autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.PerProcessControls.evaluate">(hybrax.train.controls_store.PerProcessControls method)</a>
+</li>
+        </ul></li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
-        <li><a href="autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries.evaluate">evaluate() (hybrax.format.time_series.timeseries.TimeSeries method)</a>
-</li>
         <li><a href="autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries.evaluate_many">evaluate_many() (hybrax.format.time_series.timeseries.TimeSeries method)</a>
 
         <ul>
@@ -2782,17 +2791,15 @@
 </li>
         <li><a href="autoapi/hybrax/train/runtime_artifact/index.html#hybrax.train.runtime_artifact.read_runtime_artifact_metadata">read_runtime_artifact_metadata() (in module hybrax.train.runtime_artifact)</a>
 </li>
+        <li><a href="autoapi/hybrax/train/postprocessing/index.html#hybrax.train.postprocessing.read_training_history">read_training_history() (in module hybrax.train.postprocessing)</a>
+</li>
         <li><a href="autoapi/hybrax/format/time_series/spline_ops/index.html#hybrax.format.time_series.spline_ops.rebase_piece">rebase_piece() (in module hybrax.format.time_series.spline_ops)</a>
 </li>
         <li><a href="autoapi/hybrax/format/time_series/spline_ops/index.html#hybrax.format.time_series.spline_ops.rebase_to_breaks">rebase_to_breaks() (in module hybrax.format.time_series.spline_ops)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/logging/index.html#hybrax.train.logging.StepRecord.rebuild_count">rebuild_count (hybrax.train.logging.StepRecord attribute)</a>
-</li>
         <li><a href="autoapi/hybrax/train/serialization/index.html#hybrax.train.serialization.reconstruct_training">reconstruct_training() (in module hybrax.train.serialization)</a>
 </li>
         <li><a href="autoapi/hybrax/train/serialization/index.html#hybrax.train.serialization.ReconstructedTraining">ReconstructedTraining (class in hybrax.train.serialization)</a>
-</li>
-        <li><a href="autoapi/hybrax/train/logging/index.html#hybrax.train.logging.RunLogger.record_rebuild">record_rebuild() (hybrax.train.logging.RunLogger method)</a>
 </li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
@@ -3126,14 +3133,14 @@
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionInputs.SCL_modeled_Inflows_cumulative">SCL_modeled_Inflows_cumulative (hybrax.train.model_api.ReactionInputs attribute)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.SCL_modeled_Inflows_rates">SCL_modeled_Inflows_rates (hybrax.train.model_api.LossInputs attribute)</a>
 
         <ul>
           <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionOutputs.SCL_modeled_Inflows_rates">(hybrax.train.model_api.ReactionOutputs attribute)</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.ReactionInputs.SCL_modeled_Outflows_cumulative">SCL_modeled_Outflows_cumulative (hybrax.train.model_api.ReactionInputs attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.SCL_modeled_Outflows_rates">SCL_modeled_Outflows_rates (hybrax.train.model_api.LossInputs attribute)</a>
@@ -3342,8 +3349,6 @@
 </li>
         <li><a href="autoapi/hybrax/train/validate/index.html#hybrax.train.validate.summarize_process_semantics">summarize_process_semantics() (in module hybrax.train.validate)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.summarize_train_step_input_signature">summarize_train_step_input_signature() (in module hybrax.train.harness)</a>
-</li>
         <li><a href="autoapi/hybrax/train/loo/index.html#hybrax.train.loo.LOOResult.summary_csv_path">summary_csv_path (hybrax.train.loo.LOOResult attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/controls/index.html#hybrax.train.controls.SignalSource.support">support (hybrax.train.controls.SignalSource property)</a>
@@ -3446,10 +3451,10 @@
           <li><a href="autoapi/hybrax/train/controls/index.html#hybrax.train.controls.SignalSource.times">(hybrax.train.controls.SignalSource attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries">TimeSeries (class in hybrax.format.time_series.timeseries)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries">TimeSeries (class in hybrax.format.time_series.timeseries)</a>
+</li>
         <li><a href="autoapi/hybrax/format/time_series/io/index.html#hybrax.format.time_series.io.timeseries_from_dict">timeseries_from_dict() (in module hybrax.format.time_series.io)</a>
 </li>
         <li><a href="autoapi/hybrax/format/time_series/io/index.html#hybrax.format.time_series.io.timeseries_to_dict">timeseries_to_dict() (in module hybrax.format.time_series.io)</a>
@@ -3492,10 +3497,6 @@
           <li><a href="autoapi/hybrax/train/loo/index.html#hybrax.train.loo.TrainedFold.train_result">(hybrax.train.loo.TrainedFold attribute)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessResult.train_step_input_signature">train_step_input_signature (hybrax.train.harness.TrainHarnessResult attribute)</a>
-</li>
-        <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessResult.train_step_rebuild_count">train_step_rebuild_count (hybrax.train.harness.TrainHarnessResult attribute)</a>
-</li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.trainable_field">trainable_field() (in module hybrax.train.model_api)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.TRAINABLE_METADATA_KEY">TRAINABLE_METADATA_KEY (in module hybrax.train.model_api)</a>
@@ -3530,6 +3531,8 @@
           <li><a href="autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.RuntimeDataContext.training_parent_collection">(hybrax.train.runtime_context.RuntimeDataContext attribute)</a>
 </li>
         </ul></li>
+        <li><a href="autoapi/hybrax/train/postprocessing/index.html#hybrax.train.postprocessing.TRAINING_PLOTS">TRAINING_PLOTS (in module hybrax.train.postprocessing)</a>
+</li>
         <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.ForwardResult.training_process_names">training_process_names (hybrax.train.harness.ForwardResult attribute)</a>
 
         <ul>
@@ -3720,13 +3723,17 @@
 </li>
         <li><a href="autoapi/hybrax/train/physical_solve/index.html#hybrax.train.physical_solve.within_fail_time">within_fail_time() (in module hybrax.train.physical_solve)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/checkpointing/index.html#hybrax.train.checkpointing.CheckpointWriter.would_save">would_save() (hybrax.train.checkpointing.CheckpointWriter method)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/checkpointing/index.html#hybrax.train.checkpointing.CheckpointWriter.write">write() (hybrax.train.checkpointing.CheckpointWriter method)</a>
 </li>
+        <li><a href="autoapi/hybrax/train/postprocessing/index.html#hybrax.train.postprocessing.write_grad_norm_curve">write_grad_norm_curve() (in module hybrax.train.postprocessing)</a>
+</li>
         <li><a href="autoapi/hybrax/train/serialization/index.html#hybrax.train.serialization.write_json">write_json() (in module hybrax.train.serialization)</a>
+</li>
+        <li><a href="autoapi/hybrax/train/postprocessing/index.html#hybrax.train.postprocessing.write_loss_curve">write_loss_curve() (in module hybrax.train.postprocessing)</a>
 </li>
         <li><a href="autoapi/hybrax/train/runtime_artifact/index.html#hybrax.train.runtime_artifact.write_runtime_artifact">write_runtime_artifact() (in module hybrax.train.runtime_artifact)</a>
 </li>

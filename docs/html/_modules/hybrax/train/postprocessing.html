@@ -263,6 +263,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">KAN Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed.html">OptFed mechanistic model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed_neural.html">OptFed with neural kinetics</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/hek293_lstm.html">HEK293: PCA reaction modes with an LSTM</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
@@ -369,8 +370,10 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">csv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Sequence</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Mapping</span><span class="p">,</span> <span class="n">Sequence</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
@@ -859,6 +862,121 @@
     <span class="n">fig</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="n">output_path</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="mi">150</span><span class="p">)</span>
     <span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">fig</span><span class="p">)</span>
     <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"gradient norm curve saved to </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">output_path</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="write_loss_curve">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/postprocessing/index.html#hybrax.train.postprocessing.write_loss_curve">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">write_loss_curve</span><span class="p">(</span><span class="n">history</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">output_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Write `loss_curve.png` from a training history into `output_dir`."""</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">output_dir</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"loss_curve.png"</span>
+    <span class="n">plot_loss_curve</span><span class="p">(</span>
+        <span class="n">history</span><span class="p">[</span><span class="s2">"mean_loss_by_step"</span><span class="p">],</span>
+        <span class="n">path</span><span class="p">,</span>
+        <span class="n">title</span><span class="o">=</span><span class="sa">f</span><span class="s2">"Training loss (through step </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">history</span><span class="p">[</span><span class="s1">'mean_loss_by_step'</span><span class="p">])</span><span class="si">}</span><span class="s2">)"</span><span class="p">,</span>
+        <span class="n">per_target_loss_by_step</span><span class="o">=</span><span class="n">history</span><span class="p">[</span><span class="s2">"per_target_loss_by_step"</span><span class="p">],</span>
+        <span class="n">target_names</span><span class="o">=</span><span class="n">history</span><span class="p">[</span><span class="s2">"target_names"</span><span class="p">],</span>
+        <span class="n">monitor_loss_by_step</span><span class="o">=</span><span class="n">history</span><span class="p">[</span><span class="s2">"holdout_loss_by_step"</span><span class="p">]</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">monitor_per_target_by_step</span><span class="o">=</span><span class="n">history</span><span class="p">[</span><span class="s2">"holdout_per_target_by_step"</span><span class="p">]</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">monitor_label</span><span class="o">=</span><span class="n">history</span><span class="p">[</span><span class="s2">"holdout_label"</span><span class="p">],</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">path</span></div>
+
+
+
+<div class="viewcode-block" id="write_grad_norm_curve">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/postprocessing/index.html#hybrax.train.postprocessing.write_grad_norm_curve">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">write_grad_norm_curve</span><span class="p">(</span><span class="n">history</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">output_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Write `grad_norm_curve.png` from a training history into `output_dir`."""</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">output_dir</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"grad_norm_curve.png"</span>
+    <span class="n">plot_grad_norm_curve</span><span class="p">(</span>
+        <span class="n">history</span><span class="p">[</span><span class="s2">"grad_norm_by_step"</span><span class="p">],</span>
+        <span class="n">path</span><span class="p">,</span>
+        <span class="n">title</span><span class="o">=</span><span class="sa">f</span><span class="s2">"Gradient norm (through step </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">history</span><span class="p">[</span><span class="s1">'mean_loss_by_step'</span><span class="p">])</span><span class="si">}</span><span class="s2">)"</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">return</span> <span class="n">path</span></div>
+
+
+
+<span class="c1"># Run-level training plots by `hybrax plot --kind` name. Training draws all of</span>
+<span class="c1"># them once at the end; `hybrax plot` redraws them from `metrics.csv`.</span>
+<span class="n">TRAINING_PLOTS</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="n">Path</span><span class="p">],</span> <span class="n">Path</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"loss"</span><span class="p">:</span> <span class="n">write_loss_curve</span><span class="p">,</span>
+    <span class="s2">"grad-norm"</span><span class="p">:</span> <span class="n">write_grad_norm_curve</span><span class="p">,</span>
+<span class="p">}</span>
+
+
+<span class="n">_HISTORY_COLUMNS</span> <span class="o">=</span> <span class="p">(</span>
+    <span class="s2">"step"</span><span class="p">,</span>
+    <span class="s2">"mean_loss"</span><span class="p">,</span>
+    <span class="s2">"per_target_loss"</span><span class="p">,</span>
+    <span class="s2">"target_names"</span><span class="p">,</span>
+    <span class="s2">"grad_norm"</span><span class="p">,</span>
+    <span class="s2">"holdout_loss"</span><span class="p">,</span>
+    <span class="s2">"holdout_label"</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="read_training_history">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/postprocessing/index.html#hybrax.train.postprocessing.read_training_history">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">read_training_history</span><span class="p">(</span><span class="n">metrics_csv</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Read the plotted series of a training history back from `metrics.csv`.</span>
+
+<span class="sd">    Returns the keys the `TRAINING_PLOTS` writers use. The file may still be</span>
+<span class="sd">    written to, so a last row without its closing newline is skipped. The</span>
+<span class="sd">    `holdout_per_target_loss` column is optional, since older runs lack it.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If the file is not a training `metrics.csv` or holds no</span>
+<span class="sd">            complete step row.</span>
+<span class="sd">    """</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">metrics_csv</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">()</span>
+    <span class="c1"># Cut at the last newline: a byte, so never inside a UTF-8 character.</span>
+    <span class="n">text</span> <span class="o">=</span> <span class="n">data</span><span class="p">[:</span> <span class="n">data</span><span class="o">.</span><span class="n">rfind</span><span class="p">(</span><span class="sa">b</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
+    <span class="n">reader</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">reader</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">StringIO</span><span class="p">(</span><span class="n">text</span><span class="p">),</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">records</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">records</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">reader</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">csv</span><span class="o">.</span><span class="n">Error</span><span class="p">:</span>
+        <span class="c1"># A quoted field with a newline can still be open at the cut. Only</span>
+        <span class="c1"># that last record may be unfinished; anything earlier is corrupt.</span>
+        <span class="k">if</span> <span class="n">reader</span><span class="o">.</span><span class="n">line_num</span> <span class="o">&lt;</span> <span class="n">text</span><span class="o">.</span><span class="n">count</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">):</span>
+            <span class="k">raise</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">records</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">metrics_csv</span><span class="si">}</span><span class="s2"> holds no training steps yet"</span><span class="p">)</span>
+    <span class="n">header</span><span class="p">,</span> <span class="o">*</span><span class="n">body</span> <span class="o">=</span> <span class="n">records</span>
+    <span class="n">missing</span> <span class="o">=</span> <span class="p">[</span><span class="n">column</span> <span class="k">for</span> <span class="n">column</span> <span class="ow">in</span> <span class="n">_HISTORY_COLUMNS</span> <span class="k">if</span> <span class="n">column</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">header</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">metrics_csv</span><span class="si">}</span><span class="s2"> is missing metrics.csv columns </span><span class="si">{</span><span class="n">missing</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+    <span class="n">rows</span> <span class="o">=</span> <span class="p">[</span><span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">header</span><span class="p">,</span> <span class="n">record</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span> <span class="k">for</span> <span class="n">record</span> <span class="ow">in</span> <span class="n">body</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">rows</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">metrics_csv</span><span class="si">}</span><span class="s2"> holds no training steps yet"</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">floats</span><span class="p">(</span><span class="n">cell</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">cell</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">";"</span><span class="p">))</span> <span class="k">if</span> <span class="n">cell</span> <span class="k">else</span> <span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">at_holdout_steps</span><span class="p">(</span><span class="n">column</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">parse</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">],</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+        <span class="k">return</span> <span class="p">{</span><span class="nb">int</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"step"</span><span class="p">]):</span> <span class="n">parse</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="n">column</span><span class="p">])</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span> <span class="k">if</span> <span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">column</span><span class="p">)}</span>
+
+    <span class="n">names</span> <span class="o">=</span> <span class="n">rows</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s2">"target_names"</span><span class="p">]</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">"mean_loss_by_step"</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"mean_loss"</span><span class="p">])</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span><span class="p">),</span>
+        <span class="s2">"per_target_loss_by_step"</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">(</span>
+            <span class="n">floats</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"per_target_loss"</span><span class="p">])</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span>
+        <span class="p">),</span>
+        <span class="s2">"target_names"</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">names</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">";"</span><span class="p">))</span> <span class="k">if</span> <span class="n">names</span> <span class="k">else</span> <span class="p">(),</span>
+        <span class="s2">"grad_norm_by_step"</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">(</span>
+            <span class="nb">float</span><span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"grad_norm"</span><span class="p">])</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">rows</span> <span class="k">if</span> <span class="n">row</span><span class="p">[</span><span class="s2">"grad_norm"</span><span class="p">]</span>
+        <span class="p">),</span>
+        <span class="s2">"holdout_loss_by_step"</span><span class="p">:</span> <span class="n">at_holdout_steps</span><span class="p">(</span><span class="s2">"holdout_loss"</span><span class="p">,</span> <span class="nb">float</span><span class="p">),</span>
+        <span class="s2">"holdout_per_target_by_step"</span><span class="p">:</span> <span class="n">at_holdout_steps</span><span class="p">(</span>
+            <span class="s2">"holdout_per_target_loss"</span><span class="p">,</span> <span class="n">floats</span>
+        <span class="p">),</span>
+        <span class="s2">"holdout_label"</span><span class="p">:</span> <span class="nb">next</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">row</span><span class="p">[</span><span class="s2">"holdout_label"</span><span class="p">]</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="nb">reversed</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span> <span class="k">if</span> <span class="n">row</span><span class="p">[</span><span class="s2">"holdout_label"</span><span class="p">]),</span>
+            <span class="kc">None</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">}</span></div>
 
 
 

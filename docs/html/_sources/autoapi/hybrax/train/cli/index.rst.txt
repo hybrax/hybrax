@@ -5,7 +5,7 @@ hybrax.train.cli
 
 .. autoapi-nested-parse::
 
-   The ``hybrax`` command line: ``prepare``, ``train``, ``forward``, and ``loo``.
+   The `hybrax` command line: `prepare`, `train`, `forward`, `loo`, and `plot`.
 
 
 

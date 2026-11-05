@@ -63,7 +63,6 @@ Functions
    hybrax.train.harness.model_predict
    hybrax.train.harness.prepare_training
    hybrax.train.harness.prepare_training_from_runtime_artifact
-   hybrax.train.harness.summarize_train_step_input_signature
    hybrax.train.harness.train_collection
    hybrax.train.harness.train_from_collection
    hybrax.train.harness.train_from_prepared_json
@@ -263,7 +262,7 @@ Module Contents
 
    .. py:attribute:: flow_integral_relative_tolerance
       :type:  float
-      :value: 0.001
+      :value: 0.01
 
 
 
@@ -454,14 +453,6 @@ Module Contents
 
 
 
-   .. py:attribute:: train_step_input_signature
-      :type:  tuple[object, ...]
-
-
-   .. py:attribute:: train_step_rebuild_count
-      :type:  int
-
-
    .. py:attribute:: trained_wrapper
       :type:  hybrax.train.wrapper.HybridOdeWrapper
 
@@ -608,11 +599,6 @@ Module Contents
 .. py:function:: prepare_training_from_runtime_artifact(artifact, *, config, custom_module, custom_cfg)
 
    Prepare training solely from an already-loaded runtime artifact.
-
-
-.. py:function:: summarize_train_step_input_signature(*values)
-
-   Return a stable pytree leaf-shape/type summary for train-step inputs.
 
 
 .. py:function:: train_collection(store, *, reaction_module, loss_module = None, config = None, optimizer = None)

@@ -34,7 +34,7 @@ Module Contents
 
    .. py:method:: close()
 
-      Close the JSONL file handle, if one is open.
+      Close the CSV and JSONL file handles, if open.
 
 
 
@@ -44,12 +44,6 @@ Module Contents
 
       :returns: Every ``_history`` series (loss, timing, per-process/per-target
                 breakdowns, holdout results) plus ``target_names``.
-
-
-
-   .. py:method:: record_rebuild(step_index)
-
-      Log and count a train-step JIT rebuild at ``step_index``.
 
 
 
@@ -163,10 +157,6 @@ Module Contents
 
    .. py:attribute:: process_names
       :type:  tuple[str, ...]
-
-
-   .. py:attribute:: rebuild_count
-      :type:  int
 
 
    .. py:attribute:: samples_seen

@@ -263,6 +263,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/pls_dfba.html">PLS-dFBA</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/kan.html">KAN Models</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed.html">OptFed mechanistic model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../gallery/optfed_neural.html">OptFed with neural kinetics</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../gallery/hek293_lstm.html">HEK293: PCA reaction modes with an LSTM</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Troubleshooting</span></p>
@@ -369,14 +370,13 @@
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">csv</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Mapping</span><span class="p">,</span> <span class="n">Sequence</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Self</span>
-
-<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="n">dumps_json</span>
 
@@ -400,7 +400,6 @@
     <span class="n">target_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
     <span class="n">process_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>  <span class="c1"># batch composition for this step</span>
     <span class="n">step_dt</span><span class="p">:</span> <span class="nb">float</span>  <span class="c1"># wall time (seconds)</span>
-    <span class="n">rebuild_count</span><span class="p">:</span> <span class="nb">int</span>  <span class="c1"># cumulative</span>
     <span class="c1"># Holdout / validation loss, populated only when a holdout is evaluated at a</span>
     <span class="c1"># checkpoint boundary; None on intermediate steps.</span>
     <span class="n">holdout_loss</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
@@ -542,7 +541,6 @@
             <span class="s2">";"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">process_names</span><span class="p">)</span> <span class="k">if</span> <span class="n">strings</span> <span class="k">else</span> <span class="nb">list</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">process_names</span><span class="p">)</span>
         <span class="p">),</span>
         <span class="s2">"step_dt"</span><span class="p">:</span> <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">record</span><span class="o">.</span><span class="n">step_dt</span><span class="si">:</span><span class="s2">.6f</span><span class="si">}</span><span class="s2">"</span> <span class="k">if</span> <span class="n">strings</span> <span class="k">else</span> <span class="n">record</span><span class="o">.</span><span class="n">step_dt</span><span class="p">,</span>
-        <span class="s2">"rebuild_count"</span><span class="p">:</span> <span class="n">record</span><span class="o">.</span><span class="n">rebuild_count</span><span class="p">,</span>
         <span class="s2">"holdout_loss"</span><span class="p">:</span> <span class="p">(</span>
             <span class="n">number</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">holdout_loss</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">record</span><span class="o">.</span><span class="n">holdout_loss</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
@@ -628,6 +626,8 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_decimals</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">log_decimals</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="n">logger_name</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_formatter</span><span class="p">:</span> <span class="n">_ConsoleTableFormatter</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_csv_file</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_csv_writer</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_jsonl_file</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_history</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
             <span class="s2">"mean_loss_by_step"</span><span class="p">:</span> <span class="p">[],</span>
@@ -637,7 +637,6 @@
             <span class="s2">"per_process_loss_by_step"</span><span class="p">:</span> <span class="p">[],</span>
             <span class="s2">"holdout_loss_by_step"</span><span class="p">:</span> <span class="p">{},</span>
             <span class="s2">"holdout_label"</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-            <span class="s2">"train_step_rebuild_count"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
             <span class="s2">"grad_norm_by_step"</span><span class="p">:</span> <span class="p">[],</span>
         <span class="p">}</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_target_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
@@ -675,9 +674,15 @@
         <span class="p">)</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_metrics_csv_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_metrics_csv_path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-            <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="n">_row</span><span class="p">(</span><span class="n">_DUMMY_RECORD</span><span class="p">,</span> <span class="n">strings</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_metrics_csv_path</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">False</span>
+            <span class="c1"># Line-buffered so the file stays tail-able and crash-safe without</span>
+            <span class="c1"># reopening it on every step.</span>
+            <span class="c1"># Explicit UTF-8 like pandas' to_csv; the locale default may not</span>
+            <span class="c1"># encode non-ASCII process or target names.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_csv_file</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_metrics_csv_path</span><span class="o">.</span><span class="n">open</span><span class="p">(</span>
+                <span class="s2">"w"</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">,</span> <span class="n">newline</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span> <span class="n">buffering</span><span class="o">=</span><span class="mi">1</span>
             <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_csv_writer</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">writer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_csv_file</span><span class="p">,</span> <span class="n">lineterminator</span><span class="o">=</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_csv_writer</span><span class="o">.</span><span class="n">writerow</span><span class="p">(</span><span class="n">_row</span><span class="p">(</span><span class="n">_DUMMY_RECORD</span><span class="p">,</span> <span class="n">strings</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_metrics_jsonl_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_metrics_jsonl_path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_jsonl_file</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_metrics_jsonl_path</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">"w"</span><span class="p">)</span>
@@ -686,18 +691,6 @@
             <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_target_names</span><span class="p">),</span>
             <span class="nb">len</span><span class="p">(</span><span class="n">process_names</span><span class="p">),</span>
             <span class="n">compile_warmup_seconds</span><span class="p">,</span>
-        <span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="RunLogger.record_rebuild">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/logging/index.html#hybrax.train.logging.RunLogger.record_rebuild">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">record_rebuild</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">step_index</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""Log and count a train-step JIT rebuild at ``step_index``."""</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_history</span><span class="p">[</span><span class="s2">"train_step_rebuild_count"</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-            <span class="s2">"train-step rebuilt at step=</span><span class="si">%d</span><span class="s2"> (rebuild_count=</span><span class="si">%d</span><span class="s2">)"</span><span class="p">,</span>
-            <span class="n">step_index</span><span class="p">,</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_history</span><span class="p">[</span><span class="s2">"train_step_rebuild_count"</span><span class="p">],</span>
         <span class="p">)</span></div>
 
 
@@ -768,10 +761,8 @@
                 <span class="n">record</span><span class="o">.</span><span class="n">epoch_mean_loss</span><span class="p">,</span>
                 <span class="n">record</span><span class="o">.</span><span class="n">epoch_time_seconds</span><span class="p">,</span>
             <span class="p">)</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_metrics_csv_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">([</span><span class="n">_row</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">strings</span><span class="o">=</span><span class="kc">True</span><span class="p">)])</span><span class="o">.</span><span class="n">to_csv</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">_metrics_csv_path</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"a"</span><span class="p">,</span> <span class="n">header</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">False</span>
-            <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_csv_writer</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_csv_writer</span><span class="o">.</span><span class="n">writerow</span><span class="p">(</span><span class="n">_row</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">strings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_jsonl_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_jsonl_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">dumps_json</span><span class="p">(</span><span class="n">_row</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">strings</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span> <span class="o">+</span> <span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span></div>
 
@@ -785,6 +776,8 @@
 <span class="sd">            Every ``_history`` series (loss, timing, per-process/per-target</span>
 <span class="sd">            breakdowns, holdout results) plus ``target_names``.</span>
 <span class="sd">        """</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_csv_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_csv_file</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_jsonl_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_jsonl_file</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">snapshot</span><span class="p">()</span></div>
@@ -806,7 +799,11 @@
 <div class="viewcode-block" id="RunLogger.close">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/logging/index.html#hybrax.train.logging.RunLogger.close">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">"""Close the JSONL file handle, if one is open."""</span>
+<span class="w">        </span><span class="sd">"""Close the CSV and JSONL file handles, if open."""</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_csv_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_csv_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_csv_file</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_csv_writer</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_jsonl_file</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_jsonl_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_jsonl_file</span> <span class="o">=</span> <span class="kc">None</span></div>
@@ -826,7 +823,6 @@
     <span class="n">target_names</span><span class="o">=</span><span class="p">(),</span>
     <span class="n">process_names</span><span class="o">=</span><span class="p">(),</span>
     <span class="n">step_dt</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
-    <span class="n">rebuild_count</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
 <span class="p">)</span>
 </pre></div>
         </article>
