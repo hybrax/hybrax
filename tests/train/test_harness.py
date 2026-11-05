@@ -71,7 +71,7 @@ from hybrax.train.runtime_context import (
     select_parent_collection,
 )
 from hybrax.train.serialization import load_trained_wrapper
-from hybrax.train.trainer import simulate_measurement_states
+from hybrax.train.trainer import clamp_padded_time_rows, simulate_measurement_states
 from hybrax.train.training_data import TrainingDataStore
 
 
@@ -1302,6 +1302,42 @@ def test_train_collection_logs_sampled_losses_only_at_log_steps(caplog):
         record.message for record in caplog.records if "per-process:" in record.message
     ]
     assert sampled_logs == []
+
+
+def test_host_evaluation_gather_matches_device_gather():
+    store = TrainingDataStore.from_collection(
+        _make_collection(),
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    # Padded jump-time rows: the tails must be clamped to each row's last time.
+    store = eqx.tree_at(
+        lambda s: (s.controls_store.jump_ts, s.controls_store.jump_ts_lengths),
+        store,
+        (
+            jnp.asarray([[0.25, 1.25, np.nan], [0.75, 1.75, 2.75]]),
+            jnp.asarray([2, 0], dtype=jnp.int32),
+        ),
+    )
+    # Repeated rows, as in a padded final evaluation batch.
+    indices = np.asarray([1, 0, 1], dtype=np.int32)
+    batch, jump_ts_rows = harness_module._gather_evaluation_batch(
+        harness_module._host_view(store), indices, solver_use_jump_ts=True
+    )
+    expected_batch = store.gather_batch(indices)
+    for actual, expected in zip(
+        jax.tree.leaves(batch), jax.tree.leaves(expected_batch), strict=True
+    ):
+        assert isinstance(actual, np.ndarray)
+        assert actual.dtype == expected.dtype
+        np.testing.assert_array_equal(actual, expected)
+    np.testing.assert_array_equal(
+        jump_ts_rows,
+        clamp_padded_time_rows(
+            store.controls_store.jump_ts[indices],
+            store.controls_store.jump_ts_lengths[indices],
+        ),
+    )
 
 
 def test_holdout_runs_once_at_periodic_final_collision(tmp_path, monkeypatch):

@@ -909,8 +909,12 @@ class TrainingDataStore(eqx.Module):
 
         return self._gather_batch_rows(indices)
 
-    def _gather_batch_rows(self, indices: jax.Array) -> BatchTrainingData:
-        """Gather already-validated, int32 process-index rows (traceable)."""
+    def _gather_batch_rows(self, indices: jax.Array | np.ndarray) -> BatchTrainingData:
+        """Gather already-validated, int32 process-index rows.
+
+        Traceable inside JIT; on a NumPy-backed store with NumPy indices it
+        gathers on the host instead.
+        """
         return BatchTrainingData(
             process_indices=indices,
             controls=self.controls_store._gather_batch_rows(indices),

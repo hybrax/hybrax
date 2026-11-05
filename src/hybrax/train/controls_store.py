@@ -1411,7 +1411,7 @@ class ControlsStore(eqx.Module):
 
         return self._gather_batch_rows(indices)
 
-    def _gather_batch_rows(self, indices: jax.Array) -> BatchControls:
+    def _gather_batch_rows(self, indices: jax.Array | np.ndarray) -> BatchControls:
         """Gather already-validated, int32 process-index rows."""
         return BatchControls(
             **{name: getattr(self, name)[indices] for name in BATCH_ROW_FIELDS},

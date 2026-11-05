@@ -98,6 +98,7 @@ from .trainer import (
 )
 from .training_data import (
     TARGET_SOURCE_AUTO,
+    BatchTrainingData,
     TrainingDataStore,
     replace_rhs_ode_process_matrices,
 )
@@ -118,6 +119,52 @@ _BATCHED_LOSS_FN_JIT = eqx.filter_jit(_BATCHED_LOSS_FN)
 logger = logging.getLogger(__name__)
 
 _EVALUATION_BATCH_SIZE = 32
+
+
+def _host_view(store: TrainingDataStore) -> TrainingDataStore:
+    """Return `store` with its device arrays viewed as NumPy arrays.
+
+    CPU device arrays convert to NumPy without copying, so this is cheap.
+    """
+    return jtu.tree_map(
+        lambda leaf: np.asarray(leaf) if isinstance(leaf, jax.Array) else leaf,
+        store,
+    )
+
+
+def _clamp_padded_time_rows_host(times: np.ndarray, lengths: np.ndarray) -> np.ndarray:
+    """NumPy twin of `clamp_padded_time_rows`; selection only, so exact."""
+    max_length = times.shape[1]
+    if max_length == 0:
+        return times
+    last_index = np.clip(lengths - 1, 0, max_length - 1)
+    last_values = times[np.arange(times.shape[0]), last_index]
+    tail_mask = np.arange(max_length)[None, :] >= lengths[:, None]
+    return np.where(tail_mask, last_values[:, None], times)
+
+
+def _gather_evaluation_batch(
+    host_store: TrainingDataStore,
+    indices: np.ndarray,
+    *,
+    solver_use_jump_ts: bool,
+) -> tuple[BatchTrainingData, np.ndarray | None]:
+    """Gather evaluation rows from a `_host_view` store with NumPy indexing.
+
+    Row selection is exact, so the batch equals a device gather. Gathering on
+    the device would instead compile gather kernels for every new evaluation
+    batch size (the holdout set at the first checkpoint, the padded batch in
+    the final evaluation). The jitted loss traces NumPy inputs like device
+    arrays, so this adds no compile there either.
+    """
+    batch = host_store._gather_batch_rows(indices)
+    jump_ts_rows = None
+    if solver_use_jump_ts:
+        controls = host_store.controls_store
+        jump_ts_rows = _clamp_padded_time_rows_host(
+            controls.jump_ts[indices], controls.jump_ts_lengths[indices]
+        )
+    return batch, jump_ts_rows
 
 
 def _iter_batched_loss_outputs(
@@ -151,19 +198,18 @@ def _iter_batched_loss_outputs(
         raise ValueError(f"duplicate process names: {duplicates}")
     store.validate_control_support(process_names)
 
+    host_store = _host_view(store)
     # Small sets (e.g. a single holdout) skip padding to the full batch size.
     batch_size = min(_EVALUATION_BATCH_SIZE, len(process_names))
     for start in range(0, len(process_names), batch_size):
         valid_names = process_names[start : start + batch_size]
         indices = [store.process_order.index(name) for name in valid_names]
         indices.extend([indices[-1]] * (batch_size - len(indices)))
-        batch = store.gather_batch(jnp.asarray(indices, dtype=jnp.int32))
-        jump_ts_rows = None
-        if solver_use_jump_ts:
-            jump_ts_rows = clamp_padded_time_rows(
-                store.controls_store.jump_ts[batch.process_indices],
-                store.controls_store.jump_ts_lengths[batch.process_indices],
-            )
+        batch, jump_ts_rows = _gather_evaluation_batch(
+            host_store,
+            np.asarray(indices, dtype=np.int32),
+            solver_use_jump_ts=solver_use_jump_ts,
+        )
         outputs = _BATCHED_LOSS_FN_JIT(
             trained_wrapper,
             batch,

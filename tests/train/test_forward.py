@@ -176,7 +176,7 @@ def test_evaluate_trained_wrapper_loss_only_batches_exclude_padding(monkeypatch)
             del process_names
 
         @staticmethod
-        def gather_batch(indices):
+        def _gather_batch_rows(indices):
             return SimpleNamespace(process_indices=indices)
 
     seen_indices = []
@@ -1330,7 +1330,7 @@ def test_dense_exports_batch_and_exclude_padded_tail(monkeypatch, process_count)
             del process_names
 
         @staticmethod
-        def gather_batch(indices):
+        def _gather_batch_rows(indices):
             return SimpleNamespace(process_indices=indices)
 
     seen_indices = []
