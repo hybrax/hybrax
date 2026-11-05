@@ -52,6 +52,19 @@ public API; such entries are marked **Breaking**.
 - The default `train.flow_integral_relative_tolerance` is now `1e-2` (1%), up from
   `1e-3`. Training also adapts its steps to the state dynamics, so it usually takes
   shorter steps and integrates the flows more accurately than the preflight does.
+- Checkpoint boundaries are cheaper. `train` and `loo` compress prepared data once
+  and every checkpoint copies that file, and holdout evaluation and prediction
+  exports no longer compile small kernels for each new batch size. On a 165-process
+  benchmark with 47.8 MB of prepared data, each checkpoint write took 0.02 s instead
+  of 2.9 s, the first holdout evaluation compiled 2 kernels instead of 29, and a
+  4-epoch run took 8.6% less time. Results are unchanged, except that with a
+  non-zero `AffineScaler` offset exported states can differ by floating-point
+  rounding (about 2e-13 relative in our test).
+- **Breaking:** a `loo` run directory now always holds `prepared.json.gz`. Before,
+  it held a plain `prepared.json` when the input was plain JSON, which is what
+  `hybrax prepare` writes. Only code that opens `prepared.json` in a LOO run
+  directory directly breaks; hybrax itself reads either name, and existing LOO
+  run directories keep their plain file and still resume.
 
 ### Removed
 
