@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+import gzip
 import json
 import weakref
 from pathlib import Path
@@ -122,6 +123,38 @@ def test_train_cli_produces_fair_run_dir_and_model_load(tmp_path: Path):
     (run_dir / "prepared.json.gz").unlink()
     _write_prepared(prepared)
     hybrax.train.model_load(run_dir)
+
+
+def test_train_cli_compresses_prepared_data_once(tmp_path: Path, monkeypatch):
+    prepared = _write_prepared(tmp_path / "prepared.json")
+    run_dir = tmp_path / "run"
+    config = _write_config(
+        tmp_path / "config.json",
+        prepared=prepared,
+        run_dir=run_dir,
+        epochs=2,
+        every=1,
+        predictions="none",
+    )
+    gzip_open = gzip.open
+    compressed = []
+
+    def record_gzip_open(filename, mode="rb", *args, **kwargs):
+        if "w" in mode:
+            compressed.append(Path(filename))
+        return gzip_open(filename, mode, *args, **kwargs)
+
+    monkeypatch.setattr(gzip, "open", record_gzip_open)
+
+    assert main(["train", "--config", str(config)]) == 0
+
+    assert compressed == [run_dir / "prepared.json.gz"]
+    bundles = list((run_dir / "checkpoints").glob("step_*/prepared.json.gz"))
+    assert len(bundles) == 2
+    assert all(
+        gzip.decompress(bundle.read_bytes()) == prepared.read_bytes()
+        for bundle in bundles
+    )
 
 
 def test_train_cli_accepts_prepared_already_in_run_dir(tmp_path: Path):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import math
 from concurrent.futures import ThreadPoolExecutor
@@ -1420,6 +1421,7 @@ def test_loo_cli_orchestrator_produces_before_dispatch(monkeypatch, tmp_path):
     _write_min_config(cfg_path)
     (tmp_path / "prepared.json").write_text("{}")
     out_dir = tmp_path / "out"
+    bundled_cfg = None
     events: list[str] = []
     monkeypatch.setattr(
         cli,
@@ -1432,7 +1434,9 @@ def test_loo_cli_orchestrator_produces_before_dispatch(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(cli, "_validated_runtime_metadata", lambda *_a, **_k: metadata)
 
-    def fake_run(**_kwargs):
+    def fake_run(**kwargs):
+        nonlocal bundled_cfg
+        bundled_cfg = kwargs["cfg"]
         events.append("workers")
         document = json.loads((out_dir / "config.json").read_text())
         assert document["runtime_artifact"] == {
@@ -1464,7 +1468,15 @@ def test_loo_cli_orchestrator_produces_before_dispatch(monkeypatch, tmp_path):
     )
     assert events == ["producer", "workers"]
     assert (out_dir / "loo-config.json").is_file()
-    assert (out_dir / "prepared.json").is_file()
+    assert not (out_dir / "prepared.json").exists()
+    assert gzip.decompress((out_dir / "prepared.json.gz").read_bytes()) == b"{}"
+    # Folds keep this path, so their checkpoints copy the file.
+    fold = loo_mod._fold_from_record(metadata.folds[0])
+    fold_cfg, fold_dir, _ = loo_mod._effective_fold_config(
+        bundled_cfg, fold, out_dir, None
+    )
+    harness_cfg = loo_mod._fold_harness_config(fold_cfg, fold, fold_dir)
+    assert harness_cfg.prepared_path == (out_dir / "prepared.json.gz").resolve()
 
 
 def _stub_loo_result(output_dir: Path) -> LOOResult:

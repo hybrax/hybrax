@@ -64,7 +64,7 @@ loo_run/
 ├── config.json          run status and provenance, updated as folds complete
 ├── loo-config.json      bundled verbatim: this is what --resume reads
 ├── custom.py
-├── prepared.json
+├── prepared.json.gz
 ├── runtime-artifact/    shared runtime state every fold worker reads
 ├── folds/
 │   └── <slug>/          a complete run directory per fold

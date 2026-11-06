@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import dataclasses
 import logging
 import os
 import shutil
@@ -526,7 +527,11 @@ def _handle_train(args: argparse.Namespace) -> int:
 
     collection = load_process_collection(cfg.data.prepared)
     prepared_hash = content_hash(collection)
-    config = train_harness_config_from_run_config(cfg, run_dir=run_dir)
+    # Checkpoints copy the run dir's compressed prepared data, written below.
+    config = dataclasses.replace(
+        train_harness_config_from_run_config(cfg, run_dir=run_dir),
+        prepared_path=run_dir / "prepared.json.gz",
+    )
     prepared = None
     initial_checkpoint = None
     if args.init_from is not None:
@@ -1317,17 +1322,16 @@ def _bundle_loo_run_dir(
 ) -> Path:
     """Materialise a self-contained LOO run dir.
 
-    Copies ``custom.py`` and the prepared artifact (true byte copies) into
-    ``output_dir`` and writes a loadable ``loo-config.json`` whose ``custom_py``,
-    ``data.prepared`` and ``output.dir`` are RELATIVE to the run dir (so it stays
-    valid even if the whole dir is moved). Returns the bundled config path.
+    Copies ``custom.py`` and compressed prepared data into ``output_dir`` and
+    writes a loadable ``loo-config.json`` whose ``custom_py``, ``data.prepared``
+    and ``output.dir`` are RELATIVE to the run dir (so it stays valid even if the
+    whole dir is moved). Folds inherit ``data.prepared``, so their checkpoints
+    copy this file instead of compressing it again. Returns the bundled config
+    path.
     """
     assert cfg.data is not None
-    src_prepared = Path(cfg.data.prepared)
-    prepared_name = (
-        "prepared.json.gz" if src_prepared.name.endswith(".gz") else "prepared.json"
-    )
-    shutil.copyfile(src_prepared, output_dir / prepared_name)
+    prepared_name = "prepared.json.gz"
+    _bundle_prepared_gz(Path(cfg.data.prepared), output_dir / prepared_name)
 
     custom_name: str | None = None
     if cfg.custom_py is not None:
