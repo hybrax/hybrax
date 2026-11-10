@@ -19,6 +19,10 @@ public API; such entries are marked **Breaking**.
 - `BioProcessMetadata.extra` is a free-form dict for recording anything about a
   process, such as induction time or operator. It is saved with the process and has
   no effect on solving or training.
+- `loo.cpus_per_fold` gives each parallel LOO worker its own set of CPUs, preferring
+  distinct physical cores, so concurrent folds stop competing for the same cores.
+  It is off by default. On a 12-fold, 192-process benchmark with 12 parallel folds,
+  `cpus_per_fold: 2` cut the run from 166 to 140 s. Results are unchanged.
 
 ### Changed
 
@@ -65,6 +69,11 @@ public API; such entries are marked **Breaking**.
   `hybrax prepare` writes. Only code that opens `prepared.json` in a LOO run
   directory directly breaks; hybrax itself reads either name, and existing LOO
   run directories keep their plain file and still resume.
+- LOO setup is faster: the runtime producer computes control spline derivatives with
+  NumPy and checks flow spline signs in batches, instead of compiling small JAX
+  kernels for each control grid. On a 192-process benchmark the producer took 52 s
+  instead of 169 s (837 compiles instead of 2412), and a 12-fold LOO run took 166 s
+  instead of 298 s. Runtime artifacts and fold results are byte-identical.
 
 ### Removed
 
