@@ -308,6 +308,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/cpu_affinity/index.html">hybrax.train.cpu_affinity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
@@ -378,6 +379,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">equinox</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">eqx</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
@@ -490,6 +492,18 @@
 
 
 
+<span class="nd">@eqx</span><span class="o">.</span><span class="n">filter_jit</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_unscale_batched_states</span><span class="p">(</span><span class="n">unscale_state</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">SCL_states</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Un-scale `[N, n_pred, state]` states in one compiled kernel.</span>
+
+<span class="sd">    Eager vmapped dispatch would compile one kernel per primitive of</span>
+<span class="sd">    `unscale_state` (six for the default scalers) on first use per shape.</span>
+<span class="sd">    A bound method of an equinox module is a pytree, so its arrays stay</span>
+<span class="sd">    traced inputs rather than static arguments.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">unscale_state</span><span class="p">))(</span><span class="n">SCL_states</span><span class="p">)</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">_mask_invalid</span><span class="p">(</span><span class="n">values</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">valid</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Set rows (leading axis) of `values` where `valid` is false to NaN."""</span>
     <span class="n">values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
@@ -527,7 +541,9 @@
     <span class="p">)</span>
     <span class="c1"># Un-scale [N, n_pred, state] → physical in one vmapped pass, then to numpy.</span>
     <span class="n">RAW_states</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span>
-        <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">unscale_state</span><span class="p">))(</span><span class="n">prediction_save_outputs</span><span class="o">.</span><span class="n">SCL_states</span><span class="p">)</span>
+        <span class="n">_unscale_batched_states</span><span class="p">(</span>
+            <span class="n">module</span><span class="o">.</span><span class="n">unscale_state</span><span class="p">,</span> <span class="n">prediction_save_outputs</span><span class="o">.</span><span class="n">SCL_states</span>
+        <span class="p">)</span>
     <span class="p">)</span>
     <span class="n">t_np</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">prediction_t</span><span class="p">)</span>
     <span class="n">prediction_valid_np</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">prediction_valid</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>

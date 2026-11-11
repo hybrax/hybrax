@@ -113,7 +113,7 @@ Default run loading still uses the final model; load a best checkpoint by its
 explicit path from `checkpoints/retention.json`.
 
 Because each checkpoint is self-contained by default, it re-exports predictions and
-re-writes the bundled data. On a fast run that can dominate the wall clock: set `every`
+copies the bundled data. On a fast run that can dominate the wall clock: set `every`
 coarse enough that checkpointing is not the bottleneck. To omit `prepared.json.gz` from
 checkpoints, set `"bundle_prepared": false`; those checkpoints cannot be loaded or
 reconstructed independently and require the run's prepared data.

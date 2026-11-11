@@ -17,7 +17,7 @@ hybrax.train.loo
    concurrent in-process folds cannot get separate shards. The user picks how many
    folds run at once (``loo.parallel_folds``); the orchestrator chooses the per-fold
    JAX device count (``devices_per_fold = n_cpu // parallel_folds`` by default),
-   lets the OS schedule the worker processes, then aggregates their on-disk losses
+   optionally leases disjoint CPUs via `cpus_per_fold`, then aggregates on-disk losses
    into ``loo_summary.csv`` / ``loo_aggregate.json``. ``run_loo_cv(resume=True)``
    skips only identity-matched, complete folds and re-runs the rest.
 

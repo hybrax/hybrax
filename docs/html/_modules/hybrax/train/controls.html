@@ -308,6 +308,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/cpu_affinity/index.html">hybrax.train.cpu_affinity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
@@ -512,16 +513,23 @@
     <span class="n">coeffs</span> <span class="o">=</span> <span class="n">_as_numpy</span><span class="p">(</span><span class="n">series</span><span class="o">.</span><span class="n">coeffs</span><span class="p">)</span>
     <span class="n">side</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">series</span><span class="p">,</span> <span class="s2">"continuity_side"</span><span class="p">,</span> <span class="s2">"right"</span><span class="p">))</span>
 
-    <span class="n">deriv</span> <span class="o">=</span> <span class="n">series</span><span class="o">.</span><span class="n">deriv</span><span class="p">()</span>
-    <span class="n">d_breaks</span> <span class="o">=</span> <span class="n">_as_numpy</span><span class="p">(</span><span class="n">deriv</span><span class="o">.</span><span class="n">breaks</span><span class="p">)</span>
-    <span class="n">d_coeffs</span> <span class="o">=</span> <span class="n">_as_numpy</span><span class="p">(</span><span class="n">deriv</span><span class="o">.</span><span class="n">coeffs</span><span class="p">)</span>
-    <span class="n">d_side</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">deriv</span><span class="p">,</span> <span class="s2">"continuity_side"</span><span class="p">,</span> <span class="n">side</span><span class="p">))</span>
+    <span class="c1"># Differentiate the host coefficients directly. Constructing a TimeSeries</span>
+    <span class="c1"># derivative compiles JAX operations for each distinct control-grid shape.</span>
+    <span class="n">d_coeffs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="n">coeffs</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">],</span>
+            <span class="mf">2.0</span> <span class="o">*</span> <span class="n">coeffs</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">],</span>
+            <span class="mf">3.0</span> <span class="o">*</span> <span class="n">coeffs</span><span class="p">[:,</span> <span class="mi">3</span><span class="p">],</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">coeffs</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]),</span>
+        <span class="p">],</span>
+        <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+    <span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_eval</span><span class="p">(</span><span class="n">ts</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">_eval_ppoly_numpy</span><span class="p">(</span><span class="n">breaks</span><span class="p">,</span> <span class="n">coeffs</span><span class="p">,</span> <span class="n">side</span><span class="p">,</span> <span class="n">ts</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_deriv</span><span class="p">(</span><span class="n">ts</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">_eval_ppoly_numpy</span><span class="p">(</span><span class="n">d_breaks</span><span class="p">,</span> <span class="n">d_coeffs</span><span class="p">,</span> <span class="n">d_side</span><span class="p">,</span> <span class="n">ts</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">_eval_ppoly_numpy</span><span class="p">(</span><span class="n">breaks</span><span class="p">,</span> <span class="n">d_coeffs</span><span class="p">,</span> <span class="n">side</span><span class="p">,</span> <span class="n">ts</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">SignalSource</span><span class="p">(</span>
         <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>

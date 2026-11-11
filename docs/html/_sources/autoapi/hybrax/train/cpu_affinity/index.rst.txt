@@ -1,0 +1,62 @@
+hybrax.train.cpu_affinity
+=========================
+
+.. py:module:: hybrax.train.cpu_affinity
+
+.. autoapi-nested-parse::
+
+   Lease disjoint CPU sets for fold subprocesses.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.cpu_affinity.CpuLeases
+
+
+Functions
+---------
+
+.. autoapisummary::
+
+   hybrax.train.cpu_affinity.check_cpu_budget
+   hybrax.train.cpu_affinity.ordered_cpus
+
+
+Module Contents
+---------------
+
+.. py:class:: CpuLeases(cpus_per_fold, parallel, *, sysfs = Path('/sys/devices/system/cpu'))
+
+   Own fixed CPU sets; return a worker's set even when launch fails.
+
+
+   .. py:method:: lease()
+
+      Reserve a CPU set until the fold subprocess exits.
+
+
+
+   .. py:attribute:: available
+      :type:  queue.Queue[tuple[int, ...]]
+
+
+.. py:function:: check_cpu_budget(cpus_per_fold, parallel)
+
+   Return the allowed CPUs, or raise if `parallel` leases cannot fit them.
+
+   Cheap enough to call before the LOO producer, so a budget that cannot fit
+   fails before any expensive setup.
+
+
+.. py:function:: ordered_cpus(allowed, sysfs)
+
+   Prefer one logical CPU per physical core before using SMT siblings.
+
+   Package IDs distinguish equal core IDs on different sockets. If topology
+   is unavailable, use sorted allowed CPU IDs instead.
+
+

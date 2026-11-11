@@ -370,6 +370,7 @@
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">contextlib</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span><span class="p">,</span> <span class="n">field</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">jax.numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">jnp</span>
 
@@ -632,11 +633,27 @@
 <a class="viewcode-back" href="../../../autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessMetadata">[docs]</a>
 <span class="nd">@dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">BioProcessMetadata</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Static reactor characteristics."""</span>
+<span class="w">    </span><span class="sd">"""Descriptive information about the run, ignored by the solver and training.</span>
+
+<span class="sd">    `extra` holds anything else worth recording about the process, under keys of</span>
+<span class="sd">    your choosing, for example</span>
+<span class="sd">    `{"operator": "AB", "events": [{"time": 12.0, "label": "induction"}]}`. Write</span>
+<span class="sd">    times in the process's `time_axis`. An entry has no effect on the hybrid model:</span>
+<span class="sd">    an event that changes the dynamics, such as induction, also needs a</span>
+<span class="sd">    `ProcessVariable` and a `discrete_events` time for the discontinuity.</span>
+
+<span class="sd">    `extra` supports JSON types and boolean, integer and float arrays. Most other</span>
+<span class="sd">    values raise `TypeError` on save. Arrays load as JAX arrays, tuples as lists, and</span>
+<span class="sd">    non-finite floats as `None`, or as NaN inside float arrays. The key</span>
+<span class="sd">    `__ndarray__` is reserved for the array encoding. Like every saved field, `extra`</span>
+<span class="sd">    counts towards a prepared collection's content hash, so editing it afterwards</span>
+<span class="sd">    stops runs trained on that collection from being reconstructed.</span>
+<span class="sd">    """</span>
 
     <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">process_type</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># "batch", "fed_batch", "continuous"</span>
-    <span class="n">notes</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span></div>
+    <span class="n">notes</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">extra</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span></div>
 
 
 

@@ -307,6 +307,7 @@
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/cpu_affinity/index.html">hybrax.train.cpu_affinity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
@@ -483,6 +484,8 @@
           <li><a href="autoapi/hybrax/train/wrapper/index.html#hybrax.train.wrapper.SaveOutputs.auxiliary">(hybrax.train.wrapper.SaveOutputs attribute)</a>
 </li>
         </ul></li>
+        <li><a href="autoapi/hybrax/train/cpu_affinity/index.html#hybrax.train.cpu_affinity.CpuLeases.available">available (hybrax.train.cpu_affinity.CpuLeases attribute)</a>
+</li>
     </ul></td>
   </tr></table>
 </section>
@@ -640,6 +643,8 @@
         <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection.case_id">case_id (hybrax.format.dataclasses.BioProcessCollection attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/preflight/index.html#hybrax.train.preflight.check_continuous_flow_integration">check_continuous_flow_integration() (in module hybrax.train.preflight)</a>
+</li>
+        <li><a href="autoapi/hybrax/train/cpu_affinity/index.html#hybrax.train.cpu_affinity.check_cpu_budget">check_cpu_budget() (in module hybrax.train.cpu_affinity)</a>
 </li>
         <li><a href="autoapi/hybrax/train/checkpointing/index.html#hybrax.train.checkpointing.CheckpointWriter.check_retention_directory">check_retention_directory() (hybrax.train.checkpointing.CheckpointWriter static method)</a>
 </li>
@@ -806,6 +811,10 @@
         <li><a href="autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.ControlSplines">ControlSplines (class in hybrax.format.mechanistic)</a>
 </li>
         <li><a href="autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.ControlsStore">ControlsStore (class in hybrax.train.controls_store)</a>
+</li>
+        <li><a href="autoapi/hybrax/train/cpu_affinity/index.html#hybrax.train.cpu_affinity.CpuLeases">CpuLeases (class in hybrax.train.cpu_affinity)</a>
+</li>
+        <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.LooConfig.cpus_per_fold">cpus_per_fold (hybrax.train.run_config.LooConfig attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.ControlScaleEvidence.cumulative_Inflows">cumulative_Inflows (hybrax.train.runtime_context.ControlScaleEvidence attribute)</a>
 </li>
@@ -1104,6 +1113,8 @@
         <li><a href="autoapi/hybrax/train/loo/index.html#hybrax.train.loo.execute_trained_fold">execute_trained_fold() (in module hybrax.train.loo)</a>
 </li>
         <li><a href="autoapi/hybrax/train/postprocessing/index.html#hybrax.train.postprocessing.export_predictions_csv">export_predictions_csv() (in module hybrax.train.postprocessing)</a>
+</li>
+        <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessMetadata.extra">extra (hybrax.format.dataclasses.BioProcessMetadata attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/format/mechanistic/index.html#hybrax.format.mechanistic.extract_discrete_events">extract_discrete_events() (in module hybrax.format.mechanistic)</a>
 </li>
@@ -1524,6 +1535,13 @@
 </li>
         </ul></li>
         <li>
+    hybrax.train.cpu_affinity
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/cpu_affinity/index.html#module-hybrax.train.cpu_affinity">module</a>
+</li>
+        </ul></li>
+        <li>
     hybrax.train.defaults
 
         <ul>
@@ -1816,6 +1834,8 @@
           <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.TrainConfig.learning_rate">(hybrax.train.run_config.TrainConfig attribute)</a>
 </li>
         </ul></li>
+        <li><a href="autoapi/hybrax/train/cpu_affinity/index.html#hybrax.train.cpu_affinity.CpuLeases.lease">lease() (hybrax.train.cpu_affinity.CpuLeases method)</a>
+</li>
         <li><a href="autoapi/hybrax/format/time_series/timeseries/index.html#hybrax.format.time_series.timeseries.TimeSeries.lin_interp">lin_interp() (hybrax.format.time_series.timeseries.TimeSeries method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.BatchControls.linear_grid">linear_grid (hybrax.train.controls_store.BatchControls attribute)</a>
@@ -1864,10 +1884,10 @@
 </li>
         <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.load_train_config">load_train_config() (in module hybrax.train.run_config)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/serialization/index.html#hybrax.train.serialization.load_trained_wrapper">load_trained_wrapper() (in module hybrax.train.serialization)</a>
-</li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/hybrax/train/serialization/index.html#hybrax.train.serialization.load_trained_wrapper">load_trained_wrapper() (in module hybrax.train.serialization)</a>
+</li>
         <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.LoadedRunConfig">LoadedRunConfig (class in hybrax.train.run_config)</a>
 </li>
         <li><a href="autoapi/hybrax/format/json_io/index.html#hybrax.format.json_io.loads_json">loads_json() (in module hybrax.format.json_io)</a>
@@ -2058,10 +2078,10 @@
 </li>
         <li><a href="autoapi/hybrax/train/wrapper/index.html#hybrax.train.wrapper.HybridOdeWrapper.modeled_RMC_names">modeled_RMC_names (hybrax.train.wrapper.HybridOdeWrapper attribute)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.RuntimeDataContext.modeled_volume_change_trace">modeled_volume_change_trace() (hybrax.train.runtime_context.RuntimeDataContext method)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.ProducerCollectionData.modeled_volume_change_traces">modeled_volume_change_traces (hybrax.train.runtime_context.ProducerCollectionData attribute)</a>
 
         <ul>
@@ -2127,6 +2147,8 @@
           <li><a href="autoapi/hybrax/train/controls/index.html#module-hybrax.train.controls">hybrax.train.controls</a>
 </li>
           <li><a href="autoapi/hybrax/train/controls_store/index.html#module-hybrax.train.controls_store">hybrax.train.controls_store</a>
+</li>
+          <li><a href="autoapi/hybrax/train/cpu_affinity/index.html#module-hybrax.train.cpu_affinity">hybrax.train.cpu_affinity</a>
 </li>
           <li><a href="autoapi/hybrax/train/defaults/index.html#module-hybrax.train.defaults">hybrax.train.defaults</a>
 </li>
@@ -2431,10 +2453,12 @@
         </ul></li>
         <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessConfig.optimizer_name">optimizer_name (hybrax.train.harness.TrainHarnessConfig attribute)</a>
 </li>
-        <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection.organism">organism (hybrax.format.dataclasses.BioProcessCollection attribute)</a>
+        <li><a href="autoapi/hybrax/train/cpu_affinity/index.html#hybrax.train.cpu_affinity.ordered_cpus">ordered_cpus() (in module hybrax.train.cpu_affinity)</a>
 </li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection.organism">organism (hybrax.format.dataclasses.BioProcessCollection attribute)</a>
+</li>
         <li><a href="autoapi/hybrax/train/runtime_context/index.html#hybrax.train.runtime_context.original_parent_processes">original_parent_processes() (in module hybrax.train.runtime_context)</a>
 </li>
         <li><a href="autoapi/hybrax/format/dataclasses/index.html#hybrax.format.dataclasses.Outflow">Outflow (class in hybrax.format.dataclasses)</a>

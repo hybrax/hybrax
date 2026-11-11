@@ -308,6 +308,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/cpu_affinity/index.html">hybrax.train.cpu_affinity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
@@ -466,6 +467,7 @@
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.training_data</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">TARGET_SOURCE_AUTO</span><span class="p">,</span>
+    <span class="n">BatchTrainingData</span><span class="p">,</span>
     <span class="n">TrainingDataStore</span><span class="p">,</span>
     <span class="n">replace_rhs_ode_process_matrices</span><span class="p">,</span>
 <span class="p">)</span>
@@ -488,6 +490,52 @@
 <span class="n">_EVALUATION_BATCH_SIZE</span> <span class="o">=</span> <span class="mi">32</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_host_view</span><span class="p">(</span><span class="n">store</span><span class="p">:</span> <span class="n">TrainingDataStore</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrainingDataStore</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Return `store` with its device arrays viewed as NumPy arrays.</span>
+
+<span class="sd">    CPU device arrays convert to NumPy without copying, so this is cheap.</span>
+<span class="sd">    """</span>
+    <span class="k">return</span> <span class="n">jtu</span><span class="o">.</span><span class="n">tree_map</span><span class="p">(</span>
+        <span class="k">lambda</span> <span class="n">leaf</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">leaf</span><span class="p">)</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">leaf</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">)</span> <span class="k">else</span> <span class="n">leaf</span><span class="p">,</span>
+        <span class="n">store</span><span class="p">,</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_clamp_padded_time_rows_host</span><span class="p">(</span><span class="n">times</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">lengths</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""NumPy twin of `clamp_padded_time_rows`; selection only, so exact."""</span>
+    <span class="n">max_length</span> <span class="o">=</span> <span class="n">times</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">max_length</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">times</span>
+    <span class="n">last_index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">lengths</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">max_length</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">last_values</span> <span class="o">=</span> <span class="n">times</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">times</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">last_index</span><span class="p">]</span>
+    <span class="n">tail_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">max_length</span><span class="p">)[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:]</span> <span class="o">&gt;=</span> <span class="n">lengths</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">tail_mask</span><span class="p">,</span> <span class="n">last_values</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">times</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_gather_evaluation_batch</span><span class="p">(</span>
+    <span class="n">host_store</span><span class="p">:</span> <span class="n">TrainingDataStore</span><span class="p">,</span>
+    <span class="n">indices</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">solver_use_jump_ts</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">BatchTrainingData</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Gather evaluation rows from a `_host_view` store with NumPy indexing.</span>
+
+<span class="sd">    Row selection is exact, so the batch equals a device gather. Gathering on</span>
+<span class="sd">    the device would instead compile gather kernels for every new evaluation</span>
+<span class="sd">    batch size (the holdout set at the first checkpoint, the padded batch in</span>
+<span class="sd">    the final evaluation). The jitted loss traces NumPy inputs like device</span>
+<span class="sd">    arrays, so this adds no compile there either.</span>
+<span class="sd">    """</span>
+    <span class="n">batch</span> <span class="o">=</span> <span class="n">host_store</span><span class="o">.</span><span class="n">_gather_batch_rows</span><span class="p">(</span><span class="n">indices</span><span class="p">)</span>
+    <span class="n">jump_ts_rows</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">solver_use_jump_ts</span><span class="p">:</span>
+        <span class="n">controls</span> <span class="o">=</span> <span class="n">host_store</span><span class="o">.</span><span class="n">controls_store</span>
+        <span class="n">jump_ts_rows</span> <span class="o">=</span> <span class="n">_clamp_padded_time_rows_host</span><span class="p">(</span>
+            <span class="n">controls</span><span class="o">.</span><span class="n">jump_ts</span><span class="p">[</span><span class="n">indices</span><span class="p">],</span> <span class="n">controls</span><span class="o">.</span><span class="n">jump_ts_lengths</span><span class="p">[</span><span class="n">indices</span><span class="p">]</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">batch</span><span class="p">,</span> <span class="n">jump_ts_rows</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">_iter_batched_loss_outputs</span><span class="p">(</span>
     <span class="n">trained_wrapper</span><span class="p">:</span> <span class="n">HybridOdeWrapper</span><span class="p">,</span>
     <span class="n">store</span><span class="p">:</span> <span class="n">TrainingDataStore</span><span class="p">,</span>
@@ -501,7 +549,12 @@
     <span class="n">step</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">prediction_grid_n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">):</span>
-<span class="w">    </span><span class="sd">"""Yield fixed-size JIT evaluation batches and their valid process names."""</span>
+<span class="w">    </span><span class="sd">"""Yield fixed-size JIT evaluation batches and their valid process names.</span>
+
+<span class="sd">    Outputs are fetched to the host as NumPy arrays in one transfer, so the</span>
+<span class="sd">    callers' row slicing and selection never dispatch (and on first use</span>
+<span class="sd">    compile) eager device kernels.</span>
+<span class="sd">    """</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">process_names</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"process_names must not be empty"</span><span class="p">)</span>
     <span class="n">unknown</span> <span class="o">=</span> <span class="p">[</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">process_names</span> <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">store</span><span class="o">.</span><span class="n">process_order</span><span class="p">]</span>
@@ -514,19 +567,18 @@
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"duplicate process names: </span><span class="si">{</span><span class="n">duplicates</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
     <span class="n">store</span><span class="o">.</span><span class="n">validate_control_support</span><span class="p">(</span><span class="n">process_names</span><span class="p">)</span>
 
+    <span class="n">host_store</span> <span class="o">=</span> <span class="n">_host_view</span><span class="p">(</span><span class="n">store</span><span class="p">)</span>
     <span class="c1"># Small sets (e.g. a single holdout) skip padding to the full batch size.</span>
     <span class="n">batch_size</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">_EVALUATION_BATCH_SIZE</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">process_names</span><span class="p">))</span>
     <span class="k">for</span> <span class="n">start</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">process_names</span><span class="p">),</span> <span class="n">batch_size</span><span class="p">):</span>
         <span class="n">valid_names</span> <span class="o">=</span> <span class="n">process_names</span><span class="p">[</span><span class="n">start</span> <span class="p">:</span> <span class="n">start</span> <span class="o">+</span> <span class="n">batch_size</span><span class="p">]</span>
         <span class="n">indices</span> <span class="o">=</span> <span class="p">[</span><span class="n">store</span><span class="o">.</span><span class="n">process_order</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">valid_names</span><span class="p">]</span>
         <span class="n">indices</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="n">indices</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span> <span class="o">*</span> <span class="p">(</span><span class="n">batch_size</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">indices</span><span class="p">)))</span>
-        <span class="n">batch</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">gather_batch</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">indices</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">))</span>
-        <span class="n">jump_ts_rows</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="k">if</span> <span class="n">solver_use_jump_ts</span><span class="p">:</span>
-            <span class="n">jump_ts_rows</span> <span class="o">=</span> <span class="n">clamp_padded_time_rows</span><span class="p">(</span>
-                <span class="n">store</span><span class="o">.</span><span class="n">controls_store</span><span class="o">.</span><span class="n">jump_ts</span><span class="p">[</span><span class="n">batch</span><span class="o">.</span><span class="n">process_indices</span><span class="p">],</span>
-                <span class="n">store</span><span class="o">.</span><span class="n">controls_store</span><span class="o">.</span><span class="n">jump_ts_lengths</span><span class="p">[</span><span class="n">batch</span><span class="o">.</span><span class="n">process_indices</span><span class="p">],</span>
-            <span class="p">)</span>
+        <span class="n">batch</span><span class="p">,</span> <span class="n">jump_ts_rows</span> <span class="o">=</span> <span class="n">_gather_evaluation_batch</span><span class="p">(</span>
+            <span class="n">host_store</span><span class="p">,</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">indices</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span>
+            <span class="n">solver_use_jump_ts</span><span class="o">=</span><span class="n">solver_use_jump_ts</span><span class="p">,</span>
+        <span class="p">)</span>
         <span class="n">outputs</span> <span class="o">=</span> <span class="n">_BATCHED_LOSS_FN_JIT</span><span class="p">(</span>
             <span class="n">trained_wrapper</span><span class="p">,</span>
             <span class="n">batch</span><span class="p">,</span>
@@ -540,8 +592,7 @@
             <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
             <span class="n">prediction_grid_n</span><span class="o">=</span><span class="n">prediction_grid_n</span><span class="p">,</span>
         <span class="p">)</span>
-        <span class="n">jax</span><span class="o">.</span><span class="n">block_until_ready</span><span class="p">(</span><span class="n">outputs</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-        <span class="k">yield</span> <span class="n">valid_names</span><span class="p">,</span> <span class="n">outputs</span>
+        <span class="k">yield</span> <span class="n">valid_names</span><span class="p">,</span> <span class="n">jax</span><span class="o">.</span><span class="n">device_get</span><span class="p">(</span><span class="n">outputs</span><span class="p">)</span>
 
 
 <div class="viewcode-block" id="compute_dense_exports">

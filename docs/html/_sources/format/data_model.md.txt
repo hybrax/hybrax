@@ -28,7 +28,7 @@ BioProcessCollection
   └── processes            {name: BioProcess}
 
 BioProcess
-  ├── metadata              Optional[BioProcessMetadata(name, process_type, notes)]
+  ├── metadata              Optional[BioProcessMetadata(name, process_type, notes, extra)]
   ├── time_axis             TimeAxis(unit, start, end, time_reference)
   ├── volume                Volume(initial_volume, unit, volume_changes)
   ├── reactor_medium        ReactorMedium(name, density, …, components)
@@ -196,8 +196,11 @@ See [The Bioprocess ODE](bioprocess_ode.md) page for more details.
 
 ### `metadata`
 
-`BioProcessMetadata` holds a static description of the run itself: `name`, `process_type`,
-and an optional `notes` string. Every field is listed in the
+`BioProcessMetadata` describes the run itself and is ignored by the solver and training:
+`name`, `process_type`, an optional `notes` string, and an optional `extra` dict for
+anything else you want to record. An `extra` entry has no effect on the hybrid model: an
+event that changes the dynamics, such as induction, also needs a `ProcessVariable` and a
+`discrete_events` time. Every field is listed in the
 [API reference](../autoapi/hybrax/format/dataclasses/index).
 
 ### `time_axis`

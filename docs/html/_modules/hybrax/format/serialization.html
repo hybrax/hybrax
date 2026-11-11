@@ -742,11 +742,16 @@
 <span class="w">    </span><span class="sd">"""Convert BioProcessMetadata to dictionary."""</span>
     <span class="k">if</span> <span class="n">metadata</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">return</span> <span class="kc">None</span>
-    <span class="k">return</span> <span class="p">{</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="p">{</span>
         <span class="s2">"name"</span><span class="p">:</span> <span class="n">metadata</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
         <span class="s2">"process_type"</span><span class="p">:</span> <span class="n">metadata</span><span class="o">.</span><span class="n">process_type</span><span class="p">,</span>
         <span class="s2">"notes"</span><span class="p">:</span> <span class="n">metadata</span><span class="o">.</span><span class="n">notes</span><span class="p">,</span>
     <span class="p">}</span>
+    <span class="c1"># Omitted when empty: `content_hash` hashes this dict, and recorded hashes of</span>
+    <span class="c1"># existing runs must keep matching.</span>
+    <span class="k">if</span> <span class="n">metadata</span><span class="o">.</span><span class="n">extra</span><span class="p">:</span>
+        <span class="n">result</span><span class="p">[</span><span class="s2">"extra"</span><span class="p">]</span> <span class="o">=</span> <span class="n">deepcopy</span><span class="p">(</span><span class="n">metadata</span><span class="o">.</span><span class="n">extra</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">result</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_reactor_medium_to_dict</span><span class="p">(</span><span class="n">reactor_medium</span><span class="p">:</span> <span class="n">ReactorMedium</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
@@ -948,6 +953,7 @@
             <span class="n">name</span><span class="o">=</span><span class="n">p_data</span><span class="p">[</span><span class="s2">"metadata"</span><span class="p">][</span><span class="s2">"name"</span><span class="p">],</span>
             <span class="n">process_type</span><span class="o">=</span><span class="n">p_data</span><span class="p">[</span><span class="s2">"metadata"</span><span class="p">][</span><span class="s2">"process_type"</span><span class="p">],</span>
             <span class="n">notes</span><span class="o">=</span><span class="n">p_data</span><span class="p">[</span><span class="s2">"metadata"</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"notes"</span><span class="p">),</span>
+            <span class="n">extra</span><span class="o">=</span><span class="n">p_data</span><span class="p">[</span><span class="s2">"metadata"</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"extra"</span><span class="p">,</span> <span class="p">{}),</span>
         <span class="p">)</span>
 
     <span class="c1"># Reconstruct time axis (required: no default on BioProcess.time_axis)</span>
@@ -1362,6 +1368,9 @@
 <a class="viewcode-back" href="../../../autoapi/hybrax/format/serialization/index.html#hybrax.format.serialization.NumpyEncoder.default">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">default</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)):</span>
+            <span class="c1"># String and object arrays would save, but JAX cannot load them back.</span>
+            <span class="k">if</span> <span class="n">obj</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="ow">in</span> <span class="s2">"UO"</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Array of dtype </span><span class="si">{</span><span class="n">obj</span><span class="o">.</span><span class="n">dtype</span><span class="si">}</span><span class="s2"> is not JSON serializable"</span><span class="p">)</span>
             <span class="k">return</span> <span class="p">{</span>
                 <span class="s2">"__ndarray__"</span><span class="p">:</span> <span class="n">_normalize_nonfinite</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">tolist</span><span class="p">()),</span>
                 <span class="s2">"dtype"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">dtype</span><span class="p">),</span>

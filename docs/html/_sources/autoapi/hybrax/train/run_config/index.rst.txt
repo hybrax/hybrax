@@ -471,8 +471,16 @@ Module Contents
    per process). ``devices_per_fold`` can set each fold's JAX CPU device
    count; otherwise the available JAX CPU device budget is split across
    concurrent folds so that ``parallel_folds * devices_per_fold <= n_cpu``.
+   `cpus_per_fold` optionally leases disjoint allowed CPUs before worker
+   imports; its default leaves affinity unrestricted.
    Set these from what your RAM can hold — there is deliberately no automatic
    RAM sizing.
+
+
+   .. py:attribute:: cpus_per_fold
+      :type:  int | None
+      :value: None
+
 
 
    .. py:attribute:: devices_per_fold

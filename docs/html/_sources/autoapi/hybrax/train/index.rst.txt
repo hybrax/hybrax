@@ -28,6 +28,7 @@ Submodules
    /autoapi/hybrax/train/constants/index
    /autoapi/hybrax/train/controls/index
    /autoapi/hybrax/train/controls_store/index
+   /autoapi/hybrax/train/cpu_affinity/index
    /autoapi/hybrax/train/defaults/index
    /autoapi/hybrax/train/dense/index
    /autoapi/hybrax/train/diffrax_callbacks/index

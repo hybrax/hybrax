@@ -309,6 +309,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../constants/index.html">hybrax.train.constants</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../controls/index.html">hybrax.train.controls</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpu_affinity/index.html">hybrax.train.cpu_affinity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../defaults/index.html">hybrax.train.defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../dense/index.html">hybrax.train.dense</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
@@ -384,7 +385,7 @@ device count — the JAX host-device count is fixed per process at import, so
 concurrent in-process folds cannot get separate shards. The user picks how many
 folds run at once (<code class="docutils literal notranslate"><span class="pre">loo.parallel_folds</span></code>); the orchestrator chooses the per-fold
 JAX device count (<code class="docutils literal notranslate"><span class="pre">devices_per_fold</span> <span class="pre">=</span> <span class="pre">n_cpu</span> <span class="pre">//</span> <span class="pre">parallel_folds</span></code> by default),
-lets the OS schedule the worker processes, then aggregates their on-disk losses
+optionally leases disjoint CPUs via <code class="code docutils literal notranslate"><span class="pre">cpus_per_fold</span></code>, then aggregates on-disk losses
 into <code class="docutils literal notranslate"><span class="pre">loo_summary.csv</span></code> / <code class="docutils literal notranslate"><span class="pre">loo_aggregate.json</span></code>. <code class="docutils literal notranslate"><span class="pre">run_loo_cv(resume=True)</span></code>
 skips only identity-matched, complete folds and re-runs the rest.</p>
 <p>This module stays a thin orchestrator on top of the harness preparation,

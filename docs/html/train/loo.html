@@ -309,6 +309,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/cpu_affinity/index.html">hybrax.train.cpu_affinity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
@@ -431,7 +432,7 @@ the fold’s test data; reported LOO results still use the final model.</p>
 ├── config.json          run status and provenance, updated as folds complete
 ├── loo-config.json      bundled verbatim: this is what --resume reads
 ├── custom.py
-├── prepared.json
+├── prepared.json.gz
 ├── runtime-artifact/    shared runtime state every fold worker reads
 ├── folds/
 │   └── &lt;slug&gt;/          a complete run directory per fold
@@ -453,9 +454,9 @@ informative than the average.</p>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"loo"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"parallel_folds"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">"devices_per_fold"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
-<p>That is 2 × 2 = 4 cores. Size it against your machine: the orchestrator deliberately
-holds itself to one device so an exported <code class="docutils literal notranslate"><span class="pre">HYBRAX_TRAIN_DEVICES</span></code> meant for workers does not
-reserve the pool.</p>
+<p>That exposes two JAX devices per worker. Device counts do not restrict the
+CPUs JAX uses. The orchestrator holds itself to one device so an exported
+<code class="docutils literal notranslate"><span class="pre">HYBRAX_TRAIN_DEVICES</span></code> meant for workers does not reserve the device pool.</p>
 <div class="warning admonition">
 <p class="admonition-title">Do not also fan out at the shell level</p>
 <p><code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code> already runs multiple JAX processes. Launching several <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">loo</span></code>
@@ -469,6 +470,24 @@ gets processes OOM-killed.</p>
 <p>Microbatching preserves each fold’s logical batch and optimizer update count.
 Larger execution widths are capped by that fold’s batch size. A resolved device
 count greater than one raises before any folds are dispatched.</p>
+</section>
+<section id="cpu-budget-for-parallel-folds">
+<h2>CPU budget for parallel folds<a class="headerlink" href="#cpu-budget-for-parallel-folds" title="Link to this heading">¶</a></h2>
+<p>CPU affinity is unrestricted by default. To limit each worker to two logical
+CPUs, independently of its JAX device count:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"loo"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"parallel_folds"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="nt">"devices_per_fold"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"cpus_per_fold"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</pre></div>
+</div>
+<p>This requires eight CPUs in the parent’s allowed affinity mask. Workers lease
+disjoint sets, preferring distinct physical cores, and return them on exit.
+The child applies affinity before importing JAX, so its runtime threads inherit
+the same set. Assignments appear in the orchestrator log. See
+<a class="reference internal" href="config.html#loo-cpu-affinity"><span class="std std-ref">LOO CPU affinity</span></a> for validation and topology fallback.</p>
+<p>Two CPUs are the minimum. One-CPU training can fail during JAX warmup with
+<code class="docutils literal notranslate"><span class="pre">No</span> <span class="pre">registered</span> <span class="pre">implementation</span> <span class="pre">for</span> <span class="pre">untyped</span> <span class="pre">custom</span> <span class="pre">call</span> <span class="pre">to</span> <span class="pre">xla_ffi_python_cpu_callback</span> <span class="pre">for</span> <span class="pre">Host</span></code> from Equinox <code class="docutils literal notranslate"><span class="pre">error_if</span></code> callbacks.
+<code class="docutils literal notranslate"><span class="pre">EQX_ON_ERROR=nan</span></code> changes error handling and is diagnostic only, not a
+recommended workaround. Affinity can reduce CPU contention in long parallel
+runs, but extra warmup can outweigh training gains in short runs.</p>
 </section>
 <section id="resuming">
 <h2>Resuming<a class="headerlink" href="#resuming" title="Link to this heading">¶</a></h2>
@@ -580,6 +599,7 @@ already there, regardless of what put it there, before writing fresh output.</p>
 <li><a class="reference internal" href="#configuration">Configuration</a></li>
 <li><a class="reference internal" href="#what-it-produces">What it produces</a></li>
 <li><a class="reference internal" href="#parallelism">Parallelism</a></li>
+<li><a class="reference internal" href="#cpu-budget-for-parallel-folds">CPU budget for parallel folds</a></li>
 <li><a class="reference internal" href="#resuming">Resuming</a></li>
 <li><a class="reference internal" href="#augmented-data">Augmented data</a></li>
 <li><a class="reference internal" href="#holdout-without-cross-validation">Holdout without cross-validation</a></li>

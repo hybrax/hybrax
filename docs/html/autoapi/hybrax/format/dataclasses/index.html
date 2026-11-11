@@ -309,6 +309,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../train/constants/index.html">hybrax.train.constants</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../train/controls/index.html">hybrax.train.controls</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../train/cpu_affinity/index.html">hybrax.train.cpu_affinity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../train/defaults/index.html">hybrax.train.defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../train/dense/index.html">hybrax.train.dense</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
@@ -402,7 +403,7 @@
 <td><p>Collection of processes, optionally identified as a published case study.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata" title="hybrax.format.dataclasses.BioProcessMetadata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BioProcessMetadata</span></code></a></p></td>
-<td><p>Static reactor characteristics.</p></td>
+<td><p>Descriptive information about the run, ignored by the solver and training.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.format.dataclasses.DiscreteEvents" title="hybrax.format.dataclasses.DiscreteEvents"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DiscreteEvents</span></code></a></p></td>
 <td><p>Discrete event times: bolus feeds, sampling, volume jumps, and similar.</p></td>
@@ -575,7 +576,24 @@ namespaced metadata block).</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcessMetadata">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.format.dataclasses.</span></span><span class="sig-name descname"><span class="pre">BioProcessMetadata</span></span><a class="reference internal" href="../../../../_modules/hybrax/format/dataclasses.html#BioProcessMetadata"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.dataclasses.BioProcessMetadata" title="Link to this definition">¶</a></dt>
-<dd><p>Static reactor characteristics.</p>
+<dd><p>Descriptive information about the run, ignored by the solver and training.</p>
+<p><code class="code docutils literal notranslate"><span class="pre">extra</span></code> holds anything else worth recording about the process, under keys of
+your choosing, for example
+<code class="code docutils literal notranslate"><span class="pre">{&quot;operator&quot;:</span> <span class="pre">&quot;AB&quot;,</span> <span class="pre">&quot;events&quot;:</span> <span class="pre">[{&quot;time&quot;:</span> <span class="pre">12.0,</span> <span class="pre">&quot;label&quot;:</span> <span class="pre">&quot;induction&quot;}]}</span></code>. Write
+times in the process’s <code class="code docutils literal notranslate"><span class="pre">time_axis</span></code>. An entry has no effect on the hybrid model:
+an event that changes the dynamics, such as induction, also needs a
+<code class="code docutils literal notranslate"><span class="pre">ProcessVariable</span></code> and a <code class="code docutils literal notranslate"><span class="pre">discrete_events</span></code> time for the discontinuity.</p>
+<p><code class="code docutils literal notranslate"><span class="pre">extra</span></code> supports JSON types and boolean, integer and float arrays. Most other
+values raise <code class="code docutils literal notranslate"><span class="pre">TypeError</span></code> on save. Arrays load as JAX arrays, tuples as lists, and
+non-finite floats as <code class="code docutils literal notranslate"><span class="pre">None</span></code>, or as NaN inside float arrays. The key
+<code class="code docutils literal notranslate"><span class="pre">__ndarray__</span></code> is reserved for the array encoding. Like every saved field, <code class="code docutils literal notranslate"><span class="pre">extra</span></code>
+counts towards a prepared collection’s content hash, so editing it afterwards
+stops runs trained on that collection from being reconstructed.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcessMetadata.extra">
+<span class="sig-name descname"><span class="pre">extra</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcessMetadata.extra" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.format.dataclasses.BioProcessMetadata.name">
 <span class="sig-name descname"><span class="pre">name</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></span><a class="headerlink" href="#hybrax.format.dataclasses.BioProcessMetadata.name" title="Link to this definition">¶</a></dt>
@@ -1144,6 +1162,7 @@ notice would otherwise repeat once per dataset.</p>
 </ul>
 </li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata"><code class="docutils literal notranslate"><span class="pre">BioProcessMetadata</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata.extra"><code class="docutils literal notranslate"><span class="pre">BioProcessMetadata.extra</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata.name"><code class="docutils literal notranslate"><span class="pre">BioProcessMetadata.name</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata.notes"><code class="docutils literal notranslate"><span class="pre">BioProcessMetadata.notes</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.format.dataclasses.BioProcessMetadata.process_type"><code class="docutils literal notranslate"><span class="pre">BioProcessMetadata.process_type</span></code></a></li>

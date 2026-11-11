@@ -309,6 +309,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/cpu_affinity/index.html">hybrax.train.cpu_affinity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
@@ -471,7 +472,7 @@ pipeline if you want to.</p>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">loo</span></code></p></td>
 <td><p>loo</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">per_fold_holdout_sets</span></code>, <code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code>, <code class="docutils literal notranslate"><span class="pre">devices_per_fold</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">per_fold_holdout_sets</span></code>, <code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code>, <code class="docutils literal notranslate"><span class="pre">devices_per_fold</span></code>, <code class="docutils literal notranslate"><span class="pre">cpus_per_fold</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">models</span></code></p></td>
 <td><p>forward</p></td>
@@ -617,6 +618,22 @@ present file is silent. Different failure modes, and only one of them is loud.</
 use it.</p></li>
 </ul>
 </section>
+<section id="loo-cpu-affinity">
+<h2>LOO CPU affinity<a class="headerlink" href="#loo-cpu-affinity" title="Link to this heading">¶</a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">loo.cpus_per_fold</span></code> defaults to <code class="docutils literal notranslate"><span class="pre">null</span></code>, leaving worker CPU affinity
+unrestricted. An integer of at least 2 leases that many allowed logical CPUs
+per fold. The concurrent folds must fit within the parent’s allowed CPU set;
+otherwise the run fails before the runtime producer starts. Concurrency is
+capped at the number of folds; for classic leave-one-out the early check
+assumes <code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code> folds. Linux CPU affinity support is required when this option is set.</p>
+<p>The pool prefers distinct physical cores across all leases using Linux sysfs
+package/core IDs, then uses SMT siblings. Without readable topology it uses
+sorted CPU IDs. Each completed worker returns its CPUs to the pool. Affinity
+is applied before importing JAX and logged for each fold.</p>
+<p><code class="docutils literal notranslate"><span class="pre">devices_per_fold</span></code> controls JAX devices, separately from CPU affinity. With
+<code class="docutils literal notranslate"><span class="pre">cpus_per_fold</span></code> set, the resolved device count is also capped at that CPU
+budget. See <a class="reference internal" href="loo.html#cpu-budget-for-parallel-folds"><span class="std std-ref">CPU budget for parallel folds</span></a>.</p>
+</section>
 <section id="see-also">
 <h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>
 <ul class="simple">
@@ -692,6 +709,7 @@ use it.</p></li>
 <li><a class="reference internal" href="#target-source"><code class="docutils literal notranslate"><span class="pre">target_source</span></code></a></li>
 <li><a class="reference internal" href="#the-custom-block">The <code class="docutils literal notranslate"><span class="pre">custom</span></code> block</a></li>
 <li><a class="reference internal" href="#gotchas">Gotchas</a></li>
+<li><a class="reference internal" href="#loo-cpu-affinity">LOO CPU affinity</a></li>
 <li><a class="reference internal" href="#see-also">See also</a></li>
 </ul>
 </li>

@@ -308,6 +308,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/cpu_affinity/index.html">hybrax.train.cpu_affinity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
@@ -372,6 +373,7 @@
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">argparse</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">csv</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">dataclasses</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
@@ -386,6 +388,7 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_process_collection</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">.checkpointing</span><span class="w"> </span><span class="kn">import</span> <span class="n">CheckpointWriter</span><span class="p">,</span> <span class="n">_bundle_prepared_gz</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.cpu_affinity</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_cpu_budget</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.forward_plotting</span><span class="w"> </span><span class="kn">import</span> <span class="n">plot_forward_predictions</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.harness</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">ForwardConfig</span><span class="p">,</span>
@@ -417,6 +420,7 @@
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.prepare</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_artifact</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.run_config</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">LooConfig</span><span class="p">,</span>
     <span class="n">ModelRef</span><span class="p">,</span>
     <span class="n">PredictionScope</span><span class="p">,</span>
     <span class="n">RunConfig</span><span class="p">,</span>
@@ -894,7 +898,11 @@
 
     <span class="n">collection</span> <span class="o">=</span> <span class="n">load_process_collection</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">prepared</span><span class="p">)</span>
     <span class="n">prepared_hash</span> <span class="o">=</span> <span class="n">content_hash</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
-    <span class="n">config</span> <span class="o">=</span> <span class="n">train_harness_config_from_run_config</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">run_dir</span><span class="o">=</span><span class="n">run_dir</span><span class="p">)</span>
+    <span class="c1"># Checkpoints copy the run dir's compressed prepared data, written below.</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
+        <span class="n">train_harness_config_from_run_config</span><span class="p">(</span><span class="n">cfg</span><span class="p">,</span> <span class="n">run_dir</span><span class="o">=</span><span class="n">run_dir</span><span class="p">),</span>
+        <span class="n">prepared_path</span><span class="o">=</span><span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"prepared.json.gz"</span><span class="p">,</span>
+    <span class="p">)</span>
     <span class="n">prepared</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">initial_checkpoint</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">init_from</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -1568,6 +1576,17 @@
     <span class="n">cfg</span> <span class="o">=</span> <span class="n">_apply_train_cli_overrides</span><span class="p">(</span><span class="n">loaded</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">resolve_output_symlinks</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">data</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"loo command requires a data config section"</span><span class="p">)</span>
+    <span class="n">loo_cfg</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">loo</span> <span class="ow">or</span> <span class="n">LooConfig</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">loo_cfg</span><span class="o">.</span><span class="n">cpus_per_fold</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Fail before the producer. Classic LOO's fold count needs the data, so</span>
+        <span class="c1"># assume parallel_folds folds there.</span>
+        <span class="n">holdout_sets</span> <span class="o">=</span> <span class="n">loo_cfg</span><span class="o">.</span><span class="n">per_fold_holdout_sets</span>
+        <span class="n">check_cpu_budget</span><span class="p">(</span>
+            <span class="n">loo_cfg</span><span class="o">.</span><span class="n">cpus_per_fold</span><span class="p">,</span>
+            <span class="nb">min</span><span class="p">(</span><span class="n">loo_cfg</span><span class="o">.</span><span class="n">parallel_folds</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">holdout_sets</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">holdout_sets</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="k">else</span> <span class="n">loo_cfg</span><span class="o">.</span><span class="n">parallel_folds</span><span class="p">,</span>
+        <span class="p">)</span>
     <span class="n">output_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">dir</span><span class="p">)</span>
 
     <span class="n">config_json</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">"config.json"</span>
@@ -1685,17 +1704,16 @@
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Materialise a self-contained LOO run dir.</span>
 
-<span class="sd">    Copies ``custom.py`` and the prepared artifact (true byte copies) into</span>
-<span class="sd">    ``output_dir`` and writes a loadable ``loo-config.json`` whose ``custom_py``,</span>
-<span class="sd">    ``data.prepared`` and ``output.dir`` are RELATIVE to the run dir (so it stays</span>
-<span class="sd">    valid even if the whole dir is moved). Returns the bundled config path.</span>
+<span class="sd">    Copies ``custom.py`` and compressed prepared data into ``output_dir`` and</span>
+<span class="sd">    writes a loadable ``loo-config.json`` whose ``custom_py``, ``data.prepared``</span>
+<span class="sd">    and ``output.dir`` are RELATIVE to the run dir (so it stays valid even if the</span>
+<span class="sd">    whole dir is moved). Folds inherit ``data.prepared``, so their checkpoints</span>
+<span class="sd">    copy this file instead of compressing it again. Returns the bundled config</span>
+<span class="sd">    path.</span>
 <span class="sd">    """</span>
     <span class="k">assert</span> <span class="n">cfg</span><span class="o">.</span><span class="n">data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-    <span class="n">src_prepared</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">prepared</span><span class="p">)</span>
-    <span class="n">prepared_name</span> <span class="o">=</span> <span class="p">(</span>
-        <span class="s2">"prepared.json.gz"</span> <span class="k">if</span> <span class="n">src_prepared</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s2">".gz"</span><span class="p">)</span> <span class="k">else</span> <span class="s2">"prepared.json"</span>
-    <span class="p">)</span>
-    <span class="n">shutil</span><span class="o">.</span><span class="n">copyfile</span><span class="p">(</span><span class="n">src_prepared</span><span class="p">,</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="n">prepared_name</span><span class="p">)</span>
+    <span class="n">prepared_name</span> <span class="o">=</span> <span class="s2">"prepared.json.gz"</span>
+    <span class="n">_bundle_prepared_gz</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">prepared</span><span class="p">),</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="n">prepared_name</span><span class="p">)</span>
 
     <span class="n">custom_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>

@@ -389,7 +389,7 @@
   └── processes            {name: BioProcess}
 
 BioProcess
-  ├── metadata              Optional[BioProcessMetadata(name, process_type, notes)]
+  ├── metadata              Optional[BioProcessMetadata(name, process_type, notes, extra)]
   ├── time_axis             TimeAxis(unit, start, end, time_reference)
   ├── volume                Volume(initial_volume, unit, volume_changes)
   ├── reactor_medium        ReactorMedium(name, density, …, components)
@@ -573,8 +573,11 @@ a mismatch. Pick a spelling and stay with it.</p>
 <h2>Everything Else<a class="headerlink" href="#everything-else" title="Link to this heading">¶</a></h2>
 <section id="metadata">
 <h3><code class="docutils literal notranslate"><span class="pre">metadata</span></code><a class="headerlink" href="#metadata" title="Link to this heading">¶</a></h3>
-<p><code class="docutils literal notranslate"><span class="pre">BioProcessMetadata</span></code> holds a static description of the run itself: <code class="docutils literal notranslate"><span class="pre">name</span></code>, <code class="docutils literal notranslate"><span class="pre">process_type</span></code>,
-and an optional <code class="docutils literal notranslate"><span class="pre">notes</span></code> string. Every field is listed in the
+<p><code class="docutils literal notranslate"><span class="pre">BioProcessMetadata</span></code> describes the run itself and is ignored by the solver and training:
+<code class="docutils literal notranslate"><span class="pre">name</span></code>, <code class="docutils literal notranslate"><span class="pre">process_type</span></code>, an optional <code class="docutils literal notranslate"><span class="pre">notes</span></code> string, and an optional <code class="docutils literal notranslate"><span class="pre">extra</span></code> dict for
+anything else you want to record. An <code class="docutils literal notranslate"><span class="pre">extra</span></code> entry has no effect on the hybrid model: an
+event that changes the dynamics, such as induction, also needs a <code class="docutils literal notranslate"><span class="pre">ProcessVariable</span></code> and a
+<code class="docutils literal notranslate"><span class="pre">discrete_events</span></code> time. Every field is listed in the
 <a class="reference internal" href="../autoapi/hybrax/format/dataclasses/index.html"><span class="doc std std-doc">API reference</span></a>.</p>
 </section>
 <section id="time-axis">

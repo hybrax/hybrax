@@ -309,6 +309,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../constants/index.html">hybrax.train.constants</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../controls/index.html">hybrax.train.controls</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../cpu_affinity/index.html">hybrax.train.cpu_affinity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../defaults/index.html">hybrax.train.defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../dense/index.html">hybrax.train.dense</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
@@ -902,6 +903,8 @@ parent process group. <code class="docutils literal notranslate"><span class="pr
 per process). <code class="docutils literal notranslate"><span class="pre">devices_per_fold</span></code> can set each fold’s JAX CPU device
 count; otherwise the available JAX CPU device budget is split across
 concurrent folds so that <code class="docutils literal notranslate"><span class="pre">parallel_folds</span> <span class="pre">*</span> <span class="pre">devices_per_fold</span> <span class="pre">&lt;=</span> <span class="pre">n_cpu</span></code>.
+<code class="code docutils literal notranslate"><span class="pre">cpus_per_fold</span></code> optionally leases disjoint allowed CPUs before worker
+imports; its default leaves affinity unrestricted.
 Set these from what your RAM can hold — there is deliberately no automatic
 RAM sizing.</p>
 <dl class="field-list simple">
@@ -909,6 +912,11 @@ RAM sizing.</p>
 <dd class="field-odd"><p><strong>data</strong> (<em>Any</em>)</p>
 </dd>
 </dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.run_config.LooConfig.cpus_per_fold">
+<span class="sig-name descname"><span class="pre">cpus_per_fold</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.LooConfig.cpus_per_fold" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.run_config.LooConfig.devices_per_fold">
 <span class="sig-name descname"><span class="pre">devices_per_fold</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.LooConfig.devices_per_fold" title="Link to this definition">¶</a></dt>
@@ -1543,6 +1551,7 @@ run. No-op if <code class="docutils literal notranslate"><span class="pre">custo
 </ul>
 </li>
 <li><a class="reference internal" href="#hybrax.train.run_config.LooConfig"><code class="docutils literal notranslate"><span class="pre">LooConfig</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.run_config.LooConfig.cpus_per_fold"><code class="docutils literal notranslate"><span class="pre">LooConfig.cpus_per_fold</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.LooConfig.devices_per_fold"><code class="docutils literal notranslate"><span class="pre">LooConfig.devices_per_fold</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.LooConfig.parallel_folds"><code class="docutils literal notranslate"><span class="pre">LooConfig.parallel_folds</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.LooConfig.per_fold_holdout_sets"><code class="docutils literal notranslate"><span class="pre">LooConfig.per_fold_holdout_sets</span></code></a></li>

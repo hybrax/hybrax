@@ -308,6 +308,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/cpu_affinity/index.html">hybrax.train.cpu_affinity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
@@ -820,6 +821,8 @@
 <span class="sd">    per process). ``devices_per_fold`` can set each fold's JAX CPU device</span>
 <span class="sd">    count; otherwise the available JAX CPU device budget is split across</span>
 <span class="sd">    concurrent folds so that ``parallel_folds * devices_per_fold &lt;= n_cpu``.</span>
+<span class="sd">    `cpus_per_fold` optionally leases disjoint allowed CPUs before worker</span>
+<span class="sd">    imports; its default leaves affinity unrestricted.</span>
 <span class="sd">    Set these from what your RAM can hold — there is deliberately no automatic</span>
 <span class="sd">    RAM sizing.</span>
 <span class="sd">    """</span>
@@ -827,12 +830,15 @@
     <span class="n">per_fold_holdout_sets</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">HoldoutSet</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">parallel_folds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
     <span class="n">devices_per_fold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">cpus_per_fold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
 
-    <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">"parallel_folds"</span><span class="p">,</span> <span class="s2">"devices_per_fold"</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"before"</span><span class="p">)</span>
+    <span class="nd">@field_validator</span><span class="p">(</span>
+        <span class="s2">"parallel_folds"</span><span class="p">,</span> <span class="s2">"devices_per_fold"</span><span class="p">,</span> <span class="s2">"cpus_per_fold"</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"before"</span>
+    <span class="p">)</span>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_reject_bool</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"loo parallel/device counts must be int &gt;= 1"</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"loo counts must be integers, not bool"</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">value</span></div>
 
 

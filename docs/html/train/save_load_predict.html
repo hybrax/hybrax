@@ -309,6 +309,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/constants/index.html">hybrax.train.constants</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/controls/index.html">hybrax.train.controls</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/controls_store/index.html">hybrax.train.controls_store</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/cpu_affinity/index.html">hybrax.train.cpu_affinity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/defaults/index.html">hybrax.train.defaults</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/dense/index.html">hybrax.train.dense</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/diffrax_callbacks/index.html">hybrax.train.diffrax_callbacks</a></li>
@@ -475,7 +476,7 @@ for score timing, the ranked manifest, and output-directory requirements.
 Default run loading still uses the final model; load a best checkpoint by its
 explicit path from <code class="docutils literal notranslate"><span class="pre">checkpoints/retention.json</span></code>.</p>
 <p>Because each checkpoint is self-contained by default, it re-exports predictions and
-re-writes the bundled data. On a fast run that can dominate the wall clock: set <code class="docutils literal notranslate"><span class="pre">every</span></code>
+copies the bundled data. On a fast run that can dominate the wall clock: set <code class="docutils literal notranslate"><span class="pre">every</span></code>
 coarse enough that checkpointing is not the bottleneck. To omit <code class="docutils literal notranslate"><span class="pre">prepared.json.gz</span></code> from
 checkpoints, set <code class="docutils literal notranslate"><span class="pre">&quot;bundle_prepared&quot;:</span> <span class="pre">false</span></code>; those checkpoints cannot be loaded or
 reconstructed independently and require the run’s prepared data.</p>
