@@ -368,11 +368,16 @@ def _process_metadata_to_dict(metadata: BioProcessMetadata | None) -> dict | Non
     """Convert BioProcessMetadata to dictionary."""
     if metadata is None:
         return None
-    return {
+    result = {
         "name": metadata.name,
         "process_type": metadata.process_type,
         "notes": metadata.notes,
     }
+    # Omitted when empty: `content_hash` hashes this dict, and recorded hashes of
+    # existing runs must keep matching.
+    if metadata.extra:
+        result["extra"] = deepcopy(metadata.extra)
+    return result
 
 
 def _reactor_medium_to_dict(reactor_medium: ReactorMedium) -> dict:
@@ -574,6 +579,7 @@ def _dict_to_process(p_data: dict) -> BioProcess:
             name=p_data["metadata"]["name"],
             process_type=p_data["metadata"]["process_type"],
             notes=p_data["metadata"].get("notes"),
+            extra=p_data["metadata"].get("extra", {}),
         )
 
     # Reconstruct time axis (required: no default on BioProcess.time_axis)
@@ -984,6 +990,9 @@ class NumpyEncoder(json.JSONEncoder):
 
     def default(self, obj):
         if isinstance(obj, (jnp.ndarray, np.ndarray)):
+            # String and object arrays would save, but JAX cannot load them back.
+            if obj.dtype.kind in "UO":
+                raise TypeError(f"Array of dtype {obj.dtype} is not JSON serializable")
             return {
                 "__ndarray__": _normalize_nonfinite(obj.tolist()),
                 "dtype": str(obj.dtype),

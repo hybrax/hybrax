@@ -16,6 +16,9 @@ public API; such entries are marked **Breaking**.
 - `hybrax plot RUN_DIR` draws `loss_curve.png` and `grad_norm_curve.png` from a
   run's `metrics.csv`, also while training is still running. `--kind loss` or
   `--kind grad-norm` draws only one of them.
+- `BioProcessMetadata.extra` is a free-form dict for recording anything about a
+  process, such as induction time or operator. It is saved with the process and has
+  no effect on solving or training.
 
 ### Changed
 

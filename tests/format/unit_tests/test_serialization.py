@@ -621,6 +621,52 @@ def test_save_load_roundtrip_process_metadata(sample_case_study):
         assert proc.metadata.process_type == "fed_batch"
 
 
+def test_process_metadata_extra_roundtrip(sample_collection, tmp_path):
+    extra = {
+        "operator": "AB",
+        "events": [{"time": 12.0, "label": "induction"}],
+        "trace": jnp.array([1.0, jnp.nan]),
+        "missing": float("nan"),
+    }
+    metadata = sample_collection.processes["fed_batch_001"].metadata
+    metadata.extra = extra
+
+    save_process_collection(sample_collection, tmp_path)
+    loaded = load_process_collection(tmp_path)
+
+    loaded_extra = loaded.processes["fed_batch_001"].metadata.extra
+    assert loaded_extra["operator"] == "AB"
+    assert loaded_extra["events"] == [{"time": 12.0, "label": "induction"}]
+    assert isinstance(loaded_extra["trace"], jnp.ndarray)
+    np.testing.assert_array_equal(loaded_extra["trace"], [1.0, np.nan])
+    assert loaded_extra["missing"] is None
+    # Saving normalizes non-finite floats in its own copy, not in the user's dict.
+    assert np.isnan(metadata.extra["missing"])
+
+
+def test_empty_process_metadata_extra_is_omitted_and_loads_empty(sample_collection):
+    process_data = serialization._process_to_dict(
+        sample_collection.processes["fed_batch_001"]
+    )
+
+    # A written `extra` key would change `content_hash` for existing runs.
+    assert "extra" not in process_data["metadata"]
+    assert serialization._dict_to_process(process_data).metadata.extra == {}
+
+
+@pytest.mark.parametrize(
+    "value", [object(), np.array(["text"]), np.array([None], dtype=object)]
+)
+def test_process_metadata_extra_rejects_unsupported_value(
+    sample_collection, tmp_path, value
+):
+    metadata = sample_collection.processes["fed_batch_001"].metadata
+    metadata.extra = {"unsupported": value}
+
+    with pytest.raises(TypeError, match="not JSON serializable"):
+        save_process_collection(sample_collection, tmp_path)
+
+
 def test_save_load_roundtrip_timeseries(sample_case_study):
     with tempfile.TemporaryDirectory() as tmpdir:
         save_path = Path(tmpdir) / "test_case_study"

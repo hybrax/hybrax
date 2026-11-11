@@ -2,6 +2,7 @@
 
 import contextlib
 from dataclasses import dataclass, field
+from typing import Any
 
 import jax.numpy as jnp
 
@@ -232,11 +233,27 @@ class ReactorMedium:
 
 @dataclass
 class BioProcessMetadata:
-    """Static reactor characteristics."""
+    """Descriptive information about the run, ignored by the solver and training.
+
+    `extra` holds anything else worth recording about the process, under keys of
+    your choosing, for example
+    `{"operator": "AB", "events": [{"time": 12.0, "label": "induction"}]}`. Write
+    times in the process's `time_axis`. An entry has no effect on the hybrid model:
+    an event that changes the dynamics, such as induction, also needs a
+    `ProcessVariable` and a `discrete_events` time for the discontinuity.
+
+    `extra` supports JSON types and boolean, integer and float arrays. Most other
+    values raise `TypeError` on save. Arrays load as JAX arrays, tuples as lists, and
+    non-finite floats as `None`, or as NaN inside float arrays. The key
+    `__ndarray__` is reserved for the array encoding. Like every saved field, `extra`
+    counts towards a prepared collection's content hash, so editing it afterwards
+    stops runs trained on that collection from being reconstructed.
+    """
 
     name: str
     process_type: str  # "batch", "fed_batch", "continuous"
     notes: str | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
