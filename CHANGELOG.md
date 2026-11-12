@@ -42,6 +42,8 @@ public API; such entries are marked **Breaking**.
   no longer shards the batch over several JAX CPU devices. Use `train.workers` and
   `loo.workers_per_fold` instead. Saved run directories that record `devices` still
   load.
+- **Breaking:** `hybrax.train.compute_parallel_split` is replaced by
+  `compute_parallel_folds`, which returns only the number of concurrent folds.
 
 ### Fixed
 

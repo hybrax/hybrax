@@ -6,7 +6,7 @@ the folds (:class:`~hybrax.train.run_config.HoldoutSet` entries in
 fold-level parallelism.
 
 Each fold trains in its own subprocess for isolation and CPU leasing.
-The orchestrator limits concurrent folds and worker processes to the CPU budget,
+The orchestrator limits the concurrent folds to the CPU budget,
 then aggregates on-disk losses into ``loo_summary.csv`` / ``loo_aggregate.json``.
 ``run_loo_cv(resume=True)`` skips identity-matched complete folds.
 
@@ -496,7 +496,7 @@ def resolve_folds(
 
 
 def compute_parallel_folds(
-    n_folds: int, n_cpu: int, parallel_folds: int, workers_per_fold: int = 1
+    n_folds: int, n_cpu: int, parallel_folds: int, workers_per_fold: int
 ) -> int:
     """Return how many folds train at once.
 

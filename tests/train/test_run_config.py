@@ -498,3 +498,8 @@ def test_train_config_drops_legacy_devices(devices):
     train = RunConfig.model_validate({"train": {"devices": devices}}).train
     assert train.workers == 1
     assert "devices" not in train.model_dump()
+
+
+def test_loo_config_drops_legacy_devices_per_fold():
+    loo = RunConfig.model_validate({"loo": {"devices_per_fold": None}}).loo
+    assert loo.workers_per_fold == 1

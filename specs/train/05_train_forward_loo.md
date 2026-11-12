@@ -182,7 +182,7 @@ optional [`loo`](../../src/hybrax/train/run_config.py) section. The CLI is
   subprocess**. Set `parallel_folds` (default `1`, sequential) from what your
   RAM and CPU budget can hold. The orchestrator
   ([`compute_parallel_folds`](../../src/hybrax/train/loo.py)) takes
-  `(n_folds, n_cpu, parallel_folds, workers_per_fold=1)` and returns the
+  `(n_folds, n_cpu, parallel_folds, workers_per_fold)` and returns the
   concurrent fold count, reduced so that
   `parallel_folds * workers_per_fold <= n_cpu`. Each fold uses
   `workers_per_fold` worker processes (default `1`), capped at its batch size.

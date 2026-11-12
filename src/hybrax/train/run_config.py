@@ -448,6 +448,14 @@ class LooConfig(ConfigBase):
             raise ValueError("loo counts must be integers, not bool")
         return value
 
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_legacy_devices_per_fold(cls, value):
+        # Old saved configs carry devices_per_fold; it only affected execution.
+        if isinstance(value, dict):
+            value = {k: v for k, v in value.items() if k != "devices_per_fold"}
+        return value
+
     @model_validator(mode="after")
     def _workers_fit_leased_cpus(self):
         if (

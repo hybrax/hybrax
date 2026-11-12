@@ -1088,7 +1088,8 @@ def test_run_loo_cv_dispatches_only_manifest_folds(monkeypatch, tmp_path):
 
 
 def test_run_loo_cv_uses_configured_workers_per_fold(monkeypatch, tmp_path):
-    monkeypatch.setattr(loo_mod.os, "cpu_count", lambda: 16)
+    # Three CPUs fit only one fold with two workers.
+    monkeypatch.setattr(loo_mod.os, "cpu_count", lambda: 3)
     metadata = _runtime_metadata(_three_parent_collection())
     _patch_runtime_metadata(monkeypatch, tmp_path, metadata)
     seen = _patch_dispatch(monkeypatch)
@@ -1104,7 +1105,7 @@ def test_run_loo_cv_uses_configured_workers_per_fold(monkeypatch, tmp_path):
         output_dir=tmp_path,
     )
 
-    assert seen["parallel"] == 2
+    assert seen["parallel"] == 1
     assert result.workers_per_fold == 2
 
 
