@@ -1,11 +1,4 @@
-"""The JIT-compiled per-sample solve and per-batch loss/gradient step.
-
-``build_batched_loss_fn`` builds the function ``harness.py`` JIT-compiles for
-every train step: it maps a single sample's ODE solve plus loss module
-evaluation (``evaluate_sample_with_loss_module``) across a batch, and
-``evaluate_one_sample_loss`` provides the equivalent single-sample path used
-by the device-sharded (pmap and GSPMD) training steps.
-"""
+"""Per-sample solves and batched losses for training worker processes."""
 
 from __future__ import annotations
 
@@ -481,64 +474,6 @@ def evaluate_sample_with_loss_module(
         prediction_valid=prediction_valid,
         fail_time=fail_time,
     )
-
-
-def evaluate_one_sample_loss(
-    wrapper: HybridOdeWrapper,
-    batch_controls: BatchControls,
-    row_idx: jax.Array,
-    t_measured: jax.Array,
-    SCL_target_measured: jax.Array,
-    mask_measured: jax.Array,
-    n_measured: jax.Array,
-    RAW_y0_measured: jax.Array,
-    cin: jax.Array,
-    cin_modeled: jax.Array,
-    retention: jax.Array,
-    retention_modeled: jax.Array,
-    jump_ts: jax.Array | None,
-    *,
-    max_solver_steps: int,
-    solver_rtol: float,
-    solver_atol: float,
-    ode_solver: diffrax.AbstractSolver = DEFAULT_SOLVER,
-    step: int | jax.Array | None = None,
-):
-    """One process -> `(total_loss, per_target_loss, fail_time)`. Used by the
-    device-sharded (pmap and GSPMD) training steps. `fail_time` is `+inf`
-    for a clean solve, finite when a segment bailed. ``y0`` stays RAW physical;
-    the callbacks solve (``physical_solve.solve_physical_states``) integrates it."""
-    controls = _BatchIndexedControls(
-        batch_controls=batch_controls,
-        row_idx=row_idx,
-    )
-    rhs_ode = replace_rhs_ode_process_matrices(
-        wrapper.rhs_ode,
-        cin,
-        cin_modeled,
-        retention,
-        retention_modeled,
-    )
-    sample_wrapper = eqx.tree_at(
-        lambda w: (w.controls, w.rhs_ode),
-        wrapper,
-        (controls, rhs_ode),
-    )
-    result = evaluate_sample_with_loss_module(
-        sample_wrapper,
-        t_measured=t_measured,
-        SCL_target_measured=SCL_target_measured,
-        mask_measured=mask_measured,
-        n_measured=n_measured,
-        RAW_y0_measured=RAW_y0_measured,
-        jump_ts=jump_ts,
-        max_solver_steps=max_solver_steps,
-        solver_rtol=solver_rtol,
-        solver_atol=solver_atol,
-        ode_solver=ode_solver,
-        step=step,
-    )
-    return result.total_loss, result.per_target_loss, result.fail_time
 
 
 def build_batched_loss_fn() -> Callable[..., tuple]:

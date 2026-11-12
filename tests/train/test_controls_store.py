@@ -321,7 +321,7 @@ def test_batch_row_fields_name_every_array_field():
     through unsliced, and every sample would silently use the first sample's
     row. Training raises nothing in that case; only this test fails. A new
     collection-wide array also fails here, on purpose: decide how the adapter
-    and the pmap/GSPMD padding should treat it before changing this test.
+    and the batch padding should treat it before changing this test.
     """
     array_fields = [
         field.name

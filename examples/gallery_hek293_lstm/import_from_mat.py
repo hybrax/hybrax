@@ -156,7 +156,7 @@ config = {
         "seed": 0,
         "allow_stateful_models": True,
         "learning_rate": 1e-3,
-        "devices": 1,
+        "workers": 1,
         "holdout_processes": ["Br7"],
     },
     "checkpoint": {

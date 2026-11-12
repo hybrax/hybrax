@@ -15,7 +15,7 @@
     "seed": 0,
     "allow_stateful_models": true,
     "learning_rate": 0.001,
-    "devices": 1,
+    "workers": 1,
     "holdout_processes": [
       "Br7"
     ]

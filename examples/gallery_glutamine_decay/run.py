@@ -24,7 +24,6 @@ HERE = Path(__file__).parent
 ENV = {
     **os.environ,
     "JAX_PLATFORMS": "cpu",
-    "HYBRAX_TRAIN_DEVICES": "1",
     "MPLBACKEND": "Agg",
 }
 

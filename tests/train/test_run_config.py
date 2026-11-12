@@ -336,17 +336,16 @@ def test_train_typed_fields_resolve_from_config(tmp_path: Path) -> None:
     assert config.solver.jump_ts is False
 
 
-@pytest.mark.parametrize("devices", [1, 2, "max"])
+@pytest.mark.parametrize("workers", [1, 2])
 @pytest.mark.parametrize("width", [None, 1])
-def test_microbatch_requires_configured_single_device(monkeypatch, devices, width):
-    monkeypatch.setenv("HYBRAX_TRAIN_DEVICES", "1")
-    config = {"train": {"devices": devices, "microbatch_size": width}}
-    if width is not None and devices != 1:
-        with pytest.raises(ValidationError, match="train.devices=1"):
+def test_microbatch_requires_configured_single_worker(monkeypatch, workers, width):
+    config = {"train": {"workers": workers, "microbatch_size": width}}
+    if width is not None and workers != 1:
+        with pytest.raises(ValidationError, match="train.workers=1"):
             RunConfig.model_validate(config)
     else:
         train = RunConfig.model_validate(config).train
-        assert train.devices == devices
+        assert train.workers == workers
         assert train.microbatch_size == width
 
 
@@ -492,3 +491,10 @@ def test_flow_integral_tolerance_must_be_finite_and_positive(value):
 def test_train_holdouts_must_be_nonempty_and_unique(holdouts):
     with pytest.raises(ValidationError):
         RunConfig.model_validate({"train": {"holdout_processes": holdouts}})
+
+
+@pytest.mark.parametrize("devices", [1, 8, "max"])
+def test_train_config_drops_legacy_devices(devices):
+    train = RunConfig.model_validate({"train": {"devices": devices}}).train
+    assert train.workers == 1
+    assert "devices" not in train.model_dump()

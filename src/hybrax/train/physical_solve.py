@@ -364,7 +364,7 @@ def solve_physical_states(
     # leaves concentrations unchanged and only removes volume, so subtract any sample
     # volume scheduled at that time from V. Boluses stay pre-bolus (the offline
     # measurement is taken before feeding). This makes the reported V honour
-    # ``v0 + Σfeeds − Σsamples`` at the final sample, matching pmap. Exact, for the same
+    # ``v0 + Σfeeds − Σsamples`` at the final sample. Exact, for the same
     # reason ``affect_fn`` matches exactly: with a tolerance an output point merely NEAR
     # a sample would also get the correction, even though the solve has already applied
     # that sample to the state it is reading. Keyed on the caller's ``t_eval`` (not the

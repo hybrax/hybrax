@@ -76,14 +76,8 @@ importing `hybrax.format` afterwards will flip x64 on underneath you, and float3
 handed to `TimeSeries` will raise rather than silently upcast.
 :::
 
-:::{admonition} `hybrax.train` decides its device count at import time
-:class: important
-
-JAX fixes the number of CPU devices when it initializes, so `hybrax.train` resolves the
-device count *before* that: by scanning the command line and config. The default is **1
-device**, so it never quietly takes over your machine. `HYBRAX_TRAIN_DEVICES=N` in the
-environment always wins over the config file. See [Training](../train/train.md).
-:::
+Training uses one worker by default. Set `train.workers` to use more CPU
+worker processes. See [Training](../train/train.md).
 
 ## Building these docs
 

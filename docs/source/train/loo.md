@@ -27,7 +27,7 @@ The config is a train config plus a `loo` section:
   "data": { "prepared": "prepared" },
   "custom_py": "custom.py",
   "train": { "epochs": 2000, "seed": 0 },
-  "loo": { "parallel_folds": 2, "devices_per_fold": 2 }
+  "loo": { "parallel_folds": 2, "workers_per_fold": 2 }
 }
 ```
 
@@ -86,12 +86,13 @@ informative than the average.
 Folds are independent, and each runs in its own subprocess.
 
 ```json
-{ "loo": { "parallel_folds": 2, "devices_per_fold": 2 } }
+{ "loo": { "parallel_folds": 2, "workers_per_fold": 2 } }
 ```
 
-That exposes two JAX devices per worker. Device counts do not restrict the
-CPUs JAX uses. The orchestrator holds itself to one device so an exported
-`HYBRAX_TRAIN_DEVICES` meant for workers does not reserve the device pool.
+`workers_per_fold` defaults to 1. Each fold runs in its own subprocess,
+with this many worker processes computing its training gradients. The orchestrator
+reduces concurrent folds to keep `parallel_folds * workers_per_fold <= n_cpu`.
+Use `loo.workers_per_fold` for LOO; leave `train.workers` at 1.
 
 :::{admonition} Do not also fan out at the shell level
 :class: warning
@@ -100,23 +101,23 @@ commands alongside each other oversubscribes the machine and, on constrained sys
 gets processes OOM-killed.
 :::
 
-To use [microbatching](train.md#the-knobs-that-matter), set one device per fold:
+To use [microbatching](train.md#the-knobs-that-matter), set one worker process per fold:
 
 ```json
-{ "train": { "microbatch_size": 1 }, "loo": { "devices_per_fold": 1 } }
+{ "train": { "microbatch_size": 1 }, "loo": { "workers_per_fold": 1 } }
 ```
 
 Microbatching preserves each fold's logical batch and optimizer update count.
-Larger execution widths are capped by that fold's batch size. A resolved device
+Larger execution widths are capped by that fold's batch size. A resolved worker
 count greater than one raises before any folds are dispatched.
 
 ## CPU budget for parallel folds
 
 CPU affinity is unrestricted by default. To limit each worker to two logical
-CPUs, independently of its JAX device count:
+CPUs, independently of its worker-process count:
 
 ```json
-{ "loo": { "parallel_folds": 4, "devices_per_fold": 1, "cpus_per_fold": 2 } }
+{ "loo": { "parallel_folds": 4, "workers_per_fold": 1, "cpus_per_fold": 2 } }
 ```
 
 This requires eight CPUs in the parent's allowed affinity mask. Workers lease

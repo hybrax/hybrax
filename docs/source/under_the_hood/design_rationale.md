@@ -239,10 +239,8 @@ checkpoints small, and is forward-compatible with future trainable controls. Eve
 checkpoint directory is self-contained (it bundles `prepared.json.gz` and `custom.py`).
 See [The Python API](../train/save_load_predict.md).
 
-### 9. Opt-in multi-core device pooling
+### 9. Worker processes
 
-Training can shard the process batch across CPU cores via `pmap` (~N speedup). This is
-**opt-in** and resolved *before* JAX initializes (the device count is fixed at import
-time): set `train.devices: N` (or `"max"`) in the config, or `HYBRAX_TRAIN_DEVICES=N` (the env
-var always wins). `"max"` resolves to `min(n_processes, n_cpus)`. Default is 1 device, so
-`hybrax.train` never competes for cores with other work. No effect on GPU.
+Training uses `train.workers` worker processes, default 1. Each worker holds its
+own compiled solve, trading memory for speed. Counts are capped at the batch size;
+multiple workers are CPU-only. Each computer process has one JAX CPU device.

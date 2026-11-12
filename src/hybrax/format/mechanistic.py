@@ -176,23 +176,29 @@ def _apply_feed_dilution(
 # ---------------------------------------------------------------------------
 
 
-def _lambdify_with_array_arg(expr, ordered_names: tuple[str, ...]) -> Callable:
-    """Return ``f(args)`` that evaluates *expr* with the symbol values
-    supplied as a flat 1-D array indexed by *ordered_names*.
+class _ArrayArgFunction:
+    """``f(args)`` that evaluates *expr* with the symbol values supplied as a
+    flat 1-D array indexed by *ordered_names*.
 
     Adapts the flat array to :func:`sympy.lambdify`'s positional arguments.
     Unpacking works under ``jax.jit`` because the array length is static.
+    Lambdified functions cannot be pickled, so this pickles as its expression
+    and lambdifies again on load.
     """
-    import sympy
 
-    syms = [sympy.Symbol(n) for n in ordered_names]
-    fn_raw = sympy.lambdify(syms, expr, modules="jax")
-    n = len(ordered_names)
+    def __init__(self, expr, ordered_names: tuple[str, ...]) -> None:
+        import sympy
 
-    def fn(args):
-        return fn_raw(*args[:n])
+        self._expr = expr
+        self._ordered_names = ordered_names
+        syms = [sympy.Symbol(n) for n in ordered_names]
+        self._fn = sympy.lambdify(syms, expr, modules="jax")
 
-    return fn
+    def __call__(self, args):
+        return self._fn(*args[: len(self._ordered_names)])
+
+    def __reduce__(self):
+        return _ArrayArgFunction, (self._expr, self._ordered_names)
 
 
 def _topo_sort_algebraic(algebraic_exprs: dict[str, Any]) -> list[str]:
@@ -730,14 +736,14 @@ def build_rhs_ode(
     )
 
     algebraic_funcs = tuple(
-        _lambdify_with_array_arg(algebraic_exprs[n], args_order)
+        _ArrayArgFunction(algebraic_exprs[n], args_order)
         for n in ordering.name_modeled_algebraic
     )
 
     state_names = ordering.name_modeled_RMCs + ordering.name_modeled_PVs
     zero_expr = sympy.Integer(0)
     derivative_funcs = tuple(
-        _lambdify_with_array_arg(derivative_exprs.get(n, zero_expr), args_order)
+        _ArrayArgFunction(derivative_exprs.get(n, zero_expr), args_order)
         for n in state_names
     )
 

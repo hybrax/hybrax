@@ -9,7 +9,6 @@ HERE = Path(__file__).resolve().parent
 ENV = os.environ | {
     "JAX_PLATFORMS": "cpu",
     "JAX_ENABLE_X64": "1",
-    "HYBRAX_TRAIN_DEVICES": "1",
     "MPLBACKEND": "Agg",
 }
 

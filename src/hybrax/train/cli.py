@@ -228,7 +228,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Path to the run config JSON (same schema as `train` with "
             "`train.holdout_processes` unset, plus an optional `loo` section: "
-            "per_fold_holdout_sets, parallel_folds, devices_per_fold). "
+            "per_fold_holdout_sets, parallel_folds, workers_per_fold). "
             "Required unless --resume."
         ),
     )
@@ -1189,7 +1189,7 @@ def _handle_loo(args: argparse.Namespace) -> int:
             finished_at=_now_iso(),
             n_folds=len(result.fold_dirs),
             parallel_folds=result.parallel_folds,
-            devices_per_fold=result.devices_per_fold,
+            workers_per_fold=result.workers_per_fold,
             aggregate=result.aggregate,
         )
         log.info(
@@ -1303,14 +1303,14 @@ def _handle_loo(args: argparse.Namespace) -> int:
         finished_at=_now_iso(),
         n_folds=len(result.fold_dirs),
         parallel_folds=result.parallel_folds,
-        devices_per_fold=result.devices_per_fold,
+        workers_per_fold=result.workers_per_fold,
         aggregate=result.aggregate,
     )
     log.info(
-        "LOO complete: %d fold(s) (%d parallel x %d device(s) each); aggregate=%s",
+        "LOO complete: %d fold(s) (%d parallel x %d worker(s) each); aggregate=%s",
         len(result.fold_dirs),
         result.parallel_folds,
-        result.devices_per_fold,
+        result.workers_per_fold,
         result.aggregate,
     )
     return 0

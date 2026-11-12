@@ -7,6 +7,17 @@ public API; such entries are marked **Breaking**.
 
 ## [Unreleased]
 
+### Added
+
+- `train.workers` spreads the per-process solves of each training update over
+  worker processes; the default of 1 keeps training in one process. More workers
+  give faster updates for more memory and a few seconds of start-up. On the
+  12-process OptFed example with `Kvaerno5`, 50 updates took 87 s with one worker,
+  67 s with two and 59 s with four, at a peak of 1.0, 1.6 and 2.8 GiB. Workers are
+  CPU-only. With an implicit solver, results differ from `workers: 1` within the
+  solver tolerances.
+- `loo.workers_per_fold` sets the worker count of each fold's training.
+
 ### Changed
 
 - The ODE right-hand side is traced once per solve instead of once per place the
@@ -16,6 +27,27 @@ public API; such entries are marked **Breaking**.
   change within the solver tolerance and updates can be about 1% slower: on OptFed (Kvaerno5, rtol 1e-4)
   the first loss moved by 4e-5 relative, and a run breaks even after about 700
   updates.
+- **Breaking:** jax is now supported up to 0.12 (`jax>=0.9,<0.13`). jax 0.12 wheels
+  need a CPU with AVX2 and FMA; on older CPUs install an earlier jax.
+- **Breaking:** LOO folds now train in one process each unless `loo.workers_per_fold`
+  says otherwise. Before, a fold used `n_cpu // parallel_folds` CPU devices by
+  default, so LOO runs with few parallel folds can be slower than before until you
+  set `workers_per_fold`. Each extra worker costs memory in every concurrent fold.
+- cloudpickle is a new dependency. It sends the prepared model to the workers.
+
+### Removed
+
+- **Breaking:** `train.devices`, `loo.devices_per_fold`, the `HYBRAX_TRAIN_DEVICES`
+  and `HYBRAX_GSPMD` environment variables, and the `"max"` device count. Training
+  no longer shards the batch over several JAX CPU devices. Use `train.workers` and
+  `loo.workers_per_fold` instead. Saved run directories that record `devices` still
+  load.
+
+### Fixed
+
+- Training with an implicit solver such as `Kvaerno5` on more than one core no
+  longer fails. This also fixes `hybrax loo` runs that failed with such models
+  because folds used several CPU devices by default.
 
 ## [0.2.0] - 2026-11-12
 

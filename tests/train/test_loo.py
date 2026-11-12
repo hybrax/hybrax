@@ -378,43 +378,45 @@ def test_resolve_folds_data_processes_none_matches_unrestricted():
 # ---------------------------------------------------------------------------
 
 
-def test_split_user_picks_parallel_device_budget():
-    # 4 folds at once on 16 CPUs -> 4 JAX devices each; product <= CPUs.
-    parallel, devices = compute_parallel_split(9, 16, 4)
-    assert (parallel, devices) == (4, 4)
-    assert parallel * devices <= 16
+def test_split_defaults_to_one_worker_per_fold():
+    # Four folds use one worker each by default.
+    parallel, workers = compute_parallel_split(9, 16, 4)
+    assert (parallel, workers) == (4, 1)
+    assert parallel * workers <= 16
 
 
-def test_split_sequential_uses_all_device_budget():
-    parallel, devices = compute_parallel_split(12, 16, 1)
-    assert (parallel, devices) == (1, 16)
+def test_split_sequential_defaults_to_one_worker():
+    parallel, workers = compute_parallel_split(12, 16, 1)
+    assert (parallel, workers) == (1, 1)
 
 
 def test_split_clamped_to_fold_and_cpu_count():
     # asking for 20-wide with only 9 folds / 8 cpus -> 8 parallel.
-    parallel, devices = compute_parallel_split(9, 8, 20)
-    assert parallel == 8 and devices == 1
+    parallel, workers = compute_parallel_split(9, 8, 20)
+    assert parallel == 8 and workers == 1
 
 
-def test_split_devices_capped_by_batch():
-    # 2 folds, 16 cores -> 8 devices each, but batch caps at 3.
-    parallel, devices = compute_parallel_split(2, 16, 2, max_devices_per_fold=3)
-    assert (parallel, devices) == (2, 3)
+def test_split_workers_capped_by_batch():
+    # 2 folds, 16 cores -> 8 workers each, but batch caps at 3.
+    parallel, workers = compute_parallel_split(
+        2, 16, 2, workers_per_fold=8, max_workers_per_fold=3
+    )
+    assert (parallel, workers) == (2, 3)
 
 
-def test_split_uses_configured_devices_per_fold():
-    parallel, devices = compute_parallel_split(9, 16, 4, devices_per_fold=2)
-    assert (parallel, devices) == (4, 2)
+def test_split_uses_configured_workers_per_fold():
+    parallel, workers = compute_parallel_split(9, 16, 4, workers_per_fold=2)
+    assert (parallel, workers) == (4, 2)
 
 
-def test_split_configured_devices_clamps_parallel_to_cpu_count():
-    parallel, devices = compute_parallel_split(9, 16, 9, devices_per_fold=4)
-    assert (parallel, devices) == (4, 4)
+def test_split_configured_workers_clamps_parallel_to_cpu_count():
+    parallel, workers = compute_parallel_split(9, 16, 9, workers_per_fold=4)
+    assert (parallel, workers) == (4, 4)
 
 
 def test_split_never_below_one():
-    parallel, devices = compute_parallel_split(0, 1, 1)
-    assert parallel == 1 and devices == 1
+    parallel, workers = compute_parallel_split(0, 1, 1)
+    assert parallel == 1 and workers == 1
 
 
 # ---------------------------------------------------------------------------
@@ -1077,13 +1079,10 @@ def _patch_dispatch(monkeypatch) -> dict[str, Any]:
     """Replace the subprocess pool with a stub-fold writer (no real training)."""
     seen: dict[str, Any] = {}
 
-    def fake_pool(
-        config_path, output_dir, artifact_path, folds, parallel, devices, cpu_leases
-    ):
+    def fake_pool(config_path, output_dir, artifact_path, folds, parallel, cpu_leases):
         seen["pool_folds"] = [f.slug for f in folds]
         seen["artifact_path"] = Path(artifact_path)
         seen["parallel"] = parallel
-        seen["devices"] = devices
         for fold in folds:
             _write_stub_fold(Path(output_dir), fold)
 
@@ -1113,7 +1112,7 @@ def test_run_loo_cv_dispatches_only_manifest_folds(monkeypatch, tmp_path):
     assert result.aggregate["n_folds"] == 3
 
 
-def test_run_loo_cv_uses_configured_devices_per_fold(monkeypatch, tmp_path):
+def test_run_loo_cv_uses_configured_workers_per_fold(monkeypatch, tmp_path):
     monkeypatch.setattr(loo_mod.os, "cpu_count", lambda: 16)
     metadata = _runtime_metadata(_three_parent_collection())
     _patch_runtime_metadata(monkeypatch, tmp_path, metadata)
@@ -1121,7 +1120,7 @@ def test_run_loo_cv_uses_configured_devices_per_fold(monkeypatch, tmp_path):
     cfg = RunConfig(
         data=DataConfig(prepared=Path("prepared.json")),
         train=TrainConfig(epochs=2, seed=10),
-        loo=LooConfig(parallel_folds=2, devices_per_fold=2),
+        loo=LooConfig(parallel_folds=2, workers_per_fold=2),
     )
 
     result = run_loo_cv(
@@ -1131,13 +1130,12 @@ def test_run_loo_cv_uses_configured_devices_per_fold(monkeypatch, tmp_path):
     )
 
     assert seen["parallel"] == 2
-    assert seen["devices"] == 2
-    assert result.devices_per_fold == 2
+    assert result.workers_per_fold == 2
 
 
-@pytest.mark.parametrize("devices", [1, 2])
-def test_microbatch_loo_requires_one_device_before_dispatch(
-    monkeypatch, tmp_path, devices
+@pytest.mark.parametrize("workers", [1, 2])
+def test_microbatch_loo_requires_one_worker_before_dispatch(
+    monkeypatch, tmp_path, workers
 ):
     monkeypatch.setattr(loo_mod.os, "cpu_count", lambda: 16)
     metadata = _runtime_metadata(_three_parent_collection())
@@ -1146,16 +1144,15 @@ def test_microbatch_loo_requires_one_device_before_dispatch(
     cfg = RunConfig(
         data=DataConfig(prepared=Path("prepared.json")),
         train=TrainConfig(microbatch_size=3),
-        loo=LooConfig(devices_per_fold=devices),
+        loo=LooConfig(workers_per_fold=workers),
     )
-    if devices == 1:
+    if workers == 1:
         result = run_loo_cv(
             cfg=cfg, config_path=tmp_path / "loo-config.json", output_dir=tmp_path
         )
-        assert result.devices_per_fold == 1
-        assert seen["devices"] == 1
+        assert result.workers_per_fold == 1
     else:
-        with pytest.raises(ValueError, match="loo.devices_per_fold=1"):
+        with pytest.raises(ValueError, match="loo.workers_per_fold=1"):
             run_loo_cv(
                 cfg=cfg, config_path=tmp_path / "loo-config.json", output_dir=tmp_path
             )
@@ -1324,21 +1321,6 @@ def test_loo_survives_cross_fold_loss_plot_failure(monkeypatch, tmp_path, caplog
     assert "failed to write cross-fold loss curve" in caplog.text
 
 
-def test_worker_env_strips_inherited_host_device_pin(monkeypatch):
-    monkeypatch.setenv(
-        "XLA_FLAGS", "--xla_force_host_platform_device_count=32 --xla_cpu_foo=1"
-    )
-    env = loo_mod._worker_env(3)
-    assert env["HYBRAX_TRAIN_DEVICES"] == "3"
-    assert "xla_force_host_platform_device_count" not in env.get("XLA_FLAGS", "")
-    assert "--xla_cpu_foo=1" in env["XLA_FLAGS"]
-
-
-def test_worker_env_drops_xla_flags_when_only_pin(monkeypatch):
-    monkeypatch.setenv("XLA_FLAGS", "--xla_force_host_platform_device_count=8")
-    assert "XLA_FLAGS" not in loo_mod._worker_env(2)
-
-
 # ---------------------------------------------------------------------------
 # CLI dispatch
 # ---------------------------------------------------------------------------
@@ -1449,7 +1431,7 @@ def test_loo_cli_orchestrator_produces_before_dispatch(monkeypatch, tmp_path):
         return LOOResult(
             fold_dirs=(out_dir / "folds" / "p1",),
             parallel_folds=1,
-            devices_per_fold=1,
+            workers_per_fold=1,
             summary_csv_path=out_dir / "loo_summary.csv",
             aggregate_json_path=out_dir / "loo_aggregate.json",
             aggregate={"n_folds": 1},
@@ -1486,7 +1468,7 @@ def _stub_loo_result(output_dir: Path) -> LOOResult:
     return LOOResult(
         fold_dirs=(),
         parallel_folds=1,
-        devices_per_fold=1,
+        workers_per_fold=1,
         summary_csv_path=output_dir / "loo_summary.csv",
         aggregate_json_path=output_dir / "loo_aggregate.json",
         aggregate={"n_folds": 0},
@@ -1747,7 +1729,7 @@ def test_loo_cli_resume_does_not_load_collection(monkeypatch, tmp_path):
         lambda **kwargs: LOOResult(
             fold_dirs=(),
             parallel_folds=1,
-            devices_per_fold=1,
+            workers_per_fold=1,
             summary_csv_path=run_dir / "loo_summary.csv",
             aggregate_json_path=run_dir / "loo_aggregate.json",
             aggregate={"n_folds": 2},
@@ -1778,7 +1760,7 @@ def test_loo_cli_rejects_config_and_resume_together(tmp_path):
 def test_run_loo_cv_affinity_budget(monkeypatch, tmp_path):
     metadata = _runtime_metadata(_three_parent_collection())
     _patch_runtime_metadata(monkeypatch, tmp_path, metadata)
-    seen = _patch_dispatch(monkeypatch)
+    _patch_dispatch(monkeypatch)
     monkeypatch.setattr(os, "sched_getaffinity", lambda _: {2, 4, 6, 8}, raising=False)
     monkeypatch.setattr(os, "sched_setaffinity", lambda *_: None, raising=False)
     original_pool = loo_mod._dispatch_pool
@@ -1787,7 +1769,7 @@ def test_run_loo_cv_affinity_budget(monkeypatch, tmp_path):
         with cpu_leases.lease() as first, cpu_leases.lease() as second:
             assert len(first) == len(second) == 2
             assert set(first).isdisjoint(second)
-        original_pool(*args, cpu_leases)
+        original_pool(*args, cpu_leases=cpu_leases)
 
     monkeypatch.setattr(loo_mod, "_dispatch_pool", pool)
     cfg = RunConfig(
@@ -1798,7 +1780,6 @@ def test_run_loo_cv_affinity_budget(monkeypatch, tmp_path):
         cfg=cfg, config_path=tmp_path / "loo-config.json", output_dir=tmp_path
     )
     assert result.parallel_folds == 2
-    assert seen["devices"] == 2
 
     with pytest.raises(ValueError, match="requires 6 CPUs.*allows 4"):
         run_loo_cv(
@@ -1810,22 +1791,23 @@ def test_run_loo_cv_affinity_budget(monkeypatch, tmp_path):
         )
 
 
-def test_run_loo_cv_caps_devices_at_cpu_budget(monkeypatch, tmp_path):
+def test_run_loo_cv_caps_workers_at_cpu_budget(monkeypatch, tmp_path):
     collection = BioProcessCollection(
         processes={f"p{i}": _make_process(f"p{i}") for i in range(1, 7)},
         metadata={},
     )
     _patch_runtime_metadata(monkeypatch, tmp_path, _runtime_metadata(collection))
-    seen = _patch_dispatch(monkeypatch)
+    _patch_dispatch(monkeypatch)
     monkeypatch.setattr(os, "sched_getaffinity", lambda _: set(range(8)), raising=False)
     monkeypatch.setattr(os, "sched_setaffinity", lambda *_: None, raising=False)
     cfg = RunConfig(
         data=DataConfig(prepared=Path("prepared.json")),
-        loo=LooConfig(parallel_folds=2, cpus_per_fold=2),
+        loo=LooConfig(parallel_folds=2, cpus_per_fold=2, workers_per_fold=4),
     )
-    run_loo_cv(cfg=cfg, config_path=tmp_path / "loo-config.json", output_dir=tmp_path)
-    # Uncapped, 8 CPUs over 2 folds would give each fold's batch of 5 four devices.
-    assert seen["devices"] == 2
+    result = run_loo_cv(
+        cfg=cfg, config_path=tmp_path / "loo-config.json", output_dir=tmp_path
+    )
+    assert result.workers_per_fold == 2
 
 
 @pytest.mark.parametrize(("holdout_sets", "allowed"), [(None, 3), (3, 5)])
@@ -1852,3 +1834,23 @@ def test_loo_cli_checks_cpu_budget_before_producer(
     with pytest.raises(ValueError, match=f"allows {allowed}"):
         cli.main(["loo", "--config", str(cfg_path), "--output-dir", str(out_dir)])
     assert not out_dir.exists()
+
+
+@pytest.mark.parametrize("workers", [1, 3])
+def test_effective_fold_config_sets_worker_count(tmp_path, workers):
+    cfg = RunConfig(loo=LooConfig(workers_per_fold=workers))
+    fold = loo_mod.Fold(0, ("test",), ("train",), "fold-0", 42)
+    cfg = cfg.model_copy(update={"data": DataConfig(prepared=Path("data.json"))})
+    effective, _, _ = loo_mod._effective_fold_config(cfg, fold, tmp_path, None)
+    assert effective.train.workers == workers
+    assert effective.train.seed == 42
+
+
+def test_loo_rejects_train_workers(tmp_path):
+    cfg = RunConfig(
+        train=TrainConfig(workers=2),
+        data=DataConfig(prepared=Path("data.json")),
+    )
+    fold = loo_mod.Fold(0, ("test",), ("train",), "fold-0", 42)
+    with pytest.raises(ValueError, match="use loo.workers_per_fold"):
+        loo_mod._effective_fold_config(cfg, fold, tmp_path, None)

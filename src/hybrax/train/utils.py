@@ -8,6 +8,9 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+# Module name ``custom.py`` is imported under; pickled custom classes refer to it.
+CUSTOM_MODULE_NAME = "hybrax_train_user_custom"
+
 
 def load_custom_module(custom_py: str | Path | None) -> ModuleType | None:
     """Import ``custom_py`` as a standalone module named ``hybrax_train_user_custom``.
@@ -29,7 +32,7 @@ def load_custom_module(custom_py: str | Path | None) -> ModuleType | None:
     if not path.exists():
         raise FileNotFoundError(f"custom.py path does not exist: {path}")
 
-    spec = spec_from_file_location("hybrax_train_user_custom", path)
+    spec = spec_from_file_location(CUSTOM_MODULE_NAME, path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not load custom module from {path}")
 

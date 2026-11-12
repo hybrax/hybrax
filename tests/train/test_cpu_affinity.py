@@ -104,7 +104,7 @@ def test_worker_affinity_before_import(monkeypatch, tmp_path):
         ],
     )
     before = os.sched_getaffinity(0)
-    assert loo._dispatch_worker(Path(), Path(), Path(), 0, 1, cpus) == 0
+    assert loo._dispatch_worker(Path(), Path(), Path(), 0, cpus) == 0
     affinities = json.loads(output.read_text())
     assert affinities and all(set(mask) == set(cpus) for mask in affinities)
     assert os.sched_getaffinity(0) == before
@@ -116,8 +116,8 @@ def test_dispatch_pool_reuses_leases_after_failure(monkeypatch, tmp_path, caplog
     leases = CpuLeases(2, 1, sysfs=tmp_path)
     calls = []
 
-    def dispatch(_config, _output, _artifact, idx, devices, cpus):
-        calls.append((idx, devices, cpus))
+    def dispatch(_config, _output, _artifact, idx, cpus):
+        calls.append((idx, cpus))
         if idx == 0:
             raise OSError("launch failed")
         return 0
@@ -128,6 +128,6 @@ def test_dispatch_pool_reuses_leases_after_failure(monkeypatch, tmp_path, caplog
         caplog.at_level("INFO"),
         pytest.raises(RuntimeError, match="p0.*launch failed"),
     ):
-        loo._dispatch_pool(tmp_path, tmp_path, tmp_path, folds, 1, 1, leases)
-    assert calls == [(0, 1, (2, 4)), (1, 1, (2, 4)), (2, 1, (2, 4))]
+        loo._dispatch_pool(tmp_path, tmp_path, tmp_path, folds, 1, leases)
+    assert calls == [(0, (2, 4)), (1, (2, 4)), (2, (2, 4))]
     assert "LOO fold 2 (p2): CPUs (2, 4)" in caplog.text

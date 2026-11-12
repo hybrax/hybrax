@@ -97,7 +97,7 @@ for name in (
 ):
     shutil.copyfile(EXAMPLE / name, WORK / name)
 ENV = os.environ | {
-    "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1", "MPLBACKEND": "Agg",
+    "JAX_PLATFORMS": "cpu", "MPLBACKEND": "Agg",
 }
 
 def hxt_cli(*arguments):

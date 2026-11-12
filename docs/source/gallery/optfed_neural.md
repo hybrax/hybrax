@@ -100,7 +100,7 @@ for folder, names in (
     for name in names:
         shutil.copyfile(EXAMPLES / folder.name / name, folder / name)
 ENV = os.environ | {
-    "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1", "MPLBACKEND": "Agg",
+    "JAX_PLATFORMS": "cpu", "MPLBACKEND": "Agg",
 }
 
 def hxt_cli(*arguments):

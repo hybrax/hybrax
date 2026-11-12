@@ -39,7 +39,6 @@ from hybrax.train.physical_solve import solve_physical_states, within_fail_time
 from hybrax.train.trainer import (
     build_batched_loss_fn,
     clamp_padded_time_rows,
-    evaluate_one_sample_loss,
     evaluate_sample_with_loss_module,
     simulate_measurement_states,
 )
@@ -786,45 +785,6 @@ def test_batched_loss_fn_keeps_fail_times_independent_per_lane():
     assert fail_times.shape == (2,)
     assert float(fail_times[0]) == pytest.approx(1.0, abs=1e-3)
     assert bool(jnp.isinf(fail_times[1])), "healthy p2 lane"
-
-
-def test_evaluate_one_sample_loss_returns_fail_time():
-    """The pmap/gspmd shared per-sample entry point returns fail_time as its 3rd
-    value (``+inf`` clean, finite on a bail) so the sharded paths can gather it.
-    Inputs mirror the pmap ``_one`` preprocessing (clamp times, pre-scale targets)."""
-    wrapper, batch, batch_controls, batched_cin, batched_cin_modeled = (
-        _build_batched_setup(_BlowUpReactionModule, process_name="p1")
-    )
-    scale_targets = wrapper.reaction_module.SCALE_state[wrapper.target_state_indices]
-    pidx = batch.process_indices[0]
-    t_row = clamp_padded_time_rows(batch.t_measured, batch.n_measured)[0]
-    out = evaluate_one_sample_loss(
-        wrapper,
-        batch_controls,
-        pidx,
-        t_row,
-        batch.y_measured[0] / scale_targets[None, :],
-        batch.mask_measured[0],
-        batch.n_measured[0],
-        batch.y0_measured[0],
-        batched_cin[pidx],
-        batched_cin_modeled[pidx],
-        batch.retention_controlled_Outflows[0],
-        batch.retention_modeled_Outflows[0],
-        None,
-        max_solver_steps=512,
-        solver_rtol=1e-5,
-        solver_atol=1e-7,
-    )
-    assert len(out) == 3, "returns (total_loss, per_target_loss, fail_time)"
-    total_loss, _per_target, fail_time = out
-    assert bool(jnp.isfinite(total_loss)), "loss stays finite despite the bail"
-    assert float(fail_time) == pytest.approx(1.0, abs=1e-3)
-
-
-# ---------------------------------------------------------------------------
-# Dense-grid helpers (hybrax/train/dense.py)
-# ---------------------------------------------------------------------------
 
 
 def test_build_union_time_grid_sorts_and_indexes_correctly():

@@ -5,14 +5,10 @@ the folds (:class:`~hybrax.train.run_config.HoldoutSet` entries in
 ``per_fold_holdout_sets``, or classic leave-one-out when omitted) and the
 fold-level parallelism.
 
-Each fold trains as **its own subprocess** so it can expose a private JAX CPU
-device count — the JAX host-device count is fixed per process at import, so
-concurrent in-process folds cannot get separate shards. The user picks how many
-folds run at once (``loo.parallel_folds``); the orchestrator chooses the per-fold
-JAX device count (``devices_per_fold = n_cpu // parallel_folds`` by default),
-optionally leases disjoint CPUs via `cpus_per_fold`, then aggregates on-disk losses
-into ``loo_summary.csv`` / ``loo_aggregate.json``. ``run_loo_cv(resume=True)``
-skips only identity-matched, complete folds and re-runs the rest.
+Each fold trains in its own subprocess for isolation and CPU leasing.
+The orchestrator limits concurrent folds and worker processes to the CPU budget,
+then aggregates on-disk losses into ``loo_summary.csv`` / ``loo_aggregate.json``.
+``run_loo_cv(resume=True)`` skips identity-matched complete folds.
 
 This module stays a thin orchestrator on top of the harness preparation,
 training, and evaluation entry points; it does not reimplement batching or loss
@@ -126,7 +122,7 @@ class LOOResult:
 
     fold_dirs: tuple[Path, ...]
     parallel_folds: int
-    devices_per_fold: int
+    workers_per_fold: int
     summary_csv_path: Path
     aggregate_json_path: Path
     aggregate: dict[str, Any]
@@ -504,33 +500,23 @@ def compute_parallel_split(
     n_cpu: int,
     parallel_folds: int,
     *,
-    devices_per_fold: int | None = None,
-    max_devices_per_fold: int | None = None,
+    workers_per_fold: int = 1,
+    max_workers_per_fold: int | None = None,
 ) -> tuple[int, int]:
-    """Return ``(parallel_folds, devices_per_fold)`` for the fold pool.
+    """Allocate fold concurrency and worker processes within the CPU budget.
 
-    ``parallel_folds`` is the user-chosen fold concurrency. If
-    ``devices_per_fold`` is omitted, the per-fold JAX CPU device budget is split
-    across concurrent folds: ``devices_per_fold = n_cpu // parallel`` (so a
-    single fold exposes many devices, many folds expose one device each).
-    Devices never exceed ``max_devices_per_fold`` (the smallest fold's batch —
-    exposing more host devices than the batch only deadlocks the pmap collective).
-
-    Invariant: ``parallel_folds * devices_per_fold <= n_cpu``. There is no RAM
-    sizing here — the user owns the memory call via ``parallel_folds``.
+    Cap workers at the smallest fold batch, then reduce concurrent folds so
+    ``parallel_folds * workers_per_fold <= n_cpu``.
     """
     n_cpu = max(1, int(n_cpu))
     n_folds = max(1, int(n_folds))
     requested_parallel = max(1, min(int(parallel_folds), n_folds, n_cpu))
-    if devices_per_fold is None:
-        devices = max(1, n_cpu // requested_parallel)
-    else:
-        devices = max(1, int(devices_per_fold))
-    devices = min(devices, n_cpu)
-    if max_devices_per_fold is not None:
-        devices = max(1, min(devices, int(max_devices_per_fold)))
-    effective_parallel = max(1, min(requested_parallel, n_cpu // devices))
-    return effective_parallel, devices
+    workers = max(1, int(workers_per_fold))
+    workers = min(workers, n_cpu)
+    if max_workers_per_fold is not None:
+        workers = max(1, min(workers, int(max_workers_per_fold)))
+    effective_parallel = max(1, min(requested_parallel, n_cpu // workers))
+    return effective_parallel, workers
 
 
 # ---------------------------------------------------------------------------
@@ -571,26 +557,9 @@ def _worker_cmd(
     ]
 
 
-def _worker_env(devices: int) -> dict[str, str]:
+def _worker_env() -> dict[str, str]:
     env = dict(os.environ)
-    env["HYBRAX_TRAIN_DEVICES"] = str(int(devices))
     env.setdefault("JAX_PLATFORMS", "cpu")
-    # Strip any inherited host-device pin so the worker's import-time bootstrap
-    # re-derives the device count from HYBRAX_TRAIN_DEVICES. Otherwise a pre-set
-    # XLA_FLAGS=--xla_force_host_platform_device_count=K silently overrides the
-    # per-fold count (every fold would expose K devices, reintroducing the
-    # over-exposure deadlock the device cap exists to prevent).
-    xla = env.get("XLA_FLAGS")
-    if xla and "xla_force_host_platform_device_count" in xla:
-        stripped = " ".join(
-            tok
-            for tok in xla.split()
-            if not tok.startswith("--xla_force_host_platform_device_count")
-        ).strip()
-        if stripped:
-            env["XLA_FLAGS"] = stripped
-        else:
-            env.pop("XLA_FLAGS", None)
     return env
 
 
@@ -606,7 +575,6 @@ def _dispatch_worker(
     output_dir: Path,
     artifact_path: Path,
     fold_idx: int,
-    devices: int,
     cpus: tuple[int, ...] | None = None,
 ) -> int:
     """Run one fold subprocess. Returns its exit code."""
@@ -627,7 +595,7 @@ def _dispatch_worker(
         ]
     proc = subprocess.Popen(
         cmd,
-        env=_worker_env(devices),
+        env=_worker_env(),
     )
     return proc.wait()
 
@@ -638,7 +606,6 @@ def _dispatch_pool(
     artifact_path: Path,
     folds: list[Fold],
     parallel: int,
-    devices: int,
     cpu_leases: CpuLeases | None = None,
 ) -> None:
     """Run ``folds`` in a pool of ``parallel`` worker subprocesses."""
@@ -647,14 +614,12 @@ def _dispatch_pool(
     def _run(fold: Fold) -> None:
         try:
             if cpu_leases is None:
-                rc = _dispatch_worker(
-                    config_path, output_dir, artifact_path, fold.idx, devices
-                )
+                rc = _dispatch_worker(config_path, output_dir, artifact_path, fold.idx)
             else:
                 with cpu_leases.lease() as cpus:
                     logger.info("LOO fold %d (%s): CPUs %s", fold.idx, fold.slug, cpus)
                     rc = _dispatch_worker(
-                        config_path, output_dir, artifact_path, fold.idx, devices, cpus
+                        config_path, output_dir, artifact_path, fold.idx, cpus
                     )
             if rc != 0:
                 failures.append((fold.slug, f"exit {rc}"))
@@ -706,12 +671,21 @@ class TrainedFold:
 def _effective_fold_config(
     cfg: RunConfig, fold: Fold, output_dir: Path, custom_py: Path | None
 ) -> tuple[RunConfig, Path, Path | None]:
+    if cfg.train.workers != 1:
+        raise ValueError(
+            "LOO training must use loo.workers_per_fold, not train.workers"
+        )
     fold_dir = output_dir / "folds" / fold.slug
     fold_custom = fold_dir / "custom.py" if custom_py is not None else None
     effective_cfg = cfg.model_copy(
         update={
             "data": cfg.data.model_copy(update={"processes": fold.train}),
-            "train": cfg.train.model_copy(update={"seed": fold.seed}),
+            "train": cfg.train.model_copy(
+                update={
+                    "seed": fold.seed,
+                    "workers": cfg.loo.workers_per_fold if cfg.loo is not None else 1,
+                }
+            ),
             "output": cfg.output.model_copy(update={"dir": fold_dir.resolve()}),
             "custom_py": fold_custom,
         }
@@ -1164,18 +1138,18 @@ def run_loo_cv(
     def _eff_batch(fold: Fold) -> int:
         return min(len(fold.train), batch_size) if batch_size else len(fold.train)
 
-    parallel, devices = compute_parallel_split(
+    parallel, workers = compute_parallel_split(
         n_folds,
         n_cpu,
         loo_cfg.parallel_folds,
-        devices_per_fold=loo_cfg.devices_per_fold,
-        max_devices_per_fold=min(
+        workers_per_fold=loo_cfg.workers_per_fold,
+        max_workers_per_fold=min(
             min(_eff_batch(fold) for fold in folds),
             loo_cfg.cpus_per_fold or n_cpu,
         ),
     )
-    if cfg.train.microbatch_size is not None and devices > 1:
-        raise ValueError("microbatching requires loo.devices_per_fold=1")
+    if cfg.train.microbatch_size is not None and workers > 1:
+        raise ValueError("microbatching requires loo.workers_per_fold=1")
     if loo_cfg.parallel_folds > n_folds:
         logger.info(
             "LOO: parallel_folds=%d exceeds the %d resolved fold(s); clamped to %d.",
@@ -1203,11 +1177,11 @@ def run_loo_cv(
         pending = list(folds)
 
     logger.info(
-        "LOO: %d fold(s), %d cpu(s) -> %d parallel fold(s) x %d device(s) each",
+        "LOO: %d fold(s), %d cpu(s) -> %d parallel fold(s) x %d worker(s) each",
         n_folds,
         n_cpu,
         parallel,
-        devices,
+        workers,
     )
     if pending:
         _dispatch_pool(
@@ -1216,7 +1190,6 @@ def run_loo_cv(
             artifact_path,
             pending,
             parallel,
-            devices,
             cpu_leases=cpu_leases,
         )
 
@@ -1233,7 +1206,7 @@ def run_loo_cv(
     return LOOResult(
         fold_dirs=tuple(output_dir / "folds" / fold.slug for fold in folds),
         parallel_folds=parallel,
-        devices_per_fold=devices,
+        workers_per_fold=workers,
         summary_csv_path=summary_csv_path,
         aggregate_json_path=aggregate_json_path,
         aggregate=aggregate,

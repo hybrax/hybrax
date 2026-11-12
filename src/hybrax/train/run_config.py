@@ -129,15 +129,15 @@ class TrainConfig(ConfigBase):
     many processes contribute to one optimizer update; ``None`` means full-batch.
     ``microbatch_size`` optionally limits how many process solves execute
     together, while preserving that batch mean and one optimizer update. It
-    requires ``devices=1`` and one actual JAX device. A width at least as
+    requires ``workers=1``. A width at least as
     large as the batch uses unsplit execution. ``shuffle``
     (default ``True``) reshuffles the process order every epoch;
     ``batch_seed`` (optional) seeds that shuffling independently of ``seed``.
-    ``devices`` (default ``1``) is how many CPU devices to shard the batch
-    across; ``"max"`` resolves to ``min(n_processes, n_cpus)`` — never every
-    core, since idle surplus devices can deadlock the ``pmap`` all-reduce —
-    and the ``HYBRAX_TRAIN_DEVICES`` environment variable always overrides
-    it. ``allow_stateful_models`` (default ``False``) is the required opt-in
+    ``workers`` (default 1) counts worker processes computing gradients for one
+    update. One solves the whole batch in the training computer process. More
+    workers trade memory for speed: each holds its own compiled solve. They are
+    CPU-only and capped at the batch size. ``allow_stateful_models``
+    (default ``False``) is the required opt-in
     for reaction modules with a nonzero latent state: training raises before
     it starts without it, because a latent state changes what the model
     *is*, not just its size.
@@ -161,7 +161,7 @@ class TrainConfig(ConfigBase):
     microbatch_size: int | None = Field(None, gt=0)
     shuffle: bool = True
     batch_seed: int | None = None
-    devices: int | Literal["max"] = 1
+    workers: int = Field(1, gt=0)
     allow_stateful_models: bool = False
     flow_integral_relative_tolerance: float = Field(
         DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE, gt=0, allow_inf_nan=False
@@ -169,10 +169,18 @@ class TrainConfig(ConfigBase):
     # Ordinary train only; LOO defines holdouts through its folds.
     holdout_processes: tuple[str, ...] | None = Field(None, min_length=1)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_legacy_devices(cls, value):
+        # Old saved configs carry devices; it affected execution, not the model.
+        if isinstance(value, dict):
+            value = {key: item for key, item in value.items() if key != "devices"}
+        return value
+
     @model_validator(mode="after")
-    def _microbatch_requires_one_device(self):
-        if self.microbatch_size is not None and self.devices != 1:
-            raise ValueError("microbatching requires train.devices=1")
+    def _microbatch_requires_one_worker(self):
+        if self.microbatch_size is not None and self.workers != 1:
+            raise ValueError("microbatching requires train.workers=1")
         return self
 
     @field_validator("holdout_processes")
@@ -416,10 +424,9 @@ class LooConfig(ConfigBase):
 
     ``per_fold_holdout_sets=None`` runs classic leave-one-out: one fold per
     parent process group. ``parallel_folds`` is how many folds train at once
-    (each fold is its own subprocess, because the JAX CPU device count is fixed
-    per process). ``devices_per_fold`` can set each fold's JAX CPU device
-    count; otherwise the available JAX CPU device budget is split across
-    concurrent folds so that ``parallel_folds * devices_per_fold <= n_cpu``.
+    (each fold is its own subprocess). ``workers_per_fold`` (default 1) counts
+    worker processes for each fold's training. The orchestrator reduces concurrent
+    folds to keep ``parallel_folds * workers_per_fold <= n_cpu``.
     `cpus_per_fold` optionally leases disjoint allowed CPUs before worker
     imports; its default leaves affinity unrestricted.
     Set these from what your RAM can hold — there is deliberately no automatic
@@ -428,11 +435,11 @@ class LooConfig(ConfigBase):
 
     per_fold_holdout_sets: tuple[HoldoutSet, ...] | None = None
     parallel_folds: int = Field(1, gt=0)
-    devices_per_fold: int | None = Field(None, gt=0)
+    workers_per_fold: int = Field(1, gt=0)
     cpus_per_fold: int | None = Field(None, ge=2)
 
     @field_validator(
-        "parallel_folds", "devices_per_fold", "cpus_per_fold", mode="before"
+        "parallel_folds", "workers_per_fold", "cpus_per_fold", mode="before"
     )
     @classmethod
     def _reject_bool(cls, value: Any) -> Any:

@@ -20,7 +20,7 @@ def run_cli(*arguments):
     subprocess.run(
         [sys.executable, "-m", "hybrax.train.cli", *arguments],
         cwd=HERE,
-        env=os.environ | {"JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1"},
+        env=os.environ | {"JAX_PLATFORMS": "cpu"},
         check=True,
     )
 

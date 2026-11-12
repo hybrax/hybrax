@@ -123,7 +123,7 @@ for filename in (
 ):
     shutil.copyfile(EXAMPLE / filename, WORK / filename)
 ENV = os.environ | {
-    "JAX_PLATFORMS": "cpu", "JAX_ENABLE_X64": "1", "HYBRAX_TRAIN_DEVICES": "1",
+    "JAX_PLATFORMS": "cpu", "JAX_ENABLE_X64": "1",
     "MPLBACKEND": "Agg",
 }
 

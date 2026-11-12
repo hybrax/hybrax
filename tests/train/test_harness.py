@@ -45,6 +45,7 @@ from hybrax.train.harness import (
     _build_batch_index_stream,
     _build_optimizer,
     _build_reaction_module,
+    _build_template_wrapper,
     _ensure_process_names,
     _resolve_estimated_scales,
     _target_state_indices,
@@ -58,8 +59,10 @@ from hybrax.train.model_api import (
     AffineScaler,
     EstimatedScales,
     LinearScaler,
+    LossOutputs,
     RateModule,
     ReactionOutputs,
+    UserLossModule,
     frozen_field,
     partition_trainable,
     trainable_field,
@@ -70,8 +73,12 @@ from hybrax.train.runtime_context import (
     RuntimeDataContext,
     select_parent_collection,
 )
-from hybrax.train.serialization import load_trained_wrapper
-from hybrax.train.trainer import clamp_padded_time_rows, simulate_measurement_states
+from hybrax.train.serialization import load_opt_state, load_trained_wrapper
+from hybrax.train.trainer import (
+    build_batched_loss_fn,
+    clamp_padded_time_rows,
+    simulate_measurement_states,
+)
 from hybrax.train.training_data import TrainingDataStore
 
 
@@ -1112,7 +1119,6 @@ def test_holdout_and_checkpoints_use_the_updated_wrapper(
 ):
     # The step returns only the trainable params, so the harness must rebuild the
     # full wrapper before each holdout evaluation and checkpoint write.
-    monkeypatch.setattr(harness_module.jax, "local_device_count", lambda: 1)
     store = TrainingDataStore.from_collection(
         _make_multi_process_collection(4),
         target_variable_order=["biomass"],
@@ -1153,7 +1159,6 @@ def test_holdout_and_checkpoints_use_the_updated_wrapper(
 
 
 def test_returned_wrapper_is_updated_without_checkpoints(monkeypatch):
-    monkeypatch.setattr(harness_module.jax, "local_device_count", lambda: 1)
     store = TrainingDataStore.from_collection(
         _make_multi_process_collection(3),
         target_variable_order=["biomass"],
@@ -1173,7 +1178,6 @@ def test_returned_wrapper_is_updated_without_checkpoints(monkeypatch):
 def test_train_step_routes_batch_rows_cin_and_jump_times(monkeypatch):
     # Replace the loss with a per-sample fingerprint of the inputs the step hands
     # it, so each logged per-process loss reveals which rows were gathered.
-    monkeypatch.setattr(harness_module.jax, "local_device_count", lambda: 1)
     collection = _make_feed_mismatch_collection()
     collection.processes["p3"] = dataclasses.replace(
         deepcopy(collection.processes["p2"]),
@@ -1259,7 +1263,6 @@ def test_train_collection_passes_store_arrays_as_dynamic_inputs(monkeypatch):
 
     monkeypatch.setattr(TrainingDataStore, "_gather_batch_rows", gather)
     # This test exercises the single-device step, where gathering is jitted.
-    monkeypatch.setattr(harness_module.jax, "local_device_count", lambda: 1)
     train_collection(
         store,
         reaction_module=_LinearReactionModule(),
@@ -2469,3 +2472,263 @@ def test_train_holdout_group_is_removed_before_scaling(monkeypatch):
             collection,
             config=TrainHarnessConfig(process_names=("p3",), holdout_processes=("p2",)),
         )
+
+
+def _with_events(process, name, sample_value, bolus_concentration):
+    process = deepcopy(process)
+    sample = process.volume.volume_changes["sample_1"]
+    sample = dataclasses.replace(
+        sample,
+        values=dataclasses.replace(sample.values, values=jnp.asarray([sample_value])),
+    )
+    bolus = Inflow(
+        name="bolus",
+        unit="L",
+        is_controlled=True,
+        is_continuous=False,
+        values=TimeSeries(times=jnp.asarray([0.5]), values=jnp.asarray([0.1])),
+        feed_medium=FeedMedium(
+            name="feed",
+            density=1.0,
+            density_unit="kg/L",
+            components={
+                "biomass": FeedMediumComponent(
+                    name="biomass",
+                    unit="g/L",
+                    concentration=StaticVariable(bolus_concentration),
+                    is_controlled=False,
+                )
+            },
+        ),
+    )
+    volume = dataclasses.replace(
+        process.volume,
+        volume_changes={
+            **process.volume.volume_changes,
+            "sample_1": sample,
+            "bolus": bolus,
+        },
+    )
+    metadata = dataclasses.replace(process.metadata, name=name)
+    return dataclasses.replace(process, metadata=metadata, volume=volume)
+
+
+def _make_event_collection():
+    collection = _make_collection()
+    collection.processes["p1"] = _with_events(
+        collection.processes["p1"], "p1", -0.1, 2.0
+    )
+    collection.processes["p2"] = _with_events(
+        collection.processes["p2"], "p2", -0.2, 4.0
+    )
+    collection.processes["p3"] = _with_events(
+        collection.processes["p1"], "p3", -0.3, 6.0
+    )
+    return collection
+
+
+class _MicrobatchLoss(UserLossModule):
+    weight: jax.Array = trainable_field(default_factory=lambda: jnp.asarray(0.4))
+
+    @property
+    def loss_names(self):
+        return ("fit", "dense")
+
+    @property
+    def dense_grid_n(self):
+        return 3
+
+    def __call__(self, inputs):
+        residual = inputs.SCL_target_pred - inputs.SCL_target_measured
+        fit = jnp.mean(jnp.where(inputs.mask_measured, residual**2, 0))
+        return LossOutputs(
+            {
+                "fit": self.weight * fit + 0.01 * inputs.step * self.weight**2,
+                "dense": 0.02 * jnp.mean(inputs.dense_SCL_states[:, 0] ** 2),
+            }
+        )
+
+
+@pytest.mark.parametrize("use_jump", [False, True])
+def test_microbatch_ode_gradients_and_adam_state_match_full_batch(use_jump):
+    """Check the complete solve outputs and raw gradients before active clipping."""
+    collection = _make_event_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    names = ("p3", "p1", "p2")
+    batch = store.gather_batch(jnp.asarray([2, 0, 1]))
+    wrapper = _build_template_wrapper(
+        store,
+        reaction_module=_LinearReactionModule(),
+        selected_processes=names,
+        loss_module=_MicrobatchLoss(),
+    )
+    params, static = partition_trainable(wrapper)
+    jump = (
+        clamp_padded_time_rows(
+            store.controls_store.jump_ts[batch.process_indices],
+            store.controls_store.jump_ts_lengths[batch.process_indices],
+        )
+        if use_jump
+        else None
+    )
+    loss_fn = build_batched_loss_fn()
+
+    def objective(params, width):
+        outputs = loss_fn(
+            eqx.combine(params, static),
+            batch,
+            store.Cin_controlled_Inflows,
+            store.Cin_modeled_Inflows,
+            jump,
+            max_solver_steps=2048,
+            solver_rtol=1e-5,
+            solver_atol=1e-7,
+            step=7,
+            microbatch_size=width,
+        )
+        return outputs[0], outputs
+
+    evaluate = eqx.filter_jit(eqx.filter_value_and_grad(objective, has_aux=True))
+    expected, full_grad = evaluate(params, None)
+    assert float(optax.tree.norm(full_grad)) > 0.001
+    assert abs(float(full_grad.loss_module.weight)) > 0
+    optimizer = _build_optimizer(
+        "adam",
+        optax.linear_schedule(0.02, 0.001, 10),
+        grad_clip_norm=0.001,
+    )
+    # Nonzero moments expose incorrect update counts and optimizer transforms.
+    _, state = optimizer.update(full_grad, optimizer.init(params), params=params)
+    expected_update, expected_state = optimizer.update(full_grad, state, params=params)
+    for width in (1, 2):
+        actual, grad = evaluate(params, width)
+        update, next_state = optimizer.update(grad, state, params=params)
+        for observed, reference in zip(
+            jax.tree.leaves((actual, grad, update, next_state)),
+            jax.tree.leaves((expected, full_grad, expected_update, expected_state)),
+            strict=True,
+        ):
+            np.testing.assert_allclose(observed, reference, rtol=1e-7, atol=1e-8)
+        np.testing.assert_allclose(
+            optax.tree.norm(grad),
+            optax.tree.norm(full_grad),
+            rtol=1e-7,
+            atol=1e-8,
+        )
+
+
+def test_microbatch_harness_preserves_updates_and_checkpoint_state(
+    tmp_path, monkeypatch
+):
+    collection = _make_event_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    reference = None
+    for width in (None, 2):
+        run_dir = tmp_path / str(width)
+        schedule = optax.linear_schedule(0.02, 0.001, 10)
+        result = train_collection(
+            store,
+            reaction_module=_LinearReactionModule(),
+            loss_module=_MicrobatchLoss(),
+            config=TrainHarnessConfig(
+                process_names=("p3", "p1", "p2"),
+                epochs=3,
+                batch_size=3,
+                microbatch_size=width,
+                shuffle_batches=False,
+                learning_rate=schedule,
+                grad_clip_norm=0.001,
+                metrics_jsonl=run_dir / "metrics.jsonl",
+                checkpoint_dir=run_dir / "checkpoints",
+                checkpoint_every=0,
+            ),
+        )
+        params, _ = partition_trainable(result.trained_wrapper)
+        optimizer = _build_optimizer("adam", schedule, grad_clip_norm=0.001)
+        latest = run_dir / "checkpoints/latest"
+        state = load_opt_state(
+            latest / "opt_state.eqx", template=optimizer.init(params)
+        )
+        metadata = json.loads((latest / "train_state.json").read_text())
+        assert metadata["step"] == result.updates_completed == 3
+        assert metadata["samples_seen"] == 9
+        counts = [
+            int(x)
+            for x in jax.tree.leaves(state)
+            if jnp.issubdtype(x.dtype, jnp.integer)
+        ]
+        assert counts and all(count == 3 for count in counts)
+        assert result.batch_process_names_by_step == (("p3", "p1", "p2"),) * 3
+        rows = [
+            json.loads(line)
+            for line in (run_dir / "metrics.jsonl").read_text().splitlines()
+        ]
+        assert [row["step"] for row in rows] == [1, 2, 3]
+        assert [row["samples_seen"] for row in rows] == [3, 6, 9]
+        assert all(norm > 0.001 for norm in result.grad_norm_by_step)
+        observed = (
+            params,
+            state,
+            result.mean_loss_by_step,
+            result.per_process_loss_by_step,
+            result.grad_norm_by_step,
+        )
+        if reference is None:
+            reference = observed
+        else:
+            for actual, expected in zip(
+                jax.tree.leaves(observed), jax.tree.leaves(reference), strict=True
+            ):
+                np.testing.assert_allclose(actual, expected, rtol=1e-7, atol=1e-8)
+
+
+class _P2OnlyBlowUp(_LinearReactionModule):
+    def __call__(self, t, inputs):
+        state = inputs.SCL_modeled_RMCs[0]
+        is_p2 = inputs.SCL_modeled_V > 0.95
+        rate = jnp.where((t > 1.0) & is_p2, 1.0e4 * state, 0.0)
+        return ReactionOutputs(
+            SCL_modeled_ReactionOde_rates=jnp.asarray([rate], dtype=state.dtype),
+            SCL_modeled_Inflows_rates=jnp.zeros((0,), dtype=state.dtype),
+            SCL_modeled_Outflows_rates=jnp.zeros(0),
+        )
+
+
+def test_microbatch_failure_in_short_tail_keeps_process_identity(tmp_path):
+    collection = _make_collection()
+    collection.processes["p3"] = dataclasses.replace(
+        deepcopy(collection.processes["p1"]),
+        metadata=dataclasses.replace(collection.processes["p1"].metadata, name="p3"),
+    )
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    metrics = tmp_path / "metrics.jsonl"
+    train_collection(
+        store,
+        reaction_module=_P2OnlyBlowUp(),
+        loss_module=_biomass_loss(),
+        config=TrainHarnessConfig(
+            process_names=("p1", "p3", "p2"),
+            epochs=1,
+            batch_size=3,
+            microbatch_size=2,
+            shuffle_batches=False,
+            solver_max_steps=512,
+            metrics_jsonl=metrics,
+        ),
+    )
+    row = json.loads(metrics.read_text())
+    assert row["process_names"] == ["p1", "p3", "p2"]
+    assert row["failed_processes"] == ["p2"]
+    assert row["n_failed_samples"] == 1

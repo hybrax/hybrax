@@ -50,7 +50,7 @@ EXAMPLE = Path("../../../examples/gallery_fba_hyb").resolve()
 shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
 shutil.copy(EXAMPLE / "custom.py", WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu",
        "MPLBACKEND": "Agg"}
 
 def hxt_cli(*args):

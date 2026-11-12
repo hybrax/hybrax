@@ -85,7 +85,7 @@ def test_budget_is_independent_of_how_the_horizon_is_chopped():
 def test_max_steps_also_bounds_the_inner_solve():
     """There is exactly ONE knob, and it bounds a single segment too. A budget below
     what one segment needs must bail rather than let that segment run unbounded --
-    this is what makes the trajectory bound safe to use as the pmap latency guard now
+    this is what makes the trajectory bound safe to use as the solve latency guard now
     that the separate per-segment cap is gone."""
     sol = _solve(n_segments=1, max_steps=4)
     assert bool(jnp.all(jnp.isinf(sol.y_final)))
