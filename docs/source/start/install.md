@@ -76,9 +76,6 @@ importing `hybrax.format` afterwards will flip x64 on underneath you, and float3
 handed to `TimeSeries` will raise rather than silently upcast.
 :::
 
-Training uses one worker by default. Set `train.workers` to use more CPU
-worker processes. See [Training](../train/train.md).
-
 ## Building these docs
 
 This site lives under `docs/` in the `hybrax` repo. From the repo root:

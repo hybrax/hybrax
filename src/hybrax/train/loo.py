@@ -495,28 +495,16 @@ def resolve_folds(
 # ---------------------------------------------------------------------------
 
 
-def compute_parallel_split(
-    n_folds: int,
-    n_cpu: int,
-    parallel_folds: int,
-    *,
-    workers_per_fold: int = 1,
-    max_workers_per_fold: int | None = None,
-) -> tuple[int, int]:
-    """Allocate fold concurrency and worker processes within the CPU budget.
+def compute_parallel_folds(
+    n_folds: int, n_cpu: int, parallel_folds: int, workers_per_fold: int = 1
+) -> int:
+    """Return how many folds train at once.
 
-    Cap workers at the smallest fold batch, then reduce concurrent folds so
-    ``parallel_folds * workers_per_fold <= n_cpu``.
+    That is the requested ``parallel_folds``, capped at the fold count and
+    reduced until ``parallel_folds * workers_per_fold <= n_cpu`` (but never
+    below one fold).
     """
-    n_cpu = max(1, int(n_cpu))
-    n_folds = max(1, int(n_folds))
-    requested_parallel = max(1, min(int(parallel_folds), n_folds, n_cpu))
-    workers = max(1, int(workers_per_fold))
-    workers = min(workers, n_cpu)
-    if max_workers_per_fold is not None:
-        workers = max(1, min(workers, int(max_workers_per_fold)))
-    effective_parallel = max(1, min(requested_parallel, n_cpu // workers))
-    return effective_parallel, workers
+    return max(1, min(parallel_folds, n_folds, n_cpu // workers_per_fold))
 
 
 # ---------------------------------------------------------------------------
@@ -1133,23 +1121,10 @@ def run_loo_cv(
     n_cpu = (
         len(os.sched_getaffinity(0)) if cpu_leases is not None else os.cpu_count() or 1
     )
-    batch_size = cfg.train.batch_size
-
-    def _eff_batch(fold: Fold) -> int:
-        return min(len(fold.train), batch_size) if batch_size else len(fold.train)
-
-    parallel, workers = compute_parallel_split(
-        n_folds,
-        n_cpu,
-        loo_cfg.parallel_folds,
-        workers_per_fold=loo_cfg.workers_per_fold,
-        max_workers_per_fold=min(
-            min(_eff_batch(fold) for fold in folds),
-            loo_cfg.cpus_per_fold or n_cpu,
-        ),
-    )
+    workers = loo_cfg.workers_per_fold
     if cfg.train.microbatch_size is not None and workers > 1:
         raise ValueError("microbatching requires loo.workers_per_fold=1")
+    parallel = compute_parallel_folds(n_folds, n_cpu, loo_cfg.parallel_folds, workers)
     if loo_cfg.parallel_folds > n_folds:
         logger.info(
             "LOO: parallel_folds=%d exceeds the %d resolved fold(s); clamped to %d.",

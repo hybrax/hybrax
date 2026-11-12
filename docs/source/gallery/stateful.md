@@ -54,8 +54,7 @@ EXAMPLE = Path("../../../examples/gallery_stateful").resolve()
 shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
 shutil.copy(EXAMPLE / "custom.py", WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu",
-       "MPLBACKEND": "Agg"}
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "MPLBACKEND": "Agg"}
 
 def hxt_cli(*args, check=True):
     proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],

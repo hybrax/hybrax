@@ -89,8 +89,9 @@ Folds are independent, and each runs in its own subprocess.
 { "loo": { "parallel_folds": 2, "workers_per_fold": 2 } }
 ```
 
-`workers_per_fold` defaults to 1. Each fold runs in its own subprocess,
-with this many worker processes computing its training gradients. The orchestrator
+`workers_per_fold` defaults to 1 and sets each fold's worker-process count,
+capped at that fold's batch size. Multiple workers are CPU-only. A count above
+`cpus_per_fold`, when set, is a config validation error. The orchestrator
 reduces concurrent folds to keep `parallel_folds * workers_per_fold <= n_cpu`.
 Use `loo.workers_per_fold` for LOO; leave `train.workers` at 1.
 

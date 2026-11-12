@@ -218,8 +218,8 @@ sorted CPU IDs. Each completed worker returns its CPUs to the pool. Affinity
 is applied before importing JAX and logged for each fold.
 
 `workers_per_fold` controls worker processes, separately from CPU affinity. With
-`cpus_per_fold` set, the worker count is also capped at that CPU
-budget. See [CPU budget for parallel folds](loo.md#cpu-budget-for-parallel-folds).
+`cpus_per_fold` set, a worker count above that CPU budget is a config validation
+error. See [CPU budget for parallel folds](loo.md#cpu-budget-for-parallel-folds).
 
 ## See also
 

@@ -34,8 +34,7 @@ EXAMPLE = Path("../../../examples/tutorial_05_predict").resolve()
 shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
 shutil.copy(EXAMPLE / "custom.py", WORK / "custom.py")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu",
-       "MPLBACKEND": "Agg"}
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "MPLBACKEND": "Agg"}
 
 def hxt_cli(*args):
     proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],

@@ -60,7 +60,7 @@ _EXPORTS = {
     "FoldResult": "loo",
     "LOOResult": "loo",
     "resolve_folds": "loo",
-    "compute_parallel_split": "loo",
+    "compute_parallel_folds": "loo",
     "run_loo_cv": "loo",
     "run_single_fold": "loo",
     "DEFAULT_METRICS": "loo_metrics",

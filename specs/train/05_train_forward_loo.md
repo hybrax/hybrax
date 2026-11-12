@@ -165,8 +165,8 @@ optional [`loo`](../../src/hybrax/train/run_config.py) section. The CLI is
   ],
   // How many folds to train at once (you own the RAM call).
   "parallel_folds": 4,
-  // null derives a per-fold CPU-device count.
-  "devices_per_fold": null
+  // Worker processes per fold (default 1).
+  "workers_per_fold": 1
 }
 ```
 
@@ -179,18 +179,17 @@ optional [`loo`](../../src/hybrax/train/run_config.py) section. The CLI is
   or siblings into the fold (a pinned `train` that does so fails fast).
 - **Parallel folds** ([`run_loo_cv`](../../src/hybrax/train/loo.py) → per-fold
   [`run_single_fold`](../../src/hybrax/train/loo.py)): each fold trains as **its own
-  subprocess** (the JAX CPU device count is fixed per process). You set
-  `parallel_folds` (default `1`, sequential) from what your RAM and CPU budget
-  can hold. A JAX CPU device is not one CPU core: XLA may use several threads per
-  device, so lower `parallel_folds` to reduce aggregate CPU use. With
-  `devices_per_fold=null`, the orchestrator
-  ([`compute_parallel_split`](../../src/hybrax/train/loo.py)) derives it as
-  `n_cpu // parallel_folds`, capped at the smallest fold's effective batch
-  (`min(train size, train.batch_size)`) since a fold cannot expose more host
-  devices than its `pmap` batch. Set `devices_per_fold` to a positive integer to
-  override that derived count. Worker CPU affinity is unrestricted unless
-  `cpus_per_fold` is set. There is deliberately **no automatic RAM
-  sizing**.
+  subprocess**. Set `parallel_folds` (default `1`, sequential) from what your
+  RAM and CPU budget can hold. The orchestrator
+  ([`compute_parallel_folds`](../../src/hybrax/train/loo.py)) takes
+  `(n_folds, n_cpu, parallel_folds, workers_per_fold=1)` and returns the
+  concurrent fold count, reduced so that
+  `parallel_folds * workers_per_fold <= n_cpu`. Each fold uses
+  `workers_per_fold` worker processes (default `1`), capped at its batch size.
+  Leave `train.workers` at `1` for LOO. Multiple workers are CPU-only;
+  `microbatch_size` requires `workers_per_fold: 1`.
+  Worker CPU affinity is unrestricted unless `cpus_per_fold` is set.
+  There is deliberately **no automatic RAM sizing**.
 - **Holdout evaluation:** each fold uses its `test` set as a diagnostic holdout,
   evaluated at every periodic checkpoint and at the mandatory final checkpoint.
   It never drives the optimizer.
@@ -236,8 +235,8 @@ worker imports. The default `null` leaves affinity unrestricted. The budget
 `cpus_per_fold * min(parallel_folds, n_folds)` must fit the parent's allowed
 CPU mask. Linux affinity support is required. The pool prefers distinct
 physical cores using sysfs package/core IDs, falls back to sorted CPU IDs,
-logs each assignment, and reuses sets when workers exit. JAX devices remain a
-separate setting, capped at the per-fold CPU budget when affinity is enabled.
+logs each assignment, and reuses sets when workers exit. A `workers_per_fold`
+count above `cpus_per_fold` is a config validation error.
 
 One CPU can fail at warmup in Equinox `error_if` host callbacks with
 `No registered implementation for untyped custom call to

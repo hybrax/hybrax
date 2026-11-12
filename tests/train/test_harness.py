@@ -1158,7 +1158,7 @@ def test_holdout_and_checkpoints_use_the_updated_wrapper(
     _assert_same_trainables(trained, saved)
 
 
-def test_returned_wrapper_is_updated_without_checkpoints(monkeypatch):
+def test_returned_wrapper_is_updated_without_checkpoints():
     store = TrainingDataStore.from_collection(
         _make_multi_process_collection(3),
         target_variable_order=["biomass"],
@@ -1262,7 +1262,7 @@ def test_train_collection_passes_store_arrays_as_dynamic_inputs(monkeypatch):
         return original_gather(current_store, indices)
 
     monkeypatch.setattr(TrainingDataStore, "_gather_batch_rows", gather)
-    # This test exercises the single-device step, where gathering is jitted.
+    # This test exercises the in-process step, where gathering is jitted.
     train_collection(
         store,
         reaction_module=_LinearReactionModule(),
@@ -2621,9 +2621,7 @@ def test_microbatch_ode_gradients_and_adam_state_match_full_batch(use_jump):
         )
 
 
-def test_microbatch_harness_preserves_updates_and_checkpoint_state(
-    tmp_path, monkeypatch
-):
+def test_microbatch_harness_preserves_updates_and_checkpoint_state(tmp_path):
     collection = _make_event_collection()
     store = TrainingDataStore.from_collection(
         collection,

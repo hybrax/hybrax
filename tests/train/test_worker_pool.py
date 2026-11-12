@@ -81,6 +81,7 @@ def test_flat_transport_restores_dtypes_and_shapes():
         np.testing.assert_array_equal(actual, expected)
     with pytest.raises(ValueError, match="length differs"):
         _restore(np.zeros(8), tree)
+    assert _restore(_flatten({}), {}) == {}
 
 
 def test_workers_match_in_process_training(tmp_path):

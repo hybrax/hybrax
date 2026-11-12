@@ -99,9 +99,7 @@ for folder, names in (
     folder.mkdir(parents=True, exist_ok=True)
     for name in names:
         shutil.copyfile(EXAMPLES / folder.name / name, folder / name)
-ENV = os.environ | {
-    "JAX_PLATFORMS": "cpu", "MPLBACKEND": "Agg",
-}
+ENV = os.environ | {"JAX_PLATFORMS": "cpu", "MPLBACKEND": "Agg"}
 
 def hxt_cli(*arguments):
     result = subprocess.run(

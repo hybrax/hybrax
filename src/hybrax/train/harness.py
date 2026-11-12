@@ -1794,13 +1794,7 @@ def train_collection(
             # One device->host fetch for every value the host loop needs.
             loss, per_target_loss, per_sample_loss, grad_norm, per_sample_fail = (
                 jax.device_get(
-                    (
-                        loss,
-                        per_target_loss,
-                        per_sample_loss,
-                        grad_norm,
-                        per_sample_fail,
-                    )
+                    (loss, per_target_loss, per_sample_loss, grad_norm, per_sample_fail)
                 )
             )
             step_dt = time.perf_counter() - t0
@@ -1823,11 +1817,7 @@ def train_collection(
                 if np.isfinite(ft)
             )
 
-            holdout_loss, holdout_per_target, holdout_predictions = (
-                None,
-                None,
-                None,
-            )
+            holdout_loss, holdout_per_target, holdout_predictions = (None, None, None)
             failed_holdout_names: tuple[str, ...] = ()
             holdout_per_process = None
             if step in checkpoint_boundaries:
@@ -1918,10 +1908,7 @@ def train_collection(
             # Drawn once at the end: a 50-panel loss plot takes seconds, and
             # training would wait for every redraw.
             _write_training_plots(
-                {
-                    **history,
-                    "holdout_per_target_by_step": holdout_per_target_so_far,
-                },
+                {**history, "holdout_per_target_by_step": holdout_per_target_so_far},
                 Path(cfg.checkpoint_dir).parent,
             )
 

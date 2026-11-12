@@ -1,4 +1,4 @@
-"""Per-sample solves and batched losses for training worker processes."""
+"""Per-sample solves and batched losses for in-process steps and worker processes."""
 
 from __future__ import annotations
 

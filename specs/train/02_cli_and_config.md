@@ -121,7 +121,7 @@ The command rejects an existing `losses.csv` in `--output-dir` unless
 
 Leave-one/some-process-out cross-validation.
 Config-driven: the run config is the same as `train` plus an optional `loo` section.
-Each fold trains as its own subprocess; you choose how many run at once and how many JAX CPU devices each fold exposes. A short-lived producer loads the
+Each fold trains as its own subprocess; you choose how many run at once and how many worker processes each fold uses. A short-lived producer loads the
 prepared collection, resolves folds, estimates scales, and writes a strict,
 collection-free `runtime-artifact/`; it exits before fold workers start. Workers
 load only that artifact, never the prepared collection.
@@ -139,8 +139,8 @@ The `loo` config section:
 |---|---|
 | `per_fold_holdout_sets` | List of `{"name"?: ..., "test": [...], "train"?: [...]}` folds. `train` omitted → every process not in `test`; `name` (optional) labels the `folds/<slug>/` dir. Omit the whole key → classic leave-one-out (one fold per process). Holding out any member of an augmentation group excludes the whole group (parent + children) from `train`. |
 | `parallel_folds` | How many folds to train concurrently (default `1`, sequential). Worker CPU affinity is unrestricted unless `cpus_per_fold` is set. You set concurrency from what your RAM holds — there is no automatic RAM sizing. |
-| `devices_per_fold` | Optional positive JAX CPU-device count per fold. Omitted (`null`) → `n_cpu // parallel_folds`, additionally capped at the smallest fold's effective batch (a fold cannot expose more host devices than its `pmap` batch without deadlocking). |
-| `cpus_per_fold` | Optional integer >= 2, default `null` (unrestricted). Leases disjoint allowed logical CPUs per worker before JAX imports, preferring distinct physical cores. Concurrent leases must fit the parent affinity mask. The resolved JAX device count is capped at this budget. |
+| `workers_per_fold` | Positive worker-process count per fold, default 1. Each fold caps it at its batch size. Concurrent folds are reduced so that `parallel_folds * workers_per_fold <= n_cpu`. Leave `train.workers` at 1 for LOO. |
+| `cpus_per_fold` | Optional integer >= 2, default `null` (unrestricted). Leases disjoint allowed logical CPUs per worker before JAX imports, preferring distinct physical cores. Concurrent leases must fit the parent affinity mask. A `workers_per_fold` count above this budget is a config validation error. |
 Each fold's holdout loss is evaluated at every checkpoint boundary, including the final step.
 
 A fresh LOO run requires the exact output directory not to exist. Use
@@ -374,7 +374,7 @@ directory.
 | `batch_size` | null | Processes per update; null = all. Values larger than the selected process count are invalid. |
 | `shuffle` | true | Independently shuffle each epoch. |
 | `batch_seed` | null | Batch-index seed. |
-| `devices` | 1 | CPU devices to shard over; `"max"` = `min(n_proc, n_cpu)`. |
+| `workers` | 1 | Worker processes for each update's per-process ODE solves. CPU-only with multiple workers; capped at batch size. Trades memory and a few seconds of startup for faster updates. `microbatch_size` requires `workers: 1`. |
 | `allow_stateful_models` | false | Allow reaction modules with latent state (`n_latent > 0`); otherwise they fail fast. |
 
 **`solver`** — [`SolverConfig`](../../src/hybrax/train/run_config.py)
@@ -430,15 +430,15 @@ Inline comments, block comments, trailing commas, and other JSON5-only syntax
 remain invalid. The stdlib parser and generated files retain its
 `NaN`/`Infinity` extensions for non-finite floats.
 
-## Device pooling
+## Worker processes
 
 ```json
-{ "train": { "devices": "max" } }
+{ "train": { "workers": 4 } }
 ```
-Use an integer instead of `"max"` to request a fixed device count, or set
-`HYBRAX_TRAIN_DEVICES=8 hybrax train --config …` (the environment wins). Resolved
-before JAX initializes; default 1. See
-[01_design_rationale.md](01_design_rationale.md#9-opt-in-multi-core-device-pooling).
+The default is 1. More workers spread each update's per-process ODE solves over
+spawned worker processes. Multiple workers are CPU-only and capped at the batch
+size; `microbatch_size` requires `workers: 1`. See
+[01_design_rationale.md](01_design_rationale.md#9-opt-in-worker-processes).
 
 ## Example: `train-config.json`
 
@@ -454,7 +454,7 @@ A minimal training config:
   "train": {
     "epochs": 1,
     "seed": 0,
-    "devices": "max"
+    "workers": 4
   },
   "solver": {
     "max_steps": 4096,

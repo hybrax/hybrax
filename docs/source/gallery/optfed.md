@@ -96,9 +96,7 @@ for name in (
     "original_sampling_predictions.csv",
 ):
     shutil.copyfile(EXAMPLE / name, WORK / name)
-ENV = os.environ | {
-    "JAX_PLATFORMS": "cpu", "MPLBACKEND": "Agg",
-}
+ENV = os.environ | {"JAX_PLATFORMS": "cpu", "MPLBACKEND": "Agg"}
 
 def hxt_cli(*arguments):
     result = subprocess.run(

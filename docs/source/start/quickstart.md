@@ -32,8 +32,7 @@ if WORK.exists():
 WORK.mkdir(parents=True)
 shutil.copy(DATA / "data.json", WORK / "data.json")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu",
-       "MPLBACKEND": "Agg"}
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "MPLBACKEND": "Agg"}
 
 def hxt_cli(*args):
     """Run the hybrax.train CLI in WORK and return its combined output."""

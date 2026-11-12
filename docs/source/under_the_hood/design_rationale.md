@@ -243,4 +243,4 @@ See [The Python API](../train/save_load_predict.md).
 
 Training uses `train.workers` worker processes, default 1. Each worker holds its
 own compiled solve, trading memory for speed. Counts are capped at the batch size;
-multiple workers are CPU-only. Each computer process has one JAX CPU device.
+multiple workers are CPU-only.

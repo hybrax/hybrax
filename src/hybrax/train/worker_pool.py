@@ -60,7 +60,9 @@ def _dumps(obj) -> bytes:
 
 def _flatten(tree) -> np.ndarray:
     """Concatenate all array leaves into one host vector."""
-    return np.concatenate([np.asarray(leaf).ravel() for leaf in jtu.tree_leaves(tree)])
+    leaves = [np.asarray(leaf).ravel() for leaf in jtu.tree_leaves(tree)]
+    # A fully frozen model has no trainable leaves.
+    return np.concatenate(leaves) if leaves else np.zeros(0)
 
 
 def _restore(flat: np.ndarray, template):
@@ -147,8 +149,9 @@ class GradientWorkerPool:
     def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, *_exc) -> None:
-        self._executor.shutdown(wait=True, cancel_futures=True)
+    def __exit__(self, exc_type, *_exc) -> None:
+        # After an error, do not hold it back until the running solves finish.
+        self._executor.shutdown(wait=exc_type is None, cancel_futures=True)
 
     def mean_gradient(self, params, batch_indices, step) -> tuple[list, Any]:
         """Evaluate every batch process at the same ``params`` and ``step``.

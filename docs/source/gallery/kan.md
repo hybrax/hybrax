@@ -49,8 +49,7 @@ shutil.copy(EXAMPLE / "custom.py", WORK / "custom.py")
 shutil.copy(EXAMPLE / "shape_match.py", WORK / "shape_match.py")
 sys.path.insert(0, str(WORK))
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu",
-       "MPLBACKEND": "Agg"}
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "MPLBACKEND": "Agg"}
 
 def hxt_cli(*args):
     proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],

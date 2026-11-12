@@ -787,6 +787,11 @@ def test_batched_loss_fn_keeps_fail_times_independent_per_lane():
     assert bool(jnp.isinf(fail_times[1])), "healthy p2 lane"
 
 
+# ---------------------------------------------------------------------------
+# Dense-grid helpers (hybrax/train/dense.py)
+# ---------------------------------------------------------------------------
+
+
 def test_build_union_time_grid_sorts_and_indexes_correctly():
     from hybrax.train.dense import build_union_time_grid
 

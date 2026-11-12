@@ -37,7 +37,7 @@ from hybrax.train.loo import (
     _build_fold_groups,
     _read_final_train_loss,
     _write_summary_and_aggregate,
-    compute_parallel_split,
+    compute_parallel_folds,
     resolve_folds,
     run_loo_cv,
     run_single_fold,
@@ -374,49 +374,24 @@ def test_resolve_folds_data_processes_none_matches_unrestricted():
 
 
 # ---------------------------------------------------------------------------
-# compute_parallel_split
+# compute_parallel_folds
 # ---------------------------------------------------------------------------
 
 
-def test_split_defaults_to_one_worker_per_fold():
-    # Four folds use one worker each by default.
-    parallel, workers = compute_parallel_split(9, 16, 4)
-    assert (parallel, workers) == (4, 1)
-    assert parallel * workers <= 16
-
-
-def test_split_sequential_defaults_to_one_worker():
-    parallel, workers = compute_parallel_split(12, 16, 1)
-    assert (parallel, workers) == (1, 1)
-
-
-def test_split_clamped_to_fold_and_cpu_count():
-    # asking for 20-wide with only 9 folds / 8 cpus -> 8 parallel.
-    parallel, workers = compute_parallel_split(9, 8, 20)
-    assert parallel == 8 and workers == 1
-
-
-def test_split_workers_capped_by_batch():
-    # 2 folds, 16 cores -> 8 workers each, but batch caps at 3.
-    parallel, workers = compute_parallel_split(
-        2, 16, 2, workers_per_fold=8, max_workers_per_fold=3
-    )
-    assert (parallel, workers) == (2, 3)
-
-
-def test_split_uses_configured_workers_per_fold():
-    parallel, workers = compute_parallel_split(9, 16, 4, workers_per_fold=2)
-    assert (parallel, workers) == (4, 2)
-
-
-def test_split_configured_workers_clamps_parallel_to_cpu_count():
-    parallel, workers = compute_parallel_split(9, 16, 9, workers_per_fold=4)
-    assert (parallel, workers) == (4, 4)
-
-
-def test_split_never_below_one():
-    parallel, workers = compute_parallel_split(0, 1, 1)
-    assert parallel == 1 and workers == 1
+@pytest.mark.parametrize(
+    ("n_folds", "n_cpu", "requested", "workers", "expected"),
+    [
+        (9, 16, 4, 1, 4),
+        (9, 8, 20, 1, 8),  # capped at the CPU count
+        (3, 16, 20, 1, 3),  # capped at the fold count
+        (9, 16, 9, 4, 4),  # parallel * workers <= n_cpu
+        (9, 2, 4, 4, 1),  # never below one fold
+    ],
+)
+def test_parallel_folds_fit_fold_count_and_cpu_budget(
+    n_folds, n_cpu, requested, workers, expected
+):
+    assert compute_parallel_folds(n_folds, n_cpu, requested, workers) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -1791,23 +1766,9 @@ def test_run_loo_cv_affinity_budget(monkeypatch, tmp_path):
         )
 
 
-def test_run_loo_cv_caps_workers_at_cpu_budget(monkeypatch, tmp_path):
-    collection = BioProcessCollection(
-        processes={f"p{i}": _make_process(f"p{i}") for i in range(1, 7)},
-        metadata={},
-    )
-    _patch_runtime_metadata(monkeypatch, tmp_path, _runtime_metadata(collection))
-    _patch_dispatch(monkeypatch)
-    monkeypatch.setattr(os, "sched_getaffinity", lambda _: set(range(8)), raising=False)
-    monkeypatch.setattr(os, "sched_setaffinity", lambda *_: None, raising=False)
-    cfg = RunConfig(
-        data=DataConfig(prepared=Path("prepared.json")),
-        loo=LooConfig(parallel_folds=2, cpus_per_fold=2, workers_per_fold=4),
-    )
-    result = run_loo_cv(
-        cfg=cfg, config_path=tmp_path / "loo-config.json", output_dir=tmp_path
-    )
-    assert result.workers_per_fold == 2
+def test_loo_config_rejects_more_workers_than_leased_cpus():
+    with pytest.raises(ValueError, match="must not exceed loo.cpus_per_fold"):
+        LooConfig(cpus_per_fold=2, workers_per_fold=4)
 
 
 @pytest.mark.parametrize(("holdout_sets", "allowed"), [(None, 3), (3, 5)])
@@ -1838,9 +1799,11 @@ def test_loo_cli_checks_cpu_budget_before_producer(
 
 @pytest.mark.parametrize("workers", [1, 3])
 def test_effective_fold_config_sets_worker_count(tmp_path, workers):
-    cfg = RunConfig(loo=LooConfig(workers_per_fold=workers))
+    cfg = RunConfig(
+        data=DataConfig(prepared=Path("data.json")),
+        loo=LooConfig(workers_per_fold=workers),
+    )
     fold = loo_mod.Fold(0, ("test",), ("train",), "fold-0", 42)
-    cfg = cfg.model_copy(update={"data": DataConfig(prepared=Path("data.json"))})
     effective, _, _ = loo_mod._effective_fold_config(cfg, fold, tmp_path, None)
     assert effective.train.workers == workers
     assert effective.train.seed == 42

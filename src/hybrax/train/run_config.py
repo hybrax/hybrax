@@ -112,7 +112,7 @@ class DataConfig(ConfigBase):
 
 
 class TrainConfig(ConfigBase):
-    """Optimizer, batching, and device settings for one training run.
+    """Optimizer, batching, and worker settings for one training run.
 
     ``epochs`` (default 5) is how many passes over the selected process set
     to run; ``--epochs`` on the CLI overrides this, since it is the one knob
@@ -425,8 +425,9 @@ class LooConfig(ConfigBase):
     ``per_fold_holdout_sets=None`` runs classic leave-one-out: one fold per
     parent process group. ``parallel_folds`` is how many folds train at once
     (each fold is its own subprocess). ``workers_per_fold`` (default 1) counts
-    worker processes for each fold's training. The orchestrator reduces concurrent
-    folds to keep ``parallel_folds * workers_per_fold <= n_cpu``.
+    worker processes for each fold's training, capped at the fold's batch size
+    and limited to ``cpus_per_fold`` when that is set. The orchestrator reduces
+    concurrent folds to keep ``parallel_folds * workers_per_fold <= n_cpu``.
     `cpus_per_fold` optionally leases disjoint allowed CPUs before worker
     imports; its default leaves affinity unrestricted.
     Set these from what your RAM can hold — there is deliberately no automatic
@@ -446,6 +447,15 @@ class LooConfig(ConfigBase):
         if isinstance(value, bool):
             raise ValueError("loo counts must be integers, not bool")
         return value
+
+    @model_validator(mode="after")
+    def _workers_fit_leased_cpus(self):
+        if (
+            self.cpus_per_fold is not None
+            and self.workers_per_fold > self.cpus_per_fold
+        ):
+            raise ValueError("loo.workers_per_fold must not exceed loo.cpus_per_fold")
+        return self
 
 
 class RunConfig(ConfigBase):

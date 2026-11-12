@@ -338,7 +338,7 @@ def test_train_typed_fields_resolve_from_config(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("workers", [1, 2])
 @pytest.mark.parametrize("width", [None, 1])
-def test_microbatch_requires_configured_single_worker(monkeypatch, workers, width):
+def test_microbatch_requires_configured_single_worker(workers, width):
     config = {"train": {"workers": workers, "microbatch_size": width}}
     if width is not None and workers != 1:
         with pytest.raises(ValidationError, match="train.workers=1"):
