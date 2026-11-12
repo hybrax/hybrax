@@ -65,13 +65,19 @@ html_js_files = ["custom.js"]
 html_logo = "_static/hybrax_logo.png"
 html_favicon = "_static/favicon.png"
 html_theme_options = {
+    # Text is in _templates/page.html; furo only needs a non-empty value here.
+    "announcement": "under construction",
     "light_css_variables": {
         "color-brand-primary": "#2563eb",
         "color-brand-content": "#2563eb",
+        "color-announcement-background": "#fdf1d3",
+        "color-announcement-text": "#5c4300",
     },
     "dark_css_variables": {
         "color-brand-primary": "#60a5fa",
         "color-brand-content": "#60a5fa",
+        "color-announcement-background": "#3a3018",
+        "color-announcement-text": "#f3d68a",
     },
 }
 

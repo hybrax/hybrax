@@ -1,0 +1,14 @@
+{#-
+  Fills furo's announcement banner (shown at the top of every page). It lives
+  here rather than in conf.py's `announcement` option so the links can use
+  pathto() and resolve at any page depth. conf.py still has to set
+  `announcement` to a non-empty value, or furo skips the banner.
+-#}
+{% extends "!page.html" %}
+{% block announcement %}
+These docs are under construction and many pages are still rough. For an
+overview of what Hybrax can do, see the
+<a href="{{ pathto('gallery/hek293_lstm') }}">HEK293</a> and OptFed
+(<a href="{{ pathto('gallery/optfed') }}">mechanistic</a>,
+<a href="{{ pathto('gallery/optfed_neural') }}">neural</a>) gallery examples.
+{% endblock announcement %}

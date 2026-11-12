@@ -74,3 +74,14 @@ body[data-theme="dark"] .sidebar-logo-container {
 .sidebar-tree p.caption.collapsed + ul {
   display: none;
 }
+
+/* --- announcement banner -------------------------------------------------
+   furo keeps the banner one line high (nowrap, fixed height, overflow-x:
+   auto), so our longer text got a horizontal scrollbar. Let it wrap and grow
+   instead. */
+.announcement {
+  height: auto;
+  min-height: var(--header-height);
+  overflow-x: visible;
+}
+.announcement-content { white-space: normal; }

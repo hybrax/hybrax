@@ -14,6 +14,11 @@ augmentation, training, prediction, and leave-one-out cross-validation.
 Read the [documentation](https://hybrax.readthedocs.io) for tutorials, gallery
 examples, and API reference.
 
+> **Status:** Hybrax is under active development. Until 1.0, minor releases
+> may break the API; the
+> [changelog](https://github.com/hybrax/hybrax/blob/main/CHANGELOG.md) marks
+> breaking changes. The documentation is still under construction as well.
+
 ## Motivation
 
 Bioprocess modeling research lacks standardized data formats, making it
