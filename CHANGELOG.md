@@ -7,6 +7,8 @@ public API; such entries are marked **Breaking**.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-12
+
 ### Added
 
 - `metrics.csv` and `metrics.jsonl` now break the holdout loss down by target
@@ -86,5 +88,6 @@ public API; such entries are marked **Breaking**.
 
 First release on PyPI.
 
-[Unreleased]: https://github.com/hybrax/hybrax/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/hybrax/hybrax/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/hybrax/hybrax/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/hybrax/hybrax/releases/tag/v0.1.0
