@@ -348,6 +348,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -573,7 +574,7 @@ an axis four orders of magnitude away from the others. See <a class="reference i
 <h3>Something was OOM-killed<a class="headerlink" href="#something-was-oom-killed" title="Link to this heading">¶</a></h3>
 <p><strong>Why.</strong> Several JAX processes each claiming cores. <code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code> in LOO already runs
 multiple processes.</p>
-<p><strong>Fix.</strong> Run one training at a time; shard within a run using <code class="docutils literal notranslate"><span class="pre">train.devices</span></code>. Do not
+<p><strong>Fix.</strong> Run one training at a time; use <code class="docutils literal notranslate"><span class="pre">train.workers</span></code> within one run. Do not
 launch parallel <code class="docutils literal notranslate"><span class="pre">hybrax</span></code> commands from a shell loop.</p>
 </section>
 </section>

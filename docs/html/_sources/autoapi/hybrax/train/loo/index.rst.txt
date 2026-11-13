@@ -12,14 +12,10 @@ hybrax.train.loo
    ``per_fold_holdout_sets``, or classic leave-one-out when omitted) and the
    fold-level parallelism.
 
-   Each fold trains as **its own subprocess** so it can expose a private JAX CPU
-   device count — the JAX host-device count is fixed per process at import, so
-   concurrent in-process folds cannot get separate shards. The user picks how many
-   folds run at once (``loo.parallel_folds``); the orchestrator chooses the per-fold
-   JAX device count (``devices_per_fold = n_cpu // parallel_folds`` by default),
-   optionally leases disjoint CPUs via `cpus_per_fold`, then aggregates on-disk losses
-   into ``loo_summary.csv`` / ``loo_aggregate.json``. ``run_loo_cv(resume=True)``
-   skips only identity-matched, complete folds and re-runs the rest.
+   Each fold trains in its own subprocess for isolation and CPU leasing.
+   The orchestrator limits the concurrent folds to the CPU budget,
+   then aggregates on-disk losses into ``loo_summary.csv`` / ``loo_aggregate.json``.
+   ``run_loo_cv(resume=True)`` skips identity-matched complete folds.
 
    This module stays a thin orchestrator on top of the harness preparation,
    training, and evaluation entry points; it does not reimplement batching or loss
@@ -53,7 +49,7 @@ Functions
 
 .. autoapisummary::
 
-   hybrax.train.loo.compute_parallel_split
+   hybrax.train.loo.compute_parallel_folds
    hybrax.train.loo.execute_trained_fold
    hybrax.train.loo.prepare_single_fold
    hybrax.train.loo.prepare_single_fold_from_runtime_artifact
@@ -134,10 +130,6 @@ Module Contents
       :type:  pathlib.Path
 
 
-   .. py:attribute:: devices_per_fold
-      :type:  int
-
-
    .. py:attribute:: fold_dirs
       :type:  tuple[pathlib.Path, ...]
 
@@ -148,6 +140,10 @@ Module Contents
 
    .. py:attribute:: summary_csv_path
       :type:  pathlib.Path
+
+
+   .. py:attribute:: workers_per_fold
+      :type:  int
 
 
 .. py:class:: PreparedFold
@@ -228,19 +224,13 @@ Module Contents
       :type:  hybrax.train.harness.TrainHarnessResult
 
 
-.. py:function:: compute_parallel_split(n_folds, n_cpu, parallel_folds, *, devices_per_fold = None, max_devices_per_fold = None)
+.. py:function:: compute_parallel_folds(n_folds, n_cpu, parallel_folds, workers_per_fold)
 
-   Return ``(parallel_folds, devices_per_fold)`` for the fold pool.
+   Return how many folds train at once.
 
-   ``parallel_folds`` is the user-chosen fold concurrency. If
-   ``devices_per_fold`` is omitted, the per-fold JAX CPU device budget is split
-   across concurrent folds: ``devices_per_fold = n_cpu // parallel`` (so a
-   single fold exposes many devices, many folds expose one device each).
-   Devices never exceed ``max_devices_per_fold`` (the smallest fold's batch —
-   exposing more host devices than the batch only deadlocks the pmap collective).
-
-   Invariant: ``parallel_folds * devices_per_fold <= n_cpu``. There is no RAM
-   sizing here — the user owns the memory call via ``parallel_folds``.
+   That is the requested ``parallel_folds``, capped at the fold count and
+   reduced until ``parallel_folds * workers_per_fold <= n_cpu`` (but never
+   below one fold).
 
 
 .. py:function:: execute_trained_fold(trained)

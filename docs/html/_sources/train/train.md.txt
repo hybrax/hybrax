@@ -67,7 +67,7 @@ interpolant evaluations, not extra solver steps.
     "shuffle": true,
     "seed": 0,
     "optimizer": "adam",
-    "devices": "max"
+    "workers": 1
   },
   "solver": { "max_steps": 4096, "rtol": 1e-5, "atol": 1e-7 }
 }
@@ -91,7 +91,7 @@ you get a `ValueError`.
 It preserves the logical batch, its process mean, and one optimizer update:
 
 ```json
-{ "train": { "batch_size": null, "microbatch_size": 1, "devices": 1 } }
+{ "train": { "batch_size": null, "microbatch_size": 1, "workers": 1 } }
 ```
 
 For twelve processes, this evaluates twelve one-process groups at unchanged
@@ -99,9 +99,7 @@ parameters, then applies one update. Setting `batch_size=1` instead applies twel
 updates per epoch. Omit `microbatch_size` to keep full-width execution. A width at
 least as large as the logical batch also uses full width.
 
-Microbatching requires `train.devices=1` and one actual local JAX device.
-Environment overrides do not bypass the configured restriction. Check
-`HYBRAX_TRAIN_DEVICES` and `XLA_FLAGS` if `devices=1` still raises.
+Microbatching requires `train.workers=1`.
 Smaller groups can improve throughput, but can also lose parallelism.
 Numerical results can change with execution width. Compare losses, gradients, and
 short training trajectories on your workload before choosing a width.
@@ -176,37 +174,33 @@ optimizer yourself, wire the schedule in yourself too.
 
 ## Running on more than one core
 
-Training can shard the process batch across CPU cores with `pmap`, for roughly an N×
-speedup.
+By default one computer process solves the whole batch. `train.workers` spreads
+the per-process solves of each update over that many worker processes, while the
+training process keeps the optimizer, checkpoints and holdout evaluation:
 
 ```json
-{ "train": { "devices": 4 } }
+{ "train": { "workers": 4 } }
 ```
 
-or `"devices": "max"`, which resolves to `min(n_processes, n_cpus)`.
+Workers trade memory and start-up time for faster updates. Each worker compiles
+and holds its own copy of the solve, so memory grows with the worker count, and
+the workers need a few extra seconds to start. On the 12-process
+[OptFed example](../gallery/optfed.md) with an implicit solver, 50 updates took
+87 s with one worker, 67 s with two and 59 s with four, at a peak of 1.0, 1.6 and
+2.8 GiB. Short runs of cheap models can end up slower: time a few updates before
+committing to a long run.
 
-:::{admonition} The device count is fixed before JAX initializes
-:class: important
-JAX decides its CPU device count at import. `hybrax.train` therefore resolves the setting
-*before* that, by scanning the command line and config at import time.
+Things to know:
 
-Consequences: **`HYBRAX_TRAIN_DEVICES=N` in the environment always wins** over the config
-file; and if `XLA_FLAGS` already sets `xla_force_host_platform_device_count`, the whole
-bootstrap is skipped and your value stands.
-:::
-
-The default is **1**: `hybrax.train` never quietly takes over your machine. `"max"`
-deliberately does not mean "all cores": surplus idle devices can deadlock the `pmap`
-rendezvous on an AllReduce timeout, so it is capped at the process count. Requesting more
-devices than you have cores is capped, with a warning to stderr.
-
-None of this affects GPU.
-
-:::{admonition} Do not fan out training runs in parallel
-:class: warning
-Several JAX processes each claiming cores will oversubscribe and, on constrained
-machines, get OOM-killed. Run one at a time, or shard within one run using `devices`.
-:::
+- Workers are CPU-only, and the count is capped at the batch size.
+- `microbatch_size` requires `workers: 1`.
+- With an implicit solver such as `Kvaerno5`, results differ slightly from
+  `workers: 1`, within the solver tolerances. Solving a batch together and
+  solving its processes one at a time take slightly different solver steps.
+  Explicit solvers give the same results up to rounding.
+- Models are sent to the workers once, at start-up. Their classes must come
+  from `custom.py` or another importable module: classes defined in a script
+  run as `__main__`, in a notebook or inside a function raise an error.
 
 ## Checkpoints and retention
 
@@ -390,8 +384,6 @@ concentration plot and obvious in the rate one.
 - **`--epochs` overrides the config**, which is what you want while iterating.
 - **`batch_size` greater than the process count** raises rather than clamping.
 - **Stateful modules need `train.allow_stateful_models: true`.**
-- **`HYBRAX_GSPMD=1`** switches sharding to GSPMD auto-sharding. It is correct but roughly
-  sixty times slower: a debugging tool, not an option.
 - **x64 is on globally.** Importing hybrax enables JAX double precision.
 
 ## See also

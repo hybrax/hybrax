@@ -348,6 +348,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -415,7 +416,7 @@ from a run the model otherwise saw tests interpolation, not generalisation.</p>
 <span class="w">  </span><span class="nt">"data"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"prepared"</span><span class="p">:</span><span class="w"> </span><span class="s2">"prepared"</span><span class="w"> </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"custom_py"</span><span class="p">:</span><span class="w"> </span><span class="s2">"custom.py"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"epochs"</span><span class="p">:</span><span class="w"> </span><span class="mi">2000</span><span class="p">,</span><span class="w"> </span><span class="nt">"seed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">},</span>
-<span class="w">  </span><span class="nt">"loo"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"parallel_folds"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">"devices_per_fold"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="nt">"loo"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"parallel_folds"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">"workers_per_fold"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
 </div>
@@ -467,35 +468,40 @@ informative than the average.</p>
 <section id="parallelism">
 <h2>Parallelism<a class="headerlink" href="#parallelism" title="Link to this heading">¶</a></h2>
 <p>Folds are independent, and each runs in its own subprocess.</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"loo"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"parallel_folds"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">"devices_per_fold"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"loo"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"parallel_folds"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="nt">"workers_per_fold"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
-<p>That exposes two JAX devices per worker. Device counts do not restrict the
-CPUs JAX uses. The orchestrator holds itself to one device so an exported
-<code class="docutils literal notranslate"><span class="pre">HYBRAX_TRAIN_DEVICES</span></code> meant for workers does not reserve the device pool.</p>
+<p><code class="docutils literal notranslate"><span class="pre">workers_per_fold</span></code> defaults to 1 and sets each fold’s worker-process count,
+capped at that fold’s batch size. Multiple workers are CPU-only. Without
+<code class="docutils literal notranslate"><span class="pre">cpus_per_fold</span></code>, the orchestrator reduces concurrent folds to keep
+<code class="docutils literal notranslate"><span class="pre">parallel_folds</span> <span class="pre">*</span> <span class="pre">workers_per_fold</span> <span class="pre">&lt;=</span> <span class="pre">n_cpu</span></code>. With <code class="docutils literal notranslate"><span class="pre">cpus_per_fold</span></code>, the worker
+count must not exceed it, and LOO stops before training if the CPU leases do
+not fit (see <a class="reference internal" href="#cpu-budget-for-parallel-folds">below</a>).
+Use <code class="docutils literal notranslate"><span class="pre">loo.workers_per_fold</span></code> for LOO; leave <code class="docutils literal notranslate"><span class="pre">train.workers</span></code> at 1.</p>
 <div class="warning admonition">
 <p class="admonition-title">Do not also fan out at the shell level</p>
 <p><code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code> already runs multiple JAX processes. Launching several <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">loo</span></code>
 commands alongside each other oversubscribes the machine and, on constrained systems,
 gets processes OOM-killed.</p>
 </div>
-<p>To use <a class="reference internal" href="train.html#the-knobs-that-matter"><span class="std std-ref">microbatching</span></a>, set one device per fold:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"microbatch_size"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">"loo"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"devices_per_fold"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<p>To use <a class="reference internal" href="train.html#the-knobs-that-matter"><span class="std std-ref">microbatching</span></a>, set one worker process per fold:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"microbatch_size"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">"loo"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"workers_per_fold"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
 <p>Microbatching preserves each fold’s logical batch and optimizer update count.
-Larger execution widths are capped by that fold’s batch size. A resolved device
-count greater than one raises before any folds are dispatched.</p>
+Larger execution widths are capped by that fold’s batch size. A
+<code class="docutils literal notranslate"><span class="pre">workers_per_fold</span></code> above one raises before any folds are dispatched.</p>
 </section>
 <section id="cpu-budget-for-parallel-folds">
 <h2>CPU budget for parallel folds<a class="headerlink" href="#cpu-budget-for-parallel-folds" title="Link to this heading">¶</a></h2>
-<p>CPU affinity is unrestricted by default. To limit each worker to two logical
-CPUs, independently of its JAX device count:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"loo"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"parallel_folds"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="nt">"devices_per_fold"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"cpus_per_fold"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<p>CPU affinity is unrestricted by default. To limit each fold, including its
+worker processes, to two logical CPUs:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"loo"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"parallel_folds"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span><span class="w"> </span><span class="nt">"workers_per_fold"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"cpus_per_fold"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
-<p>This requires eight CPUs in the parent’s allowed affinity mask. Workers lease
-disjoint sets, preferring distinct physical cores, and return them on exit.
+<p>This requires eight CPUs in the parent’s allowed affinity mask; otherwise LOO
+stops before training. Folds lease disjoint sets, preferring distinct physical
+cores, and return them on exit.
 The child applies affinity before importing JAX, so its runtime threads inherit
 the same set. Assignments appear in the orchestrator log. See
 <a class="reference internal" href="config.html#loo-cpu-affinity"><span class="std std-ref">LOO CPU affinity</span></a> for validation and topology fallback.</p>

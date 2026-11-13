@@ -347,6 +347,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -390,14 +391,10 @@ overview of what Hybrax can do, see the
 <span class="sd">``per_fold_holdout_sets``, or classic leave-one-out when omitted) and the</span>
 <span class="sd">fold-level parallelism.</span>
 
-<span class="sd">Each fold trains as **its own subprocess** so it can expose a private JAX CPU</span>
-<span class="sd">device count — the JAX host-device count is fixed per process at import, so</span>
-<span class="sd">concurrent in-process folds cannot get separate shards. The user picks how many</span>
-<span class="sd">folds run at once (``loo.parallel_folds``); the orchestrator chooses the per-fold</span>
-<span class="sd">JAX device count (``devices_per_fold = n_cpu // parallel_folds`` by default),</span>
-<span class="sd">optionally leases disjoint CPUs via `cpus_per_fold`, then aggregates on-disk losses</span>
-<span class="sd">into ``loo_summary.csv`` / ``loo_aggregate.json``. ``run_loo_cv(resume=True)``</span>
-<span class="sd">skips only identity-matched, complete folds and re-runs the rest.</span>
+<span class="sd">Each fold trains in its own subprocess for isolation and CPU leasing.</span>
+<span class="sd">The orchestrator limits the concurrent folds to the CPU budget,</span>
+<span class="sd">then aggregates on-disk losses into ``loo_summary.csv`` / ``loo_aggregate.json``.</span>
+<span class="sd">``run_loo_cv(resume=True)`` skips identity-matched complete folds.</span>
 
 <span class="sd">This module stays a thin orchestrator on top of the harness preparation,</span>
 <span class="sd">training, and evaluation entry points; it does not reimplement batching or loss</span>
@@ -519,7 +516,7 @@ overview of what Hybrax can do, see the
 
     <span class="n">fold_dirs</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Path</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span>
     <span class="n">parallel_folds</span><span class="p">:</span> <span class="nb">int</span>
-    <span class="n">devices_per_fold</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">workers_per_fold</span><span class="p">:</span> <span class="nb">int</span>
     <span class="n">summary_csv_path</span><span class="p">:</span> <span class="n">Path</span>
     <span class="n">aggregate_json_path</span><span class="p">:</span> <span class="n">Path</span>
     <span class="n">aggregate</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span></div>
@@ -896,40 +893,18 @@ overview of what Hybrax can do, see the
 <span class="c1"># ---------------------------------------------------------------------------</span>
 
 
-<div class="viewcode-block" id="compute_parallel_split">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/loo/index.html#hybrax.train.loo.compute_parallel_split">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">compute_parallel_split</span><span class="p">(</span>
-    <span class="n">n_folds</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-    <span class="n">n_cpu</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-    <span class="n">parallel_folds</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-    <span class="o">*</span><span class="p">,</span>
-    <span class="n">devices_per_fold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="n">max_devices_per_fold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">"""Return ``(parallel_folds, devices_per_fold)`` for the fold pool.</span>
+<div class="viewcode-block" id="compute_parallel_folds">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/loo/index.html#hybrax.train.loo.compute_parallel_folds">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">compute_parallel_folds</span><span class="p">(</span>
+    <span class="n">n_folds</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">n_cpu</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">parallel_folds</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">workers_per_fold</span><span class="p">:</span> <span class="nb">int</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Return how many folds train at once.</span>
 
-<span class="sd">    ``parallel_folds`` is the user-chosen fold concurrency. If</span>
-<span class="sd">    ``devices_per_fold`` is omitted, the per-fold JAX CPU device budget is split</span>
-<span class="sd">    across concurrent folds: ``devices_per_fold = n_cpu // parallel`` (so a</span>
-<span class="sd">    single fold exposes many devices, many folds expose one device each).</span>
-<span class="sd">    Devices never exceed ``max_devices_per_fold`` (the smallest fold's batch —</span>
-<span class="sd">    exposing more host devices than the batch only deadlocks the pmap collective).</span>
-
-<span class="sd">    Invariant: ``parallel_folds * devices_per_fold &lt;= n_cpu``. There is no RAM</span>
-<span class="sd">    sizing here — the user owns the memory call via ``parallel_folds``.</span>
+<span class="sd">    That is the requested ``parallel_folds``, capped at the fold count and</span>
+<span class="sd">    reduced until ``parallel_folds * workers_per_fold &lt;= n_cpu`` (but never</span>
+<span class="sd">    below one fold).</span>
 <span class="sd">    """</span>
-    <span class="n">n_cpu</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">n_cpu</span><span class="p">))</span>
-    <span class="n">n_folds</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">n_folds</span><span class="p">))</span>
-    <span class="n">requested_parallel</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">parallel_folds</span><span class="p">),</span> <span class="n">n_folds</span><span class="p">,</span> <span class="n">n_cpu</span><span class="p">))</span>
-    <span class="k">if</span> <span class="n">devices_per_fold</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">devices</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_cpu</span> <span class="o">//</span> <span class="n">requested_parallel</span><span class="p">)</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="n">devices</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">devices_per_fold</span><span class="p">))</span>
-    <span class="n">devices</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">devices</span><span class="p">,</span> <span class="n">n_cpu</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">max_devices_per_fold</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">devices</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">devices</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">max_devices_per_fold</span><span class="p">)))</span>
-    <span class="n">effective_parallel</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">requested_parallel</span><span class="p">,</span> <span class="n">n_cpu</span> <span class="o">//</span> <span class="n">devices</span><span class="p">))</span>
-    <span class="k">return</span> <span class="n">effective_parallel</span><span class="p">,</span> <span class="n">devices</span></div>
+    <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">parallel_folds</span><span class="p">,</span> <span class="n">n_folds</span><span class="p">,</span> <span class="n">n_cpu</span> <span class="o">//</span> <span class="n">workers_per_fold</span><span class="p">))</span></div>
 
 
 
@@ -971,26 +946,9 @@ overview of what Hybrax can do, see the
     <span class="p">]</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_worker_env</span><span class="p">(</span><span class="n">devices</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_worker_env</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
     <span class="n">env</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">)</span>
-    <span class="n">env</span><span class="p">[</span><span class="s2">"HYBRAX_TRAIN_DEVICES"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">devices</span><span class="p">))</span>
     <span class="n">env</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s2">"JAX_PLATFORMS"</span><span class="p">,</span> <span class="s2">"cpu"</span><span class="p">)</span>
-    <span class="c1"># Strip any inherited host-device pin so the worker's import-time bootstrap</span>
-    <span class="c1"># re-derives the device count from HYBRAX_TRAIN_DEVICES. Otherwise a pre-set</span>
-    <span class="c1"># XLA_FLAGS=--xla_force_host_platform_device_count=K silently overrides the</span>
-    <span class="c1"># per-fold count (every fold would expose K devices, reintroducing the</span>
-    <span class="c1"># over-exposure deadlock the device cap exists to prevent).</span>
-    <span class="n">xla</span> <span class="o">=</span> <span class="n">env</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"XLA_FLAGS"</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">xla</span> <span class="ow">and</span> <span class="s2">"xla_force_host_platform_device_count"</span> <span class="ow">in</span> <span class="n">xla</span><span class="p">:</span>
-        <span class="n">stripped</span> <span class="o">=</span> <span class="s2">" "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
-            <span class="n">tok</span>
-            <span class="k">for</span> <span class="n">tok</span> <span class="ow">in</span> <span class="n">xla</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="n">tok</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">"--xla_force_host_platform_device_count"</span><span class="p">)</span>
-        <span class="p">)</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
-        <span class="k">if</span> <span class="n">stripped</span><span class="p">:</span>
-            <span class="n">env</span><span class="p">[</span><span class="s2">"XLA_FLAGS"</span><span class="p">]</span> <span class="o">=</span> <span class="n">stripped</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">env</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">"XLA_FLAGS"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">env</span>
 
 
@@ -1006,7 +964,6 @@ overview of what Hybrax can do, see the
     <span class="n">output_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
     <span class="n">artifact_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
     <span class="n">fold_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-    <span class="n">devices</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">cpus</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Run one fold subprocess. Returns its exit code."""</span>
@@ -1027,7 +984,7 @@ overview of what Hybrax can do, see the
         <span class="p">]</span>
     <span class="n">proc</span> <span class="o">=</span> <span class="n">subprocess</span><span class="o">.</span><span class="n">Popen</span><span class="p">(</span>
         <span class="n">cmd</span><span class="p">,</span>
-        <span class="n">env</span><span class="o">=</span><span class="n">_worker_env</span><span class="p">(</span><span class="n">devices</span><span class="p">),</span>
+        <span class="n">env</span><span class="o">=</span><span class="n">_worker_env</span><span class="p">(),</span>
     <span class="p">)</span>
     <span class="k">return</span> <span class="n">proc</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
 
@@ -1038,7 +995,6 @@ overview of what Hybrax can do, see the
     <span class="n">artifact_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
     <span class="n">folds</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Fold</span><span class="p">],</span>
     <span class="n">parallel</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-    <span class="n">devices</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">cpu_leases</span><span class="p">:</span> <span class="n">CpuLeases</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Run ``folds`` in a pool of ``parallel`` worker subprocesses."""</span>
@@ -1047,14 +1003,12 @@ overview of what Hybrax can do, see the
     <span class="k">def</span><span class="w"> </span><span class="nf">_run</span><span class="p">(</span><span class="n">fold</span><span class="p">:</span> <span class="n">Fold</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">cpu_leases</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">rc</span> <span class="o">=</span> <span class="n">_dispatch_worker</span><span class="p">(</span>
-                    <span class="n">config_path</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">,</span> <span class="n">artifact_path</span><span class="p">,</span> <span class="n">fold</span><span class="o">.</span><span class="n">idx</span><span class="p">,</span> <span class="n">devices</span>
-                <span class="p">)</span>
+                <span class="n">rc</span> <span class="o">=</span> <span class="n">_dispatch_worker</span><span class="p">(</span><span class="n">config_path</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">,</span> <span class="n">artifact_path</span><span class="p">,</span> <span class="n">fold</span><span class="o">.</span><span class="n">idx</span><span class="p">)</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="k">with</span> <span class="n">cpu_leases</span><span class="o">.</span><span class="n">lease</span><span class="p">()</span> <span class="k">as</span> <span class="n">cpus</span><span class="p">:</span>
                     <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"LOO fold </span><span class="si">%d</span><span class="s2"> (</span><span class="si">%s</span><span class="s2">): CPUs </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">fold</span><span class="o">.</span><span class="n">idx</span><span class="p">,</span> <span class="n">fold</span><span class="o">.</span><span class="n">slug</span><span class="p">,</span> <span class="n">cpus</span><span class="p">)</span>
                     <span class="n">rc</span> <span class="o">=</span> <span class="n">_dispatch_worker</span><span class="p">(</span>
-                        <span class="n">config_path</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">,</span> <span class="n">artifact_path</span><span class="p">,</span> <span class="n">fold</span><span class="o">.</span><span class="n">idx</span><span class="p">,</span> <span class="n">devices</span><span class="p">,</span> <span class="n">cpus</span>
+                        <span class="n">config_path</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">,</span> <span class="n">artifact_path</span><span class="p">,</span> <span class="n">fold</span><span class="o">.</span><span class="n">idx</span><span class="p">,</span> <span class="n">cpus</span>
                     <span class="p">)</span>
             <span class="k">if</span> <span class="n">rc</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
                 <span class="n">failures</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">fold</span><span class="o">.</span><span class="n">slug</span><span class="p">,</span> <span class="sa">f</span><span class="s2">"exit </span><span class="si">{</span><span class="n">rc</span><span class="si">}</span><span class="s2">"</span><span class="p">))</span>
@@ -1112,12 +1066,21 @@ overview of what Hybrax can do, see the
 <span class="k">def</span><span class="w"> </span><span class="nf">_effective_fold_config</span><span class="p">(</span>
     <span class="n">cfg</span><span class="p">:</span> <span class="n">RunConfig</span><span class="p">,</span> <span class="n">fold</span><span class="p">:</span> <span class="n">Fold</span><span class="p">,</span> <span class="n">output_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">custom_py</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">RunConfig</span><span class="p">,</span> <span class="n">Path</span><span class="p">,</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">workers</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="s2">"LOO training must use loo.workers_per_fold, not train.workers"</span>
+        <span class="p">)</span>
     <span class="n">fold_dir</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">"folds"</span> <span class="o">/</span> <span class="n">fold</span><span class="o">.</span><span class="n">slug</span>
     <span class="n">fold_custom</span> <span class="o">=</span> <span class="n">fold_dir</span> <span class="o">/</span> <span class="s2">"custom.py"</span> <span class="k">if</span> <span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
     <span class="n">effective_cfg</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span>
         <span class="n">update</span><span class="o">=</span><span class="p">{</span>
             <span class="s2">"data"</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="p">{</span><span class="s2">"processes"</span><span class="p">:</span> <span class="n">fold</span><span class="o">.</span><span class="n">train</span><span class="p">}),</span>
-            <span class="s2">"train"</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="p">{</span><span class="s2">"seed"</span><span class="p">:</span> <span class="n">fold</span><span class="o">.</span><span class="n">seed</span><span class="p">}),</span>
+            <span class="s2">"train"</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span>
+                <span class="n">update</span><span class="o">=</span><span class="p">{</span>
+                    <span class="s2">"seed"</span><span class="p">:</span> <span class="n">fold</span><span class="o">.</span><span class="n">seed</span><span class="p">,</span>
+                    <span class="s2">"workers"</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">loo</span><span class="o">.</span><span class="n">workers_per_fold</span> <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">loo</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">1</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">),</span>
             <span class="s2">"output"</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="p">{</span><span class="s2">"dir"</span><span class="p">:</span> <span class="n">fold_dir</span><span class="o">.</span><span class="n">resolve</span><span class="p">()}),</span>
             <span class="s2">"custom_py"</span><span class="p">:</span> <span class="n">fold_custom</span><span class="p">,</span>
         <span class="p">}</span>
@@ -1585,23 +1548,10 @@ overview of what Hybrax can do, see the
     <span class="n">n_cpu</span> <span class="o">=</span> <span class="p">(</span>
         <span class="nb">len</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">sched_getaffinity</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span> <span class="k">if</span> <span class="n">cpu_leases</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">os</span><span class="o">.</span><span class="n">cpu_count</span><span class="p">()</span> <span class="ow">or</span> <span class="mi">1</span>
     <span class="p">)</span>
-    <span class="n">batch_size</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">batch_size</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">_eff_batch</span><span class="p">(</span><span class="n">fold</span><span class="p">:</span> <span class="n">Fold</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-        <span class="k">return</span> <span class="nb">min</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">fold</span><span class="o">.</span><span class="n">train</span><span class="p">),</span> <span class="n">batch_size</span><span class="p">)</span> <span class="k">if</span> <span class="n">batch_size</span> <span class="k">else</span> <span class="nb">len</span><span class="p">(</span><span class="n">fold</span><span class="o">.</span><span class="n">train</span><span class="p">)</span>
-
-    <span class="n">parallel</span><span class="p">,</span> <span class="n">devices</span> <span class="o">=</span> <span class="n">compute_parallel_split</span><span class="p">(</span>
-        <span class="n">n_folds</span><span class="p">,</span>
-        <span class="n">n_cpu</span><span class="p">,</span>
-        <span class="n">loo_cfg</span><span class="o">.</span><span class="n">parallel_folds</span><span class="p">,</span>
-        <span class="n">devices_per_fold</span><span class="o">=</span><span class="n">loo_cfg</span><span class="o">.</span><span class="n">devices_per_fold</span><span class="p">,</span>
-        <span class="n">max_devices_per_fold</span><span class="o">=</span><span class="nb">min</span><span class="p">(</span>
-            <span class="nb">min</span><span class="p">(</span><span class="n">_eff_batch</span><span class="p">(</span><span class="n">fold</span><span class="p">)</span> <span class="k">for</span> <span class="n">fold</span> <span class="ow">in</span> <span class="n">folds</span><span class="p">),</span>
-            <span class="n">loo_cfg</span><span class="o">.</span><span class="n">cpus_per_fold</span> <span class="ow">or</span> <span class="n">n_cpu</span><span class="p">,</span>
-        <span class="p">),</span>
-    <span class="p">)</span>
-    <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">microbatch_size</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">devices</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"microbatching requires loo.devices_per_fold=1"</span><span class="p">)</span>
+    <span class="n">workers</span> <span class="o">=</span> <span class="n">loo_cfg</span><span class="o">.</span><span class="n">workers_per_fold</span>
+    <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">microbatch_size</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">workers</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"microbatching requires loo.workers_per_fold=1"</span><span class="p">)</span>
+    <span class="n">parallel</span> <span class="o">=</span> <span class="n">compute_parallel_folds</span><span class="p">(</span><span class="n">n_folds</span><span class="p">,</span> <span class="n">n_cpu</span><span class="p">,</span> <span class="n">loo_cfg</span><span class="o">.</span><span class="n">parallel_folds</span><span class="p">,</span> <span class="n">workers</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">loo_cfg</span><span class="o">.</span><span class="n">parallel_folds</span> <span class="o">&gt;</span> <span class="n">n_folds</span><span class="p">:</span>
         <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
             <span class="s2">"LOO: parallel_folds=</span><span class="si">%d</span><span class="s2"> exceeds the </span><span class="si">%d</span><span class="s2"> resolved fold(s); clamped to </span><span class="si">%d</span><span class="s2">."</span><span class="p">,</span>
@@ -1629,11 +1579,11 @@ overview of what Hybrax can do, see the
         <span class="n">pending</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">folds</span><span class="p">)</span>
 
     <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-        <span class="s2">"LOO: </span><span class="si">%d</span><span class="s2"> fold(s), </span><span class="si">%d</span><span class="s2"> cpu(s) -&gt; </span><span class="si">%d</span><span class="s2"> parallel fold(s) x </span><span class="si">%d</span><span class="s2"> device(s) each"</span><span class="p">,</span>
+        <span class="s2">"LOO: </span><span class="si">%d</span><span class="s2"> fold(s), </span><span class="si">%d</span><span class="s2"> cpu(s) -&gt; </span><span class="si">%d</span><span class="s2"> parallel fold(s) x </span><span class="si">%d</span><span class="s2"> worker(s) each"</span><span class="p">,</span>
         <span class="n">n_folds</span><span class="p">,</span>
         <span class="n">n_cpu</span><span class="p">,</span>
         <span class="n">parallel</span><span class="p">,</span>
-        <span class="n">devices</span><span class="p">,</span>
+        <span class="n">workers</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="k">if</span> <span class="n">pending</span><span class="p">:</span>
         <span class="n">_dispatch_pool</span><span class="p">(</span>
@@ -1642,7 +1592,6 @@ overview of what Hybrax can do, see the
             <span class="n">artifact_path</span><span class="p">,</span>
             <span class="n">pending</span><span class="p">,</span>
             <span class="n">parallel</span><span class="p">,</span>
-            <span class="n">devices</span><span class="p">,</span>
             <span class="n">cpu_leases</span><span class="o">=</span><span class="n">cpu_leases</span><span class="p">,</span>
         <span class="p">)</span>
 
@@ -1659,7 +1608,7 @@ overview of what Hybrax can do, see the
     <span class="k">return</span> <span class="n">LOOResult</span><span class="p">(</span>
         <span class="n">fold_dirs</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">output_dir</span> <span class="o">/</span> <span class="s2">"folds"</span> <span class="o">/</span> <span class="n">fold</span><span class="o">.</span><span class="n">slug</span> <span class="k">for</span> <span class="n">fold</span> <span class="ow">in</span> <span class="n">folds</span><span class="p">),</span>
         <span class="n">parallel_folds</span><span class="o">=</span><span class="n">parallel</span><span class="p">,</span>
-        <span class="n">devices_per_fold</span><span class="o">=</span><span class="n">devices</span><span class="p">,</span>
+        <span class="n">workers_per_fold</span><span class="o">=</span><span class="n">workers</span><span class="p">,</span>
         <span class="n">summary_csv_path</span><span class="o">=</span><span class="n">summary_csv_path</span><span class="p">,</span>
         <span class="n">aggregate_json_path</span><span class="o">=</span><span class="n">aggregate_json_path</span><span class="p">,</span>
         <span class="n">aggregate</span><span class="o">=</span><span class="n">aggregate</span><span class="p">,</span>

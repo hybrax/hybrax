@@ -467,10 +467,12 @@ Module Contents
 
    ``per_fold_holdout_sets=None`` runs classic leave-one-out: one fold per
    parent process group. ``parallel_folds`` is how many folds train at once
-   (each fold is its own subprocess, because the JAX CPU device count is fixed
-   per process). ``devices_per_fold`` can set each fold's JAX CPU device
-   count; otherwise the available JAX CPU device budget is split across
-   concurrent folds so that ``parallel_folds * devices_per_fold <= n_cpu``.
+   (each fold is its own subprocess). ``workers_per_fold`` (default 1) counts
+   worker processes for each fold's training, capped at the fold's batch size
+   and limited to ``cpus_per_fold`` when that is set. Without ``cpus_per_fold``
+   the orchestrator reduces concurrent folds to keep
+   ``parallel_folds * workers_per_fold <= n_cpu``; with it, LOO stops before
+   training if ``parallel_folds`` leases do not fit the allowed CPUs.
    `cpus_per_fold` optionally leases disjoint allowed CPUs before worker
    imports; its default leaves affinity unrestricted.
    Set these from what your RAM can hold — there is deliberately no automatic
@@ -478,12 +480,6 @@ Module Contents
 
 
    .. py:attribute:: cpus_per_fold
-      :type:  int | None
-      :value: None
-
-
-
-   .. py:attribute:: devices_per_fold
       :type:  int | None
       :value: None
 
@@ -497,6 +493,12 @@ Module Contents
 
    .. py:attribute:: per_fold_holdout_sets
       :type:  tuple[HoldoutSet, ...] | None
+      :value: None
+
+
+
+   .. py:attribute:: workers_per_fold
+      :type:  int
       :value: None
 
 
@@ -739,7 +741,7 @@ Module Contents
    Bases: :py:obj:`ConfigBase`
 
 
-   Optimizer, batching, and device settings for one training run.
+   Optimizer, batching, and worker settings for one training run.
 
    ``epochs`` (default 5) is how many passes over the selected process set
    to run; ``--epochs`` on the CLI overrides this, since it is the one knob
@@ -756,15 +758,15 @@ Module Contents
    many processes contribute to one optimizer update; ``None`` means full-batch.
    ``microbatch_size`` optionally limits how many process solves execute
    together, while preserving that batch mean and one optimizer update. It
-   requires ``devices=1`` and one actual JAX device. A width at least as
+   requires ``workers=1``. A width at least as
    large as the batch uses unsplit execution. ``shuffle``
    (default ``True``) reshuffles the process order every epoch;
    ``batch_seed`` (optional) seeds that shuffling independently of ``seed``.
-   ``devices`` (default ``1``) is how many CPU devices to shard the batch
-   across; ``"max"`` resolves to ``min(n_processes, n_cpus)`` — never every
-   core, since idle surplus devices can deadlock the ``pmap`` all-reduce —
-   and the ``HYBRAX_TRAIN_DEVICES`` environment variable always overrides
-   it. ``allow_stateful_models`` (default ``False``) is the required opt-in
+   ``workers`` (default 1) counts worker processes computing gradients for one
+   update. One solves the whole batch in the training computer process. More
+   workers trade memory for speed: each holds its own compiled solve. They are
+   CPU-only and capped at the batch size. ``allow_stateful_models``
+   (default ``False``) is the required opt-in
    for reaction modules with a nonzero latent state: training raises before
    it starts without it, because a latent state changes what the model
    *is*, not just its size.
@@ -794,12 +796,6 @@ Module Contents
    .. py:attribute:: batch_size
       :type:  int | None
       :value: None
-
-
-
-   .. py:attribute:: devices
-      :type:  int | Literal['max']
-      :value: 1
 
 
 
@@ -854,6 +850,12 @@ Module Contents
    .. py:attribute:: shuffle
       :type:  bool
       :value: True
+
+
+
+   .. py:attribute:: workers
+      :type:  int
+      :value: None
 
 
 

@@ -348,6 +348,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -842,7 +843,7 @@ match the MAT file’s state order.</p>
         <span class="s2">"seed"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
         <span class="s2">"allow_stateful_models"</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
         <span class="s2">"learning_rate"</span><span class="p">:</span> <span class="mf">1e-3</span><span class="p">,</span>
-        <span class="s2">"devices"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="s2">"workers"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
         <span class="s2">"holdout_processes"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"Br7"</span><span class="p">],</span>
     <span class="p">},</span>
     <span class="s2">"checkpoint"</span><span class="p">:</span> <span class="p">{</span>
@@ -1585,7 +1586,7 @@ fit PCA and all other preprocessing on the training cultures only).</p>
 <span class="w">    </span><span class="nt">"seed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"allow_stateful_models"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"learning_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.001</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"devices"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"workers"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"holdout_processes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">      </span><span class="s2">"Br7"</span>
 <span class="w">    </span><span class="p">]</span>
@@ -1750,7 +1751,7 @@ of the loss, and select the checkpoint with the lowest Br7 loss:</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<img alt="../_images/3f2ee28215bf278e29060ec4780b41c724c19ffb8716598b5858aa093134138e.png" src="../_images/3f2ee28215bf278e29060ec4780b41c724c19ffb8716598b5858aa093134138e.png" />
+<img alt="../_images/6c110f177cbfe51ac8a8c74eda2f81c4c05704e4a0738fdefbc14fbd183f3d1f.png" src="../_images/6c110f177cbfe51ac8a8c74eda2f81c4c05704e4a0738fdefbc14fbd183f3d1f.png" />
 </div>
 </div>
 <p>The dashed horizontal lines show the final scores of Ramos et al.’s saved
@@ -1854,7 +1855,7 @@ cultures.</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<img alt="../_images/b53c08f1121f738f98a29b849b9ea650b40787bc3121f7362724afc8efe4cd95.png" src="../_images/b53c08f1121f738f98a29b849b9ea650b40787bc3121f7362724afc8efe4cd95.png" />
+<img alt="../_images/bed965a8daa3e71696e9ca4b6c7a0c29e5253631dcf4b21310e86d067bc8f658.png" src="../_images/bed965a8daa3e71696e9ca4b6c7a0c29e5253631dcf4b21310e86d067bc8f658.png" />
 </div>
 </div>
 </section>
@@ -1972,7 +1973,7 @@ custom code, the output directory and the penalty weight:</p>
 <span class="w">    </span><span class="nt">"seed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"allow_stateful_models"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"learning_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.001</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"devices"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"workers"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"holdout_processes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">      </span><span class="s2">"Br7"</span>
 <span class="w">    </span><span class="p">]</span>
@@ -2128,7 +2129,7 @@ between fit and negative predictions, so we do that instead.</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<img alt="../_images/6583dc5d5469eb5b5460c604790a04b9adccf0baa85663d991e471cac5779af8.png" src="../_images/6583dc5d5469eb5b5460c604790a04b9adccf0baa85663d991e471cac5779af8.png" />
+<img alt="../_images/d44819bad7fb87c417ee309f311b0f8892dbb0d61cec8fbc79f2b32b272e97ba.png" src="../_images/d44819bad7fb87c417ee309f311b0f8892dbb0d61cec8fbc79f2b32b272e97ba.png" />
 </div>
 </div>
 <p>Solid lines show the NRMSE of the concentration fit, as before. The thin dashed
@@ -2154,7 +2155,7 @@ states and measurement times (predictions at or above zero count as zero):</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: epoch 1,900
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: epoch 1,700
 </pre></div>
 </div>
 <div class="output text_html"><style type="text/css">
@@ -2183,9 +2184,9 @@ states and measurement times (predictions at or above zero count as zero):</p>
     </tr>
     <tr>
       <th id="T_hek_nonneg_level0_row2" class="row_heading level0 row2" >Hybrax with penalty</th>
-      <td id="T_hek_nonneg_row2_col0" class="data row2 col0" >0.0582</td>
-      <td id="T_hek_nonneg_row2_col1" class="data row2 col1" >0.0375</td>
-      <td id="T_hek_nonneg_row2_col2" class="data row2 col2" >0.0420</td>
+      <td id="T_hek_nonneg_row2_col0" class="data row2 col0" >0.0596</td>
+      <td id="T_hek_nonneg_row2_col1" class="data row2 col1" >0.0376</td>
+      <td id="T_hek_nonneg_row2_col2" class="data row2 col2" >0.0392</td>
     </tr>
   </tbody>
 </table>
@@ -2204,7 +2205,7 @@ soft, so some small dips remain.</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<img alt="../_images/cc3268d8aeeb7dbee4c496c8090c5b9be683bc1c3b2859189c827c9c65f016c5.png" src="../_images/cc3268d8aeeb7dbee4c496c8090c5b9be683bc1c3b2859189c827c9c65f016c5.png" />
+<img alt="../_images/0a5b408a09bb8c01b71166b82f1e764deac6782aee4d753141041035f217d3a2.png" src="../_images/0a5b408a09bb8c01b71166b82f1e764deac6782aee4d753141041035f217d3a2.png" />
 </div>
 </div>
 </section>
@@ -2244,7 +2245,6 @@ access. This page’s executed runs are in
 <span class="n">ENV</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span> <span class="o">|</span> <span class="p">{</span>
     <span class="s2">"JAX_PLATFORMS"</span><span class="p">:</span> <span class="s2">"cpu"</span><span class="p">,</span>
     <span class="s2">"JAX_ENABLE_X64"</span><span class="p">:</span> <span class="s2">"1"</span><span class="p">,</span>
-    <span class="s2">"HYBRAX_TRAIN_DEVICES"</span><span class="p">:</span> <span class="s2">"1"</span><span class="p">,</span>
     <span class="s2">"MPLBACKEND"</span><span class="p">:</span> <span class="s2">"Agg"</span><span class="p">,</span>
 <span class="p">}</span>
 

@@ -396,6 +396,12 @@ Module Contents
 
 
 
+   .. py:attribute:: workers
+      :type:  int
+      :value: 1
+
+
+
 .. py:class:: TrainHarnessResult
 
    Summary object returned by the training harness.

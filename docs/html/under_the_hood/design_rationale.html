@@ -348,6 +348,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -623,13 +624,11 @@ checkpoint directory is self-contained (it bundles <code class="docutils literal
 See <a class="reference internal" href="../train/save_load_predict.html"><span class="std std-doc">The Python API</span></a>.</p></li>
 </ul>
 </section>
-<section id="opt-in-multi-core-device-pooling">
-<h3>9. Opt-in multi-core device pooling<a class="headerlink" href="#opt-in-multi-core-device-pooling" title="Link to this heading">¶</a></h3>
-<p>Training can shard the process batch across CPU cores via <code class="docutils literal notranslate"><span class="pre">pmap</span></code> (~N speedup). This is
-<strong>opt-in</strong> and resolved <em>before</em> JAX initializes (the device count is fixed at import
-time): set <code class="docutils literal notranslate"><span class="pre">train.devices:</span> <span class="pre">N</span></code> (or <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code>) in the config, or <code class="docutils literal notranslate"><span class="pre">HYBRAX_TRAIN_DEVICES=N</span></code> (the env
-var always wins). <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code> resolves to <code class="docutils literal notranslate"><span class="pre">min(n_processes,</span> <span class="pre">n_cpus)</span></code>. Default is 1 device, so
-<code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> never competes for cores with other work. No effect on GPU.</p>
+<section id="worker-processes">
+<h3>9. Worker processes<a class="headerlink" href="#worker-processes" title="Link to this heading">¶</a></h3>
+<p>Training uses <code class="docutils literal notranslate"><span class="pre">train.workers</span></code> worker processes, default 1. Each worker holds its
+own compiled solve, trading memory for speed. Counts are capped at the batch size;
+multiple workers are CPU-only.</p>
 </section>
 </section>
 </section>
@@ -708,7 +707,7 @@ var always wins). <code class="docutils literal notranslate"><span class="pre">&
 <li><a class="reference internal" href="#mean-loss-aggregation">6. Mean loss aggregation</a></li>
 <li><a class="reference internal" href="#discrete-events-as-differentiable-state-jumps">7. Discrete events as differentiable state jumps</a></li>
 <li><a class="reference internal" href="#trainable-partition-only-serialization">8. Trainable-partition-only serialization</a></li>
-<li><a class="reference internal" href="#opt-in-multi-core-device-pooling">9. Opt-in multi-core device pooling</a></li>
+<li><a class="reference internal" href="#worker-processes">9. Worker processes</a></li>
 </ul>
 </li>
 </ul>

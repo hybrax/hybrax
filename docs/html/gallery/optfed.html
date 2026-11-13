@@ -348,6 +348,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -1464,7 +1465,7 @@ hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.144949 last_mean_loss=0.00647146 delta=-0.138478
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.144955 last_mean_loss=0.00646682 delta=-0.138488
 Run directory: docs/source/_data/out/runs/gallery_optfed/run/
 </pre></div>
 </div>
@@ -1500,10 +1501,10 @@ uses the pooled, scaled scores.</p>
 </details><div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: step_00500
-biomass    R2 = 0.8630
-glycerol   R2 = 0.9498
-product    R2 = 0.8481
-P_X        R2 = 0.8157
+biomass    R2 = 0.8627
+glycerol   R2 = 0.9501
+product    R2 = 0.8482
+P_X        R2 = 0.8167
 </pre></div>
 </div>
 </div>
@@ -1547,7 +1548,7 @@ P_X        R2 = 0.8157
       <td id="T_optfed_parameters_row2_col0" class="data row2 col0" >generation_inhibition</td>
       <td id="T_optfed_parameters_row2_col1" class="data row2 col1" >generations</td>
       <td id="T_optfed_parameters_row2_col2" class="data row2 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row2_col3" class="data row2 col3" >1.53</td>
+      <td id="T_optfed_parameters_row2_col3" class="data row2 col3" >1.52</td>
       <td id="T_optfed_parameters_row2_col4" class="data row2 col4" >1e+04</td>
     </tr>
     <tr>
@@ -1555,7 +1556,7 @@ P_X        R2 = 0.8157
       <td id="T_optfed_parameters_row3_col0" class="data row3 col0" >glycerol_inhibition</td>
       <td id="T_optfed_parameters_row3_col1" class="data row3 col1" >g/kg</td>
       <td id="T_optfed_parameters_row3_col2" class="data row3 col2" >1e-05</td>
-      <td id="T_optfed_parameters_row3_col3" class="data row3 col3" >307</td>
+      <td id="T_optfed_parameters_row3_col3" class="data row3 col3" >300</td>
       <td id="T_optfed_parameters_row3_col4" class="data row3 col4" >1e+04</td>
     </tr>
     <tr>
@@ -1563,7 +1564,7 @@ P_X        R2 = 0.8157
       <td id="T_optfed_parameters_row4_col0" class="data row4 col0" >inactivation_enthalpy</td>
       <td id="T_optfed_parameters_row4_col1" class="data row4 col1" >J/mol</td>
       <td id="T_optfed_parameters_row4_col2" class="data row4 col2" >1e+05</td>
-      <td id="T_optfed_parameters_row4_col3" class="data row4 col3" >3.78e+06</td>
+      <td id="T_optfed_parameters_row4_col3" class="data row4 col3" >3.75e+06</td>
       <td id="T_optfed_parameters_row4_col4" class="data row4 col4" >1e+07</td>
     </tr>
     <tr>
@@ -1571,7 +1572,7 @@ P_X        R2 = 0.8157
       <td id="T_optfed_parameters_row5_col0" class="data row5 col0" >maintenance</td>
       <td id="T_optfed_parameters_row5_col1" class="data row5 col1" >g_G/(g_A h)</td>
       <td id="T_optfed_parameters_row5_col2" class="data row5 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row5_col3" class="data row5 col3" >0.00451</td>
+      <td id="T_optfed_parameters_row5_col3" class="data row5 col3" >0.00456</td>
       <td id="T_optfed_parameters_row5_col4" class="data row5 col4" >1</td>
     </tr>
     <tr>
@@ -1579,7 +1580,7 @@ P_X        R2 = 0.8157
       <td id="T_optfed_parameters_row6_col0" class="data row6 col0" >product_maintenance</td>
       <td id="T_optfed_parameters_row6_col1" class="data row6 col1" >g_X/g_P</td>
       <td id="T_optfed_parameters_row6_col2" class="data row6 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row6_col3" class="data row6 col3" >21.7</td>
+      <td id="T_optfed_parameters_row6_col3" class="data row6 col3" >21.4</td>
       <td id="T_optfed_parameters_row6_col4" class="data row6 col4" >1e+06</td>
     </tr>
     <tr>
@@ -1595,7 +1596,7 @@ P_X        R2 = 0.8157
       <td id="T_optfed_parameters_row8_col0" class="data row8 col0" >production_max</td>
       <td id="T_optfed_parameters_row8_col1" class="data row8 col1" >g_G/g_A</td>
       <td id="T_optfed_parameters_row8_col2" class="data row8 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row8_col3" class="data row8 col3" >2.77e-09</td>
+      <td id="T_optfed_parameters_row8_col3" class="data row8 col3" >2.76e-09</td>
       <td id="T_optfed_parameters_row8_col4" class="data row8 col4" >1e-05</td>
     </tr>
     <tr>
@@ -1603,7 +1604,7 @@ P_X        R2 = 0.8157
       <td id="T_optfed_parameters_row9_col0" class="data row9 col0" >uptake_maintenance</td>
       <td id="T_optfed_parameters_row9_col1" class="data row9 col1" >g_A h/g_G</td>
       <td id="T_optfed_parameters_row9_col2" class="data row9 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row9_col3" class="data row9 col3" >30.1</td>
+      <td id="T_optfed_parameters_row9_col3" class="data row9 col3" >30.2</td>
       <td id="T_optfed_parameters_row9_col4" class="data row9 col4" >1e+06</td>
     </tr>
     <tr>
@@ -1611,7 +1612,7 @@ P_X        R2 = 0.8157
       <td id="T_optfed_parameters_row10_col0" class="data row10 col0" >uptake_max</td>
       <td id="T_optfed_parameters_row10_col1" class="data row10 col1" >g_G/(g_A h)</td>
       <td id="T_optfed_parameters_row10_col2" class="data row10 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row10_col3" class="data row10 col3" >0.442</td>
+      <td id="T_optfed_parameters_row10_col3" class="data row10 col3" >0.443</td>
       <td id="T_optfed_parameters_row10_col4" class="data row10 col4" >1</td>
     </tr>
   </tbody>
@@ -1620,7 +1621,7 @@ P_X        R2 = 0.8157
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Maximum reactor-mass error at exported times: 0.00145011 kg
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Maximum reactor-mass error at exported times: 0.00138691 kg
 </pre></div>
 </div>
 </div>
@@ -1676,10 +1677,10 @@ unseen processes.</p>
     <tr>
       <th id="T_optfed_comparison_level0_row1" class="row_heading level0 row1" >Hybrax</th>
       <td id="T_optfed_comparison_row1_col0" class="data row1 col0" >0.881</td>
-      <td id="T_optfed_comparison_row1_col1" class="data row1 col1" >0.0806</td>
+      <td id="T_optfed_comparison_row1_col1" class="data row1 col1" >0.0805</td>
       <td id="T_optfed_comparison_row1_col2" class="data row1 col2" >0.863</td>
       <td id="T_optfed_comparison_row1_col3" class="data row1 col3" >0.848</td>
-      <td id="T_optfed_comparison_row1_col4" class="data row1 col4" >0.816</td>
+      <td id="T_optfed_comparison_row1_col4" class="data row1 col4" >0.817</td>
       <td id="T_optfed_comparison_row1_col5" class="data row1 col5" >0.127</td>
     </tr>
   </tbody>
@@ -1725,7 +1726,7 @@ The bundled <a class="reference download internal" download="" href="../_downloa
 comparison run without downloading or refitting OptFed.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/33673e57d499d30195eb2f9d5957bf67df27c9adae9042dff0f4f9b156d8c752.png" src="../_images/33673e57d499d30195eb2f9d5957bf67df27c9adae9042dff0f4f9b156d8c752.png" />
+<img alt="../_images/4441e0d4614eba39433439e969b7c3a8302748dd6ea557f17a431971862170d2.png" src="../_images/4441e0d4614eba39433439e969b7c3a8302748dd6ea557f17a431971862170d2.png" />
 </div>
 </div>
 </section>

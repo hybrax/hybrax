@@ -87,7 +87,7 @@ than in ordinary supervised learning.
 | Page | Read it when |
 |---|---|
 | [Prepare](prepare.md) | You want to know what happens between data and training. |
-| [Training](train.md) | Optimizers, schedules, batching, devices. |
+| [Training](train.md) | Optimizers, schedules, batching, worker processes. |
 | [The Reaction Module](reaction_module.md) | You are replacing the default MLP. |
 | [The Loss Module](loss_module.md) | Plain MSE on every target is not what you want. |
 | [Scaling](scaling.md) | Right after the loss module. In practice this is not optional. |

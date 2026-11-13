@@ -348,6 +348,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -454,7 +455,7 @@ interpolant evaluations, not extra solver steps.</p>
 <span class="w">    </span><span class="nt">"shuffle"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"seed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"optimizer"</span><span class="p">:</span><span class="w"> </span><span class="s2">"adam"</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"devices"</span><span class="p">:</span><span class="w"> </span><span class="s2">"max"</span>
+<span class="w">    </span><span class="nt">"workers"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"solver"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"max_steps"</span><span class="p">:</span><span class="w"> </span><span class="mi">4096</span><span class="p">,</span><span class="w"> </span><span class="nt">"rtol"</span><span class="p">:</span><span class="w"> </span><span class="mf">1e-5</span><span class="p">,</span><span class="w"> </span><span class="nt">"atol"</span><span class="p">:</span><span class="w"> </span><span class="mf">1e-7</span><span class="w"> </span><span class="p">}</span>
 <span class="p">}</span>
@@ -473,16 +474,14 @@ usually stiffness caused by bad scaling, not the solver.</p>
 you get a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p>
 <p><strong><code class="docutils literal notranslate"><span class="pre">microbatch_size</span></code></strong> optionally limits how many process solves execute together.
 It preserves the logical batch, its process mean, and one optimizer update:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"batch_size"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w"> </span><span class="nt">"microbatch_size"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"devices"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"batch_size"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span><span class="w"> </span><span class="nt">"microbatch_size"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"workers"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
 <p>For twelve processes, this evaluates twelve one-process groups at unchanged
 parameters, then applies one update. Setting <code class="docutils literal notranslate"><span class="pre">batch_size=1</span></code> instead applies twelve
 updates per epoch. Omit <code class="docutils literal notranslate"><span class="pre">microbatch_size</span></code> to keep full-width execution. A width at
 least as large as the logical batch also uses full width.</p>
-<p>Microbatching requires <code class="docutils literal notranslate"><span class="pre">train.devices=1</span></code> and one actual local JAX device.
-Environment overrides do not bypass the configured restriction. Check
-<code class="docutils literal notranslate"><span class="pre">HYBRAX_TRAIN_DEVICES</span></code> and <code class="docutils literal notranslate"><span class="pre">XLA_FLAGS</span></code> if <code class="docutils literal notranslate"><span class="pre">devices=1</span></code> still raises.
+<p>Microbatching requires <code class="docutils literal notranslate"><span class="pre">train.workers=1</span></code>.
 Smaller groups can improve throughput, but can also lose parallelism.
 Numerical results can change with execution width. Compare losses, gradients, and
 short training trajectories on your workload before choosing a width.</p>
@@ -550,30 +549,31 @@ optimizer yourself, wire the schedule in yourself too.</p>
 </section>
 <section id="running-on-more-than-one-core">
 <h2>Running on more than one core<a class="headerlink" href="#running-on-more-than-one-core" title="Link to this heading">¶</a></h2>
-<p>Training can shard the process batch across CPU cores with <code class="docutils literal notranslate"><span class="pre">pmap</span></code>, for roughly an N×
-speedup.</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"devices"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<p>By default one computer process solves the whole batch. <code class="docutils literal notranslate"><span class="pre">train.workers</span></code> spreads
+the per-process solves of each update over that many worker processes, while the
+training process keeps the optimizer, checkpoints and holdout evaluation:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="w"> </span><span class="nt">"train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"workers"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
 </pre></div>
 </div>
-<p>or <code class="docutils literal notranslate"><span class="pre">&quot;devices&quot;:</span> <span class="pre">&quot;max&quot;</span></code>, which resolves to <code class="docutils literal notranslate"><span class="pre">min(n_processes,</span> <span class="pre">n_cpus)</span></code>.</p>
-<div class="important admonition">
-<p class="admonition-title">The device count is fixed before JAX initializes</p>
-<p>JAX decides its CPU device count at import. <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> therefore resolves the setting
-<em>before</em> that, by scanning the command line and config at import time.</p>
-<p>Consequences: <strong><code class="docutils literal notranslate"><span class="pre">HYBRAX_TRAIN_DEVICES=N</span></code> in the environment always wins</strong> over the config
-file; and if <code class="docutils literal notranslate"><span class="pre">XLA_FLAGS</span></code> already sets <code class="docutils literal notranslate"><span class="pre">xla_force_host_platform_device_count</span></code>, the whole
-bootstrap is skipped and your value stands.</p>
-</div>
-<p>The default is <strong>1</strong>: <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> never quietly takes over your machine. <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code>
-deliberately does not mean “all cores”: surplus idle devices can deadlock the <code class="docutils literal notranslate"><span class="pre">pmap</span></code>
-rendezvous on an AllReduce timeout, so it is capped at the process count. Requesting more
-devices than you have cores is capped, with a warning to stderr.</p>
-<p>None of this affects GPU.</p>
-<div class="warning admonition">
-<p class="admonition-title">Do not fan out training runs in parallel</p>
-<p>Several JAX processes each claiming cores will oversubscribe and, on constrained
-machines, get OOM-killed. Run one at a time, or shard within one run using <code class="docutils literal notranslate"><span class="pre">devices</span></code>.</p>
-</div>
+<p>Workers trade memory and start-up time for faster updates. Each worker compiles
+and holds its own copy of the solve, so memory grows with the worker count, and
+the workers need a few extra seconds to start. On the 12-process
+<a class="reference internal" href="../gallery/optfed.html"><span class="std std-doc">OptFed example</span></a> with an implicit solver, 50 updates took
+87 s with one worker, 67 s with two and 59 s with four, at a peak of 1.0, 1.6 and
+2.8 GiB. Short runs of cheap models can end up slower: time a few updates before
+committing to a long run.</p>
+<p>Things to know:</p>
+<ul class="simple">
+<li><p>Workers are CPU-only, and the count is capped at the batch size.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">microbatch_size</span></code> requires <code class="docutils literal notranslate"><span class="pre">workers:</span> <span class="pre">1</span></code>.</p></li>
+<li><p>With an implicit solver such as <code class="docutils literal notranslate"><span class="pre">Kvaerno5</span></code>, results differ slightly from
+<code class="docutils literal notranslate"><span class="pre">workers:</span> <span class="pre">1</span></code>, within the solver tolerances. Solving a batch together and
+solving its processes one at a time take slightly different solver steps.
+Explicit solvers give the same results up to rounding.</p></li>
+<li><p>Models are sent to the workers once, at start-up. Their classes must come
+from <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> or another importable module: classes defined in a script
+run as <code class="docutils literal notranslate"><span class="pre">__main__</span></code>, in a notebook or inside a function raise an error.</p></li>
+</ul>
 </section>
 <section id="checkpoints-and-retention">
 <h2>Checkpoints and retention<a class="headerlink" href="#checkpoints-and-retention" title="Link to this heading">¶</a></h2>
@@ -755,8 +755,6 @@ the previous output before starting fresh.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">--epochs</span></code> overrides the config</strong>, which is what you want while iterating.</p></li>
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">batch_size</span></code> greater than the process count</strong> raises rather than clamping.</p></li>
 <li><p><strong>Stateful modules need <code class="docutils literal notranslate"><span class="pre">train.allow_stateful_models:</span> <span class="pre">true</span></code>.</strong></p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">HYBRAX_GSPMD=1</span></code></strong> switches sharding to GSPMD auto-sharding. It is correct but roughly
-sixty times slower: a debugging tool, not an option.</p></li>
 <li><p><strong>x64 is on globally.</strong> Importing hybrax enables JAX double precision.</p></li>
 </ul>
 </section>

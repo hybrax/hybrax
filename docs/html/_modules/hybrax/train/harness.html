@@ -347,6 +347,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -411,11 +412,12 @@ overview of what Hybrax can do, see the
 <span class="kn">import</span><span class="w"> </span><span class="nn">dataclasses</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">Counter</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">nullcontext</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">fractions</span><span class="w"> </span><span class="kn">import</span> <span class="n">Fraction</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">partial</span>
@@ -479,7 +481,6 @@ overview of what Hybrax can do, see the
 <span class="kn">from</span><span class="w"> </span><span class="nn">.trainer</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">build_batched_loss_fn</span><span class="p">,</span>
     <span class="n">clamp_padded_time_rows</span><span class="p">,</span>
-    <span class="n">evaluate_one_sample_loss</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.training_data</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">TARGET_SOURCE_AUTO</span><span class="p">,</span>
@@ -493,6 +494,7 @@ overview of what Hybrax can do, see the
     <span class="n">resolve_config</span><span class="p">,</span>
     <span class="n">split_hooks_by_customization</span><span class="p">,</span>
 <span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.worker_pool</span><span class="w"> </span><span class="kn">import</span> <span class="n">GradientWorkerPool</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.wrapper</span><span class="w"> </span><span class="kn">import</span> <span class="n">HybridOdeWrapper</span><span class="p">,</span> <span class="n">validate_rhs_ode_compatibility</span>
 
 <span class="c1"># Single batched loss fn: module-agnostic, reads wrapper.loss_module at call time.</span>
@@ -788,6 +790,8 @@ overview of what Hybrax can do, see the
     <span class="n">epochs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">5</span>
     <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">microbatch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># Worker processes computing per-process gradients; 1 trains in-process.</span>
+    <span class="n">workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span>
     <span class="n">shuffle_batches</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
     <span class="n">batch_seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">optimizer_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">"adam"</span>
@@ -992,11 +996,10 @@ overview of what Hybrax can do, see the
     <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">microbatch_size</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">microbatch_size</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"microbatch_size must be positive"</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">jax</span><span class="o">.</span><span class="n">local_device_count</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-                <span class="s2">"microbatching requires one local JAX device; set train.devices=1 "</span>
-                <span class="s2">"and check HYBRAX_TRAIN_DEVICES and XLA_FLAGS"</span>
-            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">workers</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"microbatching requires train.workers=1"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">workers</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"workers must be positive"</span><span class="p">)</span>
     <span class="n">effective_batch_size</span> <span class="o">=</span> <span class="n">_resolve_effective_batch_size</span><span class="p">(</span>
         <span class="n">config</span><span class="o">.</span><span class="n">batch_size</span><span class="p">,</span>
         <span class="n">selected_process_count</span><span class="o">=</span><span class="n">selected_process_count</span><span class="p">,</span>
@@ -1376,6 +1379,93 @@ overview of what Hybrax can do, see the
     <span class="k">return</span> <span class="n">total_arr</span><span class="p">,</span> <span class="n">per_target_arr</span><span class="p">,</span> <span class="n">per_sample_arr</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_loss_and_grad</span><span class="p">(</span>
+    <span class="n">store</span><span class="p">:</span> <span class="n">TrainingDataStore</span><span class="p">,</span>
+    <span class="n">trainable_static</span><span class="p">:</span> <span class="n">HybridOdeWrapper</span><span class="p">,</span>
+    <span class="n">solver</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Callable</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="o">...</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">"""Build the loss-and-gradient function behind every training update.</span>
+
+<span class="sd">    Returns ``(loss_and_grad, store_arrays)``, to be called as</span>
+<span class="sd">    ``loss_and_grad(params, batch_indices, step, store_arrays=store_arrays)``.</span>
+<span class="sd">    It returns ``((loss, (per_target, per_sample, fail_time)), grads)`` for the</span>
+<span class="sd">    batch of processes that ``batch_indices`` selects from ``store``. ``solver``</span>
+<span class="sd">    holds the solve settings (``max_steps``, ``rtol``, ``atol``, ``ode_solver``,</span>
+<span class="sd">    ``use_jump_ts``, ``microbatch_size``).</span>
+
+<span class="sd">    The function is not jitted. The batched step jits it together with the</span>
+<span class="sd">    optimizer update, and worker processes jit it on its own for one-process</span>
+<span class="sd">    batches (:func:`_build_worker_gradient`). Either way ``store_arrays`` must</span>
+<span class="sd">    stay an argument: closed over, the whole store would be baked into the</span>
+<span class="sd">    executable as constants.</span>
+<span class="sd">    """</span>
+    <span class="c1"># Flatten once: per-process metadata must not be traversed on every step.</span>
+    <span class="n">array_store</span><span class="p">,</span> <span class="n">static_store</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="n">store</span><span class="p">,</span> <span class="n">eqx</span><span class="o">.</span><span class="n">is_array</span><span class="p">)</span>
+    <span class="n">store_arrays</span><span class="p">,</span> <span class="n">store_treedef</span> <span class="o">=</span> <span class="n">jtu</span><span class="o">.</span><span class="n">tree_flatten</span><span class="p">(</span><span class="n">array_store</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_loss_fn</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">batch_indices</span><span class="p">,</span> <span class="n">step</span><span class="p">,</span> <span class="n">store_arrays</span><span class="p">):</span>
+        <span class="n">current_store</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">combine</span><span class="p">(</span>
+            <span class="n">jtu</span><span class="o">.</span><span class="n">tree_unflatten</span><span class="p">(</span><span class="n">store_treedef</span><span class="p">,</span> <span class="n">store_arrays</span><span class="p">),</span> <span class="n">static_store</span>
+        <span class="p">)</span>
+        <span class="c1"># Gathering inside the jitted step replaces ~20 small eager dispatches</span>
+        <span class="c1"># per update with fused in-graph gathers.</span>
+        <span class="n">batch</span> <span class="o">=</span> <span class="n">current_store</span><span class="o">.</span><span class="n">_gather_batch_rows</span><span class="p">(</span><span class="n">batch_indices</span><span class="p">)</span>
+        <span class="n">jump_ts_rows</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">solver</span><span class="p">[</span><span class="s2">"use_jump_ts"</span><span class="p">]:</span>
+            <span class="n">jump_ts_rows</span> <span class="o">=</span> <span class="n">clamp_padded_time_rows</span><span class="p">(</span>
+                <span class="n">current_store</span><span class="o">.</span><span class="n">controls_store</span><span class="o">.</span><span class="n">jump_ts</span><span class="p">[</span><span class="n">batch</span><span class="o">.</span><span class="n">process_indices</span><span class="p">],</span>
+                <span class="n">current_store</span><span class="o">.</span><span class="n">controls_store</span><span class="o">.</span><span class="n">jump_ts_lengths</span><span class="p">[</span><span class="n">batch</span><span class="o">.</span><span class="n">process_indices</span><span class="p">],</span>
+            <span class="p">)</span>
+        <span class="n">wrapper</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">combine</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">trainable_static</span><span class="p">)</span>
+        <span class="c1"># `*_pred` swallows the prediction outputs (unused in training); the</span>
+        <span class="c1"># trailing element is the per-sample fail_time (see build_batched_loss_fn).</span>
+        <span class="n">total_loss</span><span class="p">,</span> <span class="n">per_sample_per_target</span><span class="p">,</span> <span class="n">per_sample</span><span class="p">,</span> <span class="o">*</span><span class="n">_pred</span><span class="p">,</span> <span class="n">fail_time</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">_BATCHED_LOSS_FN</span><span class="p">(</span>
+                <span class="n">wrapper</span><span class="p">,</span>
+                <span class="n">batch</span><span class="p">,</span>
+                <span class="n">current_store</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span><span class="p">,</span>
+                <span class="n">current_store</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span><span class="p">,</span>
+                <span class="n">jump_ts_rows</span><span class="p">,</span>
+                <span class="n">max_solver_steps</span><span class="o">=</span><span class="n">solver</span><span class="p">[</span><span class="s2">"max_steps"</span><span class="p">],</span>
+                <span class="n">solver_rtol</span><span class="o">=</span><span class="n">solver</span><span class="p">[</span><span class="s2">"rtol"</span><span class="p">],</span>
+                <span class="n">solver_atol</span><span class="o">=</span><span class="n">solver</span><span class="p">[</span><span class="s2">"atol"</span><span class="p">],</span>
+                <span class="n">ode_solver</span><span class="o">=</span><span class="n">solver</span><span class="p">[</span><span class="s2">"ode_solver"</span><span class="p">],</span>
+                <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
+                <span class="n">microbatch_size</span><span class="o">=</span><span class="n">solver</span><span class="p">[</span><span class="s2">"microbatch_size"</span><span class="p">],</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">total_loss</span><span class="p">,</span> <span class="n">per_target</span><span class="p">,</span> <span class="n">per_sample</span> <span class="o">=</span> <span class="n">_validate_batched_loss_outputs</span><span class="p">(</span>
+            <span class="n">total_loss</span><span class="p">,</span>
+            <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">per_sample_per_target</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span>
+            <span class="n">per_sample</span><span class="p">,</span>
+            <span class="n">n_targets</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">wrapper</span><span class="o">.</span><span class="n">loss_module</span><span class="o">.</span><span class="n">loss_names</span><span class="p">),</span>
+            <span class="n">batch_size</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">batch</span><span class="o">.</span><span class="n">process_indices</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">total_loss</span><span class="p">,</span> <span class="p">(</span><span class="n">per_target</span><span class="p">,</span> <span class="n">per_sample</span><span class="p">,</span> <span class="n">fail_time</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">loss_and_grad</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">batch_indices</span><span class="p">,</span> <span class="n">step</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">store_arrays</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">eqx</span><span class="o">.</span><span class="n">filter_value_and_grad</span><span class="p">(</span><span class="n">_loss_fn</span><span class="p">,</span> <span class="n">has_aux</span><span class="o">=</span><span class="kc">True</span><span class="p">)(</span>
+            <span class="n">params</span><span class="p">,</span> <span class="n">batch_indices</span><span class="p">,</span> <span class="n">step</span><span class="p">,</span> <span class="n">store_arrays</span>
+        <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">loss_and_grad</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">store_arrays</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_worker_gradient</span><span class="p">(</span>
+    <span class="n">store</span><span class="p">:</span> <span class="n">TrainingDataStore</span><span class="p">,</span>
+    <span class="n">trainable_static</span><span class="p">:</span> <span class="n">HybridOdeWrapper</span><span class="p">,</span>
+    <span class="n">solver</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Build one worker process's jitted gradient function.</span>
+
+<span class="sd">    Called once in every worker of a :class:`GradientWorkerPool`, with the</span>
+<span class="sd">    parent's unpickled context. Workers call the result with one-process</span>
+<span class="sd">    batches, so it compiles once per worker.</span>
+<span class="sd">    """</span>
+    <span class="n">loss_and_grad</span><span class="p">,</span> <span class="n">store_arrays</span> <span class="o">=</span> <span class="n">_build_loss_and_grad</span><span class="p">(</span><span class="n">store</span><span class="p">,</span> <span class="n">trainable_static</span><span class="p">,</span> <span class="n">solver</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">partial</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">filter_jit</span><span class="p">(</span><span class="n">loss_and_grad</span><span class="p">),</span> <span class="n">store_arrays</span><span class="o">=</span><span class="n">store_arrays</span><span class="p">)</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">_build_template_wrapper</span><span class="p">(</span>
     <span class="n">store</span><span class="p">:</span> <span class="n">TrainingDataStore</span><span class="p">,</span>
     <span class="o">*</span><span class="p">,</span>
@@ -1745,7 +1835,6 @@ overview of what Hybrax can do, see the
     <span class="n">_require_stateful_opt_in</span><span class="p">(</span><span class="n">reaction_module</span><span class="p">,</span> <span class="n">cfg</span><span class="o">.</span><span class="n">allow_stateful_models</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">loss_module</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">loss_module</span> <span class="o">=</span> <span class="n">DefaultLossModule</span><span class="p">(</span><span class="n">target_names</span><span class="o">=</span><span class="n">_loss_target_labels</span><span class="p">(</span><span class="n">store</span><span class="p">))</span>
-    <span class="n">effective_batched_loss_fn</span> <span class="o">=</span> <span class="n">_BATCHED_LOSS_FN</span>
     <span class="n">selected_processes</span> <span class="o">=</span> <span class="n">_ensure_process_names</span><span class="p">(</span><span class="n">store</span><span class="p">,</span> <span class="n">cfg</span><span class="o">.</span><span class="n">process_names</span><span class="p">)</span>
     <span class="n">overlap</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">selected_processes</span><span class="p">)</span> <span class="o">&amp;</span> <span class="nb">set</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">holdout_processes</span> <span class="ow">or</span> <span class="p">())</span>
     <span class="k">if</span> <span class="n">overlap</span><span class="p">:</span>
@@ -1859,8 +1948,6 @@ overview of what Hybrax can do, see the
         <span class="n">selected_processes</span><span class="o">=</span><span class="n">selected_processes</span><span class="p">,</span>
         <span class="n">loss_module</span><span class="o">=</span><span class="n">loss_module</span><span class="p">,</span>
     <span class="p">)</span>
-    <span class="n">batched_Cin</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span>
-    <span class="n">batched_Cin_modeled</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span>
 
     <span class="c1"># Partition the WHOLE wrapper so the loss module's trainable_field() leaves</span>
     <span class="c1"># are optimized alongside the reaction module's. Untagged leaves (controls,</span>
@@ -1877,596 +1964,78 @@ overview of what Hybrax can do, see the
         <span class="p">)</span>
     <span class="n">optimizer_state</span> <span class="o">=</span> <span class="n">optimizer</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="n">trainable_params</span><span class="p">)</span>
 
+    <span class="n">gradient_context</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">store</span><span class="p">,</span>
+        <span class="n">trainable_static</span><span class="p">,</span>
+        <span class="p">{</span>
+            <span class="s2">"max_steps"</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_max_steps</span><span class="p">),</span>
+            <span class="s2">"rtol"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_rtol</span><span class="p">),</span>
+            <span class="s2">"atol"</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_atol</span><span class="p">),</span>
+            <span class="s2">"ode_solver"</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">ode_solver</span><span class="p">,</span>
+            <span class="s2">"use_jump_ts"</span><span class="p">:</span> <span class="nb">bool</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_use_jump_ts</span><span class="p">),</span>
+            <span class="s2">"microbatch_size"</span><span class="p">:</span> <span class="n">cfg</span><span class="o">.</span><span class="n">microbatch_size</span><span class="p">,</span>
+        <span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_update</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">grads</span><span class="p">):</span>
+        <span class="n">grad_norm</span> <span class="o">=</span> <span class="n">optax</span><span class="o">.</span><span class="n">tree</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">grads</span><span class="p">)</span>
+        <span class="n">updates</span><span class="p">,</span> <span class="n">opt_state</span> <span class="o">=</span> <span class="n">optimizer</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">grads</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">eqx</span><span class="o">.</span><span class="n">apply_updates</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">updates</span><span class="p">),</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">grad_norm</span>
+
     <span class="k">def</span><span class="w"> </span><span class="nf">_make_batched_step</span><span class="p">():</span>
-        <span class="c1"># Flatten once: per-process metadata must not be traversed on every step.</span>
-        <span class="n">array_store</span><span class="p">,</span> <span class="n">static_store</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="n">store</span><span class="p">,</span> <span class="n">eqx</span><span class="o">.</span><span class="n">is_array</span><span class="p">)</span>
-        <span class="n">flat_store_arrays</span><span class="p">,</span> <span class="n">store_treedef</span> <span class="o">=</span> <span class="n">jtu</span><span class="o">.</span><span class="n">tree_flatten</span><span class="p">(</span><span class="n">array_store</span><span class="p">)</span>
+<span class="w">        </span><span class="sd">"""One jitted update: the whole batch is solved in this process."""</span>
+        <span class="n">loss_and_grad</span><span class="p">,</span> <span class="n">store_arrays</span> <span class="o">=</span> <span class="n">_build_loss_and_grad</span><span class="p">(</span><span class="o">*</span><span class="n">gradient_context</span><span class="p">)</span>
 
-        <span class="k">def</span><span class="w"> </span><span class="nf">_step_fn</span><span class="p">(</span>
-            <span class="n">current_trainable_params</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">,</span>
-            <span class="n">current_optimizer_state</span><span class="p">:</span> <span class="n">optax</span><span class="o">.</span><span class="n">OptState</span><span class="p">,</span>
-            <span class="n">current_batch_indices</span><span class="p">,</span>
-            <span class="n">step</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
-            <span class="o">*</span><span class="p">,</span>
-            <span class="n">store_arrays</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
-        <span class="p">):</span>
-            <span class="n">current_store</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">combine</span><span class="p">(</span>
-                <span class="n">jtu</span><span class="o">.</span><span class="n">tree_unflatten</span><span class="p">(</span><span class="n">store_treedef</span><span class="p">,</span> <span class="n">store_arrays</span><span class="p">),</span> <span class="n">static_store</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">_step_fn</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">batch_indices</span><span class="p">,</span> <span class="n">step</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">store_arrays</span><span class="p">):</span>
+            <span class="p">(</span><span class="n">loss</span><span class="p">,</span> <span class="p">(</span><span class="n">per_target</span><span class="p">,</span> <span class="n">per_sample</span><span class="p">,</span> <span class="n">fail_time</span><span class="p">)),</span> <span class="n">grads</span> <span class="o">=</span> <span class="n">loss_and_grad</span><span class="p">(</span>
+                <span class="n">params</span><span class="p">,</span> <span class="n">batch_indices</span><span class="p">,</span> <span class="n">step</span><span class="p">,</span> <span class="n">store_arrays</span><span class="o">=</span><span class="n">store_arrays</span>
             <span class="p">)</span>
-            <span class="c1"># Gathering inside the jitted step replaces ~20 small eager dispatches</span>
-            <span class="c1"># per update with fused in-graph gathers.</span>
-            <span class="n">current_batch</span> <span class="o">=</span> <span class="n">current_store</span><span class="o">.</span><span class="n">_gather_batch_rows</span><span class="p">(</span><span class="n">current_batch_indices</span><span class="p">)</span>
-            <span class="n">jump_ts_rows</span> <span class="o">=</span> <span class="kc">None</span>
-            <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">solver_use_jump_ts</span><span class="p">:</span>
-                <span class="n">jump_ts_rows</span> <span class="o">=</span> <span class="n">clamp_padded_time_rows</span><span class="p">(</span>
-                    <span class="n">current_store</span><span class="o">.</span><span class="n">controls_store</span><span class="o">.</span><span class="n">jump_ts</span><span class="p">[</span><span class="n">current_batch</span><span class="o">.</span><span class="n">process_indices</span><span class="p">],</span>
-                    <span class="n">current_store</span><span class="o">.</span><span class="n">controls_store</span><span class="o">.</span><span class="n">jump_ts_lengths</span><span class="p">[</span>
-                        <span class="n">current_batch</span><span class="o">.</span><span class="n">process_indices</span>
-                    <span class="p">],</span>
-                <span class="p">)</span>
-
-            <span class="k">def</span><span class="w"> </span><span class="nf">_loss_fn</span><span class="p">(</span><span class="n">trainable_params</span><span class="p">:</span> <span class="n">eqx</span><span class="o">.</span><span class="n">Module</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">:</span>
-                <span class="n">candidate_wrapper</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">combine</span><span class="p">(</span><span class="n">trainable_params</span><span class="p">,</span> <span class="n">trainable_static</span><span class="p">)</span>
-                <span class="c1"># `*_pred` swallows the prediction outputs (unused in training);</span>
-                <span class="c1"># the trailing element is the per-sample fail_time (see</span>
-                <span class="c1"># build_batched_loss_fn).</span>
-                <span class="p">(</span>
-                    <span class="n">total_loss</span><span class="p">,</span>
-                    <span class="n">per_sample_per_target</span><span class="p">,</span>
-                    <span class="n">per_sample</span><span class="p">,</span>
-                    <span class="o">*</span><span class="n">_pred</span><span class="p">,</span>
-                    <span class="n">per_sample_fail</span><span class="p">,</span>
-                <span class="p">)</span> <span class="o">=</span> <span class="n">effective_batched_loss_fn</span><span class="p">(</span>
-                    <span class="n">candidate_wrapper</span><span class="p">,</span>
-                    <span class="n">current_batch</span><span class="p">,</span>
-                    <span class="n">current_store</span><span class="o">.</span><span class="n">Cin_controlled_Inflows</span><span class="p">,</span>
-                    <span class="n">current_store</span><span class="o">.</span><span class="n">Cin_modeled_Inflows</span><span class="p">,</span>
-                    <span class="n">jump_ts_rows</span><span class="p">,</span>
-                    <span class="n">max_solver_steps</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_max_steps</span><span class="p">),</span>
-                    <span class="n">solver_rtol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_rtol</span><span class="p">),</span>
-                    <span class="n">solver_atol</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_atol</span><span class="p">),</span>
-                    <span class="n">ode_solver</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">ode_solver</span><span class="p">,</span>
-                    <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
-                    <span class="n">microbatch_size</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">microbatch_size</span><span class="p">,</span>
-                <span class="p">)</span>
-                <span class="n">per_target</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">per_sample_per_target</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-                <span class="n">total_loss</span><span class="p">,</span> <span class="n">per_target</span><span class="p">,</span> <span class="n">per_sample</span> <span class="o">=</span> <span class="n">_validate_batched_loss_outputs</span><span class="p">(</span>
-                    <span class="n">total_loss</span><span class="p">,</span>
-                    <span class="n">per_target</span><span class="p">,</span>
-                    <span class="n">per_sample</span><span class="p">,</span>
-                    <span class="n">n_targets</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">loss_module</span><span class="o">.</span><span class="n">loss_names</span><span class="p">),</span>
-                    <span class="n">batch_size</span><span class="o">=</span><span class="nb">int</span><span class="p">(</span><span class="n">current_batch</span><span class="o">.</span><span class="n">process_indices</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
-                <span class="p">)</span>
-                <span class="k">return</span> <span class="n">total_loss</span><span class="p">,</span> <span class="p">(</span><span class="n">per_target</span><span class="p">,</span> <span class="n">per_sample</span><span class="p">,</span> <span class="n">per_sample_fail</span><span class="p">)</span>
-
-            <span class="p">(</span><span class="n">loss</span><span class="p">,</span> <span class="p">(</span><span class="n">per_target_loss</span><span class="p">,</span> <span class="n">per_sample_loss</span><span class="p">,</span> <span class="n">per_sample_fail</span><span class="p">)),</span> <span class="n">grads</span> <span class="o">=</span> <span class="p">(</span>
-                <span class="n">eqx</span><span class="o">.</span><span class="n">filter_value_and_grad</span><span class="p">(</span>
-                    <span class="n">_loss_fn</span><span class="p">,</span>
-                    <span class="n">has_aux</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-                <span class="p">)(</span><span class="n">current_trainable_params</span><span class="p">)</span>
-            <span class="p">)</span>
-            <span class="n">grad_norm</span> <span class="o">=</span> <span class="n">optax</span><span class="o">.</span><span class="n">tree</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">grads</span><span class="p">)</span>
-            <span class="n">updates</span><span class="p">,</span> <span class="n">next_optimizer_state</span> <span class="o">=</span> <span class="n">optimizer</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
-                <span class="n">grads</span><span class="p">,</span>
-                <span class="n">current_optimizer_state</span><span class="p">,</span>
-                <span class="n">params</span><span class="o">=</span><span class="n">current_trainable_params</span><span class="p">,</span>
-            <span class="p">)</span>
-            <span class="n">trainable_updated</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">apply_updates</span><span class="p">(</span><span class="n">current_trainable_params</span><span class="p">,</span> <span class="n">updates</span><span class="p">)</span>
-            <span class="k">return</span> <span class="p">(</span>
-                <span class="n">trainable_updated</span><span class="p">,</span>
-                <span class="n">loss</span><span class="p">,</span>
-                <span class="n">per_target_loss</span><span class="p">,</span>
-                <span class="n">per_sample_loss</span><span class="p">,</span>
-                <span class="n">next_optimizer_state</span><span class="p">,</span>
-                <span class="n">grad_norm</span><span class="p">,</span>
-                <span class="n">per_sample_fail</span><span class="p">,</span>
-            <span class="p">)</span>
+            <span class="n">params</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">grad_norm</span> <span class="o">=</span> <span class="n">_update</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">grads</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">params</span><span class="p">,</span> <span class="n">loss</span><span class="p">,</span> <span class="n">per_target</span><span class="p">,</span> <span class="n">per_sample</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">grad_norm</span><span class="p">,</span> <span class="n">fail_time</span>
 
         <span class="c1"># Bind outside filter_jit so the store arrays become dynamic inputs,</span>
         <span class="c1"># rather than compiler constants whose payload grows with the full store.</span>
-        <span class="k">return</span> <span class="n">partial</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">filter_jit</span><span class="p">(</span><span class="n">_step_fn</span><span class="p">),</span> <span class="n">store_arrays</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">flat_store_arrays</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">partial</span><span class="p">(</span><span class="n">eqx</span><span class="o">.</span><span class="n">filter_jit</span><span class="p">(</span><span class="n">_step_fn</span><span class="p">),</span> <span class="n">store_arrays</span><span class="o">=</span><span class="n">store_arrays</span><span class="p">)</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_make_sharded_step</span><span class="p">():</span>
-<span class="w">        </span><span class="sd">"""Data-parallel step: shard the batch across local devices via pmap,</span>
-<span class="sd">        psum/all_gather to the batch mean, then apply the optimiser update.</span>
-<span class="sd">        Same math as the vmap step up to floating-point cross-device reduction order.</span>
-<span class="sd">        y0 stays RAW; the callbacks solve integrates scaled physical states and returns</span>
-<span class="sd">        RAW states.</span>
-<span class="sd">        Uses min(devices, batch) devices, so a device count exceeding the process</span>
-<span class="sd">        count shards across the processes instead of collapsing to one device."""</span>
-        <span class="n">bs</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">effective_batch_size</span><span class="p">)</span>
-        <span class="n">n_dev</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">local_device_count</span><span class="p">(),</span> <span class="n">bs</span><span class="p">)</span>
-        <span class="n">devices</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">local_devices</span><span class="p">()[:</span><span class="n">n_dev</span><span class="p">]</span>
-        <span class="n">pad_n</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="n">bs</span><span class="p">)</span> <span class="o">%</span> <span class="n">n_dev</span>
-        <span class="n">padded</span> <span class="o">=</span> <span class="n">bs</span> <span class="o">+</span> <span class="n">pad_n</span>
-        <span class="n">per_dev</span> <span class="o">=</span> <span class="n">padded</span> <span class="o">//</span> <span class="n">n_dev</span>
-        <span class="n">weight_full</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
-            <span class="p">[</span><span class="n">jnp</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">bs</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">pad_n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">float64</span><span class="p">)]</span>
-        <span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_make_pool_step</span><span class="p">(</span><span class="n">pool</span><span class="p">:</span> <span class="n">GradientWorkerPool</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""One update whose per-process solves run in ``pool``'s workers.</span>
 
-        <span class="k">def</span><span class="w"> </span><span class="nf">_pad</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="sd">        Same mathematics as the batched step: the batch loss is the mean of the</span>
+<span class="sd">        per-process losses, so its gradient is the mean of their gradients.</span>
+<span class="sd">        """</span>
+        <span class="n">update</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">filter_jit</span><span class="p">(</span><span class="n">_update</span><span class="p">)</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">_step_fn</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">batch_indices</span><span class="p">,</span> <span class="n">step</span><span class="p">):</span>
+            <span class="n">outputs</span><span class="p">,</span> <span class="n">grads</span> <span class="o">=</span> <span class="n">pool</span><span class="o">.</span><span class="n">mean_gradient</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">batch_indices</span><span class="p">,</span> <span class="n">step</span><span class="p">)</span>
+            <span class="n">params</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">grad_norm</span> <span class="o">=</span> <span class="n">update</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">grads</span><span class="p">)</span>
+            <span class="n">losses</span><span class="p">,</span> <span class="n">aux</span> <span class="o">=</span> <span class="nb">zip</span><span class="p">(</span><span class="o">*</span><span class="n">outputs</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">per_target</span><span class="p">,</span> <span class="n">per_sample</span><span class="p">,</span> <span class="n">fail_time</span> <span class="o">=</span> <span class="nb">zip</span><span class="p">(</span><span class="o">*</span><span class="n">aux</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
             <span class="k">return</span> <span class="p">(</span>
-                <span class="n">x</span>
-                <span class="k">if</span> <span class="n">pad_n</span> <span class="o">==</span> <span class="mi">0</span>
-                <span class="k">else</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">x</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">:],</span> <span class="n">pad_n</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-            <span class="p">)</span>
-
-        <span class="k">def</span><span class="w"> </span><span class="nf">_shard</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
-            <span class="k">return</span> <span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">((</span><span class="n">n_dev</span><span class="p">,</span> <span class="n">per_dev</span><span class="p">)</span> <span class="o">+</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
-
-        <span class="n">weight_sharded</span> <span class="o">=</span> <span class="n">_shard</span><span class="p">(</span><span class="n">weight_full</span><span class="p">)</span>
-        <span class="n">use_jump</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_use_jump_ts</span><span class="p">)</span>
-        <span class="n">max_steps</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_max_steps</span><span class="p">)</span>
-        <span class="n">rtol</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_rtol</span><span class="p">)</span>
-        <span class="n">atol</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_atol</span><span class="p">)</span>
-
-        <span class="nd">@partial</span><span class="p">(</span>
-            <span class="n">jax</span><span class="o">.</span><span class="n">pmap</span><span class="p">,</span>
-            <span class="n">axis_name</span><span class="o">=</span><span class="s2">"hybrax_dev"</span><span class="p">,</span>
-            <span class="n">devices</span><span class="o">=</span><span class="n">devices</span><span class="p">,</span>
-            <span class="n">in_axes</span><span class="o">=</span><span class="p">(</span>
-                <span class="kc">None</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="mi">0</span><span class="p">,</span>
-                <span class="p">(</span><span class="mi">0</span> <span class="k">if</span> <span class="n">use_jump</span> <span class="k">else</span> <span class="kc">None</span><span class="p">),</span>
-                <span class="kc">None</span><span class="p">,</span>
-            <span class="p">),</span>
-        <span class="p">)</span>
-        <span class="k">def</span><span class="w"> </span><span class="nf">_pgrad</span><span class="p">(</span>
-            <span class="n">params</span><span class="p">,</span> <span class="n">controls</span><span class="p">,</span> <span class="n">tm</span><span class="p">,</span> <span class="n">ym</span><span class="p">,</span> <span class="n">mk</span><span class="p">,</span> <span class="n">nm</span><span class="p">,</span> <span class="n">y0</span><span class="p">,</span> <span class="n">cin</span><span class="p">,</span> <span class="n">cinm</span><span class="p">,</span> <span class="n">ret</span><span class="p">,</span> <span class="n">retm</span><span class="p">,</span> <span class="n">wt</span><span class="p">,</span> <span class="n">jt</span><span class="p">,</span> <span class="n">step</span>
-        <span class="p">):</span>
-            <span class="k">def</span><span class="w"> </span><span class="nf">_local</span><span class="p">(</span><span class="n">p</span><span class="p">):</span>
-                <span class="n">wrapper</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">combine</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">trainable_static</span><span class="p">)</span>
-                <span class="n">module</span> <span class="o">=</span> <span class="n">wrapper</span><span class="o">.</span><span class="n">reaction_module</span>
-                <span class="c1"># Use the solver's same target scaler so affine offsets cancel</span>
-                <span class="c1"># in residuals; divergence silently shifts them by b/s.</span>
-                <span class="n">scale_targets</span> <span class="o">=</span> <span class="n">module</span><span class="o">.</span><span class="n">SCALE_state</span><span class="p">[</span><span class="n">wrapper</span><span class="o">.</span><span class="n">target_state_indices</span><span class="p">]</span>
-                <span class="n">SCL_ym</span> <span class="o">=</span> <span class="n">ym</span> <span class="o">/</span> <span class="n">scale_targets</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="p">:]</span>
-                <span class="n">tmc</span> <span class="o">=</span> <span class="n">clamp_padded_time_rows</span><span class="p">(</span><span class="n">tm</span><span class="p">,</span> <span class="n">nm</span><span class="p">)</span>
-
-                <span class="k">def</span><span class="w"> </span><span class="nf">_one</span><span class="p">(</span>
-                    <span class="n">pidx</span><span class="p">,</span>
-                    <span class="n">t_row</span><span class="p">,</span>
-                    <span class="n">scl_ym</span><span class="p">,</span>
-                    <span class="n">mask</span><span class="p">,</span>
-                    <span class="n">n_meas</span><span class="p">,</span>
-                    <span class="n">raw_y0</span><span class="p">,</span>
-                    <span class="n">ci</span><span class="p">,</span>
-                    <span class="n">cim</span><span class="p">,</span>
-                    <span class="n">retention</span><span class="p">,</span>
-                    <span class="n">retention_modeled</span><span class="p">,</span>
-                    <span class="n">jts</span><span class="p">,</span>
-                <span class="p">):</span>
-                    <span class="k">return</span> <span class="n">evaluate_one_sample_loss</span><span class="p">(</span>
-                        <span class="n">wrapper</span><span class="p">,</span>
-                        <span class="n">controls</span><span class="p">,</span>
-                        <span class="n">pidx</span><span class="p">,</span>
-                        <span class="n">t_row</span><span class="p">,</span>
-                        <span class="n">scl_ym</span><span class="p">,</span>
-                        <span class="n">mask</span><span class="p">,</span>
-                        <span class="n">n_meas</span><span class="p">,</span>
-                        <span class="n">raw_y0</span><span class="p">,</span>
-                        <span class="n">ci</span><span class="p">,</span>
-                        <span class="n">cim</span><span class="p">,</span>
-                        <span class="n">retention</span><span class="p">,</span>
-                        <span class="n">retention_modeled</span><span class="p">,</span>
-                        <span class="n">jts</span><span class="p">,</span>
-                        <span class="n">max_solver_steps</span><span class="o">=</span><span class="n">max_steps</span><span class="p">,</span>
-                        <span class="n">solver_rtol</span><span class="o">=</span><span class="n">rtol</span><span class="p">,</span>
-                        <span class="n">solver_atol</span><span class="o">=</span><span class="n">atol</span><span class="p">,</span>
-                        <span class="n">ode_solver</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">ode_solver</span><span class="p">,</span>
-                        <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
-                    <span class="p">)</span>
-
-                <span class="n">totl</span><span class="p">,</span> <span class="n">pert</span><span class="p">,</span> <span class="n">faild</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span>
-                    <span class="n">_one</span><span class="p">,</span>
-                    <span class="n">in_axes</span><span class="o">=</span><span class="p">(</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="p">(</span><span class="mi">0</span> <span class="k">if</span> <span class="n">use_jump</span> <span class="k">else</span> <span class="kc">None</span><span class="p">),</span>
-                    <span class="p">),</span>
-                <span class="p">)(</span>
-                    <span class="n">jnp</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">tm</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span>
-                    <span class="n">tmc</span><span class="p">,</span>
-                    <span class="n">SCL_ym</span><span class="p">,</span>
-                    <span class="n">mk</span><span class="p">,</span>
-                    <span class="n">nm</span><span class="p">,</span>
-                    <span class="n">y0</span><span class="p">,</span>
-                    <span class="n">cin</span><span class="p">,</span>
-                    <span class="n">cinm</span><span class="p">,</span>
-                    <span class="n">ret</span><span class="p">,</span>
-                    <span class="n">retm</span><span class="p">,</span>
-                    <span class="n">jt</span><span class="p">,</span>
-                <span class="p">)</span>
-                <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">totl</span> <span class="o">*</span> <span class="n">wt</span><span class="p">),</span> <span class="p">(</span><span class="n">pert</span><span class="p">,</span> <span class="n">totl</span><span class="p">,</span> <span class="n">faild</span><span class="p">)</span>
-
-            <span class="p">(</span><span class="n">_l</span><span class="p">,</span> <span class="p">(</span><span class="n">pert</span><span class="p">,</span> <span class="n">totl</span><span class="p">,</span> <span class="n">faild</span><span class="p">)),</span> <span class="n">grads</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">filter_value_and_grad</span><span class="p">(</span>
-                <span class="n">_local</span><span class="p">,</span> <span class="n">has_aux</span><span class="o">=</span><span class="kc">True</span>
-            <span class="p">)(</span><span class="n">params</span><span class="p">)</span>
-            <span class="n">loss</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">lax</span><span class="o">.</span><span class="n">psum</span><span class="p">(</span><span class="n">_l</span><span class="p">,</span> <span class="s2">"hybrax_dev"</span><span class="p">)</span> <span class="o">/</span> <span class="n">bs</span>
-            <span class="n">grads</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree_util</span><span class="o">.</span><span class="n">tree_map</span><span class="p">(</span>
-                <span class="k">lambda</span> <span class="n">g</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">lax</span><span class="o">.</span><span class="n">psum</span><span class="p">(</span><span class="n">g</span><span class="p">,</span> <span class="s2">"hybrax_dev"</span><span class="p">)</span> <span class="o">/</span> <span class="n">bs</span><span class="p">,</span> <span class="n">grads</span>
-            <span class="p">)</span>
-            <span class="n">per_target</span> <span class="o">=</span> <span class="p">(</span>
-                <span class="n">jax</span><span class="o">.</span><span class="n">lax</span><span class="o">.</span><span class="n">psum</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">pert</span> <span class="o">*</span> <span class="n">wt</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="s2">"hybrax_dev"</span><span class="p">)</span> <span class="o">/</span> <span class="n">bs</span>
-            <span class="p">)</span>
-            <span class="n">per_sample</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">lax</span><span class="o">.</span><span class="n">all_gather</span><span class="p">(</span><span class="n">totl</span><span class="p">,</span> <span class="s2">"hybrax_dev"</span><span class="p">)</span>
-            <span class="n">per_sample_fail</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">lax</span><span class="o">.</span><span class="n">all_gather</span><span class="p">(</span><span class="n">faild</span><span class="p">,</span> <span class="s2">"hybrax_dev"</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">loss</span><span class="p">,</span> <span class="n">grads</span><span class="p">,</span> <span class="n">per_target</span><span class="p">,</span> <span class="n">per_sample</span><span class="p">,</span> <span class="n">per_sample_fail</span>
-
-        <span class="k">def</span><span class="w"> </span><span class="nf">_step_fn</span><span class="p">(</span>
-            <span class="n">current_trainable_params</span><span class="p">,</span>
-            <span class="n">current_optimizer_state</span><span class="p">,</span>
-            <span class="n">current_batch_indices</span><span class="p">,</span>
-            <span class="n">step</span><span class="p">,</span>
-        <span class="p">):</span>
-            <span class="n">current_batch</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">_gather_batch_rows</span><span class="p">(</span>
-                <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">current_batch_indices</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
-            <span class="p">)</span>
-            <span class="n">jump_ts_rows</span> <span class="o">=</span> <span class="kc">None</span>
-            <span class="k">if</span> <span class="n">use_jump</span><span class="p">:</span>
-                <span class="n">jump_ts_rows</span> <span class="o">=</span> <span class="n">clamp_padded_time_rows</span><span class="p">(</span>
-                    <span class="n">store</span><span class="o">.</span><span class="n">controls_store</span><span class="o">.</span><span class="n">jump_ts</span><span class="p">[</span><span class="n">current_batch</span><span class="o">.</span><span class="n">process_indices</span><span class="p">],</span>
-                    <span class="n">store</span><span class="o">.</span><span class="n">controls_store</span><span class="o">.</span><span class="n">jump_ts_lengths</span><span class="p">[</span><span class="n">current_batch</span><span class="o">.</span><span class="n">process_indices</span><span class="p">],</span>
-                <span class="p">)</span>
-            <span class="n">cin</span> <span class="o">=</span> <span class="n">batched_Cin</span><span class="p">[</span><span class="n">current_batch</span><span class="o">.</span><span class="n">process_indices</span><span class="p">]</span>
-            <span class="n">cinm</span> <span class="o">=</span> <span class="n">batched_Cin_modeled</span><span class="p">[</span><span class="n">current_batch</span><span class="o">.</span><span class="n">process_indices</span><span class="p">]</span>
-            <span class="n">ins</span> <span class="o">=</span> <span class="p">[</span>
-                <span class="n">_shard</span><span class="p">(</span><span class="n">_pad</span><span class="p">(</span><span class="n">a</span><span class="p">))</span>
-                <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="p">(</span>
-                    <span class="n">current_batch</span><span class="o">.</span><span class="n">t_measured</span><span class="p">,</span>
-                    <span class="n">current_batch</span><span class="o">.</span><span class="n">y_measured</span><span class="p">,</span>
-                    <span class="n">current_batch</span><span class="o">.</span><span class="n">mask_measured</span><span class="p">,</span>
-                    <span class="n">current_batch</span><span class="o">.</span><span class="n">n_measured</span><span class="p">,</span>
-                    <span class="n">current_batch</span><span class="o">.</span><span class="n">y0_measured</span><span class="p">,</span>
-                    <span class="n">cin</span><span class="p">,</span>
-                    <span class="n">cinm</span><span class="p">,</span>
-                    <span class="n">current_batch</span><span class="o">.</span><span class="n">retention_controlled_Outflows</span><span class="p">,</span>
-                    <span class="n">current_batch</span><span class="o">.</span><span class="n">retention_modeled_Outflows</span><span class="p">,</span>
-                <span class="p">)</span>
-            <span class="p">]</span>
-            <span class="n">controls</span> <span class="o">=</span> <span class="n">jtu</span><span class="o">.</span><span class="n">tree_map</span><span class="p">(</span><span class="n">_shard</span><span class="p">,</span> <span class="n">jtu</span><span class="o">.</span><span class="n">tree_map</span><span class="p">(</span><span class="n">_pad</span><span class="p">,</span> <span class="n">current_batch</span><span class="o">.</span><span class="n">controls</span><span class="p">))</span>
-            <span class="n">jt</span> <span class="o">=</span> <span class="n">_shard</span><span class="p">(</span><span class="n">_pad</span><span class="p">(</span><span class="n">jump_ts_rows</span><span class="p">))</span> <span class="k">if</span> <span class="n">jump_ts_rows</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
-            <span class="n">loss</span><span class="p">,</span> <span class="n">grads</span><span class="p">,</span> <span class="n">per_target</span><span class="p">,</span> <span class="n">per_sample</span><span class="p">,</span> <span class="n">per_sample_fail</span> <span class="o">=</span> <span class="n">_pgrad</span><span class="p">(</span>
-                <span class="n">current_trainable_params</span><span class="p">,</span>
-                <span class="n">controls</span><span class="p">,</span>
-                <span class="n">ins</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
-                <span class="n">ins</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
-                <span class="n">ins</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span>
-                <span class="n">ins</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span>
-                <span class="n">ins</span><span class="p">[</span><span class="mi">4</span><span class="p">],</span>
-                <span class="n">ins</span><span class="p">[</span><span class="mi">5</span><span class="p">],</span>
-                <span class="n">ins</span><span class="p">[</span><span class="mi">6</span><span class="p">],</span>
-                <span class="n">ins</span><span class="p">[</span><span class="mi">7</span><span class="p">],</span>
-                <span class="n">ins</span><span class="p">[</span><span class="mi">8</span><span class="p">],</span>
-                <span class="n">weight_sharded</span><span class="p">,</span>
-                <span class="n">jt</span><span class="p">,</span>
-                <span class="n">step</span><span class="p">,</span>
-            <span class="p">)</span>
-            <span class="n">loss</span> <span class="o">=</span> <span class="n">loss</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-            <span class="n">grads</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">tree_util</span><span class="o">.</span><span class="n">tree_map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">g</span><span class="p">:</span> <span class="n">g</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">grads</span><span class="p">)</span>
-            <span class="n">per_target_loss</span> <span class="o">=</span> <span class="n">per_target</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-            <span class="n">per_sample_loss</span> <span class="o">=</span> <span class="n">per_sample</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)[:</span><span class="n">bs</span><span class="p">]</span>
-            <span class="n">per_sample_fail</span> <span class="o">=</span> <span class="n">per_sample_fail</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)[:</span><span class="n">bs</span><span class="p">]</span>
-            <span class="n">grad_norm</span> <span class="o">=</span> <span class="n">optax</span><span class="o">.</span><span class="n">tree</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">grads</span><span class="p">)</span>
-            <span class="n">updates</span><span class="p">,</span> <span class="n">next_optimizer_state</span> <span class="o">=</span> <span class="n">optimizer</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
-                <span class="n">grads</span><span class="p">,</span> <span class="n">current_optimizer_state</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">current_trainable_params</span>
-            <span class="p">)</span>
-            <span class="n">trainable_updated</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">apply_updates</span><span class="p">(</span><span class="n">current_trainable_params</span><span class="p">,</span> <span class="n">updates</span><span class="p">)</span>
-            <span class="k">return</span> <span class="p">(</span>
-                <span class="n">trainable_updated</span><span class="p">,</span>
-                <span class="n">loss</span><span class="p">,</span>
-                <span class="n">per_target_loss</span><span class="p">,</span>
-                <span class="n">per_sample_loss</span><span class="p">,</span>
-                <span class="n">next_optimizer_state</span><span class="p">,</span>
+                <span class="n">params</span><span class="p">,</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">losses</span><span class="p">),</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">per_target</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">per_sample</span><span class="p">),</span>
+                <span class="n">opt_state</span><span class="p">,</span>
                 <span class="n">grad_norm</span><span class="p">,</span>
-                <span class="n">per_sample_fail</span><span class="p">,</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">fail_time</span><span class="p">),</span>
             <span class="p">)</span>
 
         <span class="k">return</span> <span class="n">_step_fn</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_make_gspmd_step</span><span class="p">():</span>
-<span class="w">        </span><span class="sd">"""Data-parallel step via ``jax.jit`` + GSPMD auto-sharding — the modern,</span>
-<span class="sd">        future-proof replacement for the deprecated ``jax.pmap``. The batch axis is</span>
-<span class="sd">        sharded across an Auto-axis ``Mesh`` (``device_put`` with ``P('hybrax_dev')``);</span>
-<span class="sd">        params/optimiser-state are replicated. The single full vmap-over-batch grad +</span>
-<span class="sd">        optimiser update runs under one ``jit``, and XLA's SPMD partitioner splits the</span>
-<span class="sd">        per-sample solves across devices and inserts the all-reduce for the</span>
-<span class="sd">        batch-mean loss/grad automatically — no manual ``psum``/``all_gather``.</span>
-
-<span class="sd">        Why GSPMD and not ``jax.shard_map``: on jax&gt;=0.10 ``shard_map`` runs</span>
-<span class="sd">        the body in *manual* sharding mode, which trips</span>
-<span class="sd">        ``assert not hlo_sharding.is_manual()`` inside diffrax's nested</span>
-<span class="sd">        ``eqx.filter_eval_shape`` solver loop; explicit-sharding ``jit``</span>
-<span class="sd">        likewise breaks on diffrax's internal ``select``s. Auto-axis GSPMD</span>
-<span class="sd">        keeps shardings out of the per-op type system, so the diffrax adjoint</span>
-<span class="sd">        composes cleanly."""</span>
-        <span class="kn">from</span><span class="w"> </span><span class="nn">jax.sharding</span><span class="w"> </span><span class="kn">import</span> <span class="n">AxisType</span><span class="p">,</span> <span class="n">NamedSharding</span>
-        <span class="kn">from</span><span class="w"> </span><span class="nn">jax.sharding</span><span class="w"> </span><span class="kn">import</span> <span class="n">PartitionSpec</span> <span class="k">as</span> <span class="n">P</span>
-
-        <span class="n">bs</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">effective_batch_size</span><span class="p">)</span>
-        <span class="n">n_dev</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">jax</span><span class="o">.</span><span class="n">local_device_count</span><span class="p">(),</span> <span class="n">bs</span><span class="p">)</span>
-        <span class="n">devices</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">local_devices</span><span class="p">()[:</span><span class="n">n_dev</span><span class="p">]</span>
-        <span class="n">mesh</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">make_mesh</span><span class="p">(</span>
-            <span class="p">(</span><span class="n">n_dev</span><span class="p">,),</span> <span class="p">(</span><span class="s2">"hybrax_dev"</span><span class="p">,),</span> <span class="n">axis_types</span><span class="o">=</span><span class="p">(</span><span class="n">AxisType</span><span class="o">.</span><span class="n">Auto</span><span class="p">,),</span> <span class="n">devices</span><span class="o">=</span><span class="n">devices</span>
-        <span class="p">)</span>
-        <span class="n">S_batch</span> <span class="o">=</span> <span class="n">NamedSharding</span><span class="p">(</span><span class="n">mesh</span><span class="p">,</span> <span class="n">P</span><span class="p">(</span><span class="s2">"hybrax_dev"</span><span class="p">))</span>  <span class="c1"># shard the leading batch axis</span>
-        <span class="n">S_repl</span> <span class="o">=</span> <span class="n">NamedSharding</span><span class="p">(</span><span class="n">mesh</span><span class="p">,</span> <span class="n">P</span><span class="p">())</span>  <span class="c1"># replicated</span>
-        <span class="n">pad_n</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="n">bs</span><span class="p">)</span> <span class="o">%</span> <span class="n">n_dev</span>
-        <span class="n">weight_full</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span>
-            <span class="p">[</span><span class="n">jnp</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">bs</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span> <span class="n">jnp</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">pad_n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">float64</span><span class="p">)]</span>
-        <span class="p">)</span>
-
-        <span class="k">def</span><span class="w"> </span><span class="nf">_pad</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
-            <span class="k">return</span> <span class="p">(</span>
-                <span class="n">x</span>
-                <span class="k">if</span> <span class="n">pad_n</span> <span class="o">==</span> <span class="mi">0</span>
-                <span class="k">else</span> <span class="n">jnp</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">x</span><span class="p">,</span> <span class="n">jnp</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">:],</span> <span class="n">pad_n</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-            <span class="p">)</span>
-
-        <span class="n">use_jump</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_use_jump_ts</span><span class="p">)</span>
-        <span class="n">max_steps</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_max_steps</span><span class="p">)</span>
-        <span class="n">rtol</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_rtol</span><span class="p">)</span>
-        <span class="n">atol</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">solver_atol</span><span class="p">)</span>
-
-        <span class="nd">@eqx</span><span class="o">.</span><span class="n">filter_jit</span>
-        <span class="k">def</span><span class="w"> </span><span class="nf">_full_step</span><span class="p">(</span>
-            <span class="n">params</span><span class="p">,</span>
-            <span class="n">opt_state</span><span class="p">,</span>
-            <span class="n">controls</span><span class="p">,</span>
-            <span class="n">tm</span><span class="p">,</span>
-            <span class="n">ym</span><span class="p">,</span>
-            <span class="n">mk</span><span class="p">,</span>
-            <span class="n">nm</span><span class="p">,</span>
-            <span class="n">y0</span><span class="p">,</span>
-            <span class="n">cin</span><span class="p">,</span>
-            <span class="n">cinm</span><span class="p">,</span>
-            <span class="n">ret</span><span class="p">,</span>
-            <span class="n">retm</span><span class="p">,</span>
-            <span class="n">wt</span><span class="p">,</span>
-            <span class="n">jt</span><span class="p">,</span>
-            <span class="n">step</span><span class="p">,</span>
-        <span class="p">):</span>
-            <span class="c1"># Inside-jit sharding constraints (per the equinox autoparallelism</span>
-            <span class="c1"># tutorial): emits jax.lax.with_sharding_constraint so XLA keeps</span>
-            <span class="c1"># params/opt replicated and the batch axis sharded *through* the</span>
-            <span class="c1"># computation, rather than replicating it.</span>
-            <span class="n">params</span><span class="p">,</span> <span class="n">opt_state</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">filter_shard</span><span class="p">((</span><span class="n">params</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">),</span> <span class="n">S_repl</span><span class="p">)</span>
-            <span class="n">controls</span><span class="p">,</span> <span class="n">tm</span><span class="p">,</span> <span class="n">ym</span><span class="p">,</span> <span class="n">mk</span><span class="p">,</span> <span class="n">nm</span><span class="p">,</span> <span class="n">y0</span><span class="p">,</span> <span class="n">cin</span><span class="p">,</span> <span class="n">cinm</span><span class="p">,</span> <span class="n">ret</span><span class="p">,</span> <span class="n">retm</span><span class="p">,</span> <span class="n">wt</span><span class="p">,</span> <span class="n">jt</span> <span class="o">=</span> <span class="p">(</span>
-                <span class="n">eqx</span><span class="o">.</span><span class="n">filter_shard</span><span class="p">(</span>
-                    <span class="p">(</span><span class="n">controls</span><span class="p">,</span> <span class="n">tm</span><span class="p">,</span> <span class="n">ym</span><span class="p">,</span> <span class="n">mk</span><span class="p">,</span> <span class="n">nm</span><span class="p">,</span> <span class="n">y0</span><span class="p">,</span> <span class="n">cin</span><span class="p">,</span> <span class="n">cinm</span><span class="p">,</span> <span class="n">ret</span><span class="p">,</span> <span class="n">retm</span><span class="p">,</span> <span class="n">wt</span><span class="p">,</span> <span class="n">jt</span><span class="p">),</span>
-                    <span class="n">S_batch</span><span class="p">,</span>
-                <span class="p">)</span>
-            <span class="p">)</span>
-
-            <span class="k">def</span><span class="w"> </span><span class="nf">_local</span><span class="p">(</span><span class="n">p</span><span class="p">):</span>
-                <span class="n">wrapper</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">combine</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">trainable_static</span><span class="p">)</span>
-                <span class="n">module</span> <span class="o">=</span> <span class="n">wrapper</span><span class="o">.</span><span class="n">reaction_module</span>
-                <span class="c1"># Use the solver's same target scaler so affine offsets cancel</span>
-                <span class="c1"># in residuals; divergence silently shifts them by b/s.</span>
-                <span class="n">scale_targets</span> <span class="o">=</span> <span class="n">module</span><span class="o">.</span><span class="n">SCALE_state</span><span class="p">[</span><span class="n">wrapper</span><span class="o">.</span><span class="n">target_state_indices</span><span class="p">]</span>
-                <span class="n">SCL_ym</span> <span class="o">=</span> <span class="n">ym</span> <span class="o">/</span> <span class="n">scale_targets</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="p">:]</span>
-                <span class="n">tmc</span> <span class="o">=</span> <span class="n">clamp_padded_time_rows</span><span class="p">(</span><span class="n">tm</span><span class="p">,</span> <span class="n">nm</span><span class="p">)</span>
-
-                <span class="k">def</span><span class="w"> </span><span class="nf">_one</span><span class="p">(</span>
-                    <span class="n">pidx</span><span class="p">,</span>
-                    <span class="n">t_row</span><span class="p">,</span>
-                    <span class="n">scl_ym</span><span class="p">,</span>
-                    <span class="n">mask</span><span class="p">,</span>
-                    <span class="n">n_meas</span><span class="p">,</span>
-                    <span class="n">raw_y0</span><span class="p">,</span>
-                    <span class="n">ci</span><span class="p">,</span>
-                    <span class="n">cim</span><span class="p">,</span>
-                    <span class="n">retention</span><span class="p">,</span>
-                    <span class="n">retention_modeled</span><span class="p">,</span>
-                    <span class="n">jts</span><span class="p">,</span>
-                <span class="p">):</span>
-                    <span class="k">return</span> <span class="n">evaluate_one_sample_loss</span><span class="p">(</span>
-                        <span class="n">wrapper</span><span class="p">,</span>
-                        <span class="n">controls</span><span class="p">,</span>
-                        <span class="n">pidx</span><span class="p">,</span>
-                        <span class="n">t_row</span><span class="p">,</span>
-                        <span class="n">scl_ym</span><span class="p">,</span>
-                        <span class="n">mask</span><span class="p">,</span>
-                        <span class="n">n_meas</span><span class="p">,</span>
-                        <span class="n">raw_y0</span><span class="p">,</span>
-                        <span class="n">ci</span><span class="p">,</span>
-                        <span class="n">cim</span><span class="p">,</span>
-                        <span class="n">retention</span><span class="p">,</span>
-                        <span class="n">retention_modeled</span><span class="p">,</span>
-                        <span class="n">jts</span><span class="p">,</span>
-                        <span class="n">max_solver_steps</span><span class="o">=</span><span class="n">max_steps</span><span class="p">,</span>
-                        <span class="n">solver_rtol</span><span class="o">=</span><span class="n">rtol</span><span class="p">,</span>
-                        <span class="n">solver_atol</span><span class="o">=</span><span class="n">atol</span><span class="p">,</span>
-                        <span class="n">ode_solver</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">ode_solver</span><span class="p">,</span>
-                        <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
-                    <span class="p">)</span>
-
-                <span class="n">totl</span><span class="p">,</span> <span class="n">pert</span><span class="p">,</span> <span class="n">faild</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">vmap</span><span class="p">(</span>
-                    <span class="n">_one</span><span class="p">,</span>
-                    <span class="n">in_axes</span><span class="o">=</span><span class="p">(</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="mi">0</span><span class="p">,</span>
-                        <span class="p">(</span><span class="mi">0</span> <span class="k">if</span> <span class="n">use_jump</span> <span class="k">else</span> <span class="kc">None</span><span class="p">),</span>
-                    <span class="p">),</span>
-                <span class="p">)(</span>
-                    <span class="n">jnp</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">tm</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span>
-                    <span class="n">tmc</span><span class="p">,</span>
-                    <span class="n">SCL_ym</span><span class="p">,</span>
-                    <span class="n">mk</span><span class="p">,</span>
-                    <span class="n">nm</span><span class="p">,</span>
-                    <span class="n">y0</span><span class="p">,</span>
-                    <span class="n">cin</span><span class="p">,</span>
-                    <span class="n">cinm</span><span class="p">,</span>
-                    <span class="n">ret</span><span class="p">,</span>
-                    <span class="n">retm</span><span class="p">,</span>
-                    <span class="n">jt</span><span class="p">,</span>
-                <span class="p">)</span>
-                <span class="c1"># Constrain the per-sample (batch-axis) results to stay sharded. NOTE:</span>
-                <span class="c1"># measured to NOT help — even with this hint XLA still replicates the</span>
-                <span class="c1"># data-dependent diffrax while_loops rather than partitioning the</span>
-                <span class="c1"># vmap, so</span>
-                <span class="c1"># the GSPMD path stays ~60x slower than pmap. Kept as correct practice.</span>
-                <span class="n">totl</span><span class="p">,</span> <span class="n">pert</span><span class="p">,</span> <span class="n">faild</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">filter_shard</span><span class="p">((</span><span class="n">totl</span><span class="p">,</span> <span class="n">pert</span><span class="p">,</span> <span class="n">faild</span><span class="p">),</span> <span class="n">S_batch</span><span class="p">)</span>
-                <span class="c1"># weighted mean: padding rows carry weight 0; XLA all-reduces it</span>
-                <span class="c1"># (and grad).</span>
-                <span class="k">return</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">totl</span> <span class="o">*</span> <span class="n">wt</span><span class="p">)</span> <span class="o">/</span> <span class="n">bs</span><span class="p">,</span> <span class="p">(</span><span class="n">pert</span><span class="p">,</span> <span class="n">totl</span><span class="p">,</span> <span class="n">faild</span><span class="p">)</span>
-
-            <span class="p">(</span><span class="n">loss</span><span class="p">,</span> <span class="p">(</span><span class="n">pert</span><span class="p">,</span> <span class="n">totl</span><span class="p">,</span> <span class="n">faild</span><span class="p">)),</span> <span class="n">grads</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">filter_value_and_grad</span><span class="p">(</span>
-                <span class="n">_local</span><span class="p">,</span> <span class="n">has_aux</span><span class="o">=</span><span class="kc">True</span>
-            <span class="p">)(</span><span class="n">params</span><span class="p">)</span>
-            <span class="n">per_target</span> <span class="o">=</span> <span class="n">jnp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">pert</span> <span class="o">*</span> <span class="n">wt</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">/</span> <span class="n">bs</span>
-            <span class="n">updates</span><span class="p">,</span> <span class="n">next_opt_state</span> <span class="o">=</span> <span class="n">optimizer</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">grads</span><span class="p">,</span> <span class="n">opt_state</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">)</span>
-            <span class="n">params_next</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">apply_updates</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">updates</span><span class="p">)</span>
-            <span class="n">grad_norm</span> <span class="o">=</span> <span class="n">optax</span><span class="o">.</span><span class="n">tree</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">grads</span><span class="p">)</span>
-            <span class="n">params_next</span><span class="p">,</span> <span class="n">next_opt_state</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">filter_shard</span><span class="p">(</span>
-                <span class="p">(</span><span class="n">params_next</span><span class="p">,</span> <span class="n">next_opt_state</span><span class="p">),</span> <span class="n">S_repl</span>
-            <span class="p">)</span>
-            <span class="k">return</span> <span class="p">(</span>
-                <span class="n">params_next</span><span class="p">,</span>
-                <span class="n">next_opt_state</span><span class="p">,</span>
-                <span class="n">loss</span><span class="p">,</span>
-                <span class="n">per_target</span><span class="p">,</span>
-                <span class="n">totl</span><span class="p">,</span>
-                <span class="n">grad_norm</span><span class="p">,</span>
-                <span class="n">faild</span><span class="p">,</span>
-            <span class="p">)</span>
-
-        <span class="k">def</span><span class="w"> </span><span class="nf">_step_fn</span><span class="p">(</span>
-            <span class="n">current_trainable_params</span><span class="p">,</span>
-            <span class="n">current_optimizer_state</span><span class="p">,</span>
-            <span class="n">current_batch_indices</span><span class="p">,</span>
-            <span class="n">step</span><span class="p">,</span>
-        <span class="p">):</span>
-            <span class="n">current_batch</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">_gather_batch_rows</span><span class="p">(</span>
-                <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">current_batch_indices</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
-            <span class="p">)</span>
-            <span class="n">jump_ts_rows</span> <span class="o">=</span> <span class="kc">None</span>
-            <span class="k">if</span> <span class="n">use_jump</span><span class="p">:</span>
-                <span class="n">jump_ts_rows</span> <span class="o">=</span> <span class="n">clamp_padded_time_rows</span><span class="p">(</span>
-                    <span class="n">store</span><span class="o">.</span><span class="n">controls_store</span><span class="o">.</span><span class="n">jump_ts</span><span class="p">[</span><span class="n">current_batch</span><span class="o">.</span><span class="n">process_indices</span><span class="p">],</span>
-                    <span class="n">store</span><span class="o">.</span><span class="n">controls_store</span><span class="o">.</span><span class="n">jump_ts_lengths</span><span class="p">[</span><span class="n">current_batch</span><span class="o">.</span><span class="n">process_indices</span><span class="p">],</span>
-                <span class="p">)</span>
-            <span class="n">cin</span> <span class="o">=</span> <span class="n">batched_Cin</span><span class="p">[</span><span class="n">current_batch</span><span class="o">.</span><span class="n">process_indices</span><span class="p">]</span>
-            <span class="n">cinm</span> <span class="o">=</span> <span class="n">batched_Cin_modeled</span><span class="p">[</span><span class="n">current_batch</span><span class="o">.</span><span class="n">process_indices</span><span class="p">]</span>
-            <span class="k">with</span> <span class="n">jax</span><span class="o">.</span><span class="n">set_mesh</span><span class="p">(</span>
-                <span class="n">mesh</span>
-            <span class="p">):</span>  <span class="c1"># jax&gt;=0.10 needs an active mesh for the sharded jit</span>
-                <span class="n">sharded</span> <span class="o">=</span> <span class="p">[</span>
-                    <span class="n">jax</span><span class="o">.</span><span class="n">device_put</span><span class="p">(</span><span class="n">_pad</span><span class="p">(</span><span class="n">a</span><span class="p">),</span> <span class="n">S_batch</span><span class="p">)</span>
-                    <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="p">(</span>
-                        <span class="n">current_batch</span><span class="o">.</span><span class="n">t_measured</span><span class="p">,</span>
-                        <span class="n">current_batch</span><span class="o">.</span><span class="n">y_measured</span><span class="p">,</span>
-                        <span class="n">current_batch</span><span class="o">.</span><span class="n">mask_measured</span><span class="p">,</span>
-                        <span class="n">current_batch</span><span class="o">.</span><span class="n">n_measured</span><span class="p">,</span>
-                        <span class="n">current_batch</span><span class="o">.</span><span class="n">y0_measured</span><span class="p">,</span>
-                        <span class="n">cin</span><span class="p">,</span>
-                        <span class="n">cinm</span><span class="p">,</span>
-                        <span class="n">current_batch</span><span class="o">.</span><span class="n">retention_controlled_Outflows</span><span class="p">,</span>
-                        <span class="n">current_batch</span><span class="o">.</span><span class="n">retention_modeled_Outflows</span><span class="p">,</span>
-                    <span class="p">)</span>
-                <span class="p">]</span>
-                <span class="n">controls</span> <span class="o">=</span> <span class="n">jtu</span><span class="o">.</span><span class="n">tree_map</span><span class="p">(</span>
-                    <span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">device_put</span><span class="p">(</span><span class="n">_pad</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">S_batch</span><span class="p">),</span> <span class="n">current_batch</span><span class="o">.</span><span class="n">controls</span>
-                <span class="p">)</span>
-                <span class="n">wt</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">device_put</span><span class="p">(</span><span class="n">weight_full</span><span class="p">,</span> <span class="n">S_batch</span><span class="p">)</span>
-                <span class="n">jt</span> <span class="o">=</span> <span class="p">(</span>
-                    <span class="n">jax</span><span class="o">.</span><span class="n">device_put</span><span class="p">(</span><span class="n">_pad</span><span class="p">(</span><span class="n">jump_ts_rows</span><span class="p">),</span> <span class="n">S_batch</span><span class="p">)</span>
-                    <span class="k">if</span> <span class="n">jump_ts_rows</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-                    <span class="k">else</span> <span class="kc">None</span>
-                <span class="p">)</span>
-                <span class="n">params_r</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">device_put</span><span class="p">(</span><span class="n">current_trainable_params</span><span class="p">,</span> <span class="n">S_repl</span><span class="p">)</span>
-                <span class="n">opt_r</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">device_put</span><span class="p">(</span><span class="n">current_optimizer_state</span><span class="p">,</span> <span class="n">S_repl</span><span class="p">)</span>
-                <span class="n">step_r</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">device_put</span><span class="p">(</span><span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">step</span><span class="p">),</span> <span class="n">S_repl</span><span class="p">)</span>
-                <span class="p">(</span>
-                    <span class="n">trainable_updated</span><span class="p">,</span>
-                    <span class="n">next_optimizer_state</span><span class="p">,</span>
-                    <span class="n">loss</span><span class="p">,</span>
-                    <span class="n">per_target_loss</span><span class="p">,</span>
-                    <span class="n">per_sample</span><span class="p">,</span>
-                    <span class="n">grad_norm</span><span class="p">,</span>
-                    <span class="n">per_sample_fail</span><span class="p">,</span>
-                <span class="p">)</span> <span class="o">=</span> <span class="n">_full_step</span><span class="p">(</span>
-                    <span class="n">params_r</span><span class="p">,</span>
-                    <span class="n">opt_r</span><span class="p">,</span>
-                    <span class="n">controls</span><span class="p">,</span>
-                    <span class="n">sharded</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
-                    <span class="n">sharded</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span>
-                    <span class="n">sharded</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span>
-                    <span class="n">sharded</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span>
-                    <span class="n">sharded</span><span class="p">[</span><span class="mi">4</span><span class="p">],</span>
-                    <span class="n">sharded</span><span class="p">[</span><span class="mi">5</span><span class="p">],</span>
-                    <span class="n">sharded</span><span class="p">[</span><span class="mi">6</span><span class="p">],</span>
-                    <span class="n">sharded</span><span class="p">[</span><span class="mi">7</span><span class="p">],</span>
-                    <span class="n">sharded</span><span class="p">[</span><span class="mi">8</span><span class="p">],</span>
-                    <span class="n">wt</span><span class="p">,</span>
-                    <span class="n">jt</span><span class="p">,</span>
-                    <span class="n">step_r</span><span class="p">,</span>
-                <span class="p">)</span>
-            <span class="n">per_sample_loss</span> <span class="o">=</span> <span class="n">per_sample</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)[:</span><span class="n">bs</span><span class="p">]</span>
-            <span class="n">per_sample_fail</span> <span class="o">=</span> <span class="n">per_sample_fail</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)[:</span><span class="n">bs</span><span class="p">]</span>
-            <span class="k">return</span> <span class="p">(</span>
-                <span class="n">trainable_updated</span><span class="p">,</span>
-                <span class="n">loss</span><span class="p">,</span>
-                <span class="n">per_target_loss</span><span class="p">,</span>
-                <span class="n">per_sample_loss</span><span class="p">,</span>
-                <span class="n">next_optimizer_state</span><span class="p">,</span>
-                <span class="n">grad_norm</span><span class="p">,</span>
-                <span class="n">per_sample_fail</span><span class="p">,</span>
-            <span class="p">)</span>
-
-        <span class="k">return</span> <span class="n">_step_fn</span>
-
-    <span class="n">_n_local_devices</span> <span class="o">=</span> <span class="n">jax</span><span class="o">.</span><span class="n">local_device_count</span><span class="p">()</span>
-    <span class="n">_n_shard</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">_n_local_devices</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">effective_batch_size</span><span class="p">))</span>
-    <span class="n">_use_sharded</span> <span class="o">=</span> <span class="n">_n_shard</span> <span class="o">&gt;</span> <span class="mi">1</span>
-    <span class="c1"># pmap stays the DEFAULT sharded path: it is the only fast option on jax&gt;=0.10.</span>
-    <span class="c1"># shard_map (manual mode) crashes inside diffrax's nested filter_eval_shape</span>
-    <span class="c1"># (`assert not hlo_sharding.is_manual()`), and GSPMD auto-sharding</span>
-    <span class="c1"># (HYBRAX_GSPMD=1) is correct but ~60x slower because XLA cannot partition</span>
-    <span class="c1"># the data-dependent ODE solve (it replicates the per-device work). pmap's</span>
-    <span class="c1"># backward pass fails on jax&gt;=0.10.1 (equinox closure-convert mismatch on</span>
-    <span class="c1"># diffrax's `RESULTS`), hence the `jax&lt;0.10.1` pin in pyproject.toml.</span>
-    <span class="n">_use_gspmd</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"HYBRAX_GSPMD"</span><span class="p">,</span> <span class="s2">""</span><span class="p">)</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">""</span><span class="p">,</span> <span class="s2">"0"</span><span class="p">,</span> <span class="s2">"false"</span><span class="p">,</span> <span class="s2">"False"</span><span class="p">)</span>
-    <span class="k">if</span> <span class="n">_use_sharded</span> <span class="ow">and</span> <span class="n">_use_gspmd</span><span class="p">:</span>
-        <span class="n">_make_step</span> <span class="o">=</span> <span class="n">_make_gspmd_step</span>
-    <span class="k">elif</span> <span class="n">_use_sharded</span><span class="p">:</span>
-        <span class="n">_make_step</span> <span class="o">=</span> <span class="n">_make_sharded_step</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="n">_make_step</span> <span class="o">=</span> <span class="n">_make_batched_step</span>
-    <span class="k">if</span> <span class="n">_use_sharded</span><span class="p">:</span>
+    <span class="n">n_workers</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">cfg</span><span class="o">.</span><span class="n">workers</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">effective_batch_size</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">n_workers</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
         <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-            <span class="s2">"training sharded across </span><span class="si">%d</span><span class="s2"> local devices (batch=</span><span class="si">%d</span><span class="s2">) via </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span>
-            <span class="n">_n_shard</span><span class="p">,</span>
+            <span class="s2">"training with </span><span class="si">%d</span><span class="s2"> worker processes (batch=</span><span class="si">%d</span><span class="s2">)"</span><span class="p">,</span>
+            <span class="n">n_workers</span><span class="p">,</span>
             <span class="nb">int</span><span class="p">(</span><span class="n">effective_batch_size</span><span class="p">),</span>
-            <span class="s2">"gspmd"</span> <span class="k">if</span> <span class="n">_use_gspmd</span> <span class="k">else</span> <span class="s2">"pmap"</span><span class="p">,</span>
         <span class="p">)</span>
-    <span class="n">step_fn</span> <span class="o">=</span> <span class="n">_make_step</span><span class="p">()</span>
+        <span class="n">pool</span> <span class="o">=</span> <span class="n">GradientWorkerPool</span><span class="p">(</span>
+            <span class="n">n_workers</span><span class="p">,</span> <span class="n">_build_worker_gradient</span><span class="p">,</span> <span class="n">gradient_context</span><span class="p">,</span> <span class="n">trainable_params</span>
+        <span class="p">)</span>
+        <span class="n">step_fn</span> <span class="o">=</span> <span class="n">_make_pool_step</span><span class="p">(</span><span class="n">pool</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">pool</span> <span class="o">=</span> <span class="n">nullcontext</span><span class="p">()</span>
+        <span class="n">step_fn</span> <span class="o">=</span> <span class="n">_make_batched_step</span><span class="p">()</span>
 
     <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
         <span class="s2">"train harness setup: processes=</span><span class="si">%s</span><span class="s2">, targets=</span><span class="si">%s</span><span class="s2"> source=</span><span class="si">%s</span><span class="s2"> epochs=</span><span class="si">%d</span><span class="s2"> "</span>
@@ -2485,30 +2054,6 @@ overview of what Hybrax can do, see the
         <span class="n">cfg</span><span class="o">.</span><span class="n">optimizer_name</span><span class="p">,</span>
         <span class="n">cfg</span><span class="o">.</span><span class="n">learning_rate</span><span class="p">,</span>
         <span class="n">cfg</span><span class="o">.</span><span class="n">grad_clip_norm</span><span class="p">,</span>
-    <span class="p">)</span>
-
-    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"JIT compiling train step (warmup)..."</span><span class="p">)</span>
-    <span class="n">warmup_t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
-    <span class="p">(</span>
-        <span class="n">_warmup_trainable</span><span class="p">,</span>
-        <span class="n">warmup_loss</span><span class="p">,</span>
-        <span class="n">_warmup_pt</span><span class="p">,</span>
-        <span class="n">_warmup_ps</span><span class="p">,</span>
-        <span class="n">_warmup_opt_state</span><span class="p">,</span>
-        <span class="n">_warmup_grad_norm</span><span class="p">,</span>
-        <span class="n">_warmup_fail</span><span class="p">,</span>
-    <span class="p">)</span> <span class="o">=</span> <span class="n">step_fn</span><span class="p">(</span>
-        <span class="n">trainable_params</span><span class="p">,</span>
-        <span class="n">optimizer_state</span><span class="p">,</span>
-        <span class="n">warmup_batch_indices</span><span class="p">,</span>
-        <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span>
-    <span class="p">)</span>
-    <span class="n">jax</span><span class="o">.</span><span class="n">block_until_ready</span><span class="p">(</span><span class="n">warmup_loss</span><span class="p">)</span>
-    <span class="n">warmup_compile_seconds</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">warmup_t0</span>
-    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-        <span class="s2">"JIT compilation done in </span><span class="si">%.1f</span><span class="s2">s, warmup loss=</span><span class="si">%.6g</span><span class="s2">"</span><span class="p">,</span>
-        <span class="n">warmup_compile_seconds</span><span class="p">,</span>
-        <span class="nb">float</span><span class="p">(</span><span class="n">warmup_loss</span><span class="p">),</span>
     <span class="p">)</span>
 
     <span class="c1"># The train/holdout loss series the final curve needs are already accumulated</span>
@@ -2606,12 +2151,39 @@ overview of what Hybrax can do, see the
             <span class="n">holdout_per_process</span><span class="p">,</span>
         <span class="p">)</span>
 
-    <span class="k">with</span> <span class="n">RunLogger</span><span class="p">(</span>
-        <span class="n">log_process_losses</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">log_process_losses</span><span class="p">,</span>
-        <span class="n">metrics_csv</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">metrics_csv</span><span class="p">,</span>
-        <span class="n">metrics_jsonl</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">metrics_jsonl</span><span class="p">,</span>
-        <span class="n">log_decimals</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">log_decimals</span><span class="p">,</span>
-    <span class="p">)</span> <span class="k">as</span> <span class="n">run_log</span><span class="p">:</span>
+    <span class="c1"># Worker processes, if any, live until training ends or fails.</span>
+    <span class="k">with</span> <span class="p">(</span>
+        <span class="n">pool</span><span class="p">,</span>
+        <span class="n">RunLogger</span><span class="p">(</span>
+            <span class="n">log_process_losses</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">log_process_losses</span><span class="p">,</span>
+            <span class="n">metrics_csv</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">metrics_csv</span><span class="p">,</span>
+            <span class="n">metrics_jsonl</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">metrics_jsonl</span><span class="p">,</span>
+            <span class="n">log_decimals</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">log_decimals</span><span class="p">,</span>
+        <span class="p">)</span> <span class="k">as</span> <span class="n">run_log</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">"JIT compiling train step (warmup)..."</span><span class="p">)</span>
+        <span class="n">warmup_t0</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span>
+        <span class="p">(</span>
+            <span class="n">_warmup_trainable</span><span class="p">,</span>
+            <span class="n">warmup_loss</span><span class="p">,</span>
+            <span class="n">_warmup_pt</span><span class="p">,</span>
+            <span class="n">_warmup_ps</span><span class="p">,</span>
+            <span class="n">_warmup_opt_state</span><span class="p">,</span>
+            <span class="n">_warmup_grad_norm</span><span class="p">,</span>
+            <span class="n">_warmup_fail</span><span class="p">,</span>
+        <span class="p">)</span> <span class="o">=</span> <span class="n">step_fn</span><span class="p">(</span>
+            <span class="n">trainable_params</span><span class="p">,</span>
+            <span class="n">optimizer_state</span><span class="p">,</span>
+            <span class="n">warmup_batch_indices</span><span class="p">,</span>
+            <span class="n">jnp</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">int32</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">jax</span><span class="o">.</span><span class="n">block_until_ready</span><span class="p">(</span><span class="n">warmup_loss</span><span class="p">)</span>
+        <span class="n">warmup_compile_seconds</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span><span class="p">()</span> <span class="o">-</span> <span class="n">warmup_t0</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+            <span class="s2">"JIT compilation done in </span><span class="si">%.1f</span><span class="s2">s, warmup loss=</span><span class="si">%.6g</span><span class="s2">"</span><span class="p">,</span>
+            <span class="n">warmup_compile_seconds</span><span class="p">,</span>
+            <span class="nb">float</span><span class="p">(</span><span class="n">warmup_loss</span><span class="p">),</span>
+        <span class="p">)</span>
         <span class="n">run_log</span><span class="o">.</span><span class="n">start</span><span class="p">(</span>
             <span class="n">target_names</span><span class="o">=</span><span class="n">_target_labels</span><span class="p">,</span>
             <span class="n">process_names</span><span class="o">=</span><span class="n">selected_processes</span><span class="p">,</span>
@@ -3116,6 +2688,7 @@ overview of what Hybrax can do, see the
         <span class="n">epochs</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">epochs</span><span class="p">,</span>
         <span class="n">batch_size</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">batch_size</span><span class="p">,</span>
         <span class="n">microbatch_size</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">microbatch_size</span><span class="p">,</span>
+        <span class="n">workers</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">workers</span><span class="p">,</span>
         <span class="n">shuffle_batches</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">shuffle</span><span class="p">,</span>
         <span class="n">batch_seed</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">batch_seed</span><span class="p">,</span>
         <span class="n">optimizer_name</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">train</span><span class="o">.</span><span class="n">optimizer</span><span class="p">,</span>

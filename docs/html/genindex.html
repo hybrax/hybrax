@@ -346,6 +346,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -726,7 +727,7 @@ overview of what Hybrax can do, see the
 </li>
         <li><a href="autoapi/hybrax/train/loo_metrics/index.html#hybrax.train.loo_metrics.compute_loo_metrics">compute_loo_metrics() (in module hybrax.train.loo_metrics)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/loo/index.html#hybrax.train.loo.compute_parallel_split">compute_parallel_split() (in module hybrax.train.loo)</a>
+        <li><a href="autoapi/hybrax/train/loo/index.html#hybrax.train.loo.compute_parallel_folds">compute_parallel_folds() (in module hybrax.train.loo)</a>
 </li>
         <li><a href="autoapi/hybrax/train/loo_metrics/index.html#hybrax.train.loo_metrics.compute_per_process_metrics">compute_per_process_metrics() (in module hybrax.train.loo_metrics)</a>
 </li>
@@ -848,6 +849,8 @@ overview of what Hybrax can do, see the
           <li><a href="autoapi/hybrax/train/serialization/index.html#hybrax.train.serialization.ReconstructedTraining.custom_module">(hybrax.train.serialization.ReconstructedTraining attribute)</a>
 </li>
         </ul></li>
+        <li><a href="autoapi/hybrax/train/utils/index.html#hybrax.train.utils.CUSTOM_MODULE_NAME">CUSTOM_MODULE_NAME (in module hybrax.train.utils)</a>
+</li>
         <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.RunConfig.custom_py">custom_py (hybrax.train.run_config.RunConfig attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.LoadedRunConfig.custom_py_sha256">custom_py_sha256 (hybrax.train.run_config.LoadedRunConfig attribute)</a>
@@ -930,12 +933,12 @@ overview of what Hybrax can do, see the
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_RAW_V_unclamped">dense_RAW_V_unclamped (hybrax.train.model_api.LossInputs attribute)</a>
 </li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/format/simulation/index.html#hybrax.format.simulation.SimulationResult.dense_rows">dense_rows (hybrax.format.simulation.SimulationResult attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_SCL_modeled_Inflows_rates">dense_SCL_modeled_Inflows_rates (hybrax.train.model_api.LossInputs attribute)</a>
 </li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_SCL_modeled_Outflows_rates">dense_SCL_modeled_Outflows_rates (hybrax.train.model_api.LossInputs attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/model_api/index.html#hybrax.train.model_api.LossInputs.dense_SCL_modeled_ReactionOde_rates">dense_SCL_modeled_ReactionOde_rates (hybrax.train.model_api.LossInputs attribute)</a>
@@ -988,14 +991,6 @@ overview of what Hybrax can do, see the
 </li>
         <li><a href="autoapi/hybrax/format/splines/index.html#hybrax.format.splines.detect_discrete_state_events">detect_discrete_state_events() (in module hybrax.format.splines)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.TrainConfig.devices">devices (hybrax.train.run_config.TrainConfig attribute)</a>
-</li>
-        <li><a href="autoapi/hybrax/train/loo/index.html#hybrax.train.loo.LOOResult.devices_per_fold">devices_per_fold (hybrax.train.loo.LOOResult attribute)</a>
-
-        <ul>
-          <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.LooConfig.devices_per_fold">(hybrax.train.run_config.LooConfig attribute)</a>
-</li>
-        </ul></li>
         <li><a href="autoapi/hybrax/format/splines/index.html#hybrax.format.splines.BacktransformSpline.dfc_ts">dfc_ts (hybrax.format.splines.BacktransformSpline attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.PrepareConfig.diagnostics">diagnostics (hybrax.train.run_config.PrepareConfig attribute)</a>
@@ -1094,8 +1089,6 @@ overview of what Hybrax can do, see the
           <li><a href="autoapi/hybrax/format/time_series/spline_ops/index.html#hybrax.format.time_series.spline_ops.evaluate_many">(in module hybrax.format.time_series.spline_ops)</a>
 </li>
         </ul></li>
-        <li><a href="autoapi/hybrax/train/trainer/index.html#hybrax.train.trainer.evaluate_one_sample_loss">evaluate_one_sample_loss() (in module hybrax.train.trainer)</a>
-</li>
         <li><a href="autoapi/hybrax/format/time_series/spline_ops/index.html#hybrax.format.time_series.spline_ops.evaluate_piece">evaluate_piece() (in module hybrax.format.time_series.spline_ops)</a>
 </li>
         <li><a href="autoapi/hybrax/format/splines/index.html#hybrax.format.splines.evaluate_pseudobatch_transform">evaluate_pseudobatch_transform() (in module hybrax.format.splines)</a>
@@ -1312,6 +1305,8 @@ overview of what Hybrax can do, see the
 </li>
         <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessResult.grad_norm_by_step">grad_norm_by_step (hybrax.train.harness.TrainHarnessResult attribute)</a>
 </li>
+        <li><a href="autoapi/hybrax/train/worker_pool/index.html#hybrax.train.worker_pool.GradientWorkerPool">GradientWorkerPool (class in hybrax.train.worker_pool)</a>
+</li>
         <li><a href="autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.PerProcessControls.grid_length">grid_length (hybrax.train.controls_store.PerProcessControls attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/controls_store/index.html#hybrax.train.controls_store.ControlsStore.grid_lengths">grid_lengths (hybrax.train.controls_store.ControlsStore attribute)</a>
@@ -1513,8 +1508,6 @@ overview of what Hybrax can do, see the
           <li><a href="autoapi/hybrax/train/bounds_loss/index.html#module-hybrax.train.bounds_loss">module</a>
 </li>
         </ul></li>
-    </ul></td>
-    <td style="width: 33%; vertical-align: top;"><ul>
         <li>
     hybrax.train.checkpointing
 
@@ -1522,6 +1515,8 @@ overview of what Hybrax can do, see the
           <li><a href="autoapi/hybrax/train/checkpointing/index.html#module-hybrax.train.checkpointing">module</a>
 </li>
         </ul></li>
+    </ul></td>
+    <td style="width: 33%; vertical-align: top;"><ul>
         <li>
     hybrax.train.cli
 
@@ -1709,6 +1704,13 @@ overview of what Hybrax can do, see the
 
         <ul>
           <li><a href="autoapi/hybrax/train/validate/index.html#module-hybrax.train.validate">module</a>
+</li>
+        </ul></li>
+        <li>
+    hybrax.train.worker_pool
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/worker_pool/index.html#module-hybrax.train.worker_pool">module</a>
 </li>
         </ul></li>
         <li>
@@ -2012,6 +2014,8 @@ overview of what Hybrax can do, see the
 </li>
         <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.SolverConfig.max_steps">max_steps (hybrax.train.run_config.SolverConfig attribute)</a>
 </li>
+        <li><a href="autoapi/hybrax/train/worker_pool/index.html#hybrax.train.worker_pool.GradientWorkerPool.mean_gradient">mean_gradient() (hybrax.train.worker_pool.GradientWorkerPool method)</a>
+</li>
         <li><a href="autoapi/hybrax/train/logging/index.html#hybrax.train.logging.StepRecord.mean_loss">mean_loss (hybrax.train.logging.StepRecord attribute)</a>
 </li>
         <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessResult.mean_loss_by_step">mean_loss_by_step (hybrax.train.harness.TrainHarnessResult attribute)</a>
@@ -2209,6 +2213,8 @@ overview of what Hybrax can do, see the
           <li><a href="autoapi/hybrax/train/utils/index.html#module-hybrax.train.utils">hybrax.train.utils</a>
 </li>
           <li><a href="autoapi/hybrax/train/validate/index.html#module-hybrax.train.validate">hybrax.train.validate</a>
+</li>
+          <li><a href="autoapi/hybrax/train/worker_pool/index.html#module-hybrax.train.worker_pool">hybrax.train.worker_pool</a>
 </li>
           <li><a href="autoapi/hybrax/train/wrapper/index.html#module-hybrax.train.wrapper">hybrax.train.wrapper</a>
 </li>
@@ -3763,10 +3769,22 @@ overview of what Hybrax can do, see the
 </li>
         <li><a href="autoapi/hybrax/train/physical_solve/index.html#hybrax.train.physical_solve.within_fail_time">within_fail_time() (in module hybrax.train.physical_solve)</a>
 </li>
-        <li><a href="autoapi/hybrax/train/checkpointing/index.html#hybrax.train.checkpointing.CheckpointWriter.would_save">would_save() (hybrax.train.checkpointing.CheckpointWriter method)</a>
+        <li><a href="autoapi/hybrax/train/harness/index.html#hybrax.train.harness.TrainHarnessConfig.workers">workers (hybrax.train.harness.TrainHarnessConfig attribute)</a>
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.TrainConfig.workers">(hybrax.train.run_config.TrainConfig attribute)</a>
 </li>
+        </ul></li>
+        <li><a href="autoapi/hybrax/train/loo/index.html#hybrax.train.loo.LOOResult.workers_per_fold">workers_per_fold (hybrax.train.loo.LOOResult attribute)</a>
+
+        <ul>
+          <li><a href="autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.LooConfig.workers_per_fold">(hybrax.train.run_config.LooConfig attribute)</a>
+</li>
+        </ul></li>
     </ul></td>
     <td style="width: 33%; vertical-align: top;"><ul>
+        <li><a href="autoapi/hybrax/train/checkpointing/index.html#hybrax.train.checkpointing.CheckpointWriter.would_save">would_save() (hybrax.train.checkpointing.CheckpointWriter method)</a>
+</li>
         <li><a href="autoapi/hybrax/train/checkpointing/index.html#hybrax.train.checkpointing.CheckpointWriter.write">write() (hybrax.train.checkpointing.CheckpointWriter method)</a>
 </li>
         <li><a href="autoapi/hybrax/train/postprocessing/index.html#hybrax.train.postprocessing.write_grad_norm_curve">write_grad_norm_curve() (in module hybrax.train.postprocessing)</a>

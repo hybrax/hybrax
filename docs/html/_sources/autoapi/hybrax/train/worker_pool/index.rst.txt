@@ -1,0 +1,58 @@
+hybrax.train.worker_pool
+========================
+
+.. py:module:: hybrax.train.worker_pool
+
+.. autoapi-nested-parse::
+
+   CPU worker processes that compute per-process gradients for one training run.
+
+   ``train.workers > 1`` spreads the ODE solves of one optimizer update over
+   spawned computer processes. The parent keeps the optimizer, checkpoints, and
+   holdout evaluation. Per update it sends every worker the same parameters,
+   collects one loss and gradient per batch process, averages them in batch
+   order, and applies a single optimizer update.
+
+   Each worker receives the parent's prepared training context once, as a pickle,
+   and compiles the gradient of a one-process batch once. ``cloudpickle`` sends
+   lambdas and JAX functions by value. Model classes are sent by reference, so
+   they must come from ``custom.py`` (re-imported in each worker) or another
+   importable module, not from a script's ``__main__``, a notebook or a function.
+
+
+
+Classes
+-------
+
+.. autoapisummary::
+
+   hybrax.train.worker_pool.GradientWorkerPool
+
+
+Module Contents
+---------------
+
+.. py:class:: GradientWorkerPool(workers, build_gradient, context, params)
+
+   Persistent worker processes that evaluate one-process gradients.
+
+   Use as a context manager around the training loop::
+
+       with GradientWorkerPool(4, build_gradient, context, params) as pool:
+           outputs, grads = pool.mean_gradient(params, batch_indices, step)
+
+   ``build_gradient(*context)`` runs once in every worker and must return a
+   function ``(params, batch_indices, step) -> (outputs, grads)``, where
+   ``grads`` has the structure of ``params``. It has to be a module-level
+   function, and ``context`` and ``params`` have to be picklable.
+
+
+   .. py:method:: mean_gradient(params, batch_indices, step)
+
+      Evaluate every batch process at the same ``params`` and ``step``.
+
+      Returns the per-process ``outputs`` in batch order and the mean of the
+      per-process gradients. A failing or dying worker raises here.
+
+
+

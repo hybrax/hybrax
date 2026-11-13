@@ -347,6 +347,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -383,14 +384,7 @@ overview of what Hybrax can do, see the
         </div>
         <article role="main" id="furo-main-content">
           <h1>Source code for hybrax.train.trainer</h1><div class="highlight"><pre>
-<span></span><span class="sd">"""The JIT-compiled per-sample solve and per-batch loss/gradient step.</span>
-
-<span class="sd">``build_batched_loss_fn`` builds the function ``harness.py`` JIT-compiles for</span>
-<span class="sd">every train step: it maps a single sample's ODE solve plus loss module</span>
-<span class="sd">evaluation (``evaluate_sample_with_loss_module``) across a batch, and</span>
-<span class="sd">``evaluate_one_sample_loss`` provides the equivalent single-sample path used</span>
-<span class="sd">by the device-sharded (pmap and GSPMD) training steps.</span>
-<span class="sd">"""</span>
+<span></span><span class="sd">"""Per-sample solves and batched losses for in-process steps and worker processes."""</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
 
@@ -877,67 +871,6 @@ overview of what Hybrax can do, see the
         <span class="n">prediction_valid</span><span class="o">=</span><span class="n">prediction_valid</span><span class="p">,</span>
         <span class="n">fail_time</span><span class="o">=</span><span class="n">fail_time</span><span class="p">,</span>
     <span class="p">)</span></div>
-
-
-
-<div class="viewcode-block" id="evaluate_one_sample_loss">
-<a class="viewcode-back" href="../../../autoapi/hybrax/train/trainer/index.html#hybrax.train.trainer.evaluate_one_sample_loss">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">evaluate_one_sample_loss</span><span class="p">(</span>
-    <span class="n">wrapper</span><span class="p">:</span> <span class="n">HybridOdeWrapper</span><span class="p">,</span>
-    <span class="n">batch_controls</span><span class="p">:</span> <span class="n">BatchControls</span><span class="p">,</span>
-    <span class="n">row_idx</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
-    <span class="n">t_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
-    <span class="n">SCL_target_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
-    <span class="n">mask_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
-    <span class="n">n_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
-    <span class="n">RAW_y0_measured</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
-    <span class="n">cin</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
-    <span class="n">cin_modeled</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
-    <span class="n">retention</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
-    <span class="n">retention_modeled</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span><span class="p">,</span>
-    <span class="n">jump_ts</span><span class="p">:</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="o">*</span><span class="p">,</span>
-    <span class="n">max_solver_steps</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-    <span class="n">solver_rtol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
-    <span class="n">solver_atol</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
-    <span class="n">ode_solver</span><span class="p">:</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">AbstractSolver</span> <span class="o">=</span> <span class="n">DEFAULT_SOLVER</span><span class="p">,</span>
-    <span class="n">step</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="n">jax</span><span class="o">.</span><span class="n">Array</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-<span class="p">):</span>
-<span class="w">    </span><span class="sd">"""One process -&gt; `(total_loss, per_target_loss, fail_time)`. Used by the</span>
-<span class="sd">    device-sharded (pmap and GSPMD) training steps. `fail_time` is `+inf`</span>
-<span class="sd">    for a clean solve, finite when a segment bailed. ``y0`` stays RAW physical;</span>
-<span class="sd">    the callbacks solve (``physical_solve.solve_physical_states``) integrates it."""</span>
-    <span class="n">controls</span> <span class="o">=</span> <span class="n">_BatchIndexedControls</span><span class="p">(</span>
-        <span class="n">batch_controls</span><span class="o">=</span><span class="n">batch_controls</span><span class="p">,</span>
-        <span class="n">row_idx</span><span class="o">=</span><span class="n">row_idx</span><span class="p">,</span>
-    <span class="p">)</span>
-    <span class="n">rhs_ode</span> <span class="o">=</span> <span class="n">replace_rhs_ode_process_matrices</span><span class="p">(</span>
-        <span class="n">wrapper</span><span class="o">.</span><span class="n">rhs_ode</span><span class="p">,</span>
-        <span class="n">cin</span><span class="p">,</span>
-        <span class="n">cin_modeled</span><span class="p">,</span>
-        <span class="n">retention</span><span class="p">,</span>
-        <span class="n">retention_modeled</span><span class="p">,</span>
-    <span class="p">)</span>
-    <span class="n">sample_wrapper</span> <span class="o">=</span> <span class="n">eqx</span><span class="o">.</span><span class="n">tree_at</span><span class="p">(</span>
-        <span class="k">lambda</span> <span class="n">w</span><span class="p">:</span> <span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">controls</span><span class="p">,</span> <span class="n">w</span><span class="o">.</span><span class="n">rhs_ode</span><span class="p">),</span>
-        <span class="n">wrapper</span><span class="p">,</span>
-        <span class="p">(</span><span class="n">controls</span><span class="p">,</span> <span class="n">rhs_ode</span><span class="p">),</span>
-    <span class="p">)</span>
-    <span class="n">result</span> <span class="o">=</span> <span class="n">evaluate_sample_with_loss_module</span><span class="p">(</span>
-        <span class="n">sample_wrapper</span><span class="p">,</span>
-        <span class="n">t_measured</span><span class="o">=</span><span class="n">t_measured</span><span class="p">,</span>
-        <span class="n">SCL_target_measured</span><span class="o">=</span><span class="n">SCL_target_measured</span><span class="p">,</span>
-        <span class="n">mask_measured</span><span class="o">=</span><span class="n">mask_measured</span><span class="p">,</span>
-        <span class="n">n_measured</span><span class="o">=</span><span class="n">n_measured</span><span class="p">,</span>
-        <span class="n">RAW_y0_measured</span><span class="o">=</span><span class="n">RAW_y0_measured</span><span class="p">,</span>
-        <span class="n">jump_ts</span><span class="o">=</span><span class="n">jump_ts</span><span class="p">,</span>
-        <span class="n">max_solver_steps</span><span class="o">=</span><span class="n">max_solver_steps</span><span class="p">,</span>
-        <span class="n">solver_rtol</span><span class="o">=</span><span class="n">solver_rtol</span><span class="p">,</span>
-        <span class="n">solver_atol</span><span class="o">=</span><span class="n">solver_atol</span><span class="p">,</span>
-        <span class="n">ode_solver</span><span class="o">=</span><span class="n">ode_solver</span><span class="p">,</span>
-        <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">,</span>
-    <span class="p">)</span>
-    <span class="k">return</span> <span class="n">result</span><span class="o">.</span><span class="n">total_loss</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">per_target_loss</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">fail_time</span></div>
 
 
 

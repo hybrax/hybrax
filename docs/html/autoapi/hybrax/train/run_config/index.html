@@ -348,6 +348,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -469,7 +470,7 @@ its fields.</p>
 <td><p>diffrax ODE solver settings for every forward and backward solve.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.run_config.TrainConfig" title="hybrax.train.run_config.TrainConfig"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TrainConfig</span></code></a></p></td>
-<td><p>Optimizer, batching, and device settings for one training run.</p></td>
+<td><p>Optimizer, batching, and worker settings for one training run.</p></td>
 </tr>
 </tbody>
 </table>
@@ -915,10 +916,12 @@ digits.</p>
 <p>Leave-one/some-process-out cross-validation settings.</p>
 <p><code class="docutils literal notranslate"><span class="pre">per_fold_holdout_sets=None</span></code> runs classic leave-one-out: one fold per
 parent process group. <code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code> is how many folds train at once
-(each fold is its own subprocess, because the JAX CPU device count is fixed
-per process). <code class="docutils literal notranslate"><span class="pre">devices_per_fold</span></code> can set each fold’s JAX CPU device
-count; otherwise the available JAX CPU device budget is split across
-concurrent folds so that <code class="docutils literal notranslate"><span class="pre">parallel_folds</span> <span class="pre">*</span> <span class="pre">devices_per_fold</span> <span class="pre">&lt;=</span> <span class="pre">n_cpu</span></code>.
+(each fold is its own subprocess). <code class="docutils literal notranslate"><span class="pre">workers_per_fold</span></code> (default 1) counts
+worker processes for each fold’s training, capped at the fold’s batch size
+and limited to <code class="docutils literal notranslate"><span class="pre">cpus_per_fold</span></code> when that is set. Without <code class="docutils literal notranslate"><span class="pre">cpus_per_fold</span></code>
+the orchestrator reduces concurrent folds to keep
+<code class="docutils literal notranslate"><span class="pre">parallel_folds</span> <span class="pre">*</span> <span class="pre">workers_per_fold</span> <span class="pre">&lt;=</span> <span class="pre">n_cpu</span></code>; with it, LOO stops before
+training if <code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code> leases do not fit the allowed CPUs.
 <code class="code docutils literal notranslate"><span class="pre">cpus_per_fold</span></code> optionally leases disjoint allowed CPUs before worker
 imports; its default leaves affinity unrestricted.
 Set these from what your RAM can hold — there is deliberately no automatic
@@ -934,11 +937,6 @@ RAM sizing.</p>
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.run_config.LooConfig.devices_per_fold">
-<span class="sig-name descname"><span class="pre">devices_per_fold</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.LooConfig.devices_per_fold" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.run_config.LooConfig.parallel_folds">
 <span class="sig-name descname"><span class="pre">parallel_folds</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.LooConfig.parallel_folds" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -946,6 +944,11 @@ RAM sizing.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.run_config.LooConfig.per_fold_holdout_sets">
 <span class="sig-name descname"><span class="pre">per_fold_holdout_sets</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#hybrax.train.run_config.HoldoutSet" title="hybrax.train.run_config.HoldoutSet"><span class="pre">HoldoutSet</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.LooConfig.per_fold_holdout_sets" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.run_config.LooConfig.workers_per_fold">
+<span class="sig-name descname"><span class="pre">workers_per_fold</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.LooConfig.workers_per_fold" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -1184,7 +1187,7 @@ regardless of this flag.</p>
 <dt class="sig sig-object py" id="hybrax.train.run_config.TrainConfig">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.run_config.</span></span><span class="sig-name descname"><span class="pre">TrainConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">/</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">**data</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/run_config.html#TrainConfig"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.run_config.TrainConfig" title="Link to this definition">¶</a></dt>
 <dd><p>Bases: <a class="reference internal" href="#hybrax.train.run_config.ConfigBase" title="hybrax.train.run_config.ConfigBase"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ConfigBase</span></code></a></p>
-<p>Optimizer, batching, and device settings for one training run.</p>
+<p>Optimizer, batching, and worker settings for one training run.</p>
 <p><code class="docutils literal notranslate"><span class="pre">epochs</span></code> (default 5) is how many passes over the selected process set
 to run; <code class="docutils literal notranslate"><span class="pre">--epochs</span></code> on the CLI overrides this, since it is the one knob
 meant to change constantly while iterating. <code class="docutils literal notranslate"><span class="pre">seed</span></code> is the base random
@@ -1200,15 +1203,15 @@ value once scales are right. <code class="docutils literal notranslate"><span cl
 many processes contribute to one optimizer update; <code class="docutils literal notranslate"><span class="pre">None</span></code> means full-batch.
 <code class="docutils literal notranslate"><span class="pre">microbatch_size</span></code> optionally limits how many process solves execute
 together, while preserving that batch mean and one optimizer update. It
-requires <code class="docutils literal notranslate"><span class="pre">devices=1</span></code> and one actual JAX device. A width at least as
+requires <code class="docutils literal notranslate"><span class="pre">workers=1</span></code>. A width at least as
 large as the batch uses unsplit execution. <code class="docutils literal notranslate"><span class="pre">shuffle</span></code>
 (default <code class="docutils literal notranslate"><span class="pre">True</span></code>) reshuffles the process order every epoch;
 <code class="docutils literal notranslate"><span class="pre">batch_seed</span></code> (optional) seeds that shuffling independently of <code class="docutils literal notranslate"><span class="pre">seed</span></code>.
-<code class="docutils literal notranslate"><span class="pre">devices</span></code> (default <code class="docutils literal notranslate"><span class="pre">1</span></code>) is how many CPU devices to shard the batch
-across; <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code> resolves to <code class="docutils literal notranslate"><span class="pre">min(n_processes,</span> <span class="pre">n_cpus)</span></code> — never every
-core, since idle surplus devices can deadlock the <code class="docutils literal notranslate"><span class="pre">pmap</span></code> all-reduce —
-and the <code class="docutils literal notranslate"><span class="pre">HYBRAX_TRAIN_DEVICES</span></code> environment variable always overrides
-it. <code class="docutils literal notranslate"><span class="pre">allow_stateful_models</span></code> (default <code class="docutils literal notranslate"><span class="pre">False</span></code>) is the required opt-in
+<code class="docutils literal notranslate"><span class="pre">workers</span></code> (default 1) counts worker processes computing gradients for one
+update. One solves the whole batch in the training computer process. More
+workers trade memory for speed: each holds its own compiled solve. They are
+CPU-only and capped at the batch size. <code class="docutils literal notranslate"><span class="pre">allow_stateful_models</span></code>
+(default <code class="docutils literal notranslate"><span class="pre">False</span></code>) is the required opt-in
 for reaction modules with a nonzero latent state: training raises before
 it starts without it, because a latent state changes what the model
 <em>is</em>, not just its size.</p>
@@ -1237,11 +1240,6 @@ It is independent of the solver’s adaptive-step tolerances.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.run_config.TrainConfig.batch_size">
 <span class="sig-name descname"><span class="pre">batch_size</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.TrainConfig.batch_size" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.run_config.TrainConfig.devices">
-<span class="sig-name descname"><span class="pre">devices</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'max'</span></span><span class="p"><span class="pre">]</span></span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1</span></span><a class="headerlink" href="#hybrax.train.run_config.TrainConfig.devices" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -1287,6 +1285,11 @@ It is independent of the solver’s adaptive-step tolerances.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.run_config.TrainConfig.shuffle">
 <span class="sig-name descname"><span class="pre">shuffle</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">True</span></span><a class="headerlink" href="#hybrax.train.run_config.TrainConfig.shuffle" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.run_config.TrainConfig.workers">
+<span class="sig-name descname"><span class="pre">workers</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.run_config.TrainConfig.workers" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -1568,9 +1571,9 @@ run. No-op if <code class="docutils literal notranslate"><span class="pre">custo
 </li>
 <li><a class="reference internal" href="#hybrax.train.run_config.LooConfig"><code class="docutils literal notranslate"><span class="pre">LooConfig</span></code></a><ul>
 <li><a class="reference internal" href="#hybrax.train.run_config.LooConfig.cpus_per_fold"><code class="docutils literal notranslate"><span class="pre">LooConfig.cpus_per_fold</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.run_config.LooConfig.devices_per_fold"><code class="docutils literal notranslate"><span class="pre">LooConfig.devices_per_fold</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.LooConfig.parallel_folds"><code class="docutils literal notranslate"><span class="pre">LooConfig.parallel_folds</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.LooConfig.per_fold_holdout_sets"><code class="docutils literal notranslate"><span class="pre">LooConfig.per_fold_holdout_sets</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.run_config.LooConfig.workers_per_fold"><code class="docutils literal notranslate"><span class="pre">LooConfig.workers_per_fold</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#hybrax.train.run_config.ModelRef"><code class="docutils literal notranslate"><span class="pre">ModelRef</span></code></a><ul>
@@ -1617,7 +1620,6 @@ run. No-op if <code class="docutils literal notranslate"><span class="pre">custo
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.allow_stateful_models"><code class="docutils literal notranslate"><span class="pre">TrainConfig.allow_stateful_models</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.batch_seed"><code class="docutils literal notranslate"><span class="pre">TrainConfig.batch_seed</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.batch_size"><code class="docutils literal notranslate"><span class="pre">TrainConfig.batch_size</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.devices"><code class="docutils literal notranslate"><span class="pre">TrainConfig.devices</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.epochs"><code class="docutils literal notranslate"><span class="pre">TrainConfig.epochs</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.flow_integral_relative_tolerance"><code class="docutils literal notranslate"><span class="pre">TrainConfig.flow_integral_relative_tolerance</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.grad_clip_norm"><code class="docutils literal notranslate"><span class="pre">TrainConfig.grad_clip_norm</span></code></a></li>
@@ -1627,6 +1629,7 @@ run. No-op if <code class="docutils literal notranslate"><span class="pre">custo
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.optimizer"><code class="docutils literal notranslate"><span class="pre">TrainConfig.optimizer</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.seed"><code class="docutils literal notranslate"><span class="pre">TrainConfig.seed</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.shuffle"><code class="docutils literal notranslate"><span class="pre">TrainConfig.shuffle</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.run_config.TrainConfig.workers"><code class="docutils literal notranslate"><span class="pre">TrainConfig.workers</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#hybrax.train.run_config.load_forward_config"><code class="docutils literal notranslate"><span class="pre">load_forward_config()</span></code></a></li>

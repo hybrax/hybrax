@@ -9,6 +9,14 @@ hybrax.train.utils
 
 
 
+Attributes
+----------
+
+.. autoapisummary::
+
+   hybrax.train.utils.CUSTOM_MODULE_NAME
+
+
 Functions
 ---------
 
@@ -65,5 +73,9 @@ Module Contents
 .. py:function:: split_hooks_by_customization(module, hook_names)
 
    Split ``hook_names`` into (customized, default) buckets for logging.
+
+
+.. py:data:: CUSTOM_MODULE_NAME
+   :value: 'hybrax_train_user_custom'
 
 

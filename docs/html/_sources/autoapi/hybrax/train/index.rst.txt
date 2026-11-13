@@ -5,12 +5,7 @@ hybrax.train
 
 .. autoapi-nested-parse::
 
-   hybrax.train: the training harness, config, and CLI over hybrax.format processes.
-
-   Public names are lazily re-exported from their owning submodule via
-   `__getattr__`/`_EXPORTS` below, so importing `hybrax.train` does not
-   eagerly import any training submodule. It does set `XLA_FLAGS` for the CPU
-   device count and then import JAX to enable float64.
+   Training API with float64 enabled and lazy public re-exports.
 
 
 
@@ -51,6 +46,7 @@ Submodules
    /autoapi/hybrax/train/training_data/index
    /autoapi/hybrax/train/utils/index
    /autoapi/hybrax/train/validate/index
+   /autoapi/hybrax/train/worker_pool/index
    /autoapi/hybrax/train/wrapper/index
 
 

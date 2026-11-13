@@ -348,6 +348,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -803,6 +804,11 @@ selection, checkpointing, logging, and the public entry points.</p>
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.target_variable_order">
 <span class="sig-name descname"><span class="pre">target_variable_order</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.target_variable_order" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.harness.TrainHarnessConfig.workers">
+<span class="sig-name descname"><span class="pre">workers</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1</span></span><a class="headerlink" href="#hybrax.train.harness.TrainHarnessConfig.workers" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -1416,6 +1422,7 @@ loaded parameters. Default optimizer state and schedule counters start fresh.</p
 <li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.solver_use_jump_ts"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.solver_use_jump_ts</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.target_source"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.target_source</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.target_variable_order"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.target_variable_order</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessConfig.workers"><code class="docutils literal notranslate"><span class="pre">TrainHarnessConfig.workers</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#hybrax.train.harness.TrainHarnessResult"><code class="docutils literal notranslate"><span class="pre">TrainHarnessResult</span></code></a><ul>

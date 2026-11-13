@@ -348,6 +348,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -517,7 +518,7 @@ state jumps. <code class="docutils literal notranslate"><span class="pre">demo_b
 <h2>Training<a class="headerlink" href="#training" title="Link to this heading">¶</a></h2>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.136489 last_mean_loss=0.00040269 delta=-0.136086
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.136489 last_mean_loss=0.000377961 delta=-0.136111
 run directory: ./docs/source/_data/out/runs/gallery_dense_loss/run_full
 </pre></div>
 </div>
@@ -529,13 +530,13 @@ run directory: ./docs/source/_data/out/runs/gallery_dense_loss/run_full
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>target           R2
-biomass      0.9934
-glucose      0.9919
-product      0.9958
+biomass      0.9937
+glucose      0.9921
+product      0.9960
 
-min predicted glucose : -0.0030 g/L  (bound: &gt;= 0)
-curvature(q_biomass)  : 0.0825
-curvature(q_glucose)  : 0.1926
+min predicted glucose : -0.0021 g/L  (bound: &gt;= 0)
+curvature(q_biomass)  : 0.0783
+curvature(q_glucose)  : 0.1712
 </pre></div>
 </div>
 </div>
@@ -547,13 +548,13 @@ loss:</p>
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>comparison run directory: ./docs/source/_data/out/runs/gallery_dense_loss/run_base
 target       no penalty   with penalty
-biomass          0.9966         0.9934
-glucose          0.9973         0.9919
-product          0.9990         0.9958
+biomass          0.9966         0.9937
+glucose          0.9973         0.9921
+product          0.9990         0.9960
 
-min glucose      -0.1396        -0.0030
-curv(q_X)        0.3914         0.0825
-curv(q_S)        1.0119         0.1926
+min glucose      -0.1396        -0.0021
+curv(q_X)        0.3914         0.0783
+curv(q_S)        1.0119         0.1712
 </pre></div>
 </div>
 </div>
@@ -564,7 +565,7 @@ minimum glucose and RMS rate curvature above to assess the effect of the penalti
 The loss itself uses the separate, uniform <code class="docutils literal notranslate"><span class="pre">dense_t</span></code> grid.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/b4c0e3e9d986b1f26e3457eadcc6e68aae0105a403e11674c7845f7b37d889ba.png" src="../_images/b4c0e3e9d986b1f26e3457eadcc6e68aae0105a403e11674c7845f7b37d889ba.png" />
+<img alt="../_images/218e92ba0d4b1cf80e08d0feba67f7657e8b00cd6434649ac5f28afef36bbfee.png" src="../_images/218e92ba0d4b1cf80e08d0feba67f7657e8b00cd6434649ac5f28afef36bbfee.png" />
 </div>
 </div>
 </section>

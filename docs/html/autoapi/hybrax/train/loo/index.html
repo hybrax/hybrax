@@ -348,6 +348,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -396,14 +397,10 @@ overview of what Hybrax can do, see the
 the folds (<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.HoldoutSet" title="hybrax.train.run_config.HoldoutSet"><code class="xref py py-class docutils literal notranslate"><span class="pre">HoldoutSet</span></code></a> entries in
 <code class="docutils literal notranslate"><span class="pre">per_fold_holdout_sets</span></code>, or classic leave-one-out when omitted) and the
 fold-level parallelism.</p>
-<p>Each fold trains as <strong>its own subprocess</strong> so it can expose a private JAX CPU
-device count — the JAX host-device count is fixed per process at import, so
-concurrent in-process folds cannot get separate shards. The user picks how many
-folds run at once (<code class="docutils literal notranslate"><span class="pre">loo.parallel_folds</span></code>); the orchestrator chooses the per-fold
-JAX device count (<code class="docutils literal notranslate"><span class="pre">devices_per_fold</span> <span class="pre">=</span> <span class="pre">n_cpu</span> <span class="pre">//</span> <span class="pre">parallel_folds</span></code> by default),
-optionally leases disjoint CPUs via <code class="code docutils literal notranslate"><span class="pre">cpus_per_fold</span></code>, then aggregates on-disk losses
-into <code class="docutils literal notranslate"><span class="pre">loo_summary.csv</span></code> / <code class="docutils literal notranslate"><span class="pre">loo_aggregate.json</span></code>. <code class="docutils literal notranslate"><span class="pre">run_loo_cv(resume=True)</span></code>
-skips only identity-matched, complete folds and re-runs the rest.</p>
+<p>Each fold trains in its own subprocess for isolation and CPU leasing.
+The orchestrator limits the concurrent folds to the CPU budget,
+then aggregates on-disk losses into <code class="docutils literal notranslate"><span class="pre">loo_summary.csv</span></code> / <code class="docutils literal notranslate"><span class="pre">loo_aggregate.json</span></code>.
+<code class="docutils literal notranslate"><span class="pre">run_loo_cv(resume=True)</span></code> skips identity-matched complete folds.</p>
 <p>This module stays a thin orchestrator on top of the harness preparation,
 training, and evaluation entry points; it does not reimplement batching or loss
 calculation.</p>
@@ -451,8 +448,8 @@ calculation.</p>
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.loo.compute_parallel_split" title="hybrax.train.loo.compute_parallel_split"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_parallel_split</span></code></a>(n_folds, n_cpu, parallel_folds, *)</p></td>
-<td><p>Return <code class="docutils literal notranslate"><span class="pre">(parallel_folds,</span> <span class="pre">devices_per_fold)</span></code> for the fold pool.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.loo.compute_parallel_folds" title="hybrax.train.loo.compute_parallel_folds"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_parallel_folds</span></code></a>(n_folds, n_cpu, parallel_folds, ...)</p></td>
+<td><p>Return how many folds train at once.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.loo.execute_trained_fold" title="hybrax.train.loo.execute_trained_fold"><code class="xref py py-obj docutils literal notranslate"><span class="pre">execute_trained_fold</span></code></a>(trained)</p></td>
 <td><p>Evaluate and write one trained fold from its lean runtime inputs.</p></td>
@@ -564,11 +561,6 @@ directory name under <code class="docutils literal notranslate"><span class="pre
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="hybrax.train.loo.LOOResult.devices_per_fold">
-<span class="sig-name descname"><span class="pre">devices_per_fold</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.loo.LOOResult.devices_per_fold" title="Link to this definition">¶</a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.loo.LOOResult.fold_dirs">
 <span class="sig-name descname"><span class="pre">fold_dirs</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">pathlib.Path</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span><a class="headerlink" href="#hybrax.train.loo.LOOResult.fold_dirs" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
@@ -581,6 +573,11 @@ directory name under <code class="docutils literal notranslate"><span class="pre
 <dl class="py attribute">
 <dt class="sig sig-object py" id="hybrax.train.loo.LOOResult.summary_csv_path">
 <span class="sig-name descname"><span class="pre">summary_csv_path</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">pathlib.Path</span></span><a class="headerlink" href="#hybrax.train.loo.LOOResult.summary_csv_path" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="hybrax.train.loo.LOOResult.workers_per_fold">
+<span class="sig-name descname"><span class="pre">workers_per_fold</span></span><span class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></span><a class="headerlink" href="#hybrax.train.loo.LOOResult.workers_per_fold" title="Link to this definition">¶</a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -683,29 +680,23 @@ directory name under <code class="docutils literal notranslate"><span class="pre
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="hybrax.train.loo.compute_parallel_split">
-<span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">compute_parallel_split</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_folds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_cpu</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parallel_folds</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">devices_per_fold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_devices_per_fold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#compute_parallel_split"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.compute_parallel_split" title="Link to this definition">¶</a></dt>
-<dd><p>Return <code class="docutils literal notranslate"><span class="pre">(parallel_folds,</span> <span class="pre">devices_per_fold)</span></code> for the fold pool.</p>
-<p><code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code> is the user-chosen fold concurrency. If
-<code class="docutils literal notranslate"><span class="pre">devices_per_fold</span></code> is omitted, the per-fold JAX CPU device budget is split
-across concurrent folds: <code class="docutils literal notranslate"><span class="pre">devices_per_fold</span> <span class="pre">=</span> <span class="pre">n_cpu</span> <span class="pre">//</span> <span class="pre">parallel</span></code> (so a
-single fold exposes many devices, many folds expose one device each).
-Devices never exceed <code class="docutils literal notranslate"><span class="pre">max_devices_per_fold</span></code> (the smallest fold’s batch —
-exposing more host devices than the batch only deadlocks the pmap collective).</p>
-<p>Invariant: <code class="docutils literal notranslate"><span class="pre">parallel_folds</span> <span class="pre">*</span> <span class="pre">devices_per_fold</span> <span class="pre">&lt;=</span> <span class="pre">n_cpu</span></code>. There is no RAM
-sizing here — the user owns the memory call via <code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code>.</p>
+<dt class="sig sig-object py" id="hybrax.train.loo.compute_parallel_folds">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.loo.</span></span><span class="sig-name descname"><span class="pre">compute_parallel_folds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_folds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_cpu</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parallel_folds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">workers_per_fold</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/loo.html#compute_parallel_folds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.loo.compute_parallel_folds" title="Link to this definition">¶</a></dt>
+<dd><p>Return how many folds train at once.</p>
+<p>That is the requested <code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code>, capped at the fold count and
+reduced until <code class="docutils literal notranslate"><span class="pre">parallel_folds</span> <span class="pre">*</span> <span class="pre">workers_per_fold</span> <span class="pre">&lt;=</span> <span class="pre">n_cpu</span></code> (but never
+below one fold).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>n_folds</strong> (<em>int</em>)</p></li>
 <li><p><strong>n_cpu</strong> (<em>int</em>)</p></li>
 <li><p><strong>parallel_folds</strong> (<em>int</em>)</p></li>
-<li><p><strong>devices_per_fold</strong> (<em>int</em><em> | </em><em>None</em>)</p></li>
-<li><p><strong>max_devices_per_fold</strong> (<em>int</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>workers_per_fold</strong> (<em>int</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p>tuple[int, int]</p>
+<dd class="field-even"><p>int</p>
 </dd>
 </dl>
 </dd></dl>
@@ -965,10 +956,10 @@ than the full augmented prepared collection.</p>
 <li><a class="reference internal" href="#hybrax.train.loo.LOOResult"><code class="docutils literal notranslate"><span class="pre">LOOResult</span></code></a><ul>
 <li><a class="reference internal" href="#hybrax.train.loo.LOOResult.aggregate"><code class="docutils literal notranslate"><span class="pre">LOOResult.aggregate</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.loo.LOOResult.aggregate_json_path"><code class="docutils literal notranslate"><span class="pre">LOOResult.aggregate_json_path</span></code></a></li>
-<li><a class="reference internal" href="#hybrax.train.loo.LOOResult.devices_per_fold"><code class="docutils literal notranslate"><span class="pre">LOOResult.devices_per_fold</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.loo.LOOResult.fold_dirs"><code class="docutils literal notranslate"><span class="pre">LOOResult.fold_dirs</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.loo.LOOResult.parallel_folds"><code class="docutils literal notranslate"><span class="pre">LOOResult.parallel_folds</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.loo.LOOResult.summary_csv_path"><code class="docutils literal notranslate"><span class="pre">LOOResult.summary_csv_path</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.LOOResult.workers_per_fold"><code class="docutils literal notranslate"><span class="pre">LOOResult.workers_per_fold</span></code></a></li>
 </ul>
 </li>
 <li><a class="reference internal" href="#hybrax.train.loo.PreparedFold"><code class="docutils literal notranslate"><span class="pre">PreparedFold</span></code></a><ul>
@@ -994,7 +985,7 @@ than the full augmented prepared collection.</p>
 <li><a class="reference internal" href="#hybrax.train.loo.TrainedFold.train_result"><code class="docutils literal notranslate"><span class="pre">TrainedFold.train_result</span></code></a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#hybrax.train.loo.compute_parallel_split"><code class="docutils literal notranslate"><span class="pre">compute_parallel_split()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.loo.compute_parallel_folds"><code class="docutils literal notranslate"><span class="pre">compute_parallel_folds()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.loo.execute_trained_fold"><code class="docutils literal notranslate"><span class="pre">execute_trained_fold()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.loo.prepare_single_fold"><code class="docutils literal notranslate"><span class="pre">prepare_single_fold()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.loo.prepare_single_fold_from_runtime_artifact"><code class="docutils literal notranslate"><span class="pre">prepare_single_fold_from_runtime_artifact()</span></code></a></li>

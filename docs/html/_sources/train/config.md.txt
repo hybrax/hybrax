@@ -61,14 +61,14 @@ pipeline if you want to.
 |---|---|---|
 | `prepare` | prepare | `raw_input`, validation strictness, required controls, `augmentation` |
 | `data` | train, loo | `prepared`, `processes`, `targets`, `target_source` |
-| `train` | train, loo | `epochs`, `seed`, `optimizer`, `learning_rate`, `grad_clip_norm`, `batch_size`, `microbatch_size`, `shuffle`, `devices`, `allow_stateful_models`, `flow_integral_relative_tolerance`; `holdout_processes` for train only |
+| `train` | train, loo | `epochs`, `seed`, `optimizer`, `learning_rate`, `grad_clip_norm`, `batch_size`, `microbatch_size`, `shuffle`, `workers`, `allow_stateful_models`, `flow_integral_relative_tolerance`; `holdout_processes` for train only |
 | `solver` | train, forward, loo | `max_steps`, `rtol`, `atol` |
 | `checkpoint` | train, loo | `every`, `bundle_prepared`, `keep_best`, `select_by` |
 | `output` | all | `dir`, plotting |
 | `logging` | all | `decimals`: rounding precision for logged numbers |
 | `custom_py` | all | path to your hooks file |
 | `custom` | all | free-form, handed to your hooks |
-| `loo` | loo | `per_fold_holdout_sets`, `parallel_folds`, `devices_per_fold`, `cpus_per_fold` |
+| `loo` | loo | `per_fold_holdout_sets`, `parallel_folds`, `workers_per_fold`, `cpus_per_fold` |
 | `models` | forward | list of run or checkpoint directories |
 
 The [`build_solver`](train.md#hook-build_solver) hook selects the solver instance;
@@ -121,7 +121,7 @@ help or hurt depending on the filesystem and workload.
     "seed": 0,
     "learning_rate": 3e-4,
     "grad_clip_norm": 10.0,
-    "devices": "max"
+    "workers": 1
   },
   "solver": { "max_steps": 4096, "rtol": 1e-5, "atol": 1e-7 },
   "checkpoint": { "every": 100 },
@@ -200,12 +200,12 @@ for defaults you do not want to repeat in every config file.
   `--overwrite`.
 - **A missing `custom_py` path is a `FileNotFoundError`**, but a missing *hook inside* a
   present file is silent. Different failure modes, and only one of them is loud.
-- **`hybrax loo` has a hidden `--fold` flag.** It is internal worker dispatch. Do not
+- **`hybrax loo` has a hidden `--fold` flag.** It is internal fold dispatch. Do not
   use it.
 
 ## LOO CPU affinity
 
-`loo.cpus_per_fold` defaults to `null`, leaving worker CPU affinity
+`loo.cpus_per_fold` defaults to `null`, leaving fold CPU affinity
 unrestricted. An integer of at least 2 leases that many allowed logical CPUs
 per fold. The concurrent folds must fit within the parent's allowed CPU set;
 otherwise the run fails before the runtime producer starts. Concurrency is
@@ -214,12 +214,13 @@ assumes `parallel_folds` folds. Linux CPU affinity support is required when this
 
 The pool prefers distinct physical cores across all leases using Linux sysfs
 package/core IDs, then uses SMT siblings. Without readable topology it uses
-sorted CPU IDs. Each completed worker returns its CPUs to the pool. Affinity
-is applied before importing JAX and logged for each fold.
+sorted CPU IDs. Each completed fold returns its CPUs to the pool. Affinity
+is applied before importing JAX, is inherited by the fold's worker processes,
+and is logged for each fold.
 
-`devices_per_fold` controls JAX devices, separately from CPU affinity. With
-`cpus_per_fold` set, the resolved device count is also capped at that CPU
-budget. See [CPU budget for parallel folds](loo.md#cpu-budget-for-parallel-folds).
+`workers_per_fold` controls worker processes, separately from CPU affinity. With
+`cpus_per_fold` set, a worker count above that CPU budget is a config validation
+error. See [CPU budget for parallel folds](loo.md#cpu-budget-for-parallel-folds).
 
 ## See also
 

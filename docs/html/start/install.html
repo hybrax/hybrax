@@ -348,6 +348,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -479,13 +480,6 @@ mass balances span many orders of magnitude and single precision loses them, so 
 deliberate, but it is global. If you import <code class="docutils literal notranslate"><span class="pre">jax</span></code> first and configure it yourself,
 importing <code class="docutils literal notranslate"><span class="pre">hybrax.format</span></code> afterwards will flip x64 on underneath you, and float32 arrays
 handed to <code class="docutils literal notranslate"><span class="pre">TimeSeries</span></code> will raise rather than silently upcast.</p>
-</div>
-<div class="important admonition">
-<p class="admonition-title"><code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> decides its device count at import time</p>
-<p>JAX fixes the number of CPU devices when it initializes, so <code class="docutils literal notranslate"><span class="pre">hybrax.train</span></code> resolves the
-device count <em>before</em> that: by scanning the command line and config. The default is <strong>1
-device</strong>, so it never quietly takes over your machine. <code class="docutils literal notranslate"><span class="pre">HYBRAX_TRAIN_DEVICES=N</span></code> in the
-environment always wins over the config file. See <a class="reference internal" href="../train/train.html"><span class="std std-doc">Training</span></a>.</p>
 </div>
 </section>
 <section id="building-these-docs">

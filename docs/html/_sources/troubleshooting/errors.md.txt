@@ -176,7 +176,7 @@ Not one error, but the common cluster.
 **Why.** Several JAX processes each claiming cores. `parallel_folds` in LOO already runs
 multiple processes.
 
-**Fix.** Run one training at a time; shard within a run using `train.devices`. Do not
+**Fix.** Run one training at a time; use `train.workers` within one run. Do not
 launch parallel `hybrax` commands from a shell loop.
 
 ## Runtime aborts

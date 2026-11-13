@@ -347,6 +347,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -505,7 +506,7 @@ overview of what Hybrax can do, see the
 <div class="viewcode-block" id="TrainConfig">
 <a class="viewcode-back" href="../../../autoapi/hybrax/train/run_config/index.html#hybrax.train.run_config.TrainConfig">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">TrainConfig</span><span class="p">(</span><span class="n">ConfigBase</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">"""Optimizer, batching, and device settings for one training run.</span>
+<span class="w">    </span><span class="sd">"""Optimizer, batching, and worker settings for one training run.</span>
 
 <span class="sd">    ``epochs`` (default 5) is how many passes over the selected process set</span>
 <span class="sd">    to run; ``--epochs`` on the CLI overrides this, since it is the one knob</span>
@@ -522,15 +523,15 @@ overview of what Hybrax can do, see the
 <span class="sd">    many processes contribute to one optimizer update; ``None`` means full-batch.</span>
 <span class="sd">    ``microbatch_size`` optionally limits how many process solves execute</span>
 <span class="sd">    together, while preserving that batch mean and one optimizer update. It</span>
-<span class="sd">    requires ``devices=1`` and one actual JAX device. A width at least as</span>
+<span class="sd">    requires ``workers=1``. A width at least as</span>
 <span class="sd">    large as the batch uses unsplit execution. ``shuffle``</span>
 <span class="sd">    (default ``True``) reshuffles the process order every epoch;</span>
 <span class="sd">    ``batch_seed`` (optional) seeds that shuffling independently of ``seed``.</span>
-<span class="sd">    ``devices`` (default ``1``) is how many CPU devices to shard the batch</span>
-<span class="sd">    across; ``"max"`` resolves to ``min(n_processes, n_cpus)`` — never every</span>
-<span class="sd">    core, since idle surplus devices can deadlock the ``pmap`` all-reduce —</span>
-<span class="sd">    and the ``HYBRAX_TRAIN_DEVICES`` environment variable always overrides</span>
-<span class="sd">    it. ``allow_stateful_models`` (default ``False``) is the required opt-in</span>
+<span class="sd">    ``workers`` (default 1) counts worker processes computing gradients for one</span>
+<span class="sd">    update. One solves the whole batch in the training computer process. More</span>
+<span class="sd">    workers trade memory for speed: each holds its own compiled solve. They are</span>
+<span class="sd">    CPU-only and capped at the batch size. ``allow_stateful_models``</span>
+<span class="sd">    (default ``False``) is the required opt-in</span>
 <span class="sd">    for reaction modules with a nonzero latent state: training raises before</span>
 <span class="sd">    it starts without it, because a latent state changes what the model</span>
 <span class="sd">    *is*, not just its size.</span>
@@ -554,7 +555,7 @@ overview of what Hybrax can do, see the
     <span class="n">microbatch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
     <span class="n">shuffle</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
     <span class="n">batch_seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">devices</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"max"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
     <span class="n">allow_stateful_models</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
     <span class="n">flow_integral_relative_tolerance</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
         <span class="n">DEFAULT_FLOW_INTEGRAL_RELATIVE_TOLERANCE</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">allow_inf_nan</span><span class="o">=</span><span class="kc">False</span>
@@ -562,10 +563,18 @@ overview of what Hybrax can do, see the
     <span class="c1"># Ordinary train only; LOO defines holdouts through its folds.</span>
     <span class="n">holdout_processes</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">min_length</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"before"</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_drop_legacy_devices</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="c1"># Old saved configs carry devices; it affected execution, not the model.</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">item</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">key</span> <span class="o">!=</span> <span class="s2">"devices"</span><span class="p">}</span>
+        <span class="k">return</span> <span class="n">value</span>
+
     <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">_microbatch_requires_one_device</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">microbatch_size</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">devices</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"microbatching requires train.devices=1"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_microbatch_requires_one_worker</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">microbatch_size</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">workers</span> <span class="o">!=</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"microbatching requires train.workers=1"</span><span class="p">)</span>
         <span class="k">return</span> <span class="bp">self</span>
 
     <span class="nd">@field_validator</span><span class="p">(</span><span class="s2">"holdout_processes"</span><span class="p">)</span>
@@ -833,10 +842,12 @@ overview of what Hybrax can do, see the
 
 <span class="sd">    ``per_fold_holdout_sets=None`` runs classic leave-one-out: one fold per</span>
 <span class="sd">    parent process group. ``parallel_folds`` is how many folds train at once</span>
-<span class="sd">    (each fold is its own subprocess, because the JAX CPU device count is fixed</span>
-<span class="sd">    per process). ``devices_per_fold`` can set each fold's JAX CPU device</span>
-<span class="sd">    count; otherwise the available JAX CPU device budget is split across</span>
-<span class="sd">    concurrent folds so that ``parallel_folds * devices_per_fold &lt;= n_cpu``.</span>
+<span class="sd">    (each fold is its own subprocess). ``workers_per_fold`` (default 1) counts</span>
+<span class="sd">    worker processes for each fold's training, capped at the fold's batch size</span>
+<span class="sd">    and limited to ``cpus_per_fold`` when that is set. Without ``cpus_per_fold``</span>
+<span class="sd">    the orchestrator reduces concurrent folds to keep</span>
+<span class="sd">    ``parallel_folds * workers_per_fold &lt;= n_cpu``; with it, LOO stops before</span>
+<span class="sd">    training if ``parallel_folds`` leases do not fit the allowed CPUs.</span>
 <span class="sd">    `cpus_per_fold` optionally leases disjoint allowed CPUs before worker</span>
 <span class="sd">    imports; its default leaves affinity unrestricted.</span>
 <span class="sd">    Set these from what your RAM can hold — there is deliberately no automatic</span>
@@ -845,17 +856,34 @@ overview of what Hybrax can do, see the
 
     <span class="n">per_fold_holdout_sets</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">HoldoutSet</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">parallel_folds</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-    <span class="n">devices_per_fold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">workers_per_fold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">gt</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
     <span class="n">cpus_per_fold</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
 
     <span class="nd">@field_validator</span><span class="p">(</span>
-        <span class="s2">"parallel_folds"</span><span class="p">,</span> <span class="s2">"devices_per_fold"</span><span class="p">,</span> <span class="s2">"cpus_per_fold"</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"before"</span>
+        <span class="s2">"parallel_folds"</span><span class="p">,</span> <span class="s2">"workers_per_fold"</span><span class="p">,</span> <span class="s2">"cpus_per_fold"</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s2">"before"</span>
     <span class="p">)</span>
     <span class="nd">@classmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_reject_bool</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">bool</span><span class="p">):</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"loo counts must be integers, not bool"</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">value</span></div>
+        <span class="k">return</span> <span class="n">value</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"before"</span><span class="p">)</span>
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_drop_legacy_devices_per_fold</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="c1"># Old saved configs carry devices_per_fold; it only affected execution.</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">value</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="s2">"devices_per_fold"</span><span class="p">}</span>
+        <span class="k">return</span> <span class="n">value</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s2">"after"</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_workers_fit_leased_cpus</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cpus_per_fold</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">workers_per_fold</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">cpus_per_fold</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"loo.workers_per_fold must not exceed loo.cpus_per_fold"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
 
 
 

@@ -348,6 +348,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -460,7 +461,7 @@ pipeline if you want to.</p>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">train</span></code></p></td>
 <td><p>train, loo</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">epochs</span></code>, <code class="docutils literal notranslate"><span class="pre">seed</span></code>, <code class="docutils literal notranslate"><span class="pre">optimizer</span></code>, <code class="docutils literal notranslate"><span class="pre">learning_rate</span></code>, <code class="docutils literal notranslate"><span class="pre">grad_clip_norm</span></code>, <code class="docutils literal notranslate"><span class="pre">batch_size</span></code>, <code class="docutils literal notranslate"><span class="pre">microbatch_size</span></code>, <code class="docutils literal notranslate"><span class="pre">shuffle</span></code>, <code class="docutils literal notranslate"><span class="pre">devices</span></code>, <code class="docutils literal notranslate"><span class="pre">allow_stateful_models</span></code>, <code class="docutils literal notranslate"><span class="pre">flow_integral_relative_tolerance</span></code>; <code class="docutils literal notranslate"><span class="pre">holdout_processes</span></code> for train only</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">epochs</span></code>, <code class="docutils literal notranslate"><span class="pre">seed</span></code>, <code class="docutils literal notranslate"><span class="pre">optimizer</span></code>, <code class="docutils literal notranslate"><span class="pre">learning_rate</span></code>, <code class="docutils literal notranslate"><span class="pre">grad_clip_norm</span></code>, <code class="docutils literal notranslate"><span class="pre">batch_size</span></code>, <code class="docutils literal notranslate"><span class="pre">microbatch_size</span></code>, <code class="docutils literal notranslate"><span class="pre">shuffle</span></code>, <code class="docutils literal notranslate"><span class="pre">workers</span></code>, <code class="docutils literal notranslate"><span class="pre">allow_stateful_models</span></code>, <code class="docutils literal notranslate"><span class="pre">flow_integral_relative_tolerance</span></code>; <code class="docutils literal notranslate"><span class="pre">holdout_processes</span></code> for train only</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">solver</span></code></p></td>
 <td><p>train, forward, loo</p></td>
@@ -488,7 +489,7 @@ pipeline if you want to.</p>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">loo</span></code></p></td>
 <td><p>loo</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">per_fold_holdout_sets</span></code>, <code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code>, <code class="docutils literal notranslate"><span class="pre">devices_per_fold</span></code>, <code class="docutils literal notranslate"><span class="pre">cpus_per_fold</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">per_fold_holdout_sets</span></code>, <code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code>, <code class="docutils literal notranslate"><span class="pre">workers_per_fold</span></code>, <code class="docutils literal notranslate"><span class="pre">cpus_per_fold</span></code></p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">models</span></code></p></td>
 <td><p>forward</p></td>
@@ -541,7 +542,7 @@ help or hurt depending on the filesystem and workload.</p>
 <span class="w">    </span><span class="nt">"seed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"learning_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">3e-4</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"grad_clip_norm"</span><span class="p">:</span><span class="w"> </span><span class="mf">10.0</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"devices"</span><span class="p">:</span><span class="w"> </span><span class="s2">"max"</span>
+<span class="w">    </span><span class="nt">"workers"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"solver"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"max_steps"</span><span class="p">:</span><span class="w"> </span><span class="mi">4096</span><span class="p">,</span><span class="w"> </span><span class="nt">"rtol"</span><span class="p">:</span><span class="w"> </span><span class="mf">1e-5</span><span class="p">,</span><span class="w"> </span><span class="nt">"atol"</span><span class="p">:</span><span class="w"> </span><span class="mf">1e-7</span><span class="w"> </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"checkpoint"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"every"</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="w"> </span><span class="p">},</span>
@@ -630,13 +631,13 @@ There is no partial or selective overwrite.</p></li>
 <code class="docutils literal notranslate"><span class="pre">--overwrite</span></code>.</p></li>
 <li><p><strong>A missing <code class="docutils literal notranslate"><span class="pre">custom_py</span></code> path is a <code class="docutils literal notranslate"><span class="pre">FileNotFoundError</span></code></strong>, but a missing <em>hook inside</em> a
 present file is silent. Different failure modes, and only one of them is loud.</p></li>
-<li><p><strong><code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">loo</span></code> has a hidden <code class="docutils literal notranslate"><span class="pre">--fold</span></code> flag.</strong> It is internal worker dispatch. Do not
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">loo</span></code> has a hidden <code class="docutils literal notranslate"><span class="pre">--fold</span></code> flag.</strong> It is internal fold dispatch. Do not
 use it.</p></li>
 </ul>
 </section>
 <section id="loo-cpu-affinity">
 <h2>LOO CPU affinity<a class="headerlink" href="#loo-cpu-affinity" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">loo.cpus_per_fold</span></code> defaults to <code class="docutils literal notranslate"><span class="pre">null</span></code>, leaving worker CPU affinity
+<p><code class="docutils literal notranslate"><span class="pre">loo.cpus_per_fold</span></code> defaults to <code class="docutils literal notranslate"><span class="pre">null</span></code>, leaving fold CPU affinity
 unrestricted. An integer of at least 2 leases that many allowed logical CPUs
 per fold. The concurrent folds must fit within the parent’s allowed CPU set;
 otherwise the run fails before the runtime producer starts. Concurrency is
@@ -644,11 +645,12 @@ capped at the number of folds; for classic leave-one-out the early check
 assumes <code class="docutils literal notranslate"><span class="pre">parallel_folds</span></code> folds. Linux CPU affinity support is required when this option is set.</p>
 <p>The pool prefers distinct physical cores across all leases using Linux sysfs
 package/core IDs, then uses SMT siblings. Without readable topology it uses
-sorted CPU IDs. Each completed worker returns its CPUs to the pool. Affinity
-is applied before importing JAX and logged for each fold.</p>
-<p><code class="docutils literal notranslate"><span class="pre">devices_per_fold</span></code> controls JAX devices, separately from CPU affinity. With
-<code class="docutils literal notranslate"><span class="pre">cpus_per_fold</span></code> set, the resolved device count is also capped at that CPU
-budget. See <a class="reference internal" href="loo.html#cpu-budget-for-parallel-folds"><span class="std std-ref">CPU budget for parallel folds</span></a>.</p>
+sorted CPU IDs. Each completed fold returns its CPUs to the pool. Affinity
+is applied before importing JAX, is inherited by the fold’s worker processes,
+and is logged for each fold.</p>
+<p><code class="docutils literal notranslate"><span class="pre">workers_per_fold</span></code> controls worker processes, separately from CPU affinity. With
+<code class="docutils literal notranslate"><span class="pre">cpus_per_fold</span></code> set, a worker count above that CPU budget is a config validation
+error. See <a class="reference internal" href="loo.html#cpu-budget-for-parallel-folds"><span class="std std-ref">CPU budget for parallel folds</span></a>.</p>
 </section>
 <section id="see-also">
 <h2>See also<a class="headerlink" href="#see-also" title="Link to this heading">¶</a></h2>

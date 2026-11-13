@@ -33,8 +33,7 @@ WORK.mkdir(parents=True)
 EXAMPLE = Path("../../../examples/gallery_loo").resolve()
 shutil.copy(EXAMPLE / "data.json", WORK / "data.json")
 
-ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "HYBRAX_TRAIN_DEVICES": "1",
-       "MPLBACKEND": "Agg"}
+ENV = {**os.environ, "JAX_PLATFORMS": "cpu", "MPLBACKEND": "Agg"}
 
 def hxt_cli(*args):
     proc = subprocess.run([sys.executable, "-m", "hybrax.train.cli", *args],

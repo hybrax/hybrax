@@ -348,6 +348,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -726,7 +727,7 @@ hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.0878162 last_mean_loss=0.00553992 delta=-0.0822763
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.0878162 last_mean_loss=0.00525015 delta=-0.0825661
 Run directory: docs/source/_data/out/runs/gallery_optfed_ffnn/run/
 </pre></div>
 </div>
@@ -745,10 +746,10 @@ below zero.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: step_00500
-biomass    R2 = 0.9021
-glycerol   R2 = 0.9873
-product    R2 = 0.8455
-P_X        R2 = 0.7279
+biomass    R2 = 0.9251
+glycerol   R2 = 0.9911
+product    R2 = 0.8450
+P_X        R2 = 0.7216
 Lowest predicted concentration: 0 g/kg
 </pre></div>
 </div>
@@ -804,12 +805,12 @@ its eleven parameters and reaches similar results.</p>
     </tr>
     <tr>
       <th id="T_optfed_neural_comparison_level0_row1" class="row_heading level0 row1" >Neural kinetics</th>
-      <td id="T_optfed_neural_comparison_row1_col0" class="data row1 col0" >0.898</td>
-      <td id="T_optfed_neural_comparison_row1_col1" class="data row1 col1" >0.0745</td>
-      <td id="T_optfed_neural_comparison_row1_col2" class="data row1 col2" >0.902</td>
+      <td id="T_optfed_neural_comparison_row1_col0" class="data row1 col0" >0.904</td>
+      <td id="T_optfed_neural_comparison_row1_col1" class="data row1 col1" >0.0725</td>
+      <td id="T_optfed_neural_comparison_row1_col2" class="data row1 col2" >0.925</td>
       <td id="T_optfed_neural_comparison_row1_col3" class="data row1 col3" >0.845</td>
-      <td id="T_optfed_neural_comparison_row1_col4" class="data row1 col4" >0.728</td>
-      <td id="T_optfed_neural_comparison_row1_col5" class="data row1 col5" >0.154</td>
+      <td id="T_optfed_neural_comparison_row1_col4" class="data row1 col4" >0.722</td>
+      <td id="T_optfed_neural_comparison_row1_col5" class="data row1 col5" >0.156</td>
     </tr>
   </tbody>
 </table>
@@ -832,7 +833,7 @@ measurements. Original OptFed curves are semi-transparent solid lines; the
 network’s curves are dashed.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/ed66460bafefefedb5cbdbb2ed751c7ce1676dc09717b322f718f257c162d834.png" src="../_images/ed66460bafefefedb5cbdbb2ed751c7ce1676dc09717b322f718f257c162d834.png" />
+<img alt="../_images/ee53da6237e106330f85905f6b4d9d3c233ae3e3eabf16868790c2cc1498e002.png" src="../_images/ee53da6237e106330f85905f6b4d9d3c233ae3e3eabf16868790c2cc1498e002.png" />
 </div>
 </div>
 </section>

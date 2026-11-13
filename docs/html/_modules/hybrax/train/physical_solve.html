@@ -347,6 +347,7 @@ overview of what Hybrax can do, see the
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/training_data/index.html">hybrax.train.training_data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/utils/index.html">hybrax.train.utils</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/validate/index.html">hybrax.train.validate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/worker_pool/index.html">hybrax.train.worker_pool</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../../../autoapi/hybrax/train/wrapper/index.html">hybrax.train.wrapper</a></li>
 </ul>
 </li>
@@ -750,7 +751,7 @@ overview of what Hybrax can do, see the
     <span class="c1"># leaves concentrations unchanged and only removes volume, so subtract any sample</span>
     <span class="c1"># volume scheduled at that time from V. Boluses stay pre-bolus (the offline</span>
     <span class="c1"># measurement is taken before feeding). This makes the reported V honour</span>
-    <span class="c1"># ``v0 + Σfeeds − Σsamples`` at the final sample, matching pmap. Exact, for the same</span>
+    <span class="c1"># ``v0 + Σfeeds − Σsamples`` at the final sample. Exact, for the same</span>
     <span class="c1"># reason ``affect_fn`` matches exactly: with a tolerance an output point merely NEAR</span>
     <span class="c1"># a sample would also get the correction, even though the solve has already applied</span>
     <span class="c1"># that sample to the state it is reading. Keyed on the caller's ``t_eval`` (not the</span>
