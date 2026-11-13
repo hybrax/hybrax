@@ -4,6 +4,7 @@ from concurrent.futures.process import BrokenProcessPool
 
 import diffrax
 import equinox as eqx
+import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
 import numpy as np
@@ -167,3 +168,11 @@ def test_pool_start_up_failure_raises_instead_of_hanging():
         pytest.raises(BrokenProcessPool),
     ):
         pool.mean_gradient(params, jnp.asarray([0, 1]), 0)
+
+
+def test_pool_rejects_model_classes_it_cannot_send():
+    class Local(eqx.Module):
+        weight: jax.Array
+
+    with pytest.raises(TypeError, match="define it in custom.py"):
+        GradientWorkerPool(2, _build_failing, (Local(jnp.ones(1)),), jnp.ones(1))

@@ -8,8 +8,9 @@ order, and applies a single optimizer update.
 
 Each worker receives the parent's prepared training context once, as a pickle,
 and compiles the gradient of a one-process batch once. ``cloudpickle`` sends
-lambdas and interactively defined classes by value; classes from ``custom.py``
-are re-imported in the worker.
+lambdas and JAX functions by value. Model classes are sent by reference, so
+they must come from ``custom.py`` (re-imported in each worker) or another
+importable module, not from a script's ``__main__``, a notebook or a function.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from concurrent.futures import ProcessPoolExecutor
 from typing import Any, Self
 
 import cloudpickle
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.tree_util as jtu
@@ -39,11 +41,26 @@ _WORKER: dict[str, Any] = {}
 
 
 class _Pickler(cloudpickle.Pickler):
-    """Diffrax tests its default-tolerance marker by identity, so send a
-    reference to that singleton instead of a copy."""
-
     def persistent_id(self, obj):
+        # Diffrax tests its default-tolerance marker by identity, so send a
+        # reference to that singleton instead of a copy.
         return "use_stepsize_tol" if obj is use_stepsize_tol else None
+
+    def reducer_override(self, obj):
+        # cloudpickle would send classes from ``__main__`` or a function body
+        # by value, but Equinox does not register the fields of a class rebuilt
+        # that way, so the worker would see a model without its arrays.
+        if (
+            isinstance(obj, type)
+            and issubclass(obj, eqx.Module)
+            and (obj.__module__ == "__main__" or "<locals>" in obj.__qualname__)
+        ):
+            raise TypeError(
+                f"{obj.__qualname__} is defined in a script, notebook or function, "
+                "which train.workers > 1 does not support; define it in custom.py "
+                "or another importable module"
+            )
+        return super().reducer_override(obj)
 
 
 class _Unpickler(pickle.Unpickler):

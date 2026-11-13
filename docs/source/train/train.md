@@ -198,8 +198,9 @@ Things to know:
   `workers: 1`, within the solver tolerances. Solving a batch together and
   solving its processes one at a time take slightly different solver steps.
   Explicit solvers give the same results up to rounding.
-- Models are sent to the workers once, at start-up. Classes from `custom.py`
-  are imported again in each worker.
+- Models are sent to the workers once, at start-up. Their classes must come
+  from `custom.py` or another importable module: classes defined in a script
+  run as `__main__`, in a notebook or inside a function raise an error.
 
 ## Checkpoints and retention
 
