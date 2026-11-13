@@ -150,12 +150,11 @@ class GradientWorkerPool:
         return self
 
     def __exit__(self, exc_type, *_exc) -> None:
-        if exc_type is not None:
-            # Stop the running solves so that a failed run ends at once. The
-            # executor has no public way to do this before Python 3.14.
-            for process in self._executor._processes.values():
-                process.terminate()
-        self._executor.shutdown(wait=True, cancel_futures=True)
+        # After an error, hand it on at once instead of waiting for the solves
+        # that are still running; their workers exit once those finish. Killing
+        # the workers instead can deadlock the executor when one of them is in
+        # the middle of sending a result.
+        self._executor.shutdown(wait=exc_type is None, cancel_futures=True)
 
     def mean_gradient(self, params, batch_indices, step) -> tuple[list, Any]:
         """Evaluate every batch process at the same ``params`` and ``step``.
