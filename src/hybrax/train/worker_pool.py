@@ -76,8 +76,14 @@ def _dumps(obj) -> bytes:
 
 
 def _flatten(tree) -> np.ndarray:
-    """Concatenate all array leaves into one host vector."""
-    leaves = [np.asarray(leaf).ravel() for leaf in jtu.tree_leaves(tree)]
+    """Concatenate all array leaves into one float64 host vector.
+
+    float64 holds every float dtype exactly and avoids NumPy's missing
+    promotions (e.g. bfloat16 with float16); :func:`_restore` casts back.
+    """
+    leaves = [
+        np.asarray(leaf, dtype=np.float64).ravel() for leaf in jtu.tree_leaves(tree)
+    ]
     # A fully frozen model has no trainable leaves.
     return np.concatenate(leaves) if leaves else np.zeros(0)
 

@@ -71,6 +71,8 @@ def test_flat_transport_restores_dtypes_and_shapes():
     tree = {
         "a": jnp.arange(6, dtype=jnp.float32).reshape(2, 3),
         "b": (jnp.asarray(1.5, dtype=jnp.float64), jnp.asarray([7.0, 8.0])),
+        # NumPy cannot promote this pair on its own.
+        "c": (jnp.asarray([0.5], jnp.bfloat16), jnp.asarray([0.25], jnp.float16)),
     }
 
     restored = _restore(_flatten(tree), tree)
