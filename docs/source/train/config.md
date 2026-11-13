@@ -200,12 +200,12 @@ for defaults you do not want to repeat in every config file.
   `--overwrite`.
 - **A missing `custom_py` path is a `FileNotFoundError`**, but a missing *hook inside* a
   present file is silent. Different failure modes, and only one of them is loud.
-- **`hybrax loo` has a hidden `--fold` flag.** It is internal worker dispatch. Do not
+- **`hybrax loo` has a hidden `--fold` flag.** It is internal fold dispatch. Do not
   use it.
 
 ## LOO CPU affinity
 
-`loo.cpus_per_fold` defaults to `null`, leaving worker CPU affinity
+`loo.cpus_per_fold` defaults to `null`, leaving fold CPU affinity
 unrestricted. An integer of at least 2 leases that many allowed logical CPUs
 per fold. The concurrent folds must fit within the parent's allowed CPU set;
 otherwise the run fails before the runtime producer starts. Concurrency is
@@ -214,8 +214,9 @@ assumes `parallel_folds` folds. Linux CPU affinity support is required when this
 
 The pool prefers distinct physical cores across all leases using Linux sysfs
 package/core IDs, then uses SMT siblings. Without readable topology it uses
-sorted CPU IDs. Each completed worker returns its CPUs to the pool. Affinity
-is applied before importing JAX and logged for each fold.
+sorted CPU IDs. Each completed fold returns its CPUs to the pool. Affinity
+is applied before importing JAX, is inherited by the fold's worker processes,
+and is logged for each fold.
 
 `workers_per_fold` controls worker processes, separately from CPU affinity. With
 `cpus_per_fold` set, a worker count above that CPU budget is a config validation

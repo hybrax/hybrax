@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from concurrent.futures.process import BrokenProcessPool
+import threading
 
 import diffrax
 import equinox as eqx
@@ -165,7 +165,7 @@ def test_pool_start_up_failure_raises_instead_of_hanging():
     params = jnp.asarray([1.0])
     with (
         GradientWorkerPool(2, _build_failing, (1.0,), params) as pool,
-        pytest.raises(BrokenProcessPool),
+        pytest.raises(RuntimeError, match="failed to start or died"),
     ):
         pool.mean_gradient(params, jnp.asarray([0, 1]), 0)
 
@@ -176,3 +176,5 @@ def test_pool_rejects_model_classes_it_cannot_send():
 
     with pytest.raises(TypeError, match="define it in custom.py"):
         GradientWorkerPool(2, _build_failing, (Local(jnp.ones(1)),), jnp.ones(1))
+    with pytest.raises(TypeError, match="cannot be pickled: .*lock"):
+        GradientWorkerPool(2, _build_failing, (threading.Lock(),), jnp.ones(1))

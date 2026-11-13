@@ -426,8 +426,10 @@ class LooConfig(ConfigBase):
     parent process group. ``parallel_folds`` is how many folds train at once
     (each fold is its own subprocess). ``workers_per_fold`` (default 1) counts
     worker processes for each fold's training, capped at the fold's batch size
-    and limited to ``cpus_per_fold`` when that is set. The orchestrator reduces
-    concurrent folds to keep ``parallel_folds * workers_per_fold <= n_cpu``.
+    and limited to ``cpus_per_fold`` when that is set. Without ``cpus_per_fold``
+    the orchestrator reduces concurrent folds to keep
+    ``parallel_folds * workers_per_fold <= n_cpu``; with it, LOO stops before
+    training if ``parallel_folds`` leases do not fit the allowed CPUs.
     `cpus_per_fold` optionally leases disjoint allowed CPUs before worker
     imports; its default leaves affinity unrestricted.
     Set these from what your RAM can hold — there is deliberately no automatic

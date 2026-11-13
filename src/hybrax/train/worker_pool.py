@@ -23,6 +23,7 @@ import pickle
 import sys
 from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from typing import Any, Self
 
 import cloudpickle
@@ -56,9 +57,8 @@ class _Pickler(cloudpickle.Pickler):
             and (obj.__module__ == "__main__" or "<locals>" in obj.__qualname__)
         ):
             raise TypeError(
-                f"{obj.__qualname__} is defined in a script, notebook or function, "
-                "which train.workers > 1 does not support; define it in custom.py "
-                "or another importable module"
+                f"{obj.__qualname__} is defined in a script, notebook or function; "
+                "define it in custom.py or another importable module"
             )
         return super().reducer_override(obj)
 
@@ -152,6 +152,13 @@ class GradientWorkerPool:
     ) -> None:
         if jax.default_backend() != "cpu":
             raise ValueError("train.workers > 1 is only supported on CPU")
+        try:
+            payload = _dumps((build_gradient, context, params))
+        except Exception as exc:
+            raise TypeError(
+                "train.workers > 1 must send the model to worker processes, but "
+                f"it cannot be pickled: {exc}"
+            ) from exc
         custom_module = sys.modules.get(CUSTOM_MODULE_NAME)
         self._executor = ProcessPoolExecutor(
             max_workers=workers,
@@ -159,7 +166,7 @@ class GradientWorkerPool:
             initializer=_initialize,
             initargs=(
                 None if custom_module is None else custom_module.__file__,
-                _dumps((build_gradient, context, params)),
+                payload,
             ),
         )
 
@@ -184,7 +191,16 @@ class GradientWorkerPool:
             self._executor.submit(_gradient_job, int(index), flat_params, int(step))
             for index in np.asarray(batch_indices)
         ]
-        # Collect in batch order, whatever order the workers finish in.
-        results = [future.result() for future in futures]
+        try:
+            # Collect in batch order, whatever order the workers finish in.
+            results = [future.result() for future in futures]
+        except BrokenProcessPool as exc:
+            raise RuntimeError(
+                "a gradient worker process failed to start or died. A start-up "
+                "error is printed above (e.g. custom.py failing to import in a "
+                "fresh process); otherwise the machine may have run out of "
+                "memory, since every worker holds its own copy of the model "
+                "and data"
+            ) from exc
         mean_grads = np.mean([grads for _, grads in results], axis=0)
         return [outputs for outputs, _ in results], _restore(mean_grads, params)
