@@ -31,8 +31,8 @@ public API; such entries are marked **Breaking**.
   need a CPU with AVX2 and FMA; on older CPUs install an earlier jax.
 - **Breaking:** LOO folds now train in one process each unless `loo.workers_per_fold`
   says otherwise. Before, a fold used `n_cpu // parallel_folds` CPU devices by
-  default, so LOO runs with few parallel folds can be slower than before until you
-  set `workers_per_fold`. Each extra worker costs memory in every concurrent fold.
+  default, so LOO runs with few parallel folds can be slower than before unless
+  `workers_per_fold` is raised. Each extra worker costs memory in every concurrent fold.
 - cloudpickle is a new dependency. It sends the prepared model to the workers.
 
 ### Removed
