@@ -678,10 +678,14 @@ overview of what Hybrax can do, see the
     <span class="c1"># controls would extrapolate their last spline piece. Hold controls at</span>
     <span class="c1"># their t0/t1 values (see `physical_rhs`); reaction time stays raw. Clip to</span>
     <span class="c1"># the whole-solve bounds, not callback segment bounds: within the window,</span>
-    <span class="c1"># stages crossing a segment end must still see the real controls.</span>
+    <span class="c1"># stages crossing a segment end must still see the real controls. The inner</span>
+    <span class="c1"># JIT lets the solver's many RHS call sites reuse one trace instead of</span>
+    <span class="c1"># re-tracing the RHS at each, which shortens compilation.</span>
     <span class="n">term</span> <span class="o">=</span> <span class="n">diffrax</span><span class="o">.</span><span class="n">ODETerm</span><span class="p">(</span>
-        <span class="k">lambda</span> <span class="n">t</span><span class="p">,</span> <span class="n">yy</span><span class="p">,</span> <span class="n">a</span><span class="p">:</span> <span class="n">SCALE</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span>
-            <span class="n">wrapper</span><span class="o">.</span><span class="n">physical_rhs</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">yy</span> <span class="o">*</span> <span class="n">SCALE</span><span class="p">,</span> <span class="n">control_time</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">t0</span><span class="p">,</span> <span class="n">t1</span><span class="p">))</span>
+        <span class="n">eqx</span><span class="o">.</span><span class="n">filter_jit</span><span class="p">(</span>
+            <span class="k">lambda</span> <span class="n">t</span><span class="p">,</span> <span class="n">yy</span><span class="p">,</span> <span class="n">a</span><span class="p">:</span> <span class="n">SCALE</span><span class="o">.</span><span class="n">scale_derivative</span><span class="p">(</span>
+                <span class="n">wrapper</span><span class="o">.</span><span class="n">physical_rhs</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">yy</span> <span class="o">*</span> <span class="n">SCALE</span><span class="p">,</span> <span class="n">control_time</span><span class="o">=</span><span class="n">jnp</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">t0</span><span class="p">,</span> <span class="n">t1</span><span class="p">))</span>
+            <span class="p">)</span>
         <span class="p">)</span>
     <span class="p">)</span>
 
