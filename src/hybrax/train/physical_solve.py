@@ -287,10 +287,14 @@ def solve_physical_states(
     # controls would extrapolate their last spline piece. Hold controls at
     # their t0/t1 values (see `physical_rhs`); reaction time stays raw. Clip to
     # the whole-solve bounds, not callback segment bounds: within the window,
-    # stages crossing a segment end must still see the real controls.
+    # stages crossing a segment end must still see the real controls. The inner
+    # JIT lets the solver's many RHS call sites reuse one trace instead of
+    # re-tracing the RHS at each, which shortens compilation.
     term = diffrax.ODETerm(
-        lambda t, yy, a: SCALE.scale_derivative(
-            wrapper.physical_rhs(t, yy * SCALE, control_time=jnp.clip(t, t0, t1))
+        eqx.filter_jit(
+            lambda t, yy, a: SCALE.scale_derivative(
+                wrapper.physical_rhs(t, yy * SCALE, control_time=jnp.clip(t, t0, t1))
+            )
         )
     )
 

@@ -7,6 +7,16 @@ public API; such entries are marked **Breaking**.
 
 ## [Unreleased]
 
+### Changed
+
+- The ODE right-hand side is traced once per solve instead of once per place the
+  solver calls it. This cut the first-update compile time by 16% on the OptFed
+  gallery example and by 40% on the HEK293 LSTM example. Results were
+  bit-identical in our tests with explicit solvers. With implicit solvers, they
+  change within the solver tolerance and updates can be about 1% slower: on OptFed (Kvaerno5, rtol 1e-4)
+  the first loss moved by 4e-5 relative, and a run breaks even after about 700
+  updates.
+
 ## [0.2.0] - 2026-11-12
 
 ### Added
