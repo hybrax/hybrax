@@ -7,6 +7,8 @@ public API; such entries are marked **Breaking**.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-15
+
 ### Added
 
 - `train.workers` spreads the per-process solves of each training update over
@@ -25,9 +27,9 @@ public API; such entries are marked **Breaking**.
   solver calls it. This cut the first-update compile time by 16% on the OptFed
   gallery example and by 40% on the HEK293 LSTM example. Results were
   bit-identical in our tests with explicit solvers. With implicit solvers, they
-  change within the solver tolerance and updates can be about 1% slower: on OptFed (Kvaerno5, rtol 1e-4)
-  the first loss moved by 4e-5 relative, and a run breaks even after about 700
-  updates.
+  change within the solver tolerance and updates can be about 1% slower: on
+  OptFed (Kvaerno5, rtol 1e-4) the first loss moved by 4e-5 relative, and a run
+  breaks even after about 700 updates.
 - **Breaking:** jax is now supported up to 0.12 (`jax>=0.9,<0.13`). jax 0.12 wheels
   need a CPU with AVX2 and FMA; on older CPUs install an earlier jax.
 - **Breaking:** LOO folds now train in one process each unless `loo.workers_per_fold`
@@ -135,6 +137,7 @@ public API; such entries are marked **Breaking**.
 
 First release on PyPI.
 
-[Unreleased]: https://github.com/hybrax/hybrax/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/hybrax/hybrax/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/hybrax/hybrax/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/hybrax/hybrax/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/hybrax/hybrax/releases/tag/v0.1.0
