@@ -35,6 +35,8 @@ public API; such entries are marked **Breaking**.
   default, so LOO runs with few parallel folds can be slower than before unless
   `workers_per_fold` is raised. Each extra worker costs memory in every concurrent fold.
 - cloudpickle is a new dependency. It sends the prepared model to the workers.
+- **Breaking:** training rejects complex-valued trainable parameters with an error
+  naming them. Before, they trained without complaint.
 
 ### Removed
 

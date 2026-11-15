@@ -268,6 +268,26 @@ def test_train_collection_rejects_direct_stateful_without_opt_in():
         )
 
 
+def test_train_collection_rejects_complex_trainable_parameters():
+    store = TrainingDataStore.from_collection(
+        _make_collection(),
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    module = _LinearReactionModule()
+    module = eqx.tree_at(
+        lambda m: m.model.weight, module, module.model.weight.astype(jnp.complex128)
+    )
+
+    with pytest.raises(TypeError, match=r"complex: .*model\.weight"):
+        train_collection(
+            store,
+            reaction_module=module,
+            loss_module=_biomass_loss(),
+            config=TrainHarnessConfig(epochs=1),
+        )
+
+
 def test_train_collection_accepts_direct_stateful_with_opt_in():
     collection = _make_collection()
     store = TrainingDataStore.from_collection(

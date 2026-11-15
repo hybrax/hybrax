@@ -701,6 +701,23 @@ def _require_stateful_opt_in(reaction_module, allow_stateful_models: bool) -> No
         )
 
 
+def _reject_complex_parameters(trainable_params) -> None:
+    """Reject complex trainable arrays before anything is compiled.
+
+    Rates and losses are real, and the worker transport is float64, which
+    would silently drop an imaginary part.
+    """
+    paths = [
+        jtu.keystr(path)
+        for path, leaf in jtu.tree_leaves_with_path(trainable_params)
+        if jnp.iscomplexobj(leaf)
+    ]
+    if paths:
+        raise TypeError(
+            f"trainable parameters must be real; complex: {', '.join(paths)}"
+        )
+
+
 def _validate_training_parent_collection(
     collection: BioProcessCollection,
     expected_parent_names: tuple[str, ...],
@@ -1532,6 +1549,7 @@ def train_collection(
     # are optimized alongside the reaction module's. Untagged leaves (controls,
     # rhs_ode Cin, indices) stay frozen exactly as before.
     trainable_params, trainable_static = partition_trainable(wrapper)
+    _reject_complex_parameters(trainable_params)
     print_trainable_structure(reaction_module)
     print_trainable_structure(loss_module, title="UserLossModule")
     print_reaction_schema(wrapper)
