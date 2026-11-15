@@ -1121,9 +1121,14 @@ def run_loo_cv(
     n_cpu = (
         len(os.sched_getaffinity(0)) if cpu_leases is not None else os.cpu_count() or 1
     )
-    workers = loo_cfg.workers_per_fold
-    if cfg.train.microbatch_size is not None and workers > 1:
+    if cfg.train.microbatch_size is not None and loo_cfg.workers_per_fold > 1:
         raise ValueError("microbatching requires loo.workers_per_fold=1")
+    # Training starts at most one worker per batch process, so reserve CPUs for
+    # no more than that.
+    workers = min(
+        loo_cfg.workers_per_fold,
+        max(cfg.train.batch_size or len(fold.train) for fold in folds),
+    )
     parallel = compute_parallel_folds(n_folds, n_cpu, loo_cfg.parallel_folds, workers)
     if loo_cfg.parallel_folds > n_folds:
         logger.info(

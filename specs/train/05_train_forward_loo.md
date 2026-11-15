@@ -184,7 +184,9 @@ optional [`loo`](../../src/hybrax/train/run_config.py) section. The CLI is
   ([`compute_parallel_folds`](../../src/hybrax/train/loo.py)) takes
   `(n_folds, n_cpu, parallel_folds, workers_per_fold)` and returns the
   concurrent fold count, reduced so that
-  `parallel_folds * workers_per_fold <= n_cpu`. With `cpus_per_fold` set, the
+  `parallel_folds * workers_per_fold <= n_cpu`. `run_loo_cv` first caps
+  `workers_per_fold` at the largest fold batch, since training never starts
+  more workers than that. With `cpus_per_fold` set, the
   lease check stops LOO before that, if `parallel_folds` leases do not fit the
   allowed CPUs. Each fold uses
   `workers_per_fold` worker processes (default `1`), capped at its batch size.

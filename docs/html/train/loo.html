@@ -474,9 +474,9 @@ informative than the average.</p>
 <p><code class="docutils literal notranslate"><span class="pre">workers_per_fold</span></code> defaults to 1 and sets each fold’s worker-process count,
 capped at that fold’s batch size. Multiple workers are CPU-only. Without
 <code class="docutils literal notranslate"><span class="pre">cpus_per_fold</span></code>, the orchestrator reduces concurrent folds to keep
-<code class="docutils literal notranslate"><span class="pre">parallel_folds</span> <span class="pre">*</span> <span class="pre">workers_per_fold</span> <span class="pre">&lt;=</span> <span class="pre">n_cpu</span></code>. With <code class="docutils literal notranslate"><span class="pre">cpus_per_fold</span></code>, the worker
-count must not exceed it, and LOO stops before training if the CPU leases do
-not fit (see <a class="reference internal" href="#cpu-budget-for-parallel-folds">below</a>).
+<code class="docutils literal notranslate"><span class="pre">parallel_folds</span> <span class="pre">*</span> <span class="pre">workers_per_fold</span> <span class="pre">&lt;=</span> <span class="pre">n_cpu</span></code>, counting the capped worker count.
+With <code class="docutils literal notranslate"><span class="pre">cpus_per_fold</span></code>, the worker count must not exceed it, and LOO stops before
+training if the CPU leases do not fit (see <a class="reference internal" href="#cpu-budget-for-parallel-folds">below</a>).
 Use <code class="docutils literal notranslate"><span class="pre">loo.workers_per_fold</span></code> for LOO; leave <code class="docutils literal notranslate"><span class="pre">train.workers</span></code> at 1.</p>
 <div class="warning admonition">
 <p class="admonition-title">Do not also fan out at the shell level</p>

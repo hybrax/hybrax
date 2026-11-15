@@ -92,9 +92,9 @@ Folds are independent, and each runs in its own subprocess.
 `workers_per_fold` defaults to 1 and sets each fold's worker-process count,
 capped at that fold's batch size. Multiple workers are CPU-only. Without
 `cpus_per_fold`, the orchestrator reduces concurrent folds to keep
-`parallel_folds * workers_per_fold <= n_cpu`. With `cpus_per_fold`, the worker
-count must not exceed it, and LOO stops before training if the CPU leases do
-not fit (see [below](#cpu-budget-for-parallel-folds)).
+`parallel_folds * workers_per_fold <= n_cpu`, counting the capped worker count.
+With `cpus_per_fold`, the worker count must not exceed it, and LOO stops before
+training if the CPU leases do not fit (see [below](#cpu-budget-for-parallel-folds)).
 Use `loo.workers_per_fold` for LOO; leave `train.workers` at 1.
 
 :::{admonition} Do not also fan out at the shell level

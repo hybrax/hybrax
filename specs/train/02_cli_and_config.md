@@ -139,7 +139,7 @@ The `loo` config section:
 |---|---|
 | `per_fold_holdout_sets` | List of `{"name"?: ..., "test": [...], "train"?: [...]}` folds. `train` omitted → every process not in `test`; `name` (optional) labels the `folds/<slug>/` dir. Omit the whole key → classic leave-one-out (one fold per process). Holding out any member of an augmentation group excludes the whole group (parent + children) from `train`. |
 | `parallel_folds` | How many folds to train concurrently (default `1`, sequential). Worker CPU affinity is unrestricted unless `cpus_per_fold` is set. You set concurrency from what your RAM holds — there is no automatic RAM sizing. |
-| `workers_per_fold` | Positive worker-process count per fold, default 1. Each fold caps it at its batch size. Without `cpus_per_fold`, concurrent folds are reduced so that `parallel_folds * workers_per_fold <= n_cpu`; with it, the worker count must not exceed `cpus_per_fold`. Leave `train.workers` at 1 for LOO. |
+| `workers_per_fold` | Positive worker-process count per fold, default 1. Each fold caps it at its batch size. Without `cpus_per_fold`, concurrent folds are reduced so that `parallel_folds * workers_per_fold <= n_cpu`, with the capped count; with it, the worker count must not exceed `cpus_per_fold`. Leave `train.workers` at 1 for LOO. |
 | `cpus_per_fold` | Optional integer >= 2, default `null` (unrestricted). Leases disjoint allowed logical CPUs per worker before JAX imports, preferring distinct physical cores. Concurrent leases must fit the parent affinity mask. A `workers_per_fold` count above this budget is a config validation error. |
 Each fold's holdout loss is evaluated at every checkpoint boundary, including the final step.
 

@@ -1087,16 +1087,28 @@ def test_run_loo_cv_dispatches_only_manifest_folds(monkeypatch, tmp_path):
     assert result.aggregate["n_folds"] == 3
 
 
-def test_run_loo_cv_uses_configured_workers_per_fold(monkeypatch, tmp_path):
-    # Three CPUs fit only one fold with two workers.
-    monkeypatch.setattr(loo_mod.os, "cpu_count", lambda: 3)
+@pytest.mark.parametrize(
+    ("workers_per_fold", "batch_size", "n_cpu", "parallel", "workers"),
+    [
+        # Three CPUs fit only one fold with two workers.
+        (2, None, 3, 1, 2),
+        # Each fold trains on two processes, so it never starts more than two
+        # workers (full batch) or one (batch_size=1).
+        (8, None, 4, 2, 2),
+        (8, 1, 3, 3, 1),
+    ],
+)
+def test_run_loo_cv_reserves_the_workers_folds_start(
+    monkeypatch, tmp_path, workers_per_fold, batch_size, n_cpu, parallel, workers
+):
+    monkeypatch.setattr(loo_mod.os, "cpu_count", lambda: n_cpu)
     metadata = _runtime_metadata(_three_parent_collection())
     _patch_runtime_metadata(monkeypatch, tmp_path, metadata)
     seen = _patch_dispatch(monkeypatch)
     cfg = RunConfig(
         data=DataConfig(prepared=Path("prepared.json")),
-        train=TrainConfig(epochs=2, seed=10),
-        loo=LooConfig(parallel_folds=2, workers_per_fold=2),
+        train=TrainConfig(epochs=2, seed=10, batch_size=batch_size),
+        loo=LooConfig(parallel_folds=3, workers_per_fold=workers_per_fold),
     )
 
     result = run_loo_cv(
@@ -1105,8 +1117,8 @@ def test_run_loo_cv_uses_configured_workers_per_fold(monkeypatch, tmp_path):
         output_dir=tmp_path,
     )
 
-    assert seen["parallel"] == 1
-    assert result.workers_per_fold == 2
+    assert seen["parallel"] == parallel
+    assert result.workers_per_fold == workers
 
 
 @pytest.mark.parametrize("workers", [1, 2])
