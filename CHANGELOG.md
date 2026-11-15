@@ -14,8 +14,9 @@ public API; such entries are marked **Breaking**.
   give faster updates for more memory and a few seconds of start-up. On the
   12-process OptFed example with `Kvaerno5`, 50 updates took 87 s with one worker,
   67 s with two and 59 s with four, at a peak of 1.0, 1.6 and 2.8 GiB. Workers are
-  CPU-only. With an implicit solver, results differ from `workers: 1` within the
-  solver tolerances.
+  CPU-only. Results differ slightly from `workers: 1`: by rounding per update with
+  explicit solvers, within the solver tolerances with implicit ones. Training
+  amplifies this (about 1e-5 relative in loss after 2000 HEK293 updates).
 - `loo.workers_per_fold` sets the worker count of each fold's training.
 
 ### Changed

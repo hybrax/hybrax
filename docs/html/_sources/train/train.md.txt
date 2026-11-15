@@ -194,10 +194,15 @@ Things to know:
 
 - Workers are CPU-only, and the count is capped at the batch size.
 - `microbatch_size` requires `workers: 1`.
-- With an implicit solver such as `Kvaerno5`, results differ slightly from
-  `workers: 1`, within the solver tolerances. Solving a batch together and
-  solving its processes one at a time take slightly different solver steps.
-  Explicit solvers give the same results up to rounding.
+- Results differ slightly from `workers: 1` (and from `microbatch_size`), while
+  each setting on its own reproduces exactly. With an explicit solver such as
+  `Tsit5`, one update differs only by rounding, but training amplifies such
+  differences: on the [HEK293 example](../gallery/hek293_lstm.md), parameters
+  differed by about 1e-15 relative after one update, 1e-9 after 30, and the
+  losses by about 1e-5 relative after 2000 updates. With an implicit solver
+  such as `Kvaerno5`, a single update can already differ within the solver
+  tolerances, because solving a batch together and solving its processes one
+  at a time take slightly different solver steps.
 - Models are sent to the workers once, at start-up. Their classes must come
   from `custom.py` or another importable module: classes defined in a script
   run as `__main__`, in a notebook or inside a function raise an error.

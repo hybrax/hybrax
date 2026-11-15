@@ -462,8 +462,14 @@ overview of what Hybrax can do, see the
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_flatten</span><span class="p">(</span><span class="n">tree</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">"""Concatenate all array leaves into one host vector."""</span>
-    <span class="n">leaves</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">leaf</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span> <span class="k">for</span> <span class="n">leaf</span> <span class="ow">in</span> <span class="n">jtu</span><span class="o">.</span><span class="n">tree_leaves</span><span class="p">(</span><span class="n">tree</span><span class="p">)]</span>
+<span class="w">    </span><span class="sd">"""Concatenate all array leaves into one float64 host vector.</span>
+
+<span class="sd">    float64 holds every float dtype exactly and avoids NumPy's missing</span>
+<span class="sd">    promotions (e.g. bfloat16 with float16); :func:`_restore` casts back.</span>
+<span class="sd">    """</span>
+    <span class="n">leaves</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">leaf</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span> <span class="k">for</span> <span class="n">leaf</span> <span class="ow">in</span> <span class="n">jtu</span><span class="o">.</span><span class="n">tree_leaves</span><span class="p">(</span><span class="n">tree</span><span class="p">)</span>
+    <span class="p">]</span>
     <span class="c1"># A fully frozen model has no trainable leaves.</span>
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">leaves</span><span class="p">)</span> <span class="k">if</span> <span class="n">leaves</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
 
