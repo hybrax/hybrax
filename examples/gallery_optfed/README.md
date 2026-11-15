@@ -15,7 +15,8 @@ The run uses 500 full-batch Adam epochs at a constant learning rate of `0.03`.
 It saves every 10 epochs and selects
 the checkpoint with lowest concentration NRMSE on the training measurements.
 The `build_solver` hook selects Kvaerno5 for training and evaluation, with
-`rtol=1e-4`, `atol=1e-6`. Allow about 15 minutes on one CPU device.
+`rtol=1e-4`, `atol=1e-6`. Training uses four worker processes. With four free
+CPU cores, allow about 5 minutes.
 The importer fits monotone cubic splines to cumulative carbon and base feeds with
 an RMS error budget of `1e-4 kg`, preserving both endpoints and the total feed.
 Temperature uses cubic interpolation with `s=0`, matching OptFed. The temperature

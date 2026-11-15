@@ -479,6 +479,8 @@ predicted concentrations with the supplied measurements. No rate targets are
 constructed.
 Omitting `batch_size` uses all twelve processes in each update, so
 500 epochs give 500 updates. Save a checkpoint every 10 epochs.
+`workers: 4` spreads the twelve solves of each update over four
+[worker processes](../train/train.md#running-on-more-than-one-core).
 Training and evaluation use Kvaerno5 with `rtol=1e-4` and `atol=1e-6`.
 The `build_solver` hook in `custom.py` selects this solver:
 
@@ -507,8 +509,8 @@ To simulate it immediately, skip to the forward command in
 [Run the example locally](#run-the-example-locally).
 
 To refit the model, switch to the example directory, prepare the data, and train.
-Training takes about 10 minutes on one CPU device and streams progress to the
-terminal. The `--overwrite` flag replaces the bundled run with the new fit:
+With four free CPU cores, training takes about 3 minutes and streams progress
+to the terminal. The `--overwrite` flag replaces the bundled run with the new fit:
 
 ```bash
 cd examples/gallery_optfed

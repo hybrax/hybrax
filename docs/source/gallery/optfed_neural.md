@@ -154,8 +154,10 @@ because it already stays of order one over these processes.
 
 Train with Adam for 500 epochs at a constant learning rate of `0.03`. Omitting
 `batch_size` uses all twelve processes in each update, so 500 epochs give 500
-updates. Save a checkpoint every 10 epochs. The solver (Kvaerno5 with
-`rtol=1e-4`, `atol=1e-6`), the state scales that weight the default
+updates. Save a checkpoint every 10 epochs, and spread the twelve solves of each
+update over four
+[worker processes](../train/train.md#running-on-more-than-one-core). The solver
+(Kvaerno5 with `rtol=1e-4`, `atol=1e-6`), the state scales that weight the default
 concentration loss, and the control scales all match the
 [mechanistic example](optfed.md#prepare-and-fit-concentrations).
 Because the model has a latent state, the generation count, the config sets
@@ -167,8 +169,8 @@ Because the model has a latent state, the generation count, the config sets
 
 The example bundles the selected checkpoint in `examples/gallery_optfed_ffnn/run/`.
 To refit the model, switch to the example directory, prepare the data, and
-train. Training takes about 10 minutes on one CPU device. The `--overwrite` flag
-replaces the bundled run with the new fit:
+train. With four free CPU cores, training takes about 3 minutes. The `--overwrite`
+flag replaces the bundled run with the new fit:
 
 ```bash
 cd examples/gallery_optfed_ffnn

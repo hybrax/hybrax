@@ -582,7 +582,9 @@ if not REUSE_RUN:
 
 The importer generates `train-config.json`. This includes the training and
 validation culture selections, training settings, checkpoint retention settings,
-and the path to `custom.py`. Its `custom` block also
+and the path to `custom.py`. `train.workers: 5` gives each of the five training
+cultures its own
+[worker process](../train/train.md#running-on-more-than-one-core). Its `custom` block also
 contains the means and sample standard deviations of the 27 network inputs (25
 concentrations, reactor volume, and time), and the maximum of each
 concentration. Means and standard deviations are used to z-score the ANN inputs;

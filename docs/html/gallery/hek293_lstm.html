@@ -843,7 +843,7 @@ match the MAT file’s state order.</p>
         <span class="s2">"seed"</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
         <span class="s2">"allow_stateful_models"</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
         <span class="s2">"learning_rate"</span><span class="p">:</span> <span class="mf">1e-3</span><span class="p">,</span>
-        <span class="s2">"workers"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="s2">"workers"</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span>
         <span class="s2">"holdout_processes"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"Br7"</span><span class="p">],</span>
     <span class="p">},</span>
     <span class="s2">"checkpoint"</span><span class="p">:</span> <span class="p">{</span>
@@ -1556,7 +1556,9 @@ validation,<a class="footnote-reference brackets" href="#prepare-validation" id=
 </div>
 <p>The importer generates <code class="docutils literal notranslate"><span class="pre">train-config.json</span></code>. This includes the training and
 validation culture selections, training settings, checkpoint retention settings,
-and the path to <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>. Its <code class="docutils literal notranslate"><span class="pre">custom</span></code> block also
+and the path to <code class="docutils literal notranslate"><span class="pre">custom.py</span></code>. <code class="docutils literal notranslate"><span class="pre">train.workers:</span> <span class="pre">5</span></code> gives each of the five training
+cultures its own
+<a class="reference internal" href="../train/train.html#running-on-more-than-one-core"><span class="std std-ref">worker process</span></a>. Its <code class="docutils literal notranslate"><span class="pre">custom</span></code> block also
 contains the means and sample standard deviations of the 27 network inputs (25
 concentrations, reactor volume, and time), and the maximum of each
 concentration. Means and standard deviations are used to z-score the ANN inputs;
@@ -1586,7 +1588,7 @@ fit PCA and all other preprocessing on the training cultures only).</p>
 <span class="w">    </span><span class="nt">"seed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"allow_stateful_models"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"learning_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.001</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"workers"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"workers"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"holdout_processes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">      </span><span class="s2">"Br7"</span>
 <span class="w">    </span><span class="p">]</span>
@@ -1751,7 +1753,7 @@ of the loss, and select the checkpoint with the lowest Br7 loss:</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<img alt="../_images/6c110f177cbfe51ac8a8c74eda2f81c4c05704e4a0738fdefbc14fbd183f3d1f.png" src="../_images/6c110f177cbfe51ac8a8c74eda2f81c4c05704e4a0738fdefbc14fbd183f3d1f.png" />
+<img alt="../_images/2bd3e1b8e2582abfb1b864e550580da5139c41213fc77cfde993e601fadaebe5.png" src="../_images/2bd3e1b8e2582abfb1b864e550580da5139c41213fc77cfde993e601fadaebe5.png" />
 </div>
 </div>
 <p>The dashed horizontal lines show the final scores of Ramos et al.’s saved
@@ -1855,7 +1857,7 @@ cultures.</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<img alt="../_images/bed965a8daa3e71696e9ca4b6c7a0c29e5253631dcf4b21310e86d067bc8f658.png" src="../_images/bed965a8daa3e71696e9ca4b6c7a0c29e5253631dcf4b21310e86d067bc8f658.png" />
+<img alt="../_images/f9a2e1725682953dc953e5a588c4417add058c8e1d1967f4ad802958b7998929.png" src="../_images/f9a2e1725682953dc953e5a588c4417add058c8e1d1967f4ad802958b7998929.png" />
 </div>
 </div>
 </section>
@@ -1973,7 +1975,7 @@ custom code, the output directory and the penalty weight:</p>
 <span class="w">    </span><span class="nt">"seed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"allow_stateful_models"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"learning_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.001</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"workers"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"workers"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"holdout_processes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
 <span class="w">      </span><span class="s2">"Br7"</span>
 <span class="w">    </span><span class="p">]</span>
@@ -2129,7 +2131,7 @@ between fit and negative predictions, so we do that instead.</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<img alt="../_images/d44819bad7fb87c417ee309f311b0f8892dbb0d61cec8fbc79f2b32b272e97ba.png" src="../_images/d44819bad7fb87c417ee309f311b0f8892dbb0d61cec8fbc79f2b32b272e97ba.png" />
+<img alt="../_images/54a75f4e416d610546c3a56bc2d58f1847b47f935a8ee8ed9576f5b1ff15d85d.png" src="../_images/54a75f4e416d610546c3a56bc2d58f1847b47f935a8ee8ed9576f5b1ff15d85d.png" />
 </div>
 </div>
 <p>Solid lines show the NRMSE of the concentration fit, as before. The thin dashed
@@ -2155,7 +2157,7 @@ states and measurement times (predictions at or above zero count as zero):</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: epoch 1,700
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: epoch 1,950
 </pre></div>
 </div>
 <div class="output text_html"><style type="text/css">
@@ -2184,9 +2186,9 @@ states and measurement times (predictions at or above zero count as zero):</p>
     </tr>
     <tr>
       <th id="T_hek_nonneg_level0_row2" class="row_heading level0 row2" >Hybrax with penalty</th>
-      <td id="T_hek_nonneg_row2_col0" class="data row2 col0" >0.0596</td>
+      <td id="T_hek_nonneg_row2_col0" class="data row2 col0" >0.0577</td>
       <td id="T_hek_nonneg_row2_col1" class="data row2 col1" >0.0376</td>
-      <td id="T_hek_nonneg_row2_col2" class="data row2 col2" >0.0392</td>
+      <td id="T_hek_nonneg_row2_col2" class="data row2 col2" >0.0447</td>
     </tr>
   </tbody>
 </table>
@@ -2205,7 +2207,7 @@ soft, so some small dips remain.</p>
 </div>
 </div>
 <div class="cell_output docutils container">
-<img alt="../_images/0a5b408a09bb8c01b71166b82f1e764deac6782aee4d753141041035f217d3a2.png" src="../_images/0a5b408a09bb8c01b71166b82f1e764deac6782aee4d753141041035f217d3a2.png" />
+<img alt="../_images/31e453ac7f3c4d5f06ec42024ec6d94dae04509ef2932f447958759f9609aa14.png" src="../_images/31e453ac7f3c4d5f06ec42024ec6d94dae04509ef2932f447958759f9609aa14.png" />
 </div>
 </div>
 </section>

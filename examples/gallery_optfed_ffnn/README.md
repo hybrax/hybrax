@@ -21,7 +21,8 @@ The run uses 500 full-batch Adam epochs at a constant learning rate of `0.03`.
 It saves every 10 epochs and selects the checkpoint with lowest concentration
 NRMSE on the training measurements, using the scoring code in
 `../gallery_optfed/run.py`. Kvaerno5 with `rtol=1e-4`, `atol=1e-6` is used for
-training and evaluation. Allow about 15 minutes on one CPU device.
+training and evaluation. Training uses four worker processes. With four free CPU
+cores, allow about 5 minutes.
 Results and forward plots are written to `run/`. `run/selection.json` records the
 selected checkpoint; its trajectories are in `run/selected-predictions.csv`.
 The narrated example is `docs/source/gallery/optfed_neural.md`.

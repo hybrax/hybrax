@@ -1401,6 +1401,8 @@ predicted concentrations with the supplied measurements. No rate targets are
 constructed.
 Omitting <code class="docutils literal notranslate"><span class="pre">batch_size</span></code> uses all twelve processes in each update, so
 500 epochs give 500 updates. Save a checkpoint every 10 epochs.
+<code class="docutils literal notranslate"><span class="pre">workers:</span> <span class="pre">4</span></code> spreads the twelve solves of each update over four
+<a class="reference internal" href="../train/train.html#running-on-more-than-one-core"><span class="std std-ref">worker processes</span></a>.
 Training and evaluation use Kvaerno5 with <code class="docutils literal notranslate"><span class="pre">rtol=1e-4</span></code> and <code class="docutils literal notranslate"><span class="pre">atol=1e-6</span></code>.
 The <code class="docutils literal notranslate"><span class="pre">build_solver</span></code> hook in <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> selects this solver:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">build_solver</span><span class="p">(</span><span class="n">config</span><span class="p">):</span>
@@ -1434,6 +1436,7 @@ the feed and withdrawal balance.</p>
 <span class="w">    </span><span class="nt">"epochs"</span><span class="p">:</span><span class="w"> </span><span class="mi">500</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"seed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"learning_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.03</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"workers"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"allow_stateful_models"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"shuffle"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="w">  </span><span class="p">},</span>
@@ -1456,8 +1459,8 @@ the feed and withdrawal balance.</p>
 To simulate it immediately, skip to the forward command in
 <a class="reference internal" href="#run-the-example-locally">Run the example locally</a>.</p>
 <p>To refit the model, switch to the example directory, prepare the data, and train.
-Training takes about 10 minutes on one CPU device and streams progress to the
-terminal. The <code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> flag replaces the bundled run with the new fit:</p>
+With four free CPU cores, training takes about 3 minutes and streams progress
+to the terminal. The <code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> flag replaces the bundled run with the new fit:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>examples/gallery_optfed
 hybrax<span class="w"> </span>prepare<span class="w"> </span>--config<span class="w"> </span>prepare-config.json<span class="w"> </span>--output-dir<span class="w"> </span>prepared
 hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="w"> </span>train-config.json<span class="w"> </span>--overwrite
@@ -1465,7 +1468,7 @@ hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.144955 last_mean_loss=0.00646682 delta=-0.138488
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.14494 last_mean_loss=0.00647081 delta=-0.13847
 Run directory: docs/source/_data/out/runs/gallery_optfed/run/
 </pre></div>
 </div>
@@ -1501,10 +1504,10 @@ uses the pooled, scaled scores.</p>
 </details><div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: step_00500
-biomass    R2 = 0.8627
-glycerol   R2 = 0.9501
+biomass    R2 = 0.8626
+glycerol   R2 = 0.9500
 product    R2 = 0.8482
-P_X        R2 = 0.8167
+P_X        R2 = 0.8163
 </pre></div>
 </div>
 </div>
@@ -1556,7 +1559,7 @@ P_X        R2 = 0.8167
       <td id="T_optfed_parameters_row3_col0" class="data row3 col0" >glycerol_inhibition</td>
       <td id="T_optfed_parameters_row3_col1" class="data row3 col1" >g/kg</td>
       <td id="T_optfed_parameters_row3_col2" class="data row3 col2" >1e-05</td>
-      <td id="T_optfed_parameters_row3_col3" class="data row3 col3" >300</td>
+      <td id="T_optfed_parameters_row3_col3" class="data row3 col3" >301</td>
       <td id="T_optfed_parameters_row3_col4" class="data row3 col4" >1e+04</td>
     </tr>
     <tr>
@@ -1564,7 +1567,7 @@ P_X        R2 = 0.8167
       <td id="T_optfed_parameters_row4_col0" class="data row4 col0" >inactivation_enthalpy</td>
       <td id="T_optfed_parameters_row4_col1" class="data row4 col1" >J/mol</td>
       <td id="T_optfed_parameters_row4_col2" class="data row4 col2" >1e+05</td>
-      <td id="T_optfed_parameters_row4_col3" class="data row4 col3" >3.75e+06</td>
+      <td id="T_optfed_parameters_row4_col3" class="data row4 col3" >3.77e+06</td>
       <td id="T_optfed_parameters_row4_col4" class="data row4 col4" >1e+07</td>
     </tr>
     <tr>
@@ -1572,7 +1575,7 @@ P_X        R2 = 0.8167
       <td id="T_optfed_parameters_row5_col0" class="data row5 col0" >maintenance</td>
       <td id="T_optfed_parameters_row5_col1" class="data row5 col1" >g_G/(g_A h)</td>
       <td id="T_optfed_parameters_row5_col2" class="data row5 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row5_col3" class="data row5 col3" >0.00456</td>
+      <td id="T_optfed_parameters_row5_col3" class="data row5 col3" >0.00457</td>
       <td id="T_optfed_parameters_row5_col4" class="data row5 col4" >1</td>
     </tr>
     <tr>
@@ -1588,7 +1591,7 @@ P_X        R2 = 0.8167
       <td id="T_optfed_parameters_row7_col0" class="data row7 col0" >production_half_saturation</td>
       <td id="T_optfed_parameters_row7_col1" class="data row7 col1" >g_G/(g_A h)</td>
       <td id="T_optfed_parameters_row7_col2" class="data row7 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row7_col3" class="data row7 col3" >0.277</td>
+      <td id="T_optfed_parameters_row7_col3" class="data row7 col3" >0.276</td>
       <td id="T_optfed_parameters_row7_col4" class="data row7 col4" >100</td>
     </tr>
     <tr>
@@ -1604,7 +1607,7 @@ P_X        R2 = 0.8167
       <td id="T_optfed_parameters_row9_col0" class="data row9 col0" >uptake_maintenance</td>
       <td id="T_optfed_parameters_row9_col1" class="data row9 col1" >g_A h/g_G</td>
       <td id="T_optfed_parameters_row9_col2" class="data row9 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row9_col3" class="data row9 col3" >30.2</td>
+      <td id="T_optfed_parameters_row9_col3" class="data row9 col3" >30.1</td>
       <td id="T_optfed_parameters_row9_col4" class="data row9 col4" >1e+06</td>
     </tr>
     <tr>
@@ -1612,7 +1615,7 @@ P_X        R2 = 0.8167
       <td id="T_optfed_parameters_row10_col0" class="data row10 col0" >uptake_max</td>
       <td id="T_optfed_parameters_row10_col1" class="data row10 col1" >g_G/(g_A h)</td>
       <td id="T_optfed_parameters_row10_col2" class="data row10 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row10_col3" class="data row10 col3" >0.443</td>
+      <td id="T_optfed_parameters_row10_col3" class="data row10 col3" >0.442</td>
       <td id="T_optfed_parameters_row10_col4" class="data row10 col4" >1</td>
     </tr>
   </tbody>
@@ -1621,7 +1624,7 @@ P_X        R2 = 0.8167
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Maximum reactor-mass error at exported times: 0.00138691 kg
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Maximum reactor-mass error at exported times: 0.00145728 kg
 </pre></div>
 </div>
 </div>
@@ -1677,10 +1680,10 @@ unseen processes.</p>
     <tr>
       <th id="T_optfed_comparison_level0_row1" class="row_heading level0 row1" >Hybrax</th>
       <td id="T_optfed_comparison_row1_col0" class="data row1 col0" >0.881</td>
-      <td id="T_optfed_comparison_row1_col1" class="data row1 col1" >0.0805</td>
+      <td id="T_optfed_comparison_row1_col1" class="data row1 col1" >0.0806</td>
       <td id="T_optfed_comparison_row1_col2" class="data row1 col2" >0.863</td>
       <td id="T_optfed_comparison_row1_col3" class="data row1 col3" >0.848</td>
-      <td id="T_optfed_comparison_row1_col4" class="data row1 col4" >0.817</td>
+      <td id="T_optfed_comparison_row1_col4" class="data row1 col4" >0.816</td>
       <td id="T_optfed_comparison_row1_col5" class="data row1 col5" >0.127</td>
     </tr>
   </tbody>
@@ -1726,7 +1729,7 @@ The bundled <a class="reference download internal" download="" href="../_downloa
 comparison run without downloading or refitting OptFed.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/4441e0d4614eba39433439e969b7c3a8302748dd6ea557f17a431971862170d2.png" src="../_images/4441e0d4614eba39433439e969b7c3a8302748dd6ea557f17a431971862170d2.png" />
+<img alt="../_images/c4bbf1a137dd2e6583b6f558badb3c9471761c410f34fbd66713ebf93637bcaf.png" src="../_images/c4bbf1a137dd2e6583b6f558badb3c9471761c410f34fbd66713ebf93637bcaf.png" />
 </div>
 </div>
 </section>

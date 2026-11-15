@@ -677,8 +677,10 @@ because it already stays of order one over these processes.</p>
 <h2>Prepare and train<a class="headerlink" href="#prepare-and-train" title="Link to this heading">¶</a></h2>
 <p>Train with Adam for 500 epochs at a constant learning rate of <code class="docutils literal notranslate"><span class="pre">0.03</span></code>. Omitting
 <code class="docutils literal notranslate"><span class="pre">batch_size</span></code> uses all twelve processes in each update, so 500 epochs give 500
-updates. Save a checkpoint every 10 epochs. The solver (Kvaerno5 with
-<code class="docutils literal notranslate"><span class="pre">rtol=1e-4</span></code>, <code class="docutils literal notranslate"><span class="pre">atol=1e-6</span></code>), the state scales that weight the default
+updates. Save a checkpoint every 10 epochs, and spread the twelve solves of each
+update over four
+<a class="reference internal" href="../train/train.html#running-on-more-than-one-core"><span class="std std-ref">worker processes</span></a>. The solver
+(Kvaerno5 with <code class="docutils literal notranslate"><span class="pre">rtol=1e-4</span></code>, <code class="docutils literal notranslate"><span class="pre">atol=1e-6</span></code>), the state scales that weight the default
 concentration loss, and the control scales all match the
 <a class="reference internal" href="optfed.html#prepare-and-fit-concentrations"><span class="std std-ref">mechanistic example</span></a>.
 Because the model has a latent state, the generation count, the config sets
@@ -698,6 +700,7 @@ Because the model has a latent state, the generation count, the config sets
 <span class="w">    </span><span class="nt">"epochs"</span><span class="p">:</span><span class="w"> </span><span class="mi">500</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"seed"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"learning_rate"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.03</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"workers"</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"allow_stateful_models"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"shuffle"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="w">  </span><span class="p">},</span>
@@ -718,8 +721,8 @@ Because the model has a latent state, the generation count, the config sets
 </div>
 <p>The example bundles the selected checkpoint in <code class="docutils literal notranslate"><span class="pre">examples/gallery_optfed_ffnn/run/</span></code>.
 To refit the model, switch to the example directory, prepare the data, and
-train. Training takes about 10 minutes on one CPU device. The <code class="docutils literal notranslate"><span class="pre">--overwrite</span></code> flag
-replaces the bundled run with the new fit:</p>
+train. With four free CPU cores, training takes about 3 minutes. The <code class="docutils literal notranslate"><span class="pre">--overwrite</span></code>
+flag replaces the bundled run with the new fit:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>examples/gallery_optfed_ffnn
 hybrax<span class="w"> </span>prepare<span class="w"> </span>--config<span class="w"> </span>prepare-config.json<span class="w"> </span>--output-dir<span class="w"> </span>prepared
 hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="w"> </span>train-config.json<span class="w"> </span>--overwrite
@@ -727,7 +730,7 @@ hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.0878162 last_mean_loss=0.00525015 delta=-0.0825661
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.0878162 last_mean_loss=0.0061436 delta=-0.0816726
 Run directory: docs/source/_data/out/runs/gallery_optfed_ffnn/run/
 </pre></div>
 </div>
@@ -745,11 +748,11 @@ the lowest predicted concentration, which shows whether any prediction dips
 below zero.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: step_00500
-biomass    R2 = 0.9251
-glycerol   R2 = 0.9911
-product    R2 = 0.8450
-P_X        R2 = 0.7216
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: step_00480
+biomass    R2 = 0.9202
+glycerol   R2 = 0.9919
+product    R2 = 0.8453
+P_X        R2 = 0.7267
 Lowest predicted concentration: 0 g/kg
 </pre></div>
 </div>
@@ -805,12 +808,12 @@ its eleven parameters and reaches similar results.</p>
     </tr>
     <tr>
       <th id="T_optfed_neural_comparison_level0_row1" class="row_heading level0 row1" >Neural kinetics</th>
-      <td id="T_optfed_neural_comparison_row1_col0" class="data row1 col0" >0.904</td>
-      <td id="T_optfed_neural_comparison_row1_col1" class="data row1 col1" >0.0725</td>
-      <td id="T_optfed_neural_comparison_row1_col2" class="data row1 col2" >0.925</td>
+      <td id="T_optfed_neural_comparison_row1_col0" class="data row1 col0" >0.903</td>
+      <td id="T_optfed_neural_comparison_row1_col1" class="data row1 col1" >0.0727</td>
+      <td id="T_optfed_neural_comparison_row1_col2" class="data row1 col2" >0.92</td>
       <td id="T_optfed_neural_comparison_row1_col3" class="data row1 col3" >0.845</td>
-      <td id="T_optfed_neural_comparison_row1_col4" class="data row1 col4" >0.722</td>
-      <td id="T_optfed_neural_comparison_row1_col5" class="data row1 col5" >0.156</td>
+      <td id="T_optfed_neural_comparison_row1_col4" class="data row1 col4" >0.727</td>
+      <td id="T_optfed_neural_comparison_row1_col5" class="data row1 col5" >0.155</td>
     </tr>
   </tbody>
 </table>
@@ -833,7 +836,7 @@ measurements. Original OptFed curves are semi-transparent solid lines; the
 network’s curves are dashed.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/ee53da6237e106330f85905f6b4d9d3c233ae3e3eabf16868790c2cc1498e002.png" src="../_images/ee53da6237e106330f85905f6b4d9d3c233ae3e3eabf16868790c2cc1498e002.png" />
+<img alt="../_images/eb1de864065e4546d92c4e13ca4bcf5c29e85ed939f6fe9fe2e9026200438071.png" src="../_images/eb1de864065e4546d92c4e13ca4bcf5c29e85ed939f6fe9fe2e9026200438071.png" />
 </div>
 </div>
 </section>
