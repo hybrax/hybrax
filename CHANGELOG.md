@@ -20,6 +20,9 @@ public API; such entries are marked **Breaking**.
 - An `estimate_all_scales` hook that wrote into the control metadata of
   `runtime_data` no longer changes the full training store, and with it later
   LOO folds or ensemble models.
+- In `loo`, a hook that edits its `config` in place (for example a dict under
+  `custom`) no longer changes the config of later folds: each fold now gets a
+  deep copy. A `custom` object that cannot be deep-copied now raises in `loo`.
 
 ## [0.3.0] - 2026-11-15
 

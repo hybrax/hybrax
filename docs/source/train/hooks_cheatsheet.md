@@ -148,6 +148,16 @@ A runnable version, with the scale hook filled in, is in
   re-runs your hooks, so a run directory without it cannot be loaded.
 - **A missing `custom_py` *path*** is a `FileNotFoundError`; a missing *hook inside* it is
   silent. Two very different failure modes.
+- **Treat hook arguments as read-only.** Hooks must not modify the objects they receive:
+  collections, `runtime_data`, controls metadata, arrays. Two exceptions.
+  `transform_process_collection` gets its own copy of the collection and may change it
+  in place, but must still return it. `augment_state_values` gets copies of its arrays.
+- **`config` is shared within one model, not across models.** The hooks of one `train`
+  run receive the same `config` object, so one hook can leave state on `config.custom`
+  for a later one. Each LOO fold and each ensemble model gets its own copy, so nothing
+  a hook stores there reaches another fold or model. The `hybrax loo` command runs
+  `estimate_all_scales` in a separate process from the fold's other hooks, so there
+  state it leaves on `config` does not reach them.
 
 ## See also
 

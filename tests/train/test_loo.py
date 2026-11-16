@@ -1830,3 +1830,18 @@ def test_loo_rejects_train_workers(tmp_path):
     fold = loo_mod.Fold(0, ("test",), ("train",), "fold-0", 42)
     with pytest.raises(ValueError, match="use loo.workers_per_fold"):
         loo_mod._effective_fold_config(cfg, fold, tmp_path, None)
+
+
+def test_fold_configs_do_not_share_mutable_custom_state(tmp_path):
+    """The producer runs every fold's scale hook in one process: no shared config."""
+    cfg = _run_config().model_copy(update={"custom": {"weights": {"biomass": 1.0}}})
+    folds = resolve_folds(_three_parent_collection(), cfg.loo, 0)
+    first, _dir, _custom = loo_mod._effective_fold_config(cfg, folds[0], tmp_path, None)
+    second, _dir, _custom = loo_mod._effective_fold_config(
+        cfg, folds[1], tmp_path, None
+    )
+
+    first.custom["weights"]["biomass"] = 99.0
+
+    assert second.custom["weights"]["biomass"] == 1.0
+    assert cfg.custom["weights"]["biomass"] == 1.0

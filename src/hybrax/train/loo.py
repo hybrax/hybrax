@@ -663,6 +663,11 @@ def _effective_fold_config(
         raise ValueError(
             "LOO training must use loo.workers_per_fold, not train.workers"
         )
+    # Deep copy: frozen configs still hold mutable containers (``custom``, noise
+    # dicts, ...), and the runtime producer runs every fold's scale hook in one
+    # process. A hook editing its config must not reach later folds. Hooks of one
+    # fold share this copy.
+    cfg = cfg.model_copy(deep=True)
     fold_dir = output_dir / "folds" / fold.slug
     fold_custom = fold_dir / "custom.py" if custom_py is not None else None
     effective_cfg = cfg.model_copy(
