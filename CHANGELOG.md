@@ -22,6 +22,12 @@ public API; such entries are marked **Breaking**.
   per model, so the evaluation compiles once instead of for every model (12-model
   LOO ensemble: 35 s instead of 60 s). Module-level state in `custom.py` is now
   shared between ensemble models whose `custom.py` files have the same content.
+- Loading a model (`hybrax forward`, `model_load`, `model_reload`) uses the
+  `custom.py` bundled in the run directory instead of the original path recorded in
+  its config, and fails if that copy differs from the hash recorded at training
+  time. Before, `hybrax forward` preferred the original file, which may have been
+  edited since. LOO folds now record this hash too; folds trained before this
+  change load unverified.
 - **Breaking:** loading a `custom.py` raises `ValueError` if one of its `import`
   statements loads a file from its own folder (a helper module, or a package
   installed in editable mode from there). Only `custom.py` is saved with a model,

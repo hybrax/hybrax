@@ -821,3 +821,42 @@ def test_ensemble_forward_shares_the_training_store_and_custom_module(
     assert main(["forward", "--config", str(forward_config)]) == 0
     assert len(builds) == 1
     assert len(imports) == 1
+
+
+def test_forward_uses_the_bundled_custom_py_and_checks_its_hash(tmp_path: Path):
+    """The bundled copy is what training used; the original may have changed since."""
+    prepared = _write_prepared(tmp_path / "prepared.json", {"p1": (1.0, 0.8, 0.64)})
+    run_dir = _train(tmp_path, name="run", prepared=prepared)
+    evaluation = load_process_collection(prepared)
+    cfg = ForwardConfig(process_names=("p1",), target_source="reactor_components")
+    forward_config = tmp_path / "forward-config.json"
+    forward_config.write_text(
+        json.dumps(
+            {
+                "models": [str(run_dir)],
+                "data": {"prepared": str(prepared)},
+                "output": {"dir": str(tmp_path / "fwd"), "predictions": "none"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # An edited original does not matter: the bundled copy is used.
+    original = tmp_path / "run-custom.py"
+    original.write_text(original.read_text() + "\nraise RuntimeError('edited')\n")
+    forward_from_collection(evaluation, model_path=_params(run_dir), config=cfg)
+    assert main(["forward", "--config", str(forward_config)]) == 0
+
+    # A changed bundled copy no longer matches the recorded hash.
+    bundled = run_dir / "custom.py"
+    bundled.write_text(bundled.read_text() + "\n# edited\n")
+    with pytest.raises(ValueError, match="differs from the custom.py"):
+        forward_from_collection(evaluation, model_path=_params(run_dir), config=cfg)
+    assert main(["forward", "--config", str(forward_config), "--overwrite"]) == 1
+
+    # A run that recorded no hash (e.g. an older LOO fold) loads unverified.
+    config_json = run_dir / "config.json"
+    document = json.loads(config_json.read_text())
+    del document["inputs"]["custom_py"]
+    config_json.write_text(json.dumps(document))
+    forward_from_collection(evaluation, model_path=_params(run_dir), config=cfg)

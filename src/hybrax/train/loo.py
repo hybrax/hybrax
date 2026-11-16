@@ -70,6 +70,7 @@ from .runtime_context import (
 )
 from .serialization import (
     content_hash,
+    file_hash,
     load_trained_wrapper,
     run_config_to_jsonable,
     save_model,
@@ -776,14 +777,21 @@ def _fold_inputs(
     reconstruction path requires ``inputs.prepared_input.content_hash`` and refuses
     to build hooks without it. A fold's ``data.prepared`` is the self-contained
     prepared copy at the LOO run root, and the hash is the producer-validated one,
-    so a fold model loads exactly like a ``train`` run's.
+    so a fold model loads exactly like a ``train`` run's. The fold's ``custom.py``
+    copy must already be in place: its hash is recorded so loading the model can
+    check it.
     """
+    custom_py = effective_cfg.custom_py
     return {
         "inputs": {
             "prepared_input": {
                 "path": str(effective_cfg.data.prepared),
                 "content_hash": prepared_content_hash,
-            }
+            },
+            "custom_py": {
+                "bundled": "custom.py" if custom_py is not None else None,
+                "file_hash": file_hash(custom_py) if custom_py is not None else None,
+            },
         }
     }
 

@@ -292,6 +292,33 @@ def update_json(path: str | Path, **fields: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def resolve_custom_py(
+    run_dir: Path, config: RunConfig, document: dict[str, Any]
+) -> Path | None:
+    """The ``custom.py`` a run was trained with, checked against its recorded hash.
+
+    Prefers the copy bundled in ``run_dir``, which is the file training used; the
+    recorded ``config.custom_py`` path is only a fallback, since the original may
+    have been edited since. If the run recorded ``inputs.custom_py.file_hash``, the
+    chosen file must match it. Runs written before folds recorded the hash load
+    unverified. Returns ``None`` when neither file exists.
+    """
+    bundled = run_dir / "custom.py"
+    if bundled.is_file():
+        path = bundled
+    elif config.custom_py is not None and Path(config.custom_py).is_file():
+        path = Path(config.custom_py)
+    else:
+        return None
+    recorded = document.get("inputs", {}).get("custom_py", {}).get("file_hash")
+    if recorded is not None and file_hash(path) != recorded:
+        raise ValueError(
+            f"{path} differs from the custom.py run {run_dir} was trained with: "
+            f"recorded {recorded}, got {file_hash(path)}"
+        )
+    return path
+
+
 def _resolve_prepared(run_dir: Path, config: RunConfig) -> Path:
     """Locate ``prepared.json``: a bundled copy in the run dir, else the
     recorded ``data.prepared`` path."""
@@ -470,19 +497,14 @@ def reconstruct_training(
         inputs.content_hash(collection), document, where=run_dir
     )
 
-    if custom_module is None:
-        bundled_custom = run_dir / "custom.py"
-        if custom_py is not None:
-            custom_module = load_custom_module(custom_py)
-        elif bundled_custom.is_file():
-            custom_module = load_custom_module(bundled_custom)
+    # An explicit custom_py overrides the run's own, unchecked.
+    if custom_py is None:
+        custom_py = resolve_custom_py(run_dir, config, document)
+    if custom_module is None and custom_py is not None:
+        custom_module = load_custom_module(custom_py)
     # Public model_predict rebuilds the solver hook from the returned config.
-    # Prefer the bundled module so moving a run does not depend on its source tree.
-    bundled_custom = run_dir / "custom.py"
-    if custom_py is not None or bundled_custom.is_file():
-        config = config.model_copy(
-            update={"custom_py": Path(custom_py) if custom_py else bundled_custom}
-        )
+    if custom_py is not None:
+        config = config.model_copy(update={"custom_py": Path(custom_py)})
     # config.custom comes back from config.json as a raw dict; re-wrap it in the
     # typed object the hooks expect (mirrors a fresh run's get_custom_config).
     config = reresolve_custom(config, custom_module)
@@ -711,11 +733,11 @@ def model_reload(
        run. When in doubt, pay for :func:`model_load`.
     """
     run_dir, params_path = resolve_model_path(path)
-    config, _document = read_run_config_json(run_dir / "config.json")
+    config, document = read_run_config_json(run_dir / "config.json")
 
-    bundled_custom = run_dir / "custom.py"
-    if bundled_custom.is_file():
-        config = config.model_copy(update={"custom_py": bundled_custom})
+    custom_py = resolve_custom_py(run_dir, config, document)
+    if custom_py is not None:
+        config = config.model_copy(update={"custom_py": custom_py})
     config = reresolve_custom(config, load_custom_module(config.custom_py))
     logger.warning(
         "model_reload(%s): refreshing trainable leaves only. The static half "

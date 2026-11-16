@@ -1845,3 +1845,17 @@ def test_fold_configs_do_not_share_mutable_custom_state(tmp_path):
 
     assert second.custom["weights"]["biomass"] == 1.0
     assert cfg.custom["weights"]["biomass"] == 1.0
+
+
+def test_fold_records_the_hash_of_its_custom_py(tmp_path):
+    """Loading a fold model checks its bundled custom.py against this hash."""
+    custom_py = tmp_path / "custom.py"
+    custom_py.write_text("X = 1\n")
+    cfg = _run_config().model_copy(update={"custom_py": custom_py})
+
+    inputs = loo_mod._fold_inputs(cfg, "sha256:data")["inputs"]
+
+    assert inputs["custom_py"] == {
+        "bundled": "custom.py",
+        "file_hash": serialization.file_hash(custom_py),
+    }

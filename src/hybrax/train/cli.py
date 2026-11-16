@@ -70,6 +70,7 @@ from .serialization import (
     read_initial_checkpoint,
     read_json,
     read_run_config_json,
+    resolve_custom_py,
     resolve_forward_model_path,
     resolve_run_dir,
     run_config_to_jsonable,
@@ -790,13 +791,14 @@ def _write_loss_csv(rows: list[list[str]], path: Path) -> None:
 
 def _resolve_model_bundle(
     path: Path,
-) -> tuple[Path, Path, RunConfig, Path | None]:
-    """Resolve a model reference to its config, parameters, and data."""
+) -> tuple[Path, Path, RunConfig, Path | None, Path | None]:
+    """Resolve a model reference to its config, parameters, data and custom.py."""
     try:
         run_dir, params = resolve_forward_model_path(path)
     except FileNotFoundError as exc:
         raise SystemExit(f"forward: {exc}") from exc
-    model_cfg, _document = read_run_config_json(run_dir / "config.json")
+    model_cfg, document = read_run_config_json(run_dir / "config.json")
+    custom_py = resolve_custom_py(run_dir, model_cfg, document)
     if (run_dir / "prepared.json.gz").is_file():
         own_prepared: Path | None = run_dir / "prepared.json.gz"
     elif (run_dir / "prepared.json").is_file():
@@ -805,7 +807,7 @@ def _resolve_model_bundle(
         own_prepared = Path(model_cfg.data.prepared)
     else:
         own_prepared = None
-    return run_dir, params, model_cfg, own_prepared
+    return run_dir, params, model_cfg, own_prepared, custom_py
 
 
 def _resolve_model_names(models: tuple[ModelRef, ...]) -> list[str]:
@@ -866,7 +868,13 @@ def _handle_forward(args: argparse.Namespace) -> int:
 
     bundles: list[tuple[str, Path, Path, Any, Path, str | None]] = []
     for ref, name in zip(models, names, strict=True):
-        run_dir, params_path, model_cfg, own_prepared = _resolve_model_bundle(ref.path)
+        try:
+            run_dir, params_path, model_cfg, own_prepared, custom_path = (
+                _resolve_model_bundle(ref.path)
+            )
+        except ValueError as exc:
+            log.error("forward: %s", exc)
+            return 1
         run_dir = Path(os.path.abspath(run_dir))
         params_path = Path(os.path.abspath(params_path))
         prepared_value = (
@@ -878,14 +886,7 @@ def _handle_forward(args: argparse.Namespace) -> int:
         prepared = Path(os.path.abspath(resolve_prepared_path(Path(prepared_value))))
         # The custom.py rebuilds the model's reaction module / loss hooks; without
         # it forward_from_collection builds the default module (wrong pytree).
-        # Prefer the recorded path; fall back to the bundled copy for a checkpoint
-        # that was sent elsewhere.
-        if model_cfg.custom_py is not None and Path(model_cfg.custom_py).is_file():
-            custom_py: str | None = os.path.abspath(model_cfg.custom_py)
-        elif (run_dir / "custom.py").is_file():
-            custom_py = os.path.abspath(run_dir / "custom.py")
-        else:
-            custom_py = None
+        custom_py = os.path.abspath(custom_path) if custom_path is not None else None
         bundles.append((name, run_dir, params_path, model_cfg, prepared, custom_py))
 
     # --- Output directory (resolved up-front so the re-run guard fails fast) ---
