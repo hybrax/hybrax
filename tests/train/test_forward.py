@@ -36,6 +36,7 @@ from hybrax.format.dataclasses import (
     Volume,
 )
 from hybrax.train import cli, forward_plotting, postprocessing
+from hybrax.train import serialization as train_serialization
 from hybrax.train.controls_store import ControlsStore
 from hybrax.train.defaults import DefaultLossModule
 from hybrax.train.forward_plotting import plot_forward_predictions
@@ -609,7 +610,9 @@ def _write_forward_config(
 def test_forward_cli_rejects_unknown_process_before_evaluation(monkeypatch, tmp_path):
     run_dir = _make_forward_run_dir(tmp_path, processes=("p1", "p2"))
     monkeypatch.setattr(
-        cli, "load_process_collection", lambda _p: _make_fake_collection()
+        train_serialization,
+        "load_process_collection",
+        lambda _p: _make_fake_collection(),
     )
     monkeypatch.setattr(
         cli,
@@ -628,7 +631,9 @@ def test_forward_cli_dispatches_and_writes_losses_csv(monkeypatch, tmp_path: Pat
     )
 
     fake_collection = _make_fake_collection()
-    monkeypatch.setattr(cli, "load_process_collection", lambda p: fake_collection)
+    monkeypatch.setattr(
+        train_serialization, "load_process_collection", lambda p: fake_collection
+    )
 
     def fake_forward(collection, **kwargs):
         captured["collection"] = collection
@@ -694,7 +699,9 @@ def test_forward_overwrite_does_not_preserve_prior_results_on_write_failure(
     config = _write_forward_config(tmp_path, [run_dir], output_dir=output_dir)
 
     monkeypatch.setattr(
-        cli, "load_process_collection", lambda _path: _make_fake_collection()
+        train_serialization,
+        "load_process_collection",
+        lambda _path: _make_fake_collection(),
     )
     monkeypatch.setattr(
         cli, "forward_from_collection", lambda *_args, **_kwargs: _stub_forward_result()
@@ -717,7 +724,9 @@ def test_forward_cli_plots_selected_predictions(monkeypatch, tmp_path: Path):
     collection = _make_fake_collection()
     dense_exports = {"p1": object(), "p2": object()}
     result = _stub_forward_result(dense_exports=dense_exports)
-    monkeypatch.setattr(cli, "load_process_collection", lambda _path: collection)
+    monkeypatch.setattr(
+        train_serialization, "load_process_collection", lambda _path: collection
+    )
     monkeypatch.setattr(
         cli, "forward_from_collection", lambda *_args, **_kwargs: result
     )
@@ -965,7 +974,9 @@ def test_forward_omits_plots_when_scope_selects_no_process(monkeypatch, tmp_path
             "p2": SimpleNamespace(parent_process="parent"),
         }
     )
-    monkeypatch.setattr(cli, "load_process_collection", lambda _path: collection)
+    monkeypatch.setattr(
+        train_serialization, "load_process_collection", lambda _path: collection
+    )
     monkeypatch.setattr(
         cli,
         "forward_from_collection",
@@ -997,7 +1008,9 @@ def test_forward_omits_plots_when_scope_selects_no_process(monkeypatch, tmp_path
 def test_forward_cli_plot_failure_is_nonfatal(monkeypatch, tmp_path: Path):
     run_dir = _make_forward_run_dir(tmp_path)
     monkeypatch.setattr(
-        cli, "load_process_collection", lambda _path: _make_fake_collection()
+        train_serialization,
+        "load_process_collection",
+        lambda _path: _make_fake_collection(),
     )
     monkeypatch.setattr(
         cli,
@@ -1040,7 +1053,9 @@ def test_forward_cli_never_guesses_an_unrecorded_training_selection(
     prepared = tmp_path / "shared.json"
     prepared.write_text("{}", encoding="utf-8")
     monkeypatch.setattr(
-        cli, "load_process_collection", lambda p: _make_fake_collection()
+        train_serialization,
+        "load_process_collection",
+        lambda p: _make_fake_collection(),
     )
     monkeypatch.setattr(cli, "export_predictions_csv", lambda *a, **k: None)
 
@@ -1099,7 +1114,9 @@ def test_ensemble_forward_applies_prediction_scope(
             "p3": SimpleNamespace(parent_process=None),
         }
     )
-    monkeypatch.setattr(cli, "load_process_collection", lambda _path: collection)
+    monkeypatch.setattr(
+        train_serialization, "load_process_collection", lambda _path: collection
+    )
 
     forwarded = []
 
@@ -1160,7 +1177,9 @@ def test_forward_cli_overwrite_guard(monkeypatch, tmp_path: Path):
     test_train_cli_rerun_guard_and_overwrite)."""
     run_dir = _make_forward_run_dir(tmp_path, processes=("p1", "p2"))
     monkeypatch.setattr(
-        cli, "load_process_collection", lambda p: _make_fake_collection()
+        train_serialization,
+        "load_process_collection",
+        lambda p: _make_fake_collection(),
     )
     monkeypatch.setattr(
         cli, "forward_from_collection", lambda collection, **k: _stub_forward_result()
@@ -1193,7 +1212,9 @@ def test_forward_cli_solver_accuracy_is_read_only(monkeypatch, tmp_path: Path):
         solver={"max_steps": 10, "rtol": 1e-5, "atol": 1e-7, "jump_ts": True},
     )
     monkeypatch.setattr(
-        cli, "load_process_collection", lambda p: _make_fake_collection()
+        train_serialization,
+        "load_process_collection",
+        lambda p: _make_fake_collection(),
     )
     captured_cfg: dict[str, ForwardConfig] = {}
 
@@ -1256,7 +1277,9 @@ def test_forward_cli_no_configured_processes_evaluates_all(monkeypatch, tmp_path
     run_dir = _make_forward_run_dir(tmp_path, processes=None)
 
     monkeypatch.setattr(
-        cli, "load_process_collection", lambda p: _make_fake_collection()
+        train_serialization,
+        "load_process_collection",
+        lambda p: _make_fake_collection(),
     )
 
     captured_eval: dict[str, object] = {}

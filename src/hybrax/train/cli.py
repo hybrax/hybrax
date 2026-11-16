@@ -64,6 +64,7 @@ from .run_config import (
 from .runtime_artifact import FORMAT_VERSION
 from .runtime_context import original_parent_processes
 from .serialization import (
+    PreparedInputCache,
     content_hash,
     file_hash,
     read_initial_checkpoint,
@@ -920,8 +921,11 @@ def _handle_forward(args: argparse.Namespace) -> int:
     per_model: list[tuple[str, ForwardResult]] = []
     prediction_processes: tuple[str, ...] = ()
     plot_collection = None
+    # Ensemble members usually share their training and evaluation inputs (e.g.
+    # all LOO folds); load, hash and build each shared input only once.
+    inputs = PreparedInputCache()
     for name, _run_dir, params_path, model_cfg, prepared, custom_py in bundles:
-        collection = load_process_collection(prepared)
+        collection = inputs.collection(prepared)
         if plot_collection is None:
             plot_collection = collection
         eval_processes = (
@@ -981,6 +985,7 @@ def _handle_forward(args: argparse.Namespace) -> int:
             run_config=model_cfg,
             training_process_names=training_processes,
             prediction_process_names=prediction_processes,
+            inputs=inputs,
         )
         per_model.append((name, result))
 

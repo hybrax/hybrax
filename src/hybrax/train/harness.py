@@ -87,6 +87,7 @@ from .runtime_context import (
     training_selection_excluding_holdout,
 )
 from .serialization import (
+    PreparedInputCache,
     _recorded_prepared_content_hash,
     content_hash,
     load_trained_wrapper,
@@ -1150,6 +1151,7 @@ def forward_from_collection(
     custom_module: Any | None = None,
     prediction_process_names: tuple[str, ...] | None = None,
     prediction_grid_n: int = 200,
+    inputs: PreparedInputCache | None = None,
 ) -> ForwardResult:
     """Run one forward pass per selected process of ``collection``.
 
@@ -1182,6 +1184,9 @@ def forward_from_collection(
             `None` exports every evaluated process.
         prediction_grid_n: Size of the evenly-spaced prediction grid; see
             :func:`model_predict`'s ``grid_n``.
+        inputs: Cache shared by the models of one forward run, so a prepared
+            file they share is loaded, hashed and turned into a store once.
+            ``None`` uses a fresh cache.
 
     Returns:
         The forward result: per-process losses and dense exports plus the
@@ -1192,7 +1197,6 @@ def forward_from_collection(
             incompatible with the training data.
     """
     from .serialization import (
-        content_hash,
         load_trained_wrapper,
         read_run_config_json,
         reconstruct_training,
@@ -1200,6 +1204,7 @@ def forward_from_collection(
     )
 
     cfg = config or ForwardConfig()
+    inputs = inputs or PreparedInputCache()
     # Resolve (and existence-check) the weights before the reconstruction: it
     # costs seconds on a real input, and failing afterwards reports a path the
     # caller never wrote.
@@ -1214,6 +1219,7 @@ def forward_from_collection(
         custom_module=custom_module,
         custom_py=custom_py,
         training_process_names=training_process_names,
+        inputs=inputs,
     )
     cfg = dataclasses.replace(
         cfg,
@@ -1241,24 +1247,16 @@ def forward_from_collection(
         cfg.target_source if cfg.target_source is not None else recorded_source
     )
 
-    # The evaluation store is a separate object built from the caller's data. The
-    # one exception is a byte-for-byte identity: when the evaluation collection IS
-    # the model's verified training input under the same target layout, building a
-    # second identical store would only cost time.
-    same_input = (
-        effective_target_order == recorded_targets
-        and effective_target_source == recorded_source
-        and content_hash(collection) == rebuilt.prepared_content_hash
+    # The evaluation store is built from the caller's data. Stores are keyed by
+    # content hash and target layout, so evaluation data equal to the model's
+    # verified training input under the same layout reuses the training store.
+    evaluation_store = inputs.store(
+        collection,
+        inputs.content_hash(collection),
+        target_variable_order=effective_target_order,
+        target_source=effective_target_source,
     )
-    if same_input:
-        evaluation_store = rebuilt.store
-    else:
-        evaluation_store = TrainingDataStore.from_collection(
-            collection,
-            target_variable_order=effective_target_order,
-            target_source=effective_target_source,
-        )
-        _require_evaluation_compatibility(rebuilt.store, evaluation_store)
+    _require_evaluation_compatibility(rebuilt.store, evaluation_store)
 
     trained_wrapper = load_trained_wrapper(
         model_path, template=rebuilt.template_wrapper

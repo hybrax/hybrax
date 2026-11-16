@@ -321,9 +321,73 @@ def _recorded_prepared_content_hash(document: dict[str, Any]) -> str | None:
     return recorded if isinstance(recorded, str) and recorded else None
 
 
-def _require_content_hash(
-    collection: BioProcessCollection, document: dict[str, Any], *, where: Path
-) -> str:
+class PreparedInputCache:
+    """Load, hash and build a store for each prepared input once per forward call.
+
+    Ensemble members usually share their training input: every fold of a LOO run
+    records the same prepared file. Reconstructing each member from scratch would
+    reload that file, rehash the whole collection and rebuild the full store once
+    per member, which costs far more than evaluating the member. Pass one cache to
+    every :func:`reconstruct_training` /
+    :func:`~hybrax.train.harness.forward_from_collection` call of a forward run.
+
+    Collections are loaded once per path and hashed once, when first needed.
+    Stores are keyed by content hash, because separate training runs bundle their
+    own copy of the prepared file: equal copies are loaded and hashed once each
+    but share one store. Collections the cache did not load are hashed afresh on
+    every call.
+
+    Do not mutate collections returned by the cache or stores built by it; they
+    are shared between models. Entries never expire, so use a fresh cache after
+    input files change.
+    """
+
+    def __init__(self) -> None:
+        self._collections: dict[Path, BioProcessCollection] = {}
+        self._hashes: dict[Path, str] = {}
+        self._stores: dict[tuple[str, tuple[str, ...], str], TrainingDataStore] = {}
+
+    def collection(self, path: str | Path) -> BioProcessCollection:
+        """The collection at ``path``, loaded on first use."""
+        key = Path(os.path.realpath(path))
+        if key not in self._collections:
+            self._collections[key] = load_process_collection(key)
+        return self._collections[key]
+
+    def content_hash(self, collection: BioProcessCollection) -> str:
+        """:func:`content_hash` of ``collection``; cached if this cache loaded it."""
+        for path, cached in self._collections.items():
+            if cached is collection:
+                if path not in self._hashes:
+                    self._hashes[path] = content_hash(collection)
+                return self._hashes[path]
+        return content_hash(collection)
+
+    def store(
+        self,
+        collection: BioProcessCollection,
+        digest: str,
+        *,
+        target_variable_order: list[str] | tuple[str, ...] | None,
+        target_source: str,
+    ) -> TrainingDataStore:
+        """The :class:`TrainingDataStore` of ``collection``, built on first use.
+
+        ``digest`` is ``collection``'s :meth:`content_hash`, passed in because
+        callers already need it and hashing an external collection is not free.
+        """
+        targets = tuple(target_variable_order or ())
+        key = (digest, targets, target_source)
+        if key not in self._stores:
+            self._stores[key] = TrainingDataStore.from_collection(
+                collection,
+                target_variable_order=list(targets) or None,
+                target_source=target_source,
+            )
+        return self._stores[key]
+
+
+def _require_content_hash(actual: str, document: dict[str, Any], *, where: Path) -> str:
     """Verify a run's recorded prepared ``content_hash`` — before any hook runs.
 
     On the shared reconstruction path a *missing* record is an error too: a model
@@ -337,7 +401,6 @@ def _require_content_hash(
             f"run {where} records no inputs.prepared_input.content_hash; its model "
             "cannot be reconstructed from unverified training input"
         )
-    actual = content_hash(collection)
     if actual != recorded:
         raise ValueError(
             f"prepared.json data for run {where} differs from the run's record: "
@@ -375,6 +438,7 @@ def reconstruct_training(
     custom_module: Any | None = None,
     custom_py: str | Path | None = None,
     training_process_names: tuple[str, ...] | None = None,
+    inputs: PreparedInputCache | None = None,
 ) -> ReconstructedTraining:
     """THE shared reconstruction path — model loading, forward, and ensembles.
 
@@ -383,7 +447,8 @@ def reconstruct_training(
     restricts the hook-visible data to the recorded training process names, and
     rebuilds ``(reaction_module, loss_module, template_wrapper)`` exactly as
     training did. Evaluation data plays no part here: callers that evaluate novel
-    data build a separate store for their solves.
+    data build a separate store for their solves. Pass a shared ``inputs`` cache
+    when reconstructing several models from the same prepared file.
     """
     # Lazy import to avoid an import cycle (harness imports this module's twins).
     from .harness import (
@@ -398,9 +463,12 @@ def reconstruct_training(
         config = parsed_config if config is None else config
         document = parsed_document if document is None else document
 
+    inputs = inputs or PreparedInputCache()
     prepared = _resolve_prepared(run_dir, config)
-    collection = load_process_collection(prepared)
-    verified_hash = _require_content_hash(collection, document, where=run_dir)
+    collection = inputs.collection(prepared)
+    verified_hash = _require_content_hash(
+        inputs.content_hash(collection), document, where=run_dir
+    )
 
     if custom_module is None:
         bundled_custom = run_dir / "custom.py"
@@ -423,8 +491,9 @@ def reconstruct_training(
     target_source = (
         config.data.target_source if config.data is not None else TARGET_SOURCE_AUTO
     )
-    store = TrainingDataStore.from_collection(
+    store = inputs.store(
         collection,
+        verified_hash,
         target_variable_order=targets,
         target_source=target_source,
     )

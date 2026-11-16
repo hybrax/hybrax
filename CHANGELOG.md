@@ -14,6 +14,10 @@ public API; such entries are marked **Breaking**.
   time by about 28% on the OptFed and HEK293 gallery examples, and solve time by
   about 8% on OptFed with `Kvaerno5`. Explicit solvers such as `Tsit5` ran as fast
   as before.
+- `hybrax forward` loads, hashes and builds the data store of a prepared input once
+  per run instead of once per model. A 12-model LOO ensemble forward took 62 s
+  instead of 280 s. `forward_from_collection` and `reconstruct_training` take an
+  optional `PreparedInputCache` to share this work between calls.
 
 ### Fixed
 

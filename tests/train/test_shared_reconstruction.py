@@ -43,7 +43,7 @@ from hybrax.train import harness
 from hybrax.train.cli import main
 from hybrax.train.harness import ForwardConfig, forward_from_collection
 from hybrax.train.serialization import content_hash, reconstruct_training
-from hybrax.train.training_data import TARGET_SOURCE_AUTO
+from hybrax.train.training_data import TARGET_SOURCE_AUTO, TrainingDataStore
 
 
 def _collection(
@@ -775,3 +775,34 @@ def test_ensemble_forward_rebuilds_each_model_from_its_own_input(tmp_path: Path)
     output_dir = tmp_path / "fwd"
     assert (output_dir / "losses.csv").is_file()
     assert len(list((output_dir / "models").glob("*/losses.csv"))) == 2
+
+
+def test_ensemble_forward_builds_a_shared_training_store_once(
+    tmp_path: Path, monkeypatch
+):
+    """Separate runs bundle their own copy of one input; the store is built once."""
+    prepared = _write_prepared(
+        tmp_path / "prepared.json", {"p1": (1.0, 0.8, 0.64), "p2": (7.0, 5.6, 4.5)}
+    )
+    runs = [_train(tmp_path, name=name, prepared=prepared) for name in ("a", "b")]
+    builds = []
+    build = TrainingDataStore.from_collection
+    monkeypatch.setattr(
+        TrainingDataStore,
+        "from_collection",
+        lambda *args, **kwargs: builds.append(1) or build(*args, **kwargs),
+    )
+    forward_config = tmp_path / "forward-config.json"
+    forward_config.write_text(
+        json.dumps(
+            {
+                "models": [str(run_dir) for run_dir in runs],
+                "data": {"prepared": str(prepared)},
+                "output": {"dir": str(tmp_path / "fwd"), "predictions": "none"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert main(["forward", "--config", str(forward_config)]) == 0
+    assert len(builds) == 1
