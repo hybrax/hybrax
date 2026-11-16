@@ -877,8 +877,7 @@ def _handle_forward(args: argparse.Namespace) -> int:
         prepared = Path(os.path.abspath(resolve_prepared_path(Path(prepared_value))))
         # The custom.py rebuilds the model's reaction module / loss hooks; without
         # it forward_from_collection builds the default module (wrong pytree).
-        # Prefer the original recorded path (its sibling helper modules are on
-        # disk on this machine); fall back to the bundled copy for a checkpoint
+        # Prefer the recorded path; fall back to the bundled copy for a checkpoint
         # that was sent elsewhere.
         if model_cfg.custom_py is not None and Path(model_cfg.custom_py).is_file():
             custom_py: str | None = os.path.abspath(model_cfg.custom_py)
