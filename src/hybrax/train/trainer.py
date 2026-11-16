@@ -580,7 +580,16 @@ def build_batched_loss_fn() -> Callable[..., tuple]:
             batch.retention_modeled_Outflows,
             jump_ts_rows,
         )
-        if microbatch_size is None or microbatch_size >= batch.process_indices.shape[0]:
+        if batch.process_indices.shape[0] == 1:
+            # vmap batches solver while loops with mapped predicates even at width
+            # one, which adds a select per carried value and iteration. Implicit
+            # solvers run their loops op by op on CPU, so a direct call there is
+            # measurably faster.
+            outputs = _sample_loss(*jtu.tree_map(lambda x: x[0], sample_args))
+            outputs = jtu.tree_map(lambda x: x[None], outputs)
+        elif (
+            microbatch_size is None or microbatch_size >= batch.process_indices.shape[0]
+        ):
             outputs = jax.vmap(_sample_loss)(*sample_args)
         else:
             n_groups, remainder = divmod(

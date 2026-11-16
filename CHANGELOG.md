@@ -7,6 +7,14 @@ public API; such entries are marked **Breaking**.
 
 ## [Unreleased]
 
+### Changed
+
+- A batch that holds one process is now solved without `jax.vmap`. Training
+  workers (`train.workers > 1`) solve every process this way. This cut compile
+  time by about 28% on the OptFed and HEK293 gallery examples, and solve time by
+  about 8% on OptFed with `Kvaerno5`. Explicit solvers such as `Tsit5` ran as fast
+  as before.
+
 ## [0.3.0] - 2026-11-15
 
 ### Added

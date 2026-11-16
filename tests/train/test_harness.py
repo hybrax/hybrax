@@ -2641,6 +2641,68 @@ def test_microbatch_ode_gradients_and_adam_state_match_full_batch(use_jump):
         )
 
 
+@pytest.mark.parametrize(
+    ("make_collection", "names"),
+    [
+        (_make_event_collection, ("p3", "p1", "p2")),
+        (_make_feed_mismatch_collection, ("p2", "p1")),
+    ],
+)
+def test_single_process_batch_matches_its_row_in_a_full_batch(make_collection, names):
+    """A one-process batch skips vmap; outputs and gradients must not change."""
+    collection = make_collection()
+    store = TrainingDataStore.from_collection(
+        collection,
+        target_variable_order=["biomass"],
+        target_source="reactor_components",
+    )
+    order = jnp.asarray([store.process_order.index(name) for name in names])
+    wrapper = _build_template_wrapper(
+        store,
+        reaction_module=_LinearReactionModule(
+            **_harness_unit_scale_kwargs(collection, "p1")
+        ),
+        selected_processes=names,
+        loss_module=_MicrobatchLoss(),
+    )
+    params, static = partition_trainable(wrapper)
+    loss_fn = build_batched_loss_fn()
+
+    # Process-specific jump times: rows must follow the batch order too.
+    jump_table = 0.3 + 0.4 * jnp.arange(len(store.process_order))[:, None]
+
+    def objective(params, batch, row):
+        outputs = loss_fn(
+            eqx.combine(params, static),
+            batch,
+            store.Cin_controlled_Inflows,
+            store.Cin_modeled_Inflows,
+            jump_table[batch.process_indices],
+            max_solver_steps=2048,
+            solver_rtol=1e-5,
+            solver_atol=1e-7,
+            step=7,
+            prediction_grid_n=4,
+        )
+        # Index 2 holds the per-sample totals; drop the batch mean at index 0.
+        rows = jax.tree.map(lambda x: x[row], outputs[1:])
+        return outputs[2][row], rows
+
+    evaluate = eqx.filter_jit(eqx.filter_value_and_grad(objective, has_aux=True))
+    full = store.gather_batch(order)
+    for row in range(order.shape[0]):
+        (_, expected), expected_grad = evaluate(params, full, row)
+        single = store.gather_batch(order[row : row + 1])
+        (_, actual), grad = evaluate(params, single, 0)
+        assert float(optax.tree.norm(grad)) > 0.001
+        for observed, reference in zip(
+            jax.tree.leaves((actual, grad)),
+            jax.tree.leaves((expected, expected_grad)),
+            strict=True,
+        ):
+            np.testing.assert_allclose(observed, reference, rtol=1e-7, atol=1e-8)
+
+
 def test_microbatch_harness_preserves_updates_and_checkpoint_state(tmp_path):
     collection = _make_event_collection()
     store = TrainingDataStore.from_collection(
