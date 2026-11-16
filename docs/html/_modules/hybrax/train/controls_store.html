@@ -410,6 +410,7 @@ overview of what Hybrax can do, see the
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">itertools</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Mapping</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">copy</span><span class="w"> </span><span class="kn">import</span> <span class="n">deepcopy</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span>
@@ -423,7 +424,7 @@ overview of what Hybrax can do, see the
     <span class="n">BioProcess</span><span class="p">,</span>
     <span class="n">BioProcessCollection</span><span class="p">,</span>
 <span class="p">)</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.mechanistic</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_rhs_ode</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.mechanistic</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_process_ordering</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_process_collection</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">hybrax.format.time_series.spline_ops</span><span class="w"> </span><span class="kn">import</span> <span class="n">rebase_piece</span>
 
@@ -525,7 +526,7 @@ overview of what Hybrax can do, see the
             <span class="k">continue</span>
         <span class="n">t0</span><span class="p">,</span> <span class="n">t1</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">measured</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="nb">float</span><span class="p">(</span><span class="n">measured</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
         <span class="n">species_names</span> <span class="o">=</span> <span class="p">(</span>
-            <span class="nb">tuple</span><span class="p">(</span><span class="n">build_rhs_ode</span><span class="p">(</span><span class="n">process</span><span class="p">)</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">)</span>
+            <span class="nb">tuple</span><span class="p">(</span><span class="n">get_process_ordering</span><span class="p">(</span><span class="n">process</span><span class="p">)</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">modeled_rmc_names_by_process</span> <span class="ow">is</span> <span class="kc">None</span>
             <span class="k">else</span> <span class="n">modeled_rmc_names_by_process</span><span class="p">[</span><span class="n">process_name</span><span class="p">]</span>
         <span class="p">)</span>
@@ -1507,7 +1508,7 @@ overview of what Hybrax can do, see the
         <span class="k">for</span> <span class="n">process_name</span> <span class="ow">in</span> <span class="n">process_order</span><span class="p">:</span>
             <span class="n">process</span> <span class="o">=</span> <span class="n">collection</span><span class="o">.</span><span class="n">processes</span><span class="p">[</span><span class="n">process_name</span><span class="p">]</span>
             <span class="n">bundle</span> <span class="o">=</span> <span class="n">process_bundles</span><span class="p">[</span><span class="n">process_name</span><span class="p">]</span>
-            <span class="n">species_names</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">build_rhs_ode</span><span class="p">(</span><span class="n">process</span><span class="p">)</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">)</span>
+            <span class="n">species_names</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">get_process_ordering</span><span class="p">(</span><span class="n">process</span><span class="p">)</span><span class="o">.</span><span class="n">name_modeled_RMCs</span><span class="p">)</span>
             <span class="n">modeled_rmc_names_by_process</span><span class="p">[</span><span class="n">process_name</span><span class="p">]</span> <span class="o">=</span> <span class="n">species_names</span>
             <span class="k">if</span> <span class="n">reference_species</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">reference_species</span> <span class="o">=</span> <span class="n">species_names</span>
@@ -1779,8 +1780,10 @@ overview of what Hybrax can do, see the
             <span class="n">bolus_event_mask</span><span class="o">=</span><span class="n">bolus_event_mask</span><span class="p">[:,</span> <span class="p">:</span><span class="n">max_bolus_events</span><span class="p">],</span>
             <span class="n">max_event_gap_fraction</span><span class="o">=</span><span class="n">gap_fraction</span><span class="p">,</span>
             <span class="n">max_measurements_per_event_gap</span><span class="o">=</span><span class="n">measurements_per_gap</span><span class="p">,</span>
+            <span class="c1"># Copied: the selection is handed to user hooks (``runtime_data``), and a</span>
+            <span class="c1"># hook writing into a process's metadata must not change the full store.</span>
             <span class="n">_process_md_by_name</span><span class="o">=</span><span class="p">{</span>
-                <span class="n">name</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_md_by_name</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">process_names</span>
+                <span class="n">name</span><span class="p">:</span> <span class="n">deepcopy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_process_md_by_name</span><span class="p">[</span><span class="n">name</span><span class="p">])</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">process_names</span>
             <span class="p">},</span>
         <span class="p">)</span></div>
 

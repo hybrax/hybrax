@@ -494,6 +494,10 @@ is stiff. With the half-saturation constant fixed at $K_G=0.001\,\mathrm{g/kg}$,
 uptake drops from its maximum to zero within a tiny glycerol range, so near
 depletion glycerol changes on time scales far shorter than the process. An
 explicit solver would need very small steps there.
+Implicit solvers handle stiff problems but cost more per step than explicit
+solvers such as Tsit5. Alternatively, increasing $K_G$, for example to
+$1\,\mathrm{g/kg}$, makes the problem less stiff and might allow an explicit
+solver.
 Before training, Hybrax integrates all controls together and checks whether each
 continuous feed integrates to its known cumulative increment within 1%. The
 smoothed feeds pass this preflight with these solver settings. This diagnostic

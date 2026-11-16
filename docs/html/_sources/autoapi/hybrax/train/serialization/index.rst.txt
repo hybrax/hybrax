@@ -43,6 +43,7 @@ Classes
 
 .. autoapisummary::
 
+   hybrax.train.serialization.PreparedInputCache
    hybrax.train.serialization.ReconstructedTraining
 
 
@@ -63,6 +64,7 @@ Functions
    hybrax.train.serialization.read_json
    hybrax.train.serialization.read_run_config_json
    hybrax.train.serialization.reconstruct_training
+   hybrax.train.serialization.resolve_custom_py
    hybrax.train.serialization.resolve_forward_model_path
    hybrax.train.serialization.resolve_model_path
    hybrax.train.serialization.resolve_run_dir
@@ -75,6 +77,49 @@ Functions
 
 Module Contents
 ---------------
+
+.. py:class:: PreparedInputCache
+
+   Load, hash and build a store for each prepared input once per forward call.
+
+   Ensemble members usually share their training input: every fold of a LOO run
+   records the same prepared file. Reconstructing each member from scratch would
+   reload that file, rehash the whole collection and rebuild the full store once
+   per member, which costs far more than evaluating the member. Pass one cache to
+   every :func:`reconstruct_training` /
+   :func:`~hybrax.train.harness.forward_from_collection` call of a forward run.
+
+   Collections are loaded once per path and hashed once, when first needed.
+   Stores are keyed by content hash, because separate training runs bundle their
+   own copy of the prepared file: equal copies are loaded and hashed once each
+   but share one store. Collections the cache did not load are hashed afresh on
+   every call.
+
+   Do not mutate collections returned by the cache or stores built by it; they
+   are shared between models. Entries never expire, so use a fresh cache after
+   input files change.
+
+
+   .. py:method:: collection(path)
+
+      The collection at ``path``, loaded on first use.
+
+
+
+   .. py:method:: content_hash(collection)
+
+      :func:`content_hash` of ``collection``; cached if this cache loaded it.
+
+
+
+   .. py:method:: store(collection, digest, *, target_variable_order, target_source)
+
+      The :class:`TrainingDataStore` of ``collection``, built on first use.
+
+      ``digest`` is ``collection``'s :meth:`content_hash`, passed in because
+      callers already need it and hashing an external collection is not free.
+
+
 
 .. py:class:: ReconstructedTraining
 
@@ -223,7 +268,7 @@ Module Contents
    Parse a run-dir ``config.json`` → (RunConfig, full document).
 
 
-.. py:function:: reconstruct_training(run_dir, config = None, document = None, *, custom_module = None, custom_py = None, training_process_names = None)
+.. py:function:: reconstruct_training(run_dir, config = None, document = None, *, custom_module = None, custom_py = None, training_process_names = None, inputs = None)
 
    THE shared reconstruction path — model loading, forward, and ensembles.
 
@@ -232,7 +277,19 @@ Module Contents
    restricts the hook-visible data to the recorded training process names, and
    rebuilds ``(reaction_module, loss_module, template_wrapper)`` exactly as
    training did. Evaluation data plays no part here: callers that evaluate novel
-   data build a separate store for their solves.
+   data build a separate store for their solves. Pass a shared ``inputs`` cache
+   when reconstructing several models from the same prepared file.
+
+
+.. py:function:: resolve_custom_py(run_dir, config, document)
+
+   The ``custom.py`` a run was trained with, checked against its recorded hash.
+
+   Prefers the copy bundled in ``run_dir``, which is the file training used; the
+   recorded ``config.custom_py`` path is only a fallback, since the original may
+   have been edited since. If the run recorded ``inputs.custom_py.file_hash``, the
+   chosen file must match it. Runs written before folds recorded the hash load
+   unverified. Returns ``None`` when neither file exists.
 
 
 .. py:function:: resolve_forward_model_path(path)

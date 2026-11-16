@@ -450,11 +450,13 @@ overview of what Hybrax can do, see the
 <span class="kn">from</span><span class="w"> </span><span class="nn">.runtime_artifact</span><span class="w"> </span><span class="kn">import</span> <span class="n">FORMAT_VERSION</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.runtime_context</span><span class="w"> </span><span class="kn">import</span> <span class="n">original_parent_processes</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PreparedInputCache</span><span class="p">,</span>
     <span class="n">content_hash</span><span class="p">,</span>
     <span class="n">file_hash</span><span class="p">,</span>
     <span class="n">read_initial_checkpoint</span><span class="p">,</span>
     <span class="n">read_json</span><span class="p">,</span>
     <span class="n">read_run_config_json</span><span class="p">,</span>
+    <span class="n">resolve_custom_py</span><span class="p">,</span>
     <span class="n">resolve_forward_model_path</span><span class="p">,</span>
     <span class="n">resolve_run_dir</span><span class="p">,</span>
     <span class="n">run_config_to_jsonable</span><span class="p">,</span>
@@ -465,6 +467,7 @@ overview of what Hybrax can do, see the
     <span class="n">environment_versions</span> <span class="k">as</span> <span class="n">_environment_versions</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.training_data</span><span class="w"> </span><span class="kn">import</span> <span class="n">TARGET_SOURCE_AUTO</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_custom_module</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_now_iso</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
@@ -1174,13 +1177,14 @@ overview of what Hybrax can do, see the
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_resolve_model_bundle</span><span class="p">(</span>
     <span class="n">path</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Path</span><span class="p">,</span> <span class="n">Path</span><span class="p">,</span> <span class="n">RunConfig</span><span class="p">,</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">"""Resolve a model reference to its config, parameters, and data."""</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">Path</span><span class="p">,</span> <span class="n">Path</span><span class="p">,</span> <span class="n">RunConfig</span><span class="p">,</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">"""Resolve a model reference to its config, parameters, data and custom.py."""</span>
     <span class="k">try</span><span class="p">:</span>
         <span class="n">run_dir</span><span class="p">,</span> <span class="n">params</span> <span class="o">=</span> <span class="n">resolve_forward_model_path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
     <span class="k">except</span> <span class="ne">FileNotFoundError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">SystemExit</span><span class="p">(</span><span class="sa">f</span><span class="s2">"forward: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
-    <span class="n">model_cfg</span><span class="p">,</span> <span class="n">_document</span> <span class="o">=</span> <span class="n">read_run_config_json</span><span class="p">(</span><span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"config.json"</span><span class="p">)</span>
+    <span class="n">model_cfg</span><span class="p">,</span> <span class="n">document</span> <span class="o">=</span> <span class="n">read_run_config_json</span><span class="p">(</span><span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"config.json"</span><span class="p">)</span>
+    <span class="n">custom_py</span> <span class="o">=</span> <span class="n">resolve_custom_py</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="n">model_cfg</span><span class="p">,</span> <span class="n">document</span><span class="p">)</span>
     <span class="k">if</span> <span class="p">(</span><span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"prepared.json.gz"</span><span class="p">)</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
         <span class="n">own_prepared</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"prepared.json.gz"</span>
     <span class="k">elif</span> <span class="p">(</span><span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"prepared.json"</span><span class="p">)</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
@@ -1189,7 +1193,7 @@ overview of what Hybrax can do, see the
         <span class="n">own_prepared</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">model_cfg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">prepared</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">own_prepared</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="k">return</span> <span class="n">run_dir</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model_cfg</span><span class="p">,</span> <span class="n">own_prepared</span>
+    <span class="k">return</span> <span class="n">run_dir</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">model_cfg</span><span class="p">,</span> <span class="n">own_prepared</span><span class="p">,</span> <span class="n">custom_py</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_resolve_model_names</span><span class="p">(</span><span class="n">models</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">ModelRef</span><span class="p">,</span> <span class="o">...</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
@@ -1250,7 +1254,13 @@ overview of what Hybrax can do, see the
 
     <span class="n">bundles</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">,</span> <span class="n">Path</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Path</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">ref</span><span class="p">,</span> <span class="n">name</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">models</span><span class="p">,</span> <span class="n">names</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-        <span class="n">run_dir</span><span class="p">,</span> <span class="n">params_path</span><span class="p">,</span> <span class="n">model_cfg</span><span class="p">,</span> <span class="n">own_prepared</span> <span class="o">=</span> <span class="n">_resolve_model_bundle</span><span class="p">(</span><span class="n">ref</span><span class="o">.</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">run_dir</span><span class="p">,</span> <span class="n">params_path</span><span class="p">,</span> <span class="n">model_cfg</span><span class="p">,</span> <span class="n">own_prepared</span><span class="p">,</span> <span class="n">custom_path</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">_resolve_model_bundle</span><span class="p">(</span><span class="n">ref</span><span class="o">.</span><span class="n">path</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+            <span class="n">log</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">"forward: </span><span class="si">%s</span><span class="s2">"</span><span class="p">,</span> <span class="n">exc</span><span class="p">)</span>
+            <span class="k">return</span> <span class="mi">1</span>
         <span class="n">run_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">run_dir</span><span class="p">))</span>
         <span class="n">params_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">params_path</span><span class="p">))</span>
         <span class="n">prepared_value</span> <span class="o">=</span> <span class="p">(</span>
@@ -1262,15 +1272,7 @@ overview of what Hybrax can do, see the
         <span class="n">prepared</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">resolve_prepared_path</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="n">prepared_value</span><span class="p">))))</span>
         <span class="c1"># The custom.py rebuilds the model's reaction module / loss hooks; without</span>
         <span class="c1"># it forward_from_collection builds the default module (wrong pytree).</span>
-        <span class="c1"># Prefer the original recorded path (its sibling helper modules are on</span>
-        <span class="c1"># disk on this machine); fall back to the bundled copy for a checkpoint</span>
-        <span class="c1"># that was sent elsewhere.</span>
-        <span class="k">if</span> <span class="n">model_cfg</span><span class="o">.</span><span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">Path</span><span class="p">(</span><span class="n">model_cfg</span><span class="o">.</span><span class="n">custom_py</span><span class="p">)</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
-            <span class="n">custom_py</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">model_cfg</span><span class="o">.</span><span class="n">custom_py</span><span class="p">)</span>
-        <span class="k">elif</span> <span class="p">(</span><span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"custom.py"</span><span class="p">)</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
-            <span class="n">custom_py</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"custom.py"</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">custom_py</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">custom_py</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">custom_path</span><span class="p">)</span> <span class="k">if</span> <span class="n">custom_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
         <span class="n">bundles</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">name</span><span class="p">,</span> <span class="n">run_dir</span><span class="p">,</span> <span class="n">params_path</span><span class="p">,</span> <span class="n">model_cfg</span><span class="p">,</span> <span class="n">prepared</span><span class="p">,</span> <span class="n">custom_py</span><span class="p">))</span>
 
     <span class="c1"># --- Output directory (resolved up-front so the re-run guard fails fast) ---</span>
@@ -1306,8 +1308,22 @@ overview of what Hybrax can do, see the
     <span class="n">per_model</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">ForwardResult</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="n">prediction_processes</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
     <span class="n">plot_collection</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># Ensemble members usually share their training and evaluation inputs (e.g.</span>
+    <span class="c1"># all LOO folds); load, hash and build each shared input only once.</span>
+    <span class="n">inputs</span> <span class="o">=</span> <span class="n">PreparedInputCache</span><span class="p">()</span>
+    <span class="c1"># One module per distinct custom.py content: LOO folds each record their own</span>
+    <span class="c1"># copy of the same file, and a fresh import per model would give every model</span>
+    <span class="c1"># new classes and thus a new JIT cache key, recompiling the evaluation.</span>
+    <span class="c1"># custom.py is self-contained, so equal content means an equal module.</span>
+    <span class="n">custom_modules</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
     <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">_run_dir</span><span class="p">,</span> <span class="n">params_path</span><span class="p">,</span> <span class="n">model_cfg</span><span class="p">,</span> <span class="n">prepared</span><span class="p">,</span> <span class="n">custom_py</span> <span class="ow">in</span> <span class="n">bundles</span><span class="p">:</span>
-        <span class="n">collection</span> <span class="o">=</span> <span class="n">load_process_collection</span><span class="p">(</span><span class="n">prepared</span><span class="p">)</span>
+        <span class="n">custom_module</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">source_hash</span> <span class="o">=</span> <span class="n">file_hash</span><span class="p">(</span><span class="n">custom_py</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">source_hash</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">custom_modules</span><span class="p">:</span>
+                <span class="n">custom_modules</span><span class="p">[</span><span class="n">source_hash</span><span class="p">]</span> <span class="o">=</span> <span class="n">load_custom_module</span><span class="p">(</span><span class="n">custom_py</span><span class="p">)</span>
+            <span class="n">custom_module</span> <span class="o">=</span> <span class="n">custom_modules</span><span class="p">[</span><span class="n">source_hash</span><span class="p">]</span>
+        <span class="n">collection</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">collection</span><span class="p">(</span><span class="n">prepared</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">plot_collection</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">plot_collection</span> <span class="o">=</span> <span class="n">collection</span>
         <span class="n">eval_processes</span> <span class="o">=</span> <span class="p">(</span>
@@ -1365,8 +1381,10 @@ overview of what Hybrax can do, see the
             <span class="n">config</span><span class="o">=</span><span class="n">fwd_cfg</span><span class="p">,</span>
             <span class="n">custom_py</span><span class="o">=</span><span class="n">custom_py</span><span class="p">,</span>
             <span class="n">run_config</span><span class="o">=</span><span class="n">model_cfg</span><span class="p">,</span>
+            <span class="n">custom_module</span><span class="o">=</span><span class="n">custom_module</span><span class="p">,</span>
             <span class="n">training_process_names</span><span class="o">=</span><span class="n">training_processes</span><span class="p">,</span>
             <span class="n">prediction_process_names</span><span class="o">=</span><span class="n">prediction_processes</span><span class="p">,</span>
+            <span class="n">inputs</span><span class="o">=</span><span class="n">inputs</span><span class="p">,</span>
         <span class="p">)</span>
         <span class="n">per_model</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">name</span><span class="p">,</span> <span class="n">result</span><span class="p">))</span>
 

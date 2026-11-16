@@ -573,8 +573,25 @@ an extension point: declaring it makes the trainer populate every <code class="d
 <ul class="simple">
 <li><p><strong><code class="docutils literal notranslate"><span class="pre">custom.py</span></code> is copied into the run directory</strong> and is part of the model. Reconstruction
 re-runs your hooks, so a run directory without it cannot be loaded.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">custom.py</span></code> must be self-contained.</strong> Only <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> itself is saved alongside
+the model in each checkpoint, so it has to contain all the helpers it uses. Do not
+import other files from its folder. Loading a <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> if
+one of its <code class="docutils literal notranslate"><span class="pre">import</span></code> statements, anywhere in the file including inside a hook,
+loads a file from its own folder or below, including a package installed in
+editable mode from there. This catches the common mistake; it does not see
+imports made by other packages or built at runtime.</p></li>
 <li><p><strong>A missing <code class="docutils literal notranslate"><span class="pre">custom_py</span></code> <em>path</em></strong> is a <code class="docutils literal notranslate"><span class="pre">FileNotFoundError</span></code>; a missing <em>hook inside</em> it is
 silent. Two very different failure modes.</p></li>
+<li><p><strong>Treat hook arguments as read-only.</strong> Hooks must not modify the objects they receive:
+collections, <code class="docutils literal notranslate"><span class="pre">runtime_data</span></code>, controls metadata, arrays. Two exceptions.
+<code class="docutils literal notranslate"><span class="pre">transform_process_collection</span></code> gets its own copy of the collection and may change it
+in place, but must still return it. <code class="docutils literal notranslate"><span class="pre">augment_state_values</span></code> gets copies of its arrays.</p></li>
+<li><p><strong><code class="docutils literal notranslate"><span class="pre">config</span></code> is shared within one model, not across models.</strong> The hooks of one <code class="docutils literal notranslate"><span class="pre">train</span></code>
+run receive the same <code class="docutils literal notranslate"><span class="pre">config</span></code> object, so one hook can leave state on <code class="docutils literal notranslate"><span class="pre">config.custom</span></code>
+for a later one. Each LOO fold and each ensemble model gets its own copy, so nothing
+a hook stores there reaches another fold or model. The <code class="docutils literal notranslate"><span class="pre">hybrax</span> <span class="pre">loo</span></code> command runs
+<code class="docutils literal notranslate"><span class="pre">estimate_all_scales</span></code> in a separate process from the fold’s other hooks, so there
+state it leaves on <code class="docutils literal notranslate"><span class="pre">config</span></code> does not reach them.</p></li>
 </ul>
 </section>
 <section id="see-also">

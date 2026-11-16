@@ -123,6 +123,13 @@ Tolerances, `max_steps`, and `jump_ts` remain in the JSON `solver` section.
 Choose a solver compatible with Hybrax's single ODE term and adaptive PID
 controller. The independent feed-integration preflight continues to use Tsit5.
 
+Implicit solvers such as Kvaerno5 cost much more per step than Tsit5, so use
+one only when the model is stiff. Typical causes are rates that switch off
+within a tiny concentration range, such as Monod uptake with a very small
+half-saturation constant, a hard uptake cap, or a steep sigmoid. With an
+explicit solver, such a model forces very small steps near the switch, and
+training gradients can explode or turn NaN.
+
 ## Hook: `build_learning_rate`
 
 **Fires:** first, at setup.

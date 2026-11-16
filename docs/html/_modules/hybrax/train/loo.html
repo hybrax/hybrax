@@ -456,6 +456,7 @@ overview of what Hybrax can do, see the
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">content_hash</span><span class="p">,</span>
+    <span class="n">file_hash</span><span class="p">,</span>
     <span class="n">load_trained_wrapper</span><span class="p">,</span>
     <span class="n">run_config_to_jsonable</span><span class="p">,</span>
     <span class="n">save_model</span><span class="p">,</span>
@@ -1070,6 +1071,11 @@ overview of what Hybrax can do, see the
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
             <span class="s2">"LOO training must use loo.workers_per_fold, not train.workers"</span>
         <span class="p">)</span>
+    <span class="c1"># Deep copy: frozen configs still hold mutable containers (``custom``, noise</span>
+    <span class="c1"># dicts, ...), and the runtime producer runs every fold's scale hook in one</span>
+    <span class="c1"># process. A hook editing its config must not reach later folds. Hooks of one</span>
+    <span class="c1"># fold share this copy.</span>
+    <span class="n">cfg</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">deep</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="n">fold_dir</span> <span class="o">=</span> <span class="n">output_dir</span> <span class="o">/</span> <span class="s2">"folds"</span> <span class="o">/</span> <span class="n">fold</span><span class="o">.</span><span class="n">slug</span>
     <span class="n">fold_custom</span> <span class="o">=</span> <span class="n">fold_dir</span> <span class="o">/</span> <span class="s2">"custom.py"</span> <span class="k">if</span> <span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
     <span class="n">effective_cfg</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span>
@@ -1181,14 +1187,21 @@ overview of what Hybrax can do, see the
 <span class="sd">    reconstruction path requires ``inputs.prepared_input.content_hash`` and refuses</span>
 <span class="sd">    to build hooks without it. A fold's ``data.prepared`` is the self-contained</span>
 <span class="sd">    prepared copy at the LOO run root, and the hash is the producer-validated one,</span>
-<span class="sd">    so a fold model loads exactly like a ``train`` run's.</span>
+<span class="sd">    so a fold model loads exactly like a ``train`` run's. The fold's ``custom.py``</span>
+<span class="sd">    copy must already be in place: its hash is recorded so loading the model can</span>
+<span class="sd">    check it.</span>
 <span class="sd">    """</span>
+    <span class="n">custom_py</span> <span class="o">=</span> <span class="n">effective_cfg</span><span class="o">.</span><span class="n">custom_py</span>
     <span class="k">return</span> <span class="p">{</span>
         <span class="s2">"inputs"</span><span class="p">:</span> <span class="p">{</span>
             <span class="s2">"prepared_input"</span><span class="p">:</span> <span class="p">{</span>
                 <span class="s2">"path"</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">effective_cfg</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">prepared</span><span class="p">),</span>
                 <span class="s2">"content_hash"</span><span class="p">:</span> <span class="n">prepared_content_hash</span><span class="p">,</span>
-            <span class="p">}</span>
+            <span class="p">},</span>
+            <span class="s2">"custom_py"</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">"bundled"</span><span class="p">:</span> <span class="s2">"custom.py"</span> <span class="k">if</span> <span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="s2">"file_hash"</span><span class="p">:</span> <span class="n">file_hash</span><span class="p">(</span><span class="n">custom_py</span><span class="p">)</span> <span class="k">if</span> <span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="p">},</span>
         <span class="p">}</span>
     <span class="p">}</span>
 

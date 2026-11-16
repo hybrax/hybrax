@@ -473,6 +473,7 @@ overview of what Hybrax can do, see the
     <span class="n">training_selection_excluding_holdout</span><span class="p">,</span>
 <span class="p">)</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PreparedInputCache</span><span class="p">,</span>
     <span class="n">_recorded_prepared_content_hash</span><span class="p">,</span>
     <span class="n">content_hash</span><span class="p">,</span>
     <span class="n">load_trained_wrapper</span><span class="p">,</span>
@@ -1565,6 +1566,7 @@ overview of what Hybrax can do, see the
     <span class="n">custom_module</span><span class="p">:</span> <span class="n">Any</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">prediction_process_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">prediction_grid_n</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">200</span><span class="p">,</span>
+    <span class="n">inputs</span><span class="p">:</span> <span class="n">PreparedInputCache</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ForwardResult</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Run one forward pass per selected process of ``collection``.</span>
 
@@ -1597,6 +1599,9 @@ overview of what Hybrax can do, see the
 <span class="sd">            `None` exports every evaluated process.</span>
 <span class="sd">        prediction_grid_n: Size of the evenly-spaced prediction grid; see</span>
 <span class="sd">            :func:`model_predict`'s ``grid_n``.</span>
+<span class="sd">        inputs: Cache shared by the models of one forward run, so a prepared</span>
+<span class="sd">            file they share is loaded, hashed and turned into a store once.</span>
+<span class="sd">            ``None`` uses a fresh cache.</span>
 
 <span class="sd">    Returns:</span>
 <span class="sd">        The forward result: per-process losses and dense exports plus the</span>
@@ -1607,7 +1612,6 @@ overview of what Hybrax can do, see the
 <span class="sd">            incompatible with the training data.</span>
 <span class="sd">    """</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.serialization</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
-        <span class="n">content_hash</span><span class="p">,</span>
         <span class="n">load_trained_wrapper</span><span class="p">,</span>
         <span class="n">read_run_config_json</span><span class="p">,</span>
         <span class="n">reconstruct_training</span><span class="p">,</span>
@@ -1615,6 +1619,7 @@ overview of what Hybrax can do, see the
     <span class="p">)</span>
 
     <span class="n">cfg</span> <span class="o">=</span> <span class="n">config</span> <span class="ow">or</span> <span class="n">ForwardConfig</span><span class="p">()</span>
+    <span class="n">inputs</span> <span class="o">=</span> <span class="n">inputs</span> <span class="ow">or</span> <span class="n">PreparedInputCache</span><span class="p">()</span>
     <span class="c1"># Resolve (and existence-check) the weights before the reconstruction: it</span>
     <span class="c1"># costs seconds on a real input, and failing afterwards reports a path the</span>
     <span class="c1"># caller never wrote.</span>
@@ -1629,6 +1634,7 @@ overview of what Hybrax can do, see the
         <span class="n">custom_module</span><span class="o">=</span><span class="n">custom_module</span><span class="p">,</span>
         <span class="n">custom_py</span><span class="o">=</span><span class="n">custom_py</span><span class="p">,</span>
         <span class="n">training_process_names</span><span class="o">=</span><span class="n">training_process_names</span><span class="p">,</span>
+        <span class="n">inputs</span><span class="o">=</span><span class="n">inputs</span><span class="p">,</span>
     <span class="p">)</span>
     <span class="n">cfg</span> <span class="o">=</span> <span class="n">dataclasses</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span>
         <span class="n">cfg</span><span class="p">,</span>
@@ -1656,24 +1662,16 @@ overview of what Hybrax can do, see the
         <span class="n">cfg</span><span class="o">.</span><span class="n">target_source</span> <span class="k">if</span> <span class="n">cfg</span><span class="o">.</span><span class="n">target_source</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">recorded_source</span>
     <span class="p">)</span>
 
-    <span class="c1"># The evaluation store is a separate object built from the caller's data. The</span>
-    <span class="c1"># one exception is a byte-for-byte identity: when the evaluation collection IS</span>
-    <span class="c1"># the model's verified training input under the same target layout, building a</span>
-    <span class="c1"># second identical store would only cost time.</span>
-    <span class="n">same_input</span> <span class="o">=</span> <span class="p">(</span>
-        <span class="n">effective_target_order</span> <span class="o">==</span> <span class="n">recorded_targets</span>
-        <span class="ow">and</span> <span class="n">effective_target_source</span> <span class="o">==</span> <span class="n">recorded_source</span>
-        <span class="ow">and</span> <span class="n">content_hash</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span> <span class="o">==</span> <span class="n">rebuilt</span><span class="o">.</span><span class="n">prepared_content_hash</span>
+    <span class="c1"># The evaluation store is built from the caller's data. Stores are keyed by</span>
+    <span class="c1"># content hash and target layout, so evaluation data equal to the model's</span>
+    <span class="c1"># verified training input under the same layout reuses the training store.</span>
+    <span class="n">evaluation_store</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">store</span><span class="p">(</span>
+        <span class="n">collection</span><span class="p">,</span>
+        <span class="n">inputs</span><span class="o">.</span><span class="n">content_hash</span><span class="p">(</span><span class="n">collection</span><span class="p">),</span>
+        <span class="n">target_variable_order</span><span class="o">=</span><span class="n">effective_target_order</span><span class="p">,</span>
+        <span class="n">target_source</span><span class="o">=</span><span class="n">effective_target_source</span><span class="p">,</span>
     <span class="p">)</span>
-    <span class="k">if</span> <span class="n">same_input</span><span class="p">:</span>
-        <span class="n">evaluation_store</span> <span class="o">=</span> <span class="n">rebuilt</span><span class="o">.</span><span class="n">store</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="n">evaluation_store</span> <span class="o">=</span> <span class="n">TrainingDataStore</span><span class="o">.</span><span class="n">from_collection</span><span class="p">(</span>
-            <span class="n">collection</span><span class="p">,</span>
-            <span class="n">target_variable_order</span><span class="o">=</span><span class="n">effective_target_order</span><span class="p">,</span>
-            <span class="n">target_source</span><span class="o">=</span><span class="n">effective_target_source</span><span class="p">,</span>
-        <span class="p">)</span>
-        <span class="n">_require_evaluation_compatibility</span><span class="p">(</span><span class="n">rebuilt</span><span class="o">.</span><span class="n">store</span><span class="p">,</span> <span class="n">evaluation_store</span><span class="p">)</span>
+    <span class="n">_require_evaluation_compatibility</span><span class="p">(</span><span class="n">rebuilt</span><span class="o">.</span><span class="n">store</span><span class="p">,</span> <span class="n">evaluation_store</span><span class="p">)</span>
 
     <span class="n">trained_wrapper</span> <span class="o">=</span> <span class="n">load_trained_wrapper</span><span class="p">(</span>
         <span class="n">model_path</span><span class="p">,</span> <span class="n">template</span><span class="o">=</span><span class="n">rebuilt</span><span class="o">.</span><span class="n">template_wrapper</span>

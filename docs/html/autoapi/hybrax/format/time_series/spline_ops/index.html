@@ -663,6 +663,10 @@ and maximum of the result are the exact extrema of the rate.</p>
 <dt class="sig sig-object py" id="hybrax.format.time_series.spline_ops.rebase_to_breaks">
 <span class="sig-prename descclassname"><span class="pre">hybrax.format.time_series.spline_ops.</span></span><span class="sig-name descname"><span class="pre">rebase_to_breaks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">breaks</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coeffs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_breaks</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../../_modules/hybrax/format/time_series/spline_ops.html#rebase_to_breaks"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.format.time_series.spline_ops.rebase_to_breaks" title="Link to this definition">¶</a></dt>
 <dd><p>Express spline coeffs on a refined breakpoint grid.</p>
+<p>Each target piece starts at a target break <code class="docutils literal notranslate"><span class="pre">u</span></code>; it takes the source piece
+containing <code class="docutils literal notranslate"><span class="pre">u</span></code> (clamped to the first/last piece outside the source range)
+and shifts that piece’s origin to <code class="docutils literal notranslate"><span class="pre">u</span></code>, as <a class="reference internal" href="#hybrax.format.time_series.spline_ops.rebase_piece" title="hybrax.format.time_series.spline_ops.rebase_piece"><code class="xref py py-func docutils literal notranslate"><span class="pre">rebase_piece()</span></code></a> does for one
+piece. All pieces are rebased at once.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">

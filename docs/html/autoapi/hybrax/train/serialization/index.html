@@ -431,7 +431,10 @@ swaps trainable leaves.</p></li>
 <div class="table-wrapper autosummary longtable docutils container">
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.ReconstructedTraining" title="hybrax.train.serialization.ReconstructedTraining"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ReconstructedTraining</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.PreparedInputCache" title="hybrax.train.serialization.PreparedInputCache"><code class="xref py py-obj docutils literal notranslate"><span class="pre">PreparedInputCache</span></code></a></p></td>
+<td><p>Load, hash and build a store for each prepared input once per forward call.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.ReconstructedTraining" title="hybrax.train.serialization.ReconstructedTraining"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ReconstructedTraining</span></code></a></p></td>
 <td><p>One model's training-time construction, rebuilt from its own input.</p></td>
 </tr>
 </tbody>
@@ -479,28 +482,31 @@ swaps trainable leaves.</p></li>
 <tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.reconstruct_training" title="hybrax.train.serialization.reconstruct_training"><code class="xref py py-obj docutils literal notranslate"><span class="pre">reconstruct_training</span></code></a>(run_dir[, config, document, ...])</p></td>
 <td><p>THE shared reconstruction path — model loading, forward, and ensembles.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.resolve_forward_model_path" title="hybrax.train.serialization.resolve_forward_model_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_forward_model_path</span></code></a>(path)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.resolve_custom_py" title="hybrax.train.serialization.resolve_custom_py"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_custom_py</span></code></a>(run_dir, config, document)</p></td>
+<td><p>The <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> a run was trained with, checked against its recorded hash.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.resolve_forward_model_path" title="hybrax.train.serialization.resolve_forward_model_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_forward_model_path</span></code></a>(path)</p></td>
 <td><p>Resolve permissive forward weights and their owning run directory.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.resolve_model_path" title="hybrax.train.serialization.resolve_model_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_model_path</span></code></a>(path)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.resolve_model_path" title="hybrax.train.serialization.resolve_model_path"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_model_path</span></code></a>(path)</p></td>
 <td><p>Resolve a model reference to <code class="docutils literal notranslate"><span class="pre">(run_dir,</span> <span class="pre">params_path)</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.resolve_run_dir" title="hybrax.train.serialization.resolve_run_dir"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_run_dir</span></code></a>(path, *[, max_levels])</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.resolve_run_dir" title="hybrax.train.serialization.resolve_run_dir"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resolve_run_dir</span></code></a>(path, *[, max_levels])</p></td>
 <td><p>Nearest directory at/above <code class="docutils literal notranslate"><span class="pre">path</span></code> that holds a <code class="docutils literal notranslate"><span class="pre">config.json</span></code>.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.run_config_to_jsonable" title="hybrax.train.serialization.run_config_to_jsonable"><code class="xref py py-obj docutils literal notranslate"><span class="pre">run_config_to_jsonable</span></code></a>(config)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.run_config_to_jsonable" title="hybrax.train.serialization.run_config_to_jsonable"><code class="xref py py-obj docutils literal notranslate"><span class="pre">run_config_to_jsonable</span></code></a>(config)</p></td>
 <td><p>RunConfig → JSON-native dict (Paths → str, tuples → lists).</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.save_model" title="hybrax.train.serialization.save_model"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_model</span></code></a>(wrapper, path)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.save_model" title="hybrax.train.serialization.save_model"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_model</span></code></a>(wrapper, path)</p></td>
 <td><p>Serialise the <strong>trainable</strong> leaves of a wrapper to disk.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.save_opt_state" title="hybrax.train.serialization.save_opt_state"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_opt_state</span></code></a>(opt_state, path)</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.save_opt_state" title="hybrax.train.serialization.save_opt_state"><code class="xref py py-obj docutils literal notranslate"><span class="pre">save_opt_state</span></code></a>(opt_state, path)</p></td>
 <td><p>Serialise optimizer state leaf-by-leaf.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.update_json" title="hybrax.train.serialization.update_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">update_json</span></code></a>(path, **fields)</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.update_json" title="hybrax.train.serialization.update_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">update_json</span></code></a>(path, **fields)</p></td>
 <td><p>Shallow-merge fields into an existing JSON object and publish it.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#hybrax.train.serialization.write_json" title="hybrax.train.serialization.write_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">write_json</span></code></a>(path, document, *[, indent])</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#hybrax.train.serialization.write_json" title="hybrax.train.serialization.write_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">write_json</span></code></a>(path, document, *[, indent])</p></td>
 <td><p>Atomically publish a normalized JSON document.</p></td>
 </tr>
 </tbody>
@@ -509,6 +515,75 @@ swaps trainable leaves.</p></li>
 </section>
 <section id="module-contents">
 <h2>Module Contents<a class="headerlink" href="#module-contents" title="Link to this heading">¶</a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="hybrax.train.serialization.PreparedInputCache">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.serialization.</span></span><span class="sig-name descname"><span class="pre">PreparedInputCache</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/serialization.html#PreparedInputCache"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.serialization.PreparedInputCache" title="Link to this definition">¶</a></dt>
+<dd><p>Load, hash and build a store for each prepared input once per forward call.</p>
+<p>Ensemble members usually share their training input: every fold of a LOO run
+records the same prepared file. Reconstructing each member from scratch would
+reload that file, rehash the whole collection and rebuild the full store once
+per member, which costs far more than evaluating the member. Pass one cache to
+every <a class="reference internal" href="#hybrax.train.serialization.reconstruct_training" title="hybrax.train.serialization.reconstruct_training"><code class="xref py py-func docutils literal notranslate"><span class="pre">reconstruct_training()</span></code></a> /
+<a class="reference internal" href="../harness/index.html#hybrax.train.harness.forward_from_collection" title="hybrax.train.harness.forward_from_collection"><code class="xref py py-func docutils literal notranslate"><span class="pre">forward_from_collection()</span></code></a> call of a forward run.</p>
+<p>Collections are loaded once per path and hashed once, when first needed.
+Stores are keyed by content hash, because separate training runs bundle their
+own copy of the prepared file: equal copies are loaded and hashed once each
+but share one store. Collections the cache did not load are hashed afresh on
+every call.</p>
+<p>Do not mutate collections returned by the cache or stores built by it; they
+are shared between models. Entries never expire, so use a fresh cache after
+input files change.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.serialization.PreparedInputCache.collection">
+<span class="sig-name descname"><span class="pre">collection</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/serialization.html#PreparedInputCache.collection"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.serialization.PreparedInputCache.collection" title="Link to this definition">¶</a></dt>
+<dd><p>The collection at <code class="docutils literal notranslate"><span class="pre">path</span></code>, loaded on first use.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>path</strong> (<em>str</em><em> | </em><em>pathlib.Path</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection">hybrax.format.dataclasses.BioProcessCollection</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.serialization.PreparedInputCache.content_hash">
+<span class="sig-name descname"><span class="pre">content_hash</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/serialization.html#PreparedInputCache.content_hash"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.serialization.PreparedInputCache.content_hash" title="Link to this definition">¶</a></dt>
+<dd><p><a class="reference internal" href="#hybrax.train.serialization.content_hash" title="hybrax.train.serialization.content_hash"><code class="xref py py-func docutils literal notranslate"><span class="pre">content_hash()</span></code></a> of <code class="docutils literal notranslate"><span class="pre">collection</span></code>; cached if this cache loaded it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>collection</strong> (<a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="hybrax.train.serialization.PreparedInputCache.store">
+<span class="sig-name descname"><span class="pre">store</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">collection</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">digest</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_variable_order</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_source</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/serialization.html#PreparedInputCache.store"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.serialization.PreparedInputCache.store" title="Link to this definition">¶</a></dt>
+<dd><p>The <code class="xref py py-class docutils literal notranslate"><span class="pre">TrainingDataStore</span></code> of <code class="docutils literal notranslate"><span class="pre">collection</span></code>, built on first use.</p>
+<p><code class="docutils literal notranslate"><span class="pre">digest</span></code> is <code class="docutils literal notranslate"><span class="pre">collection</span></code>’s <a class="reference internal" href="#hybrax.train.serialization.content_hash" title="hybrax.train.serialization.content_hash"><code class="xref py py-meth docutils literal notranslate"><span class="pre">content_hash()</span></code></a>, passed in because
+callers already need it and hashing an external collection is not free.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>collection</strong> (<a class="reference internal" href="../../format/dataclasses/index.html#hybrax.format.dataclasses.BioProcessCollection" title="hybrax.format.dataclasses.BioProcessCollection"><em>hybrax.format.dataclasses.BioProcessCollection</em></a>)</p></li>
+<li><p><strong>digest</strong> (<em>str</em>)</p></li>
+<li><p><strong>target_variable_order</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>target_source</strong> (<em>str</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="../training_data/index.html#hybrax.train.training_data.TrainingDataStore" title="hybrax.train.training_data.TrainingDataStore">hybrax.train.training_data.TrainingDataStore</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="hybrax.train.serialization.ReconstructedTraining">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">hybrax.train.serialization.</span></span><span class="sig-name descname"><span class="pre">ReconstructedTraining</span></span><a class="reference internal" href="../../../../_modules/hybrax/train/serialization.html#ReconstructedTraining"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.serialization.ReconstructedTraining" title="Link to this definition">¶</a></dt>
@@ -773,14 +848,15 @@ can overwrite them. Resolve symlinks so <code class="docutils literal notranslat
 
 <dl class="py function">
 <dt class="sig sig-object py" id="hybrax.train.serialization.reconstruct_training">
-<span class="sig-prename descclassname"><span class="pre">hybrax.train.serialization.</span></span><span class="sig-name descname"><span class="pre">reconstruct_training</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">run_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">document</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_py</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">training_process_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/serialization.html#reconstruct_training"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.serialization.reconstruct_training" title="Link to this definition">¶</a></dt>
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.serialization.</span></span><span class="sig-name descname"><span class="pre">reconstruct_training</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">run_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">document</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_module</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">custom_py</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">training_process_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/serialization.html#reconstruct_training"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.serialization.reconstruct_training" title="Link to this definition">¶</a></dt>
 <dd><p>THE shared reconstruction path — model loading, forward, and ensembles.</p>
 <p>Loads the run’s <strong>own</strong> prepared collection, requires and verifies its
 recorded <code class="docutils literal notranslate"><span class="pre">inputs.prepared_input.content_hash</span></code> <em>before</em> invoking any hook,
 restricts the hook-visible data to the recorded training process names, and
 rebuilds <code class="docutils literal notranslate"><span class="pre">(reaction_module,</span> <span class="pre">loss_module,</span> <span class="pre">template_wrapper)</span></code> exactly as
 training did. Evaluation data plays no part here: callers that evaluate novel
-data build a separate store for their solves.</p>
+data build a separate store for their solves. Pass a shared <code class="docutils literal notranslate"><span class="pre">inputs</span></code> cache
+when reconstructing several models from the same prepared file.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -790,10 +866,34 @@ data build a separate store for their solves.</p>
 <li><p><strong>custom_module</strong> (<em>Any</em><em> | </em><em>None</em>)</p></li>
 <li><p><strong>custom_py</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><em>None</em>)</p></li>
 <li><p><strong>training_process_names</strong> (<em>tuple</em><em>[</em><em>str</em><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>inputs</strong> (<a class="reference internal" href="#hybrax.train.serialization.PreparedInputCache" title="hybrax.train.serialization.PreparedInputCache"><em>PreparedInputCache</em></a><em> | </em><em>None</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="#hybrax.train.serialization.ReconstructedTraining" title="hybrax.train.serialization.ReconstructedTraining">ReconstructedTraining</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="hybrax.train.serialization.resolve_custom_py">
+<span class="sig-prename descclassname"><span class="pre">hybrax.train.serialization.</span></span><span class="sig-name descname"><span class="pre">resolve_custom_py</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">run_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">document</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/serialization.html#resolve_custom_py"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.serialization.resolve_custom_py" title="Link to this definition">¶</a></dt>
+<dd><p>The <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> a run was trained with, checked against its recorded hash.</p>
+<p>Prefers the copy bundled in <code class="docutils literal notranslate"><span class="pre">run_dir</span></code>, which is the file training used; the
+recorded <code class="docutils literal notranslate"><span class="pre">config.custom_py</span></code> path is only a fallback, since the original may
+have been edited since. If the run recorded <code class="docutils literal notranslate"><span class="pre">inputs.custom_py.file_hash</span></code>, the
+chosen file must match it. Runs written before folds recorded the hash load
+unverified. Returns <code class="docutils literal notranslate"><span class="pre">None</span></code> when neither file exists.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>run_dir</strong> (<em>pathlib.Path</em>)</p></li>
+<li><p><strong>config</strong> (<a class="reference internal" href="../run_config/index.html#hybrax.train.run_config.RunConfig" title="hybrax.train.run_config.RunConfig"><em>hybrax.train.run_config.RunConfig</em></a>)</p></li>
+<li><p><strong>document</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>pathlib.Path | None</p>
 </dd>
 </dl>
 </dd></dl>
@@ -1010,6 +1110,12 @@ scales, <code class="docutils literal notranslate"><span class="pre">rhs_ode</sp
 <li><a class="reference internal" href="#classes">Classes</a></li>
 <li><a class="reference internal" href="#functions">Functions</a></li>
 <li><a class="reference internal" href="#module-contents">Module Contents</a><ul>
+<li><a class="reference internal" href="#hybrax.train.serialization.PreparedInputCache"><code class="docutils literal notranslate"><span class="pre">PreparedInputCache</span></code></a><ul>
+<li><a class="reference internal" href="#hybrax.train.serialization.PreparedInputCache.collection"><code class="docutils literal notranslate"><span class="pre">PreparedInputCache.collection()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.serialization.PreparedInputCache.content_hash"><code class="docutils literal notranslate"><span class="pre">PreparedInputCache.content_hash()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.serialization.PreparedInputCache.store"><code class="docutils literal notranslate"><span class="pre">PreparedInputCache.store()</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#hybrax.train.serialization.ReconstructedTraining"><code class="docutils literal notranslate"><span class="pre">ReconstructedTraining</span></code></a><ul>
 <li><a class="reference internal" href="#hybrax.train.serialization.ReconstructedTraining.collection"><code class="docutils literal notranslate"><span class="pre">ReconstructedTraining.collection</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.serialization.ReconstructedTraining.config"><code class="docutils literal notranslate"><span class="pre">ReconstructedTraining.config</span></code></a></li>
@@ -1035,6 +1141,7 @@ scales, <code class="docutils literal notranslate"><span class="pre">rhs_ode</sp
 <li><a class="reference internal" href="#hybrax.train.serialization.read_json"><code class="docutils literal notranslate"><span class="pre">read_json()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.serialization.read_run_config_json"><code class="docutils literal notranslate"><span class="pre">read_run_config_json()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.serialization.reconstruct_training"><code class="docutils literal notranslate"><span class="pre">reconstruct_training()</span></code></a></li>
+<li><a class="reference internal" href="#hybrax.train.serialization.resolve_custom_py"><code class="docutils literal notranslate"><span class="pre">resolve_custom_py()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.serialization.resolve_forward_model_path"><code class="docutils literal notranslate"><span class="pre">resolve_forward_model_path()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.serialization.resolve_model_path"><code class="docutils literal notranslate"><span class="pre">resolve_model_path()</span></code></a></li>
 <li><a class="reference internal" href="#hybrax.train.serialization.resolve_run_dir"><code class="docutils literal notranslate"><span class="pre">resolve_run_dir()</span></code></a></li>

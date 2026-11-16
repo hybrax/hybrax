@@ -470,6 +470,11 @@ overview of what Hybrax can do, see the
 <dt class="sig sig-object py" id="hybrax.train.utils.load_custom_module">
 <span class="sig-prename descclassname"><span class="pre">hybrax.train.utils.</span></span><span class="sig-name descname"><span class="pre">load_custom_module</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">custom_py</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../../../../_modules/hybrax/train/utils.html#load_custom_module"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#hybrax.train.utils.load_custom_module" title="Link to this definition">¶</a></dt>
 <dd><p>Import <code class="docutils literal notranslate"><span class="pre">custom_py</span></code> as a standalone module named <code class="docutils literal notranslate"><span class="pre">hybrax_train_user_custom</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">custom.py</span></code> must be self-contained: only it is saved alongside the model in
+each checkpoint. Before running it, <code class="xref py py-func docutils literal notranslate"><span class="pre">_local_imports()</span></code> checks its
+<code class="docutils literal notranslate"><span class="pre">import</span></code> statements and this raises if one of them loads a file from
+<code class="docutils literal notranslate"><span class="pre">custom.py</span></code>’s own folder. It guards against that common mistake; it cannot
+see imports made by other packages or built at runtime.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>custom_py</strong> (<em>str</em><em> | </em><em>pathlib.Path</em><em> | </em><em>None</em>) – Path to the <code class="docutils literal notranslate"><span class="pre">custom.py</span></code> file, or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
@@ -480,6 +485,7 @@ overview of what Hybrax can do, see the
 <dt class="field-odd">Raises<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>FileNotFoundError</strong> – If <code class="docutils literal notranslate"><span class="pre">custom_py</span></code> does not exist.</p></li>
+<li><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">custom_py</span></code> imports a file from its own folder.</p></li>
 <li><p><strong>ImportError</strong> – If a module spec cannot be built for <code class="docutils literal notranslate"><span class="pre">custom_py</span></code>.</p></li>
 </ul>
 </dd>

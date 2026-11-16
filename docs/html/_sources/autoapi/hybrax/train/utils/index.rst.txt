@@ -46,11 +46,18 @@ Module Contents
 
    Import ``custom_py`` as a standalone module named ``hybrax_train_user_custom``.
 
+   ``custom.py`` must be self-contained: only it is saved alongside the model in
+   each checkpoint. Before running it, :func:`_local_imports` checks its
+   ``import`` statements and this raises if one of them loads a file from
+   ``custom.py``'s own folder. It guards against that common mistake; it cannot
+   see imports made by other packages or built at runtime.
+
    :param custom_py: Path to the ``custom.py`` file, or ``None``.
 
    :returns: The imported module, or ``None`` when ``custom_py`` is ``None``.
 
    :raises FileNotFoundError: If ``custom_py`` does not exist.
+   :raises ValueError: If ``custom_py`` imports a file from its own folder.
    :raises ImportError: If a module spec cannot be built for ``custom_py``.
 
 

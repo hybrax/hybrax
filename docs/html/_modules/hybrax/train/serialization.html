@@ -717,6 +717,36 @@ overview of what Hybrax can do, see the
 <span class="c1"># ---------------------------------------------------------------------------</span>
 
 
+<div class="viewcode-block" id="resolve_custom_py">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/serialization/index.html#hybrax.train.serialization.resolve_custom_py">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">resolve_custom_py</span><span class="p">(</span>
+    <span class="n">run_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">RunConfig</span><span class="p">,</span> <span class="n">document</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""The ``custom.py`` a run was trained with, checked against its recorded hash.</span>
+
+<span class="sd">    Prefers the copy bundled in ``run_dir``, which is the file training used; the</span>
+<span class="sd">    recorded ``config.custom_py`` path is only a fallback, since the original may</span>
+<span class="sd">    have been edited since. If the run recorded ``inputs.custom_py.file_hash``, the</span>
+<span class="sd">    chosen file must match it. Runs written before folds recorded the hash load</span>
+<span class="sd">    unverified. Returns ``None`` when neither file exists.</span>
+<span class="sd">    """</span>
+    <span class="n">bundled</span> <span class="o">=</span> <span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"custom.py"</span>
+    <span class="k">if</span> <span class="n">bundled</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">bundled</span>
+    <span class="k">elif</span> <span class="n">config</span><span class="o">.</span><span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">Path</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">custom_py</span><span class="p">)</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">custom_py</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">recorded</span> <span class="o">=</span> <span class="n">document</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"inputs"</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"custom_py"</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"file_hash"</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">recorded</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">file_hash</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="o">!=</span> <span class="n">recorded</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">path</span><span class="si">}</span><span class="s2"> differs from the custom.py run </span><span class="si">{</span><span class="n">run_dir</span><span class="si">}</span><span class="s2"> was trained with: "</span>
+            <span class="sa">f</span><span class="s2">"recorded </span><span class="si">{</span><span class="n">recorded</span><span class="si">}</span><span class="s2">, got </span><span class="si">{</span><span class="n">file_hash</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
+        <span class="p">)</span>
+    <span class="k">return</span> <span class="n">path</span></div>
+
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">_resolve_prepared</span><span class="p">(</span><span class="n">run_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">RunConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Locate ``prepared.json``: a bundled copy in the run dir, else the</span>
 <span class="sd">    recorded ``data.prepared`` path."""</span>
@@ -746,9 +776,85 @@ overview of what Hybrax can do, see the
     <span class="k">return</span> <span class="n">recorded</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">recorded</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">recorded</span> <span class="k">else</span> <span class="kc">None</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_require_content_hash</span><span class="p">(</span>
-    <span class="n">collection</span><span class="p">:</span> <span class="n">BioProcessCollection</span><span class="p">,</span> <span class="n">document</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="o">*</span><span class="p">,</span> <span class="n">where</span><span class="p">:</span> <span class="n">Path</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<div class="viewcode-block" id="PreparedInputCache">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/serialization/index.html#hybrax.train.serialization.PreparedInputCache">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PreparedInputCache</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""Load, hash and build a store for each prepared input once per forward call.</span>
+
+<span class="sd">    Ensemble members usually share their training input: every fold of a LOO run</span>
+<span class="sd">    records the same prepared file. Reconstructing each member from scratch would</span>
+<span class="sd">    reload that file, rehash the whole collection and rebuild the full store once</span>
+<span class="sd">    per member, which costs far more than evaluating the member. Pass one cache to</span>
+<span class="sd">    every :func:`reconstruct_training` /</span>
+<span class="sd">    :func:`~hybrax.train.harness.forward_from_collection` call of a forward run.</span>
+
+<span class="sd">    Collections are loaded once per path and hashed once, when first needed.</span>
+<span class="sd">    Stores are keyed by content hash, because separate training runs bundle their</span>
+<span class="sd">    own copy of the prepared file: equal copies are loaded and hashed once each</span>
+<span class="sd">    but share one store. Collections the cache did not load are hashed afresh on</span>
+<span class="sd">    every call.</span>
+
+<span class="sd">    Do not mutate collections returned by the cache or stores built by it; they</span>
+<span class="sd">    are shared between models. Entries never expire, so use a fresh cache after</span>
+<span class="sd">    input files change.</span>
+<span class="sd">    """</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_collections</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="n">Path</span><span class="p">,</span> <span class="n">BioProcessCollection</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_hashes</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="n">Path</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_stores</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="nb">str</span><span class="p">],</span> <span class="n">TrainingDataStore</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+
+<div class="viewcode-block" id="PreparedInputCache.collection">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/serialization/index.html#hybrax.train.serialization.PreparedInputCache.collection">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">collection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">BioProcessCollection</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""The collection at ``path``, loaded on first use."""</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">realpath</span><span class="p">(</span><span class="n">path</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_collections</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_collections</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">load_process_collection</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_collections</span><span class="p">[</span><span class="n">key</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="PreparedInputCache.content_hash">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/serialization/index.html#hybrax.train.serialization.PreparedInputCache.content_hash">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">content_hash</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">collection</span><span class="p">:</span> <span class="n">BioProcessCollection</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">""":func:`content_hash` of ``collection``; cached if this cache loaded it."""</span>
+        <span class="k">for</span> <span class="n">path</span><span class="p">,</span> <span class="n">cached</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_collections</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">cached</span> <span class="ow">is</span> <span class="n">collection</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">path</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_hashes</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_hashes</span><span class="p">[</span><span class="n">path</span><span class="p">]</span> <span class="o">=</span> <span class="n">content_hash</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
+                <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_hashes</span><span class="p">[</span><span class="n">path</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">content_hash</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="PreparedInputCache.store">
+<a class="viewcode-back" href="../../../autoapi/hybrax/train/serialization/index.html#hybrax.train.serialization.PreparedInputCache.store">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">store</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">collection</span><span class="p">:</span> <span class="n">BioProcessCollection</span><span class="p">,</span>
+        <span class="n">digest</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">target_variable_order</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">target_source</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TrainingDataStore</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""The :class:`TrainingDataStore` of ``collection``, built on first use.</span>
+
+<span class="sd">        ``digest`` is ``collection``'s :meth:`content_hash`, passed in because</span>
+<span class="sd">        callers already need it and hashing an external collection is not free.</span>
+<span class="sd">        """</span>
+        <span class="n">targets</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">target_variable_order</span> <span class="ow">or</span> <span class="p">())</span>
+        <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">digest</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">target_source</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stores</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_stores</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">TrainingDataStore</span><span class="o">.</span><span class="n">from_collection</span><span class="p">(</span>
+                <span class="n">collection</span><span class="p">,</span>
+                <span class="n">target_variable_order</span><span class="o">=</span><span class="nb">list</span><span class="p">(</span><span class="n">targets</span><span class="p">)</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">target_source</span><span class="o">=</span><span class="n">target_source</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stores</span><span class="p">[</span><span class="n">key</span><span class="p">]</span></div>
+</div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_require_content_hash</span><span class="p">(</span><span class="n">actual</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">document</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span> <span class="o">*</span><span class="p">,</span> <span class="n">where</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""Verify a run's recorded prepared ``content_hash`` — before any hook runs.</span>
 
 <span class="sd">    On the shared reconstruction path a *missing* record is an error too: a model</span>
@@ -762,7 +868,6 @@ overview of what Hybrax can do, see the
             <span class="sa">f</span><span class="s2">"run </span><span class="si">{</span><span class="n">where</span><span class="si">}</span><span class="s2"> records no inputs.prepared_input.content_hash; its model "</span>
             <span class="s2">"cannot be reconstructed from unverified training input"</span>
         <span class="p">)</span>
-    <span class="n">actual</span> <span class="o">=</span> <span class="n">content_hash</span><span class="p">(</span><span class="n">collection</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">actual</span> <span class="o">!=</span> <span class="n">recorded</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
             <span class="sa">f</span><span class="s2">"prepared.json data for run </span><span class="si">{</span><span class="n">where</span><span class="si">}</span><span class="s2"> differs from the run's record: "</span>
@@ -805,6 +910,7 @@ overview of what Hybrax can do, see the
     <span class="n">custom_module</span><span class="p">:</span> <span class="n">Any</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">custom_py</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="n">training_process_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">inputs</span><span class="p">:</span> <span class="n">PreparedInputCache</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ReconstructedTraining</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">"""THE shared reconstruction path — model loading, forward, and ensembles.</span>
 
@@ -813,7 +919,8 @@ overview of what Hybrax can do, see the
 <span class="sd">    restricts the hook-visible data to the recorded training process names, and</span>
 <span class="sd">    rebuilds ``(reaction_module, loss_module, template_wrapper)`` exactly as</span>
 <span class="sd">    training did. Evaluation data plays no part here: callers that evaluate novel</span>
-<span class="sd">    data build a separate store for their solves.</span>
+<span class="sd">    data build a separate store for their solves. Pass a shared ``inputs`` cache</span>
+<span class="sd">    when reconstructing several models from the same prepared file.</span>
 <span class="sd">    """</span>
     <span class="c1"># Lazy import to avoid an import cycle (harness imports this module's twins).</span>
     <span class="kn">from</span><span class="w"> </span><span class="nn">.harness</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
@@ -828,23 +935,21 @@ overview of what Hybrax can do, see the
         <span class="n">config</span> <span class="o">=</span> <span class="n">parsed_config</span> <span class="k">if</span> <span class="n">config</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">config</span>
         <span class="n">document</span> <span class="o">=</span> <span class="n">parsed_document</span> <span class="k">if</span> <span class="n">document</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">document</span>
 
+    <span class="n">inputs</span> <span class="o">=</span> <span class="n">inputs</span> <span class="ow">or</span> <span class="n">PreparedInputCache</span><span class="p">()</span>
     <span class="n">prepared</span> <span class="o">=</span> <span class="n">_resolve_prepared</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
-    <span class="n">collection</span> <span class="o">=</span> <span class="n">load_process_collection</span><span class="p">(</span><span class="n">prepared</span><span class="p">)</span>
-    <span class="n">verified_hash</span> <span class="o">=</span> <span class="n">_require_content_hash</span><span class="p">(</span><span class="n">collection</span><span class="p">,</span> <span class="n">document</span><span class="p">,</span> <span class="n">where</span><span class="o">=</span><span class="n">run_dir</span><span class="p">)</span>
+    <span class="n">collection</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">collection</span><span class="p">(</span><span class="n">prepared</span><span class="p">)</span>
+    <span class="n">verified_hash</span> <span class="o">=</span> <span class="n">_require_content_hash</span><span class="p">(</span>
+        <span class="n">inputs</span><span class="o">.</span><span class="n">content_hash</span><span class="p">(</span><span class="n">collection</span><span class="p">),</span> <span class="n">document</span><span class="p">,</span> <span class="n">where</span><span class="o">=</span><span class="n">run_dir</span>
+    <span class="p">)</span>
 
-    <span class="k">if</span> <span class="n">custom_module</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">bundled_custom</span> <span class="o">=</span> <span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"custom.py"</span>
-        <span class="k">if</span> <span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">custom_module</span> <span class="o">=</span> <span class="n">load_custom_module</span><span class="p">(</span><span class="n">custom_py</span><span class="p">)</span>
-        <span class="k">elif</span> <span class="n">bundled_custom</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
-            <span class="n">custom_module</span> <span class="o">=</span> <span class="n">load_custom_module</span><span class="p">(</span><span class="n">bundled_custom</span><span class="p">)</span>
+    <span class="c1"># An explicit custom_py overrides the run's own, unchecked.</span>
+    <span class="k">if</span> <span class="n">custom_py</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">custom_py</span> <span class="o">=</span> <span class="n">resolve_custom_py</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">document</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">custom_module</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">custom_module</span> <span class="o">=</span> <span class="n">load_custom_module</span><span class="p">(</span><span class="n">custom_py</span><span class="p">)</span>
     <span class="c1"># Public model_predict rebuilds the solver hook from the returned config.</span>
-    <span class="c1"># Prefer the bundled module so moving a run does not depend on its source tree.</span>
-    <span class="n">bundled_custom</span> <span class="o">=</span> <span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"custom.py"</span>
-    <span class="k">if</span> <span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">bundled_custom</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
-        <span class="n">config</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span>
-            <span class="n">update</span><span class="o">=</span><span class="p">{</span><span class="s2">"custom_py"</span><span class="p">:</span> <span class="n">Path</span><span class="p">(</span><span class="n">custom_py</span><span class="p">)</span> <span class="k">if</span> <span class="n">custom_py</span> <span class="k">else</span> <span class="n">bundled_custom</span><span class="p">}</span>
-        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">config</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="p">{</span><span class="s2">"custom_py"</span><span class="p">:</span> <span class="n">Path</span><span class="p">(</span><span class="n">custom_py</span><span class="p">)})</span>
     <span class="c1"># config.custom comes back from config.json as a raw dict; re-wrap it in the</span>
     <span class="c1"># typed object the hooks expect (mirrors a fresh run's get_custom_config).</span>
     <span class="n">config</span> <span class="o">=</span> <span class="n">reresolve_custom</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">custom_module</span><span class="p">)</span>
@@ -853,8 +958,9 @@ overview of what Hybrax can do, see the
     <span class="n">target_source</span> <span class="o">=</span> <span class="p">(</span>
         <span class="n">config</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">target_source</span> <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">TARGET_SOURCE_AUTO</span>
     <span class="p">)</span>
-    <span class="n">store</span> <span class="o">=</span> <span class="n">TrainingDataStore</span><span class="o">.</span><span class="n">from_collection</span><span class="p">(</span>
+    <span class="n">store</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">store</span><span class="p">(</span>
         <span class="n">collection</span><span class="p">,</span>
+        <span class="n">verified_hash</span><span class="p">,</span>
         <span class="n">target_variable_order</span><span class="o">=</span><span class="n">targets</span><span class="p">,</span>
         <span class="n">target_source</span><span class="o">=</span><span class="n">target_source</span><span class="p">,</span>
     <span class="p">)</span>
@@ -1090,11 +1196,11 @@ overview of what Hybrax can do, see the
 <span class="sd">       run. When in doubt, pay for :func:`model_load`.</span>
 <span class="sd">    """</span>
     <span class="n">run_dir</span><span class="p">,</span> <span class="n">params_path</span> <span class="o">=</span> <span class="n">resolve_model_path</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
-    <span class="n">config</span><span class="p">,</span> <span class="n">_document</span> <span class="o">=</span> <span class="n">read_run_config_json</span><span class="p">(</span><span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"config.json"</span><span class="p">)</span>
+    <span class="n">config</span><span class="p">,</span> <span class="n">document</span> <span class="o">=</span> <span class="n">read_run_config_json</span><span class="p">(</span><span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"config.json"</span><span class="p">)</span>
 
-    <span class="n">bundled_custom</span> <span class="o">=</span> <span class="n">run_dir</span> <span class="o">/</span> <span class="s2">"custom.py"</span>
-    <span class="k">if</span> <span class="n">bundled_custom</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
-        <span class="n">config</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="p">{</span><span class="s2">"custom_py"</span><span class="p">:</span> <span class="n">bundled_custom</span><span class="p">})</span>
+    <span class="n">custom_py</span> <span class="o">=</span> <span class="n">resolve_custom_py</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">document</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">custom_py</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">config</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">model_copy</span><span class="p">(</span><span class="n">update</span><span class="o">=</span><span class="p">{</span><span class="s2">"custom_py"</span><span class="p">:</span> <span class="n">custom_py</span><span class="p">})</span>
     <span class="n">config</span> <span class="o">=</span> <span class="n">reresolve_custom</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">load_custom_module</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">custom_py</span><span class="p">))</span>
     <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
         <span class="s2">"model_reload(</span><span class="si">%s</span><span class="s2">): refreshing trainable leaves only. The static half "</span>

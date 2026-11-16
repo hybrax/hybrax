@@ -1416,6 +1416,10 @@ is stiff. With the half-saturation constant fixed at <span class="math notransla
 uptake drops from its maximum to zero within a tiny glycerol range, so near
 depletion glycerol changes on time scales far shorter than the process. An
 explicit solver would need very small steps there.
+Implicit solvers handle stiff problems but cost more per step than explicit
+solvers such as Tsit5. Alternatively, increasing <span class="math notranslate nohighlight">\(K_G\)</span>, for example to
+<span class="math notranslate nohighlight">\(1\,\mathrm{g/kg}\)</span>, makes the problem less stiff and might allow an explicit
+solver.
 Before training, Hybrax integrates all controls together and checks whether each
 continuous feed integrates to its known cumulative increment within 1%. The
 smoothed feeds pass this preflight with these solver settings. This diagnostic
@@ -1468,7 +1472,7 @@ hybrax<span class="w"> </span>train<span class="w"> </span>--config<span class="
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.14494 last_mean_loss=0.00647081 delta=-0.13847
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>INFO __main__: training complete: first_mean_loss=0.14494 last_mean_loss=0.00646188 delta=-0.138478
 Run directory: docs/source/_data/out/runs/gallery_optfed/run/
 </pre></div>
 </div>
@@ -1504,10 +1508,10 @@ uses the pooled, scaled scores.</p>
 </details><div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
 <div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Selected checkpoint: step_00500
-biomass    R2 = 0.8626
-glycerol   R2 = 0.9500
-product    R2 = 0.8482
-P_X        R2 = 0.8163
+biomass    R2 = 0.8636
+glycerol   R2 = 0.9499
+product    R2 = 0.8478
+P_X        R2 = 0.8158
 </pre></div>
 </div>
 </div>
@@ -1551,7 +1555,7 @@ P_X        R2 = 0.8163
       <td id="T_optfed_parameters_row2_col0" class="data row2 col0" >generation_inhibition</td>
       <td id="T_optfed_parameters_row2_col1" class="data row2 col1" >generations</td>
       <td id="T_optfed_parameters_row2_col2" class="data row2 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row2_col3" class="data row2 col3" >1.52</td>
+      <td id="T_optfed_parameters_row2_col3" class="data row2 col3" >1.53</td>
       <td id="T_optfed_parameters_row2_col4" class="data row2 col4" >1e+04</td>
     </tr>
     <tr>
@@ -1559,7 +1563,7 @@ P_X        R2 = 0.8163
       <td id="T_optfed_parameters_row3_col0" class="data row3 col0" >glycerol_inhibition</td>
       <td id="T_optfed_parameters_row3_col1" class="data row3 col1" >g/kg</td>
       <td id="T_optfed_parameters_row3_col2" class="data row3 col2" >1e-05</td>
-      <td id="T_optfed_parameters_row3_col3" class="data row3 col3" >301</td>
+      <td id="T_optfed_parameters_row3_col3" class="data row3 col3" >307</td>
       <td id="T_optfed_parameters_row3_col4" class="data row3 col4" >1e+04</td>
     </tr>
     <tr>
@@ -1567,7 +1571,7 @@ P_X        R2 = 0.8163
       <td id="T_optfed_parameters_row4_col0" class="data row4 col0" >inactivation_enthalpy</td>
       <td id="T_optfed_parameters_row4_col1" class="data row4 col1" >J/mol</td>
       <td id="T_optfed_parameters_row4_col2" class="data row4 col2" >1e+05</td>
-      <td id="T_optfed_parameters_row4_col3" class="data row4 col3" >3.77e+06</td>
+      <td id="T_optfed_parameters_row4_col3" class="data row4 col3" >3.79e+06</td>
       <td id="T_optfed_parameters_row4_col4" class="data row4 col4" >1e+07</td>
     </tr>
     <tr>
@@ -1575,7 +1579,7 @@ P_X        R2 = 0.8163
       <td id="T_optfed_parameters_row5_col0" class="data row5 col0" >maintenance</td>
       <td id="T_optfed_parameters_row5_col1" class="data row5 col1" >g_G/(g_A h)</td>
       <td id="T_optfed_parameters_row5_col2" class="data row5 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row5_col3" class="data row5 col3" >0.00457</td>
+      <td id="T_optfed_parameters_row5_col3" class="data row5 col3" >0.00451</td>
       <td id="T_optfed_parameters_row5_col4" class="data row5 col4" >1</td>
     </tr>
     <tr>
@@ -1583,7 +1587,7 @@ P_X        R2 = 0.8163
       <td id="T_optfed_parameters_row6_col0" class="data row6 col0" >product_maintenance</td>
       <td id="T_optfed_parameters_row6_col1" class="data row6 col1" >g_X/g_P</td>
       <td id="T_optfed_parameters_row6_col2" class="data row6 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row6_col3" class="data row6 col3" >21.4</td>
+      <td id="T_optfed_parameters_row6_col3" class="data row6 col3" >21.7</td>
       <td id="T_optfed_parameters_row6_col4" class="data row6 col4" >1e+06</td>
     </tr>
     <tr>
@@ -1591,7 +1595,7 @@ P_X        R2 = 0.8163
       <td id="T_optfed_parameters_row7_col0" class="data row7 col0" >production_half_saturation</td>
       <td id="T_optfed_parameters_row7_col1" class="data row7 col1" >g_G/(g_A h)</td>
       <td id="T_optfed_parameters_row7_col2" class="data row7 col2" >1e-12</td>
-      <td id="T_optfed_parameters_row7_col3" class="data row7 col3" >0.276</td>
+      <td id="T_optfed_parameters_row7_col3" class="data row7 col3" >0.277</td>
       <td id="T_optfed_parameters_row7_col4" class="data row7 col4" >100</td>
     </tr>
     <tr>
@@ -1624,7 +1628,7 @@ P_X        R2 = 0.8163
 </div>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Maximum reactor-mass error at exported times: 0.00145728 kg
+<div class="output stream highlight-myst-ansi notranslate"><div class="highlight"><pre><span></span>Maximum reactor-mass error at exported times: 0.00153064 kg
 </pre></div>
 </div>
 </div>
@@ -1681,7 +1685,7 @@ unseen processes.</p>
       <th id="T_optfed_comparison_level0_row1" class="row_heading level0 row1" >Hybrax</th>
       <td id="T_optfed_comparison_row1_col0" class="data row1 col0" >0.881</td>
       <td id="T_optfed_comparison_row1_col1" class="data row1 col1" >0.0806</td>
-      <td id="T_optfed_comparison_row1_col2" class="data row1 col2" >0.863</td>
+      <td id="T_optfed_comparison_row1_col2" class="data row1 col2" >0.864</td>
       <td id="T_optfed_comparison_row1_col3" class="data row1 col3" >0.848</td>
       <td id="T_optfed_comparison_row1_col4" class="data row1 col4" >0.816</td>
       <td id="T_optfed_comparison_row1_col5" class="data row1 col5" >0.127</td>
@@ -1729,7 +1733,7 @@ The bundled <a class="reference download internal" download="" href="../_downloa
 comparison run without downloading or refitting OptFed.</p>
 <div class="cell tag_remove-input docutils container">
 <div class="cell_output docutils container">
-<img alt="../_images/c4bbf1a137dd2e6583b6f558badb3c9471761c410f34fbd66713ebf93637bcaf.png" src="../_images/c4bbf1a137dd2e6583b6f558badb3c9471761c410f34fbd66713ebf93637bcaf.png" />
+<img alt="../_images/194d0298074752ac215abd5d477b91fd05995981360ee23fc179eff1b6cde1c2.png" src="../_images/194d0298074752ac215abd5d477b91fd05995981360ee23fc179eff1b6cde1c2.png" />
 </div>
 </div>
 </section>

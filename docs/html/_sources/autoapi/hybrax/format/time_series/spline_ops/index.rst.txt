@@ -104,6 +104,11 @@ Module Contents
 
    Express spline coeffs on a refined breakpoint grid.
 
+   Each target piece starts at a target break ``u``; it takes the source piece
+   containing ``u`` (clamped to the first/last piece outside the source range)
+   and shifts that piece's origin to ``u``, as :func:`rebase_piece` does for one
+   piece. All pieces are rebased at once.
+
 
 .. py:function:: validate_side(side, *, name = 'side')
 
