@@ -80,6 +80,7 @@ from .serialization import (
     environment_versions as _environment_versions,
 )
 from .training_data import TARGET_SOURCE_AUTO
+from .utils import load_custom_module
 
 
 def _now_iso() -> str:
@@ -923,7 +924,18 @@ def _handle_forward(args: argparse.Namespace) -> int:
     # Ensemble members usually share their training and evaluation inputs (e.g.
     # all LOO folds); load, hash and build each shared input only once.
     inputs = PreparedInputCache()
+    # One module per distinct custom.py content: LOO folds each record their own
+    # copy of the same file, and a fresh import per model would give every model
+    # new classes and thus a new JIT cache key, recompiling the evaluation.
+    # custom.py is self-contained, so equal content means an equal module.
+    custom_modules: dict[str, Any] = {}
     for name, _run_dir, params_path, model_cfg, prepared, custom_py in bundles:
+        custom_module = None
+        if custom_py is not None:
+            source_hash = file_hash(custom_py)
+            if source_hash not in custom_modules:
+                custom_modules[source_hash] = load_custom_module(custom_py)
+            custom_module = custom_modules[source_hash]
         collection = inputs.collection(prepared)
         if plot_collection is None:
             plot_collection = collection
@@ -982,6 +994,7 @@ def _handle_forward(args: argparse.Namespace) -> int:
             config=fwd_cfg,
             custom_py=custom_py,
             run_config=model_cfg,
+            custom_module=custom_module,
             training_process_names=training_processes,
             prediction_process_names=prediction_processes,
             inputs=inputs,

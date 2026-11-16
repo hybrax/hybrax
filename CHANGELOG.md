@@ -18,6 +18,10 @@ public API; such entries are marked **Breaking**.
   per run instead of once per model. A 12-model LOO ensemble forward took 62 s
   instead of 280 s. `forward_from_collection` and `reconstruct_training` take an
   optional `PreparedInputCache` to share this work between calls.
+- `hybrax forward` imports each distinct `custom.py` once per run instead of once
+  per model, so the evaluation compiles once instead of for every model (12-model
+  LOO ensemble: 35 s instead of 60 s). Module-level state in `custom.py` is now
+  shared between ensemble models whose `custom.py` files have the same content.
 - **Breaking:** loading a `custom.py` raises `ValueError` if one of its `import`
   statements loads a file from its own folder (a helper module, or a package
   installed in editable mode from there). Only `custom.py` is saved with a model,

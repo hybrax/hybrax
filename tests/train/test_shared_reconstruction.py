@@ -39,7 +39,9 @@ from hybrax.format.dataclasses import (
     TimeSeries,
 )
 from hybrax.format.serialization import load_process_collection, save_process_collection
+from hybrax.train import cli as cli_module
 from hybrax.train import harness
+from hybrax.train import serialization as serialization_module
 from hybrax.train.cli import main
 from hybrax.train.harness import ForwardConfig, forward_from_collection
 from hybrax.train.serialization import content_hash, reconstruct_training
@@ -777,10 +779,14 @@ def test_ensemble_forward_rebuilds_each_model_from_its_own_input(tmp_path: Path)
     assert len(list((output_dir / "models").glob("*/losses.csv"))) == 2
 
 
-def test_ensemble_forward_builds_a_shared_training_store_once(
+def test_ensemble_forward_shares_the_training_store_and_custom_module(
     tmp_path: Path, monkeypatch
 ):
-    """Separate runs bundle their own copy of one input; the store is built once."""
+    """Separate runs bundle their own copies of one input and one custom.py.
+
+    The store is built once and custom.py imported once, so every model's wrapper
+    has the same classes and the evaluation compiles only once.
+    """
     prepared = _write_prepared(
         tmp_path / "prepared.json", {"p1": (1.0, 0.8, 0.64), "p2": (7.0, 5.6, 4.5)}
     )
@@ -792,6 +798,14 @@ def test_ensemble_forward_builds_a_shared_training_store_once(
         "from_collection",
         lambda *args, **kwargs: builds.append(1) or build(*args, **kwargs),
     )
+    imports = []
+    for module in (cli_module, serialization_module):
+        load = module.load_custom_module
+        monkeypatch.setattr(
+            module,
+            "load_custom_module",
+            lambda path, load=load: imports.append(path) or load(path),
+        )
     forward_config = tmp_path / "forward-config.json"
     forward_config.write_text(
         json.dumps(
@@ -806,3 +820,4 @@ def test_ensemble_forward_builds_a_shared_training_store_once(
 
     assert main(["forward", "--config", str(forward_config)]) == 0
     assert len(builds) == 1
+    assert len(imports) == 1
