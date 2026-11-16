@@ -146,11 +146,13 @@ A runnable version, with the scale hook filled in, is in
 
 - **`custom.py` is copied into the run directory** and is part of the model. Reconstruction
   re-runs your hooks, so a run directory without it cannot be loaded.
-- **Keep `custom.py` self-contained.** Import only installed packages, not other local
-  files. Only `custom.py` itself is copied into the run directory, so a helper module
-  next to it is not saved with the model: loading the model later either fails or
-  silently uses whatever version of the helper is on disk then. Put code shared
-  between projects into an installed package.
+- **`custom.py` must be self-contained.** Only `custom.py` itself is saved alongside
+  the model in each checkpoint, so it has to contain all the helpers it uses. Do not
+  import other files from its folder. Loading a `custom.py` raises `ValueError` if
+  one of its `import` statements, anywhere in the file including inside a hook,
+  loads a file from its own folder or below, including a package installed in
+  editable mode from there. This catches the common mistake; it does not see
+  imports made by other packages or built at runtime.
 - **A missing `custom_py` *path*** is a `FileNotFoundError`; a missing *hook inside* it is
   silent. Two very different failure modes.
 - **Treat hook arguments as read-only.** Hooks must not modify the objects they receive:

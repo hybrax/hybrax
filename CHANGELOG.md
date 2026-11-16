@@ -18,6 +18,10 @@ public API; such entries are marked **Breaking**.
   per run instead of once per model. A 12-model LOO ensemble forward took 62 s
   instead of 280 s. `forward_from_collection` and `reconstruct_training` take an
   optional `PreparedInputCache` to share this work between calls.
+- **Breaking:** loading a `custom.py` raises `ValueError` if one of its `import`
+  statements loads a file from its own folder (a helper module, or a package
+  installed in editable mode from there). Only `custom.py` is saved with a model,
+  so such code did not travel with runs and checkpoints.
 
 ### Fixed
 

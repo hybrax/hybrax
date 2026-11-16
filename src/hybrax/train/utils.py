@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import ast
+import site
 import sys
-from importlib.util import module_from_spec, spec_from_file_location
+import sysconfig
+from importlib.util import find_spec, module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -15,6 +18,12 @@ CUSTOM_MODULE_NAME = "hybrax_train_user_custom"
 def load_custom_module(custom_py: str | Path | None) -> ModuleType | None:
     """Import ``custom_py`` as a standalone module named ``hybrax_train_user_custom``.
 
+    ``custom.py`` must be self-contained: only it is saved alongside the model in
+    each checkpoint. Before running it, :func:`_local_imports` checks its
+    ``import`` statements and this raises if one of them loads a file from
+    ``custom.py``'s own folder. It guards against that common mistake; it cannot
+    see imports made by other packages or built at runtime.
+
     Args:
         custom_py: Path to the ``custom.py`` file, or ``None``.
 
@@ -23,6 +32,7 @@ def load_custom_module(custom_py: str | Path | None) -> ModuleType | None:
 
     Raises:
         FileNotFoundError: If ``custom_py`` does not exist.
+        ValueError: If ``custom_py`` imports a file from its own folder.
         ImportError: If a module spec cannot be built for ``custom_py``.
     """
     if custom_py is None:
@@ -32,6 +42,16 @@ def load_custom_module(custom_py: str | Path | None) -> ModuleType | None:
     if not path.exists():
         raise FileNotFoundError(f"custom.py path does not exist: {path}")
 
+    local = _local_imports(path)
+    if local:
+        files = ", ".join(local)
+        raise ValueError(
+            f"custom.py must be self-contained, but {path} imports code from its "
+            f"own folder: {files}. Only custom.py is saved alongside the model in "
+            "each checkpoint. Therefore, it needs to contain all the helpers etc. it "
+            f"uses. Please copy the contents of {files} into custom.py."
+        )
+
     spec = spec_from_file_location(CUSTOM_MODULE_NAME, path)
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not load custom module from {path}")
@@ -40,6 +60,65 @@ def load_custom_module(custom_py: str | Path | None) -> ModuleType | None:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _local_imports(custom_py: Path) -> list[str]:
+    """Files in ``custom_py``'s folder tree that its ``import`` statements load.
+
+    Reads every ``import`` statement in the source, including ones inside
+    functions, and locates each top-level module with :func:`find_spec`, which
+    does not run it and also reports where an already imported module came from.
+    Modules in the interpreter's standard library or site-packages are exempt, so
+    a virtual environment inside the project folder does not count. Returns paths
+    relative to the folder, e.g. ``helpers.py`` or ``mypkg/`` for a package.
+    """
+    # Bytes, so Python applies the same encoding rules as when importing.
+    tree = ast.parse(custom_py.read_bytes(), filename=str(custom_py))
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(alias.name.partition(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0:
+            names.add(node.module.partition(".")[0])
+
+    folder = custom_py.resolve().parent
+    environment = [
+        Path(p).resolve()
+        for p in (
+            *(
+                sysconfig.get_path(key)
+                for key in ("stdlib", "platstdlib", "purelib", "platlib")
+            ),
+            *site.getsitepackages(),
+            site.getusersitepackages(),
+        )
+    ]
+
+    def is_local(location: Path) -> bool:
+        return location.is_relative_to(folder) and not any(
+            location.is_relative_to(directory) for directory in environment
+        )
+
+    local = []
+    for name in sorted(names):
+        spec = find_spec(name)
+        if spec is None:  # not importable; running custom.py reports that
+            continue
+        # A namespace package has no file, only search locations.
+        locations = (
+            [spec.origin]
+            if spec.has_location
+            else list(spec.submodule_search_locations or ())
+        )
+        for location in (Path(location).resolve() for location in locations):
+            if is_local(location):
+                relative = location.relative_to(folder)
+                if relative.name == "__init__.py":
+                    relative = relative.parent
+                is_package = (folder / relative).is_dir()
+                local.append(relative.as_posix() + ("/" if is_package else ""))
+                break
+    return local
 
 
 def resolve_config(module: ModuleType | None, config: Any | None) -> dict[str, Any]:
