@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from scipy.interpolate import CubicSpline
 
-from hybrax.format.time_series import PPoly, TimeSeries
+from hybrax.format.time_series import PPoly, TimeSeries, spline_ops
 
 
 def test_ppoly_scalar_side_extrapolation_and_derivative() -> None:
@@ -112,3 +112,24 @@ def test_timeseries_rejects_mismatched_owned_ppoly_and_spline_state() -> None:
             coeffs=[[1.0, 3.0, 0.0, 0.0]],
             segment_start_piece_idx=[0],
         )
+
+
+def test_rebase_to_breaks_shifts_each_piece_like_rebase_piece():
+    """Every target piece is its containing source piece rebased to its start."""
+    rng = np.random.default_rng(0)
+    breaks = np.array([0.0, 1.0, 2.5, 4.0])
+    coeffs = rng.normal(size=(3, 4))
+    # Inside, on and between source breaks, plus targets before/after the range,
+    # which use the first/last source piece.
+    target = np.array([-1.0, 0.0, 0.3, 1.0, 1.7, 2.5, 3.9, 4.0, 5.0])
+
+    rebased = np.asarray(spline_ops.rebase_to_breaks(breaks, coeffs, target))
+
+    source = [0, 0, 0, 1, 1, 2, 2, 2]  # the piece each target piece starts in
+    expected = np.stack(
+        [
+            spline_ops.rebase_piece(coeffs[i], start - breaks[i])
+            for i, start in zip(source, target[:-1], strict=True)
+        ]
+    )
+    np.testing.assert_array_equal(rebased, expected)

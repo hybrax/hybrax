@@ -76,18 +76,29 @@ def rebase_to_breaks(
     coeffs: jnp.ndarray,
     target_breaks: jnp.ndarray,
 ) -> jnp.ndarray:
-    """Express spline coeffs on a refined breakpoint grid."""
+    """Express spline coeffs on a refined breakpoint grid.
+
+    Each target piece starts at a target break ``u``; it takes the source piece
+    containing ``u`` (clamped to the first/last piece outside the source range)
+    and shifts that piece's origin to ``u``, as :func:`rebase_piece` does for one
+    piece. All pieces are rebased at once.
+    """
     src_b = np.asarray(breaks, dtype=np.float64)
     src_c = np.asarray(coeffs, dtype=np.float64)
-    tgt_b = np.asarray(target_breaks, dtype=np.float64)
-    n_out = tgt_b.shape[0] - 1
-    out = np.zeros((n_out, 4), dtype=np.float64)
-    for i in range(n_out):
-        u = float(tgt_b[i])
-        src_idx = int(np.searchsorted(src_b, u, side="right") - 1)
-        src_idx = int(np.clip(src_idx, 0, src_c.shape[0] - 1))
-        shift = u - float(src_b[src_idx])
-        out[i] = rebase_piece(src_c[src_idx], shift)
+    starts = np.asarray(target_breaks, dtype=np.float64)[:-1]
+    src_idx = np.searchsorted(src_b, starts, side="right") - 1
+    src_idx = np.clip(src_idx, 0, src_c.shape[0] - 1)
+    s = starts - src_b[src_idx]
+    a, b, c, d = src_c[src_idx].T
+    out = np.stack(
+        [
+            a + b * s + c * s * s + d * s * s * s,
+            b + 2.0 * c * s + 3.0 * d * s * s,
+            c + 3.0 * d * s,
+            d,
+        ],
+        axis=1,
+    )
     return jnp.asarray(out, dtype=jnp.float64)
 
 

@@ -28,6 +28,8 @@ public API; such entries are marked **Breaking**.
   time. Before, `hybrax forward` preferred the original file, which may have been
   edited since. LOO folds now record this hash too; folds trained before this
   change load unverified.
+- Building the training data store, at the start of `prepare`, `train`, `loo` and
+  `forward`, is about three times faster (195 processes: 3.7 s instead of 10.6 s).
 - **Breaking:** loading a `custom.py` raises `ValueError` if one of its `import`
   statements loads a file from its own folder (a helper module, or a package
   installed in editable mode from there). Only `custom.py` is saved with a model,

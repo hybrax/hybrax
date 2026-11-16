@@ -242,13 +242,13 @@ def test_controls_store_reuses_rhs_names_for_output_bounds(monkeypatch):
     collection = BioProcessCollection(processes=processes, metadata={})
     expected_bounds = _output_window_bounds(collection, list(processes))
     build_calls = []
-    original_build_rhs_ode = controls_store_module.build_rhs_ode
+    original_ordering = controls_store_module.get_process_ordering
 
-    def counted_build_rhs_ode(process):
+    def counted_ordering(process):
         build_calls.append(process.metadata.name)
-        return original_build_rhs_ode(process)
+        return original_ordering(process)
 
-    monkeypatch.setattr(controls_store_module, "build_rhs_ode", counted_build_rhs_ode)
+    monkeypatch.setattr(controls_store_module, "get_process_ordering", counted_ordering)
     store = ControlsStore.from_collection(collection)
 
     assert build_calls == list(processes)
@@ -272,13 +272,13 @@ def test_training_selection_reuses_rhs_names_for_output_bounds(monkeypatch):
     )
     expected_bounds = _output_window_bounds(selected_collection, ["b"])
     build_calls = []
-    original_build_rhs_ode = controls_store_module.build_rhs_ode
+    original_ordering = controls_store_module.get_process_ordering
 
-    def counted_build_rhs_ode(process):
+    def counted_ordering(process):
         build_calls.append(process.metadata.name)
-        return original_build_rhs_ode(process)
+        return original_ordering(process)
 
-    monkeypatch.setattr(controls_store_module, "build_rhs_ode", counted_build_rhs_ode)
+    monkeypatch.setattr(controls_store_module, "get_process_ordering", counted_ordering)
 
     standalone = store.controls_store.select_processes(("b",), selected_collection)
     assert build_calls == ["b"]

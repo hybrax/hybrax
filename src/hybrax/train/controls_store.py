@@ -38,7 +38,7 @@ from hybrax.format.dataclasses import (
     BioProcess,
     BioProcessCollection,
 )
-from hybrax.format.mechanistic import build_rhs_ode
+from hybrax.format.mechanistic import get_process_ordering
 from hybrax.format.serialization import load_process_collection
 from hybrax.format.time_series.spline_ops import rebase_piece
 
@@ -140,7 +140,7 @@ def _output_window_bounds(
             continue
         t0, t1 = float(measured[0]), float(measured[-1])
         species_names = (
-            tuple(build_rhs_ode(process).name_modeled_RMCs)
+            tuple(get_process_ordering(process).name_modeled_RMCs)
             if modeled_rmc_names_by_process is None
             else modeled_rmc_names_by_process[process_name]
         )
@@ -1052,7 +1052,7 @@ class ControlsStore(eqx.Module):
         for process_name in process_order:
             process = collection.processes[process_name]
             bundle = process_bundles[process_name]
-            species_names = tuple(build_rhs_ode(process).name_modeled_RMCs)
+            species_names = tuple(get_process_ordering(process).name_modeled_RMCs)
             modeled_rmc_names_by_process[process_name] = species_names
             if reference_species is None:
                 reference_species = species_names
