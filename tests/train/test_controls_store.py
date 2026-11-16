@@ -1025,3 +1025,18 @@ def test_spline_control_derivative_preserves_cubic_pieces(side):
         [2.0, 2.0, 4.25, 20.0 if side == "left" else -3.0, 0.5, 1.0, -1.5]
     )
     np.testing.assert_array_equal(source.derivative(times), expected)
+
+
+def test_selected_store_metadata_is_independent_of_the_full_store():
+    """Hooks get a selection; writing into its metadata must not reach the store."""
+    collection = _make_two_process_collection()
+    store = ControlsStore.from_collection(collection)
+    selected = store.select_processes(
+        ("p1",),
+        dataclasses.replace(collection, processes={"p1": collection.processes["p1"]}),
+    )
+    name = next(iter(store.get_controls("p1").control_metadata))
+
+    selected.get_controls("p1").control_metadata[name]["source"] = "tampered"
+
+    assert store.get_controls("p1").control_metadata[name]["source"] != "tampered"

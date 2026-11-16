@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import itertools
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -1320,8 +1321,10 @@ class ControlsStore(eqx.Module):
             bolus_event_mask=bolus_event_mask[:, :max_bolus_events],
             max_event_gap_fraction=gap_fraction,
             max_measurements_per_event_gap=measurements_per_gap,
+            # Copied: the selection is handed to user hooks (``runtime_data``), and a
+            # hook writing into a process's metadata must not change the full store.
             _process_md_by_name={
-                name: self._process_md_by_name[name] for name in process_names
+                name: deepcopy(self._process_md_by_name[name]) for name in process_names
             },
         )
 

@@ -15,6 +15,12 @@ public API; such entries are marked **Breaking**.
   about 8% on OptFed with `Kvaerno5`. Explicit solvers such as `Tsit5` ran as fast
   as before.
 
+### Fixed
+
+- An `estimate_all_scales` hook that wrote into the control metadata of
+  `runtime_data` no longer changes the full training store, and with it later
+  LOO folds or ensemble models.
+
 ## [0.3.0] - 2026-11-15
 
 ### Added
