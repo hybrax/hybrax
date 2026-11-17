@@ -5,6 +5,7 @@ import json
 from copy import deepcopy
 from pathlib import Path
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 from ijson.common import ObjectBuilder
@@ -145,15 +146,17 @@ def _restore_arrays(obj):
         if "__ndarray__" in obj:
             # Floating data is float64 (x64 pipeline). Legacy payloads may store
             # float32; load them straight as float64 (int/bool dtypes preserved).
+            # `device_put` copies the NumPy buffer; `jnp.array` would compile a
+            # conversion per new shape/dtype (~2.7 s on a cold prepared load).
             stored = np.dtype(obj["dtype"])
             payload = obj["__ndarray__"]
             if np.issubdtype(stored, np.floating):
-                return jnp.array(np.asarray(payload, dtype=np.float64))
+                return jax.device_put(np.asarray(payload, dtype=np.float64))
             if _contains_none(payload):
                 raise ValueError(
                     f"null is invalid in a typed {stored} __ndarray__ payload"
                 )
-            return jnp.array(payload, dtype=stored)
+            return jax.device_put(np.asarray(payload, dtype=stored))
         return {k: _restore_arrays(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [_restore_arrays(item) for item in obj]
