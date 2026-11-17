@@ -1,6 +1,12 @@
 # Hybrax
 
-Bioprocess hybrid models and data management in JAX.
+> **Status:** Hybrax is under active development, and the docs are still under
+> construction. Until 1.0, minor releases may break the API; the
+> [changelog](https://github.com/hybrax/hybrax/blob/main/CHANGELOG.md) marks
+> breaking changes. Feature requests and contributions are welcome!
+
+Bioprocess hybrid models and data management in JAX. Hybrax currently targets
+upstream processes (microbial fermentation, mammalian cell culture).
 
 Hybrid models, also known as universal differential equations (UDEs) or
 grey-box models, embed learned components such as neural networks in a
@@ -13,11 +19,6 @@ augmentation, training, prediction, and leave-one-out cross-validation.
 
 Read the [documentation](https://hybrax.readthedocs.io) for tutorials, gallery
 examples, and API reference.
-
-> **Status:** Hybrax is under active development. Until 1.0, minor releases
-> may break the API; the
-> [changelog](https://github.com/hybrax/hybrax/blob/main/CHANGELOG.md) marks
-> breaking changes. The documentation is still under construction as well.
 
 ## Motivation
 
