@@ -570,6 +570,7 @@ def test_run_single_fold_trains_excluding_holdout(monkeypatch, tmp_path):
     assert document["inputs"]["prepared_input"] == {
         "path": str(cfg.data.prepared),
         "content_hash": serialization.content_hash(collection),
+        "raw_hash": None,
     }
     assert document["updates_completed"] == 0
     assert document["final_mean_loss"] == 0.5
@@ -730,6 +731,7 @@ def test_produce_runtime_artifact_respects_data_processes(monkeypatch, tmp_path)
         loo_mod.RhsNames, "from_rhs_ode", classmethod(lambda _cls, _rhs: object())
     )
     monkeypatch.setattr(loo_mod, "content_hash", lambda _collection: "sha256:data")
+    monkeypatch.setattr(loo_mod, "raw_hash", lambda _path: "sha256:raw")
 
     def fake_write(path, **kwargs):
         captured.update(path=path, **kwargs)
@@ -824,6 +826,7 @@ def _runtime_metadata(collection, seed: int = 10):
         identity_inputs={
             "run_fingerprint": "sha256:fingerprint",
             "prepared_content_hash": "sha256:prepared",
+            "prepared_raw_hash": "sha256:raw",
         },
         folds=records,
     )
@@ -847,6 +850,7 @@ def test_runtime_metadata_rejects_replacement_artifact(monkeypatch, tmp_path):
         identity_inputs={
             "run_fingerprint": loo_mod._fingerprint(bundle, None),
             "prepared_content_hash": "sha256:prepared",
+            "prepared_raw_hash": "sha256:raw",
         },
         folds=_runtime_metadata(_three_parent_collection()).folds,
     )
@@ -867,6 +871,39 @@ def test_runtime_metadata_rejects_replacement_artifact(monkeypatch, tmp_path):
 
     with pytest.raises(ValueError, match="does not match run config anchor"):
         loo_mod._runtime_metadata(tmp_path, bundle_path=bundle, custom_path=None)
+
+
+def test_runtime_metadata_accepts_artifacts_without_a_raw_hash(monkeypatch, tmp_path):
+    """LOO runs started before raw hashes were recorded can still resume."""
+    bundle = tmp_path / "loo-config.json"
+    bundle.write_text("{}", encoding="utf-8")
+    metadata = loo_mod.RuntimeArtifactMetadata(
+        identity="sha256:artifact",
+        identity_inputs={
+            "run_fingerprint": loo_mod._fingerprint(bundle, None),
+            "prepared_content_hash": "sha256:prepared",
+        },
+        folds=_runtime_metadata(_three_parent_collection()).folds,
+    )
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "runtime_artifact": {
+                    "format_version": loo_mod.FORMAT_VERSION,
+                    "identity": "sha256:artifact",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        loo_mod, "read_runtime_artifact_metadata", lambda _path: metadata
+    )
+
+    _path, loaded = loo_mod._runtime_metadata(
+        tmp_path, bundle_path=bundle, custom_path=None
+    )
+    assert loaded is metadata
 
 
 @pytest.mark.parametrize(
@@ -905,6 +942,7 @@ def test_runtime_metadata_rejects_config_fingerprint_mismatch(monkeypatch, tmp_p
         identity_inputs={
             "run_fingerprint": "sha256:wrong",
             "prepared_content_hash": "sha256:prepared",
+            "prepared_raw_hash": "sha256:raw",
         },
         folds=_runtime_metadata(_three_parent_collection()).folds,
     )
@@ -1260,6 +1298,10 @@ def test_manifest_seed_reaches_effective_config_and_provenance(monkeypatch, tmp_
     # loadable on the shared reconstruction path.
     recorded_hash = fold_document["inputs"]["prepared_input"]["content_hash"]
     assert recorded_hash == metadata.identity_inputs["prepared_content_hash"]
+    assert (
+        fold_document["inputs"]["prepared_input"]["raw_hash"]
+        == metadata.identity_inputs["prepared_raw_hash"]
+    )
 
     monkeypatch.setattr(
         loo_mod, "train_collection", lambda *_args, **_kwargs: _stub_train_result()
@@ -1853,7 +1895,7 @@ def test_fold_records_the_hash_of_its_custom_py(tmp_path):
     custom_py.write_text("X = 1\n")
     cfg = _run_config().model_copy(update={"custom_py": custom_py})
 
-    inputs = loo_mod._fold_inputs(cfg, "sha256:data")["inputs"]
+    inputs = loo_mod._fold_inputs(cfg, "sha256:data", None)["inputs"]
 
     assert inputs["custom_py"] == {
         "bundled": "custom.py",

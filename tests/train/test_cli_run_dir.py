@@ -15,7 +15,9 @@ from test_serialization import _collection
 
 import hybrax.train
 from hybrax.format.serialization import save_process_collection
+from hybrax.train import cli as cli_module
 from hybrax.train.cli import main
+from hybrax.train.serialization import raw_hash
 
 
 def _write_prepared(path: Path, biomass_values=(1.0, 0.8, 0.64)) -> Path:
@@ -110,6 +112,9 @@ def test_train_cli_produces_fair_run_dir_and_model_load(tmp_path: Path):
     assert doc["status"] == "complete"
     assert doc["updates_completed"] == 4
     assert doc["inputs"]["prepared_input"]["content_hash"].startswith("sha256:")
+    assert doc["inputs"]["prepared_input"]["raw_hash"] == raw_hash(
+        run_dir / "prepared.json.gz"
+    )
     assert "jax" in doc["environment"]
 
     # model_load reconstructs from the run dir alone: prepared data is bundled.
@@ -155,6 +160,32 @@ def test_train_cli_compresses_prepared_data_once(tmp_path: Path, monkeypatch):
         gzip.decompress(bundle.read_bytes()) == prepared.read_bytes()
         for bundle in bundles
     )
+
+
+def test_train_cli_stops_when_prepared_changes_while_starting(
+    tmp_path: Path, monkeypatch, capsys
+):
+    """The recorded raw hash must describe the bytes the run trained on."""
+    prepared = _write_prepared(tmp_path / "prepared.json")
+    config = _write_config(
+        tmp_path / "config.json", prepared=prepared, run_dir=tmp_path / "run"
+    )
+    load = cli_module.load_process_collection
+
+    def load_then_replace(path):
+        collection = load(path)
+        _write_prepared(prepared, biomass_values=(2.0, 0.8, 0.64))
+        return collection
+
+    monkeypatch.setattr(cli_module, "load_process_collection", load_then_replace)
+    monkeypatch.setattr(
+        cli_module,
+        "train_collection",
+        lambda *_args, **_kwargs: pytest.fail("trained on a replaced input"),
+    )
+
+    assert main(["train", "--config", str(config)]) == 1
+    assert "changed while the run started" in capsys.readouterr().err
 
 
 def test_train_cli_accepts_prepared_already_in_run_dir(tmp_path: Path):

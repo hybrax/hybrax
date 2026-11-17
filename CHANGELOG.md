@@ -30,6 +30,15 @@ public API; such entries are marked **Breaking**.
   change load unverified.
 - Building the training data store, at the start of `prepare`, `train`, `loo` and
   `forward`, is about three times faster (195 processes: 3.7 s instead of 10.6 s).
+- Loading a prepared file is about 2.7 s faster the first time in each Python
+  process (195 processes: 1.8 s instead of 4.5 s).
+- Training runs and LOO folds record `inputs.prepared_input.raw_hash`, a hash of
+  the prepared file's bytes. Loading a model checks it before the slower content
+  hash, and files with equal bytes, such as a run's bundled `prepared.json.gz` and
+  the `prepared.json` it came from, are loaded and hashed once. Together with the
+  faster loading above, a 12-model LOO ensemble forward took 26.6 s instead of
+  34.7 s (27.8 s for runs trained before this change). `train` stops with an error
+  if the prepared file changes while the run starts.
 - **Breaking:** loading a `custom.py` raises `ValueError` if one of its `import`
   statements loads a file from its own folder (a helper module, or a package
   installed in editable mode from there). Only `custom.py` is saved with a model,

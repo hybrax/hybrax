@@ -47,7 +47,9 @@ from hybrax.format.dataclasses import BioProcessCollection
 from hybrax.format.json_io import load_json
 from hybrax.format.serialization import (
     NumpyEncoder,
+    _open_json_file,
     _process_collection_to_dict,
+    _resolve_existing_json_path,
     load_process_collection,
 )
 
@@ -114,6 +116,18 @@ def load_opt_state(path: str | Path, *, template: optax.OptState) -> optax.OptSt
 def file_hash(path: str | Path) -> str:
     """Exact-bytes sha256 of a file, prefixed ``sha256:``."""
     digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    return f"sha256:{digest}"
+
+
+def raw_hash(path: str | Path) -> str:
+    """sha256 of a prepared file's JSON bytes, prefixed ``sha256:``.
+
+    ``.json.gz`` files are hashed decompressed, so a prepared file and the gzipped
+    copy a run bundles hash equal. Much cheaper than :func:`content_hash` (no
+    parsing), but any byte change, such as re-saving equal data, changes it.
+    """
+    with _open_json_file(_resolve_existing_json_path(Path(path)), "rb") as f:
+        digest = hashlib.file_digest(f, "sha256").hexdigest()
     return f"sha256:{digest}"
 
 
@@ -348,6 +362,12 @@ def _recorded_prepared_content_hash(document: dict[str, Any]) -> str | None:
     return recorded if isinstance(recorded, str) and recorded else None
 
 
+def _recorded_prepared_raw_hash(document: dict[str, Any]) -> str | None:
+    """The ``inputs.prepared_input.raw_hash`` a run recorded, if any."""
+    prepared_input = document.get("inputs", {}).get("prepared_input", {})
+    return prepared_input.get("raw_hash")
+
+
 class PreparedInputCache:
     """Load, hash and build a store for each prepared input once per forward call.
 
@@ -358,11 +378,12 @@ class PreparedInputCache:
     every :func:`reconstruct_training` /
     :func:`~hybrax.train.harness.forward_from_collection` call of a forward run.
 
-    Collections are loaded once per path and hashed once, when first needed.
-    Stores are keyed by content hash, because separate training runs bundle their
-    own copy of the prepared file: equal copies are loaded and hashed once each
-    but share one store. Collections the cache did not load are hashed afresh on
-    every call.
+    Files are identified by their cheap :func:`raw_hash`: files with equal bytes,
+    such as a run's bundled ``prepared.json.gz`` and the ``prepared.json`` it was
+    copied from, are loaded once and share one collection and one
+    :func:`content_hash`, computed when first needed. Stores are keyed by content
+    hash, so files with equal data but different bytes share a store too.
+    Collections the cache did not load are hashed afresh on every call.
 
     Do not mutate collections returned by the cache or stores built by it; they
     are shared between models. Entries never expire, so use a fresh cache after
@@ -370,25 +391,49 @@ class PreparedInputCache:
     """
 
     def __init__(self) -> None:
-        self._collections: dict[Path, BioProcessCollection] = {}
-        self._hashes: dict[Path, str] = {}
+        self._raw_hashes: dict[Path, str] = {}
+        self._collections: dict[str, BioProcessCollection] = {}
+        self._content_hashes: dict[str, str] = {}
         self._stores: dict[tuple[str, tuple[str, ...], str], TrainingDataStore] = {}
 
-    def collection(self, path: str | Path) -> BioProcessCollection:
-        """The collection at ``path``, loaded on first use."""
+    def raw_hash(self, path: str | Path) -> str:
+        """:func:`raw_hash` of the file at ``path``, computed on first use."""
         key = Path(os.path.realpath(path))
-        if key not in self._collections:
-            self._collections[key] = load_process_collection(key)
-        return self._collections[key]
+        if key not in self._raw_hashes:
+            self._raw_hashes[key] = raw_hash(key)
+        return self._raw_hashes[key]
+
+    def collection(self, path: str | Path) -> BioProcessCollection:
+        """The collection at ``path``, loaded on first use of its bytes."""
+        raw = self.raw_hash(path)
+        if raw not in self._collections:
+            self._collections[raw] = load_process_collection(Path(path))
+        return self._collections[raw]
 
     def content_hash(self, collection: BioProcessCollection) -> str:
         """:func:`content_hash` of ``collection``; cached if this cache loaded it."""
-        for path, cached in self._collections.items():
+        for raw, cached in self._collections.items():
             if cached is collection:
-                if path not in self._hashes:
-                    self._hashes[path] = content_hash(collection)
-                return self._hashes[path]
+                if raw not in self._content_hashes:
+                    self._content_hashes[raw] = content_hash(collection)
+                return self._content_hashes[raw]
         return content_hash(collection)
+
+    def matches(
+        self, path: str | Path, *, raw_hash: str | None, content_hash: str
+    ) -> bool:
+        """Whether the file at ``path`` holds the recorded data.
+
+        Compares the cheap raw hash first. Equal bytes imply equal data, so on a
+        match the recorded ``content_hash`` is cached for the file without
+        computing it. Otherwise (or with no recorded ``raw_hash``) the file is
+        loaded and its content hash compared.
+        """
+        raw = self.raw_hash(path)
+        if raw == raw_hash:
+            self._content_hashes.setdefault(raw, content_hash)
+            return True
+        return self.content_hash(self.collection(path)) == content_hash
 
     def store(
         self,
@@ -414,8 +459,15 @@ class PreparedInputCache:
         return self._stores[key]
 
 
-def _require_content_hash(actual: str, document: dict[str, Any], *, where: Path) -> str:
-    """Verify a run's recorded prepared ``content_hash`` — before any hook runs.
+def _require_recorded_input(
+    inputs: PreparedInputCache, prepared: Path, document: dict[str, Any], *, where: Path
+) -> str:
+    """Verify a run's recorded prepared input — before any hook runs.
+
+    Checks the recorded ``raw_hash`` first and falls back to the recorded
+    ``content_hash`` (see :meth:`PreparedInputCache.matches`); runs trained before
+    ``raw_hash`` was recorded always take the content-hash path. Returns the
+    verified content hash.
 
     On the shared reconstruction path a *missing* record is an error too: a model
     whose training input is not pinned cannot be shown to be rebuilt from the data
@@ -428,12 +480,14 @@ def _require_content_hash(actual: str, document: dict[str, Any], *, where: Path)
             f"run {where} records no inputs.prepared_input.content_hash; its model "
             "cannot be reconstructed from unverified training input"
         )
-    if actual != recorded:
+    raw = _recorded_prepared_raw_hash(document)
+    if not inputs.matches(prepared, raw_hash=raw, content_hash=recorded):
+        actual = inputs.content_hash(inputs.collection(prepared))
         raise ValueError(
             f"prepared.json data for run {where} differs from the run's record: "
             f"recorded {recorded}, got {actual}"
         )
-    return actual
+    return recorded
 
 
 @dataclass(frozen=True)
@@ -492,10 +546,8 @@ def reconstruct_training(
 
     inputs = inputs or PreparedInputCache()
     prepared = _resolve_prepared(run_dir, config)
+    verified_hash = _require_recorded_input(inputs, prepared, document, where=run_dir)
     collection = inputs.collection(prepared)
-    verified_hash = _require_content_hash(
-        inputs.content_hash(collection), document, where=run_dir
-    )
 
     # An explicit custom_py overrides the run's own, unchecked.
     if custom_py is None:

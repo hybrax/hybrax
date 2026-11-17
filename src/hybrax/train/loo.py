@@ -72,6 +72,7 @@ from .serialization import (
     content_hash,
     file_hash,
     load_trained_wrapper,
+    raw_hash,
     run_config_to_jsonable,
     save_model,
     update_json,
@@ -161,7 +162,8 @@ def _validated_runtime_metadata(
     artifact_path: Path, *, bundle_path: Path, custom_path: Path | None
 ) -> RuntimeArtifactMetadata:
     metadata = read_runtime_artifact_metadata(artifact_path)
-    if set(metadata.identity_inputs) != {
+    # Artifacts written before `prepared_raw_hash` existed stay resumable.
+    if set(metadata.identity_inputs) - {"prepared_raw_hash"} != {
         "run_fingerprint",
         "prepared_content_hash",
     }:
@@ -748,6 +750,7 @@ def produce_runtime_artifact(
         identity_inputs={
             "run_fingerprint": _fingerprint(bundle_path, cfg.custom_py),
             "prepared_content_hash": content_hash(collection),
+            "prepared_raw_hash": raw_hash(cfg.data.prepared),
         },
     )
 
@@ -769,7 +772,9 @@ def _fold_harness_config(effective_cfg: RunConfig, fold: Fold, fold_dir: Path):
 
 
 def _fold_inputs(
-    effective_cfg: RunConfig, prepared_content_hash: str
+    effective_cfg: RunConfig,
+    prepared_content_hash: str,
+    prepared_raw_hash: str | None,
 ) -> dict[str, Any]:
     """The fold's ``inputs`` block, mirroring a normal training run's.
 
@@ -777,7 +782,9 @@ def _fold_inputs(
     reconstruction path requires ``inputs.prepared_input.content_hash`` and refuses
     to build hooks without it. A fold's ``data.prepared`` is the self-contained
     prepared copy at the LOO run root, and the hash is the producer-validated one,
-    so a fold model loads exactly like a ``train`` run's. The fold's ``custom.py``
+    so a fold model loads exactly like a ``train`` run's. Without a
+    ``prepared_raw_hash`` (folds prepared outside the producer), loading verifies
+    the content hash only. The fold's ``custom.py``
     copy must already be in place: its hash is recorded so loading the model can
     check it.
     """
@@ -787,6 +794,7 @@ def _fold_inputs(
             "prepared_input": {
                 "path": str(effective_cfg.data.prepared),
                 "content_hash": prepared_content_hash,
+                "raw_hash": prepared_raw_hash,
             },
             "custom_py": {
                 "bundled": "custom.py" if custom_py is not None else None,
@@ -842,7 +850,9 @@ def prepare_single_fold_from_runtime_artifact(
             "status": "running",
             "config": run_config_to_jsonable(effective_cfg),
             **_fold_inputs(
-                effective_cfg, metadata.identity_inputs["prepared_content_hash"]
+                effective_cfg,
+                metadata.identity_inputs["prepared_content_hash"],
+                metadata.identity_inputs.get("prepared_raw_hash"),
             ),
             **_fold_runtime_metadata(metadata.identity, record.idx),
         },
@@ -897,7 +907,7 @@ def prepare_single_fold(
         {
             "status": "running",
             "config": run_config_to_jsonable(effective_cfg),
-            **_fold_inputs(effective_cfg, content_hash(collection)),
+            **_fold_inputs(effective_cfg, content_hash(collection), None),
         },
     )
     harness_cfg = _fold_harness_config(effective_cfg, fold, fold_dir)

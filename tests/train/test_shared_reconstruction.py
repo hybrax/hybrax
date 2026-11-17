@@ -17,6 +17,7 @@ so a scale value is a fingerprint of *which* processes fed reconstruction.
 
 from __future__ import annotations
 
+import gzip
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -44,7 +45,12 @@ from hybrax.train import harness
 from hybrax.train import serialization as serialization_module
 from hybrax.train.cli import main
 from hybrax.train.harness import ForwardConfig, forward_from_collection
-from hybrax.train.serialization import content_hash, reconstruct_training
+from hybrax.train.serialization import (
+    PreparedInputCache,
+    content_hash,
+    raw_hash,
+    reconstruct_training,
+)
 from hybrax.train.training_data import TARGET_SOURCE_AUTO, TrainingDataStore
 
 
@@ -558,6 +564,7 @@ def test_loo_fold_models_load_through_the_shared_path(tmp_path: Path):
         fold_dir = output_dir / "folds" / slug
         document = json.loads((fold_dir / "config.json").read_text())
         assert document["inputs"]["prepared_input"]["content_hash"] == expected_hash
+        assert document["inputs"]["prepared_input"]["raw_hash"] == raw_hash(prepared)
         # Each fold draws its training plots at the end, into the fold dir only.
         for name in ("loss_curve.png", "grad_norm_curve.png"):
             assert (fold_dir / name).read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
@@ -670,6 +677,7 @@ def _record_only_run_dir(tmp_path: Path) -> tuple[Path, Path]:
                     "prepared_input": {
                         "path": str(prepared),
                         "content_hash": content_hash(load_process_collection(prepared)),
+                        "raw_hash": raw_hash(prepared),
                     }
                 },
             }
@@ -688,6 +696,7 @@ def _omit_hash(run_dir: Path, prepared: Path) -> None:
 def _tamper_hash(run_dir: Path, prepared: Path) -> None:
     document = json.loads((run_dir / "config.json").read_text())
     document["inputs"]["prepared_input"]["content_hash"] = "sha256:" + "0" * 64
+    document["inputs"]["prepared_input"]["raw_hash"] = "sha256:" + "0" * 64
     (run_dir / "config.json").write_text(json.dumps(document), encoding="utf-8")
 
 
@@ -697,12 +706,21 @@ def _tamper_data(run_dir: Path, prepared: Path) -> None:
     )
 
 
+def _tamper_data_of_old_run(run_dir: Path, prepared: Path) -> None:
+    """A run trained before ``raw_hash`` was recorded: content hash only."""
+    document = json.loads((run_dir / "config.json").read_text())
+    del document["inputs"]["prepared_input"]["raw_hash"]
+    (run_dir / "config.json").write_text(json.dumps(document), encoding="utf-8")
+    _tamper_data(run_dir, prepared)
+
+
 @pytest.mark.parametrize(
     ("break_it", "message"),
     [
         (_omit_hash, "records no inputs.prepared_input.content_hash"),
         (_tamper_hash, "differs from the run's record"),
         (_tamper_data, "differs from the run's record"),
+        (_tamper_data_of_old_run, "differs from the run's record"),
     ],
 )
 def test_loading_a_model_without_verified_input_fails_before_any_hook(
@@ -727,6 +745,104 @@ def test_loading_a_model_without_verified_input_fails_before_any_hook(
                 process_names=("p1",), target_source="reactor_components"
             ),
         )
+
+
+class _HooksReached(Exception):
+    """Raised in place of the hooks: the hash gate let the input through."""
+
+
+def _stop_at_hooks(monkeypatch) -> None:
+    def stop(**_kwargs):
+        raise _HooksReached
+
+    monkeypatch.setattr(harness, "_build_runtime_modules", stop)
+
+
+def test_equal_data_saved_with_other_bytes_passes_the_gate_by_content_hash(
+    tmp_path: Path, monkeypatch
+):
+    """A raw-hash miss is not a mismatch: the content hash decides."""
+    run_dir, prepared = _record_only_run_dir(tmp_path)
+    document = json.loads(prepared.read_text())
+    prepared.write_text(json.dumps(document), encoding="utf-8")  # no indent
+    hashed = []
+    monkeypatch.setattr(
+        serialization_module,
+        "content_hash",
+        lambda collection: hashed.append(1) or content_hash(collection),
+    )
+    _stop_at_hooks(monkeypatch)
+
+    with pytest.raises(_HooksReached):
+        hybrax.train.model_load(run_dir)
+    assert len(hashed) == 1
+
+
+def test_matching_raw_hash_skips_loading_and_hashing_twice(
+    two_level_run, tmp_path: Path, monkeypatch
+):
+    """Forward on the run's own input: one load, and no content hash at all.
+
+    The run's bundled ``prepared.json.gz`` and the evaluation ``prepared.json``
+    hold the same bytes, and the run recorded their raw hash at training time.
+    """
+    run_dir, prepared = two_level_run
+    loads = []
+    load = serialization_module.load_process_collection
+    monkeypatch.setattr(
+        serialization_module,
+        "load_process_collection",
+        lambda path: loads.append(path) or load(path),
+    )
+    monkeypatch.setattr(
+        serialization_module,
+        "content_hash",
+        lambda _collection: pytest.fail("content hash computed"),
+    )
+    forward_config = tmp_path / "forward-config.json"
+    forward_config.write_text(
+        json.dumps(
+            {
+                "models": [str(run_dir)],
+                "data": {"prepared": str(prepared)},
+                "output": {"dir": str(tmp_path / "fwd"), "predictions": "none"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert main(["forward", "--config", str(forward_config)]) == 0
+    assert len(loads) == 1
+
+
+def test_cache_loads_and_hashes_files_with_equal_bytes_once(
+    tmp_path: Path, monkeypatch
+):
+    """A ``.json`` and its gzipped copy share one collection and content hash."""
+    prepared = _write_prepared(
+        tmp_path / "prepared.json", {"p1": (1.0, 0.8, 0.64), "p2": (7.0, 5.6, 4.5)}
+    )
+    copy = tmp_path / "copy.json.gz"
+    with gzip.open(copy, "wb") as f:
+        f.write(prepared.read_bytes())
+    other = _write_prepared(
+        tmp_path / "other.json", {"p1": (2.0, 0.8, 0.64), "p2": (7.0, 5.6, 4.5)}
+    )
+    hashed = []
+    monkeypatch.setattr(
+        serialization_module,
+        "content_hash",
+        lambda collection: hashed.append(1) or content_hash(collection),
+    )
+    inputs = PreparedInputCache()
+
+    assert inputs.collection(prepared) is inputs.collection(copy)
+    assert inputs.collection(other) is not inputs.collection(prepared)
+    assert inputs.content_hash(inputs.collection(prepared)) == inputs.content_hash(
+        inputs.collection(copy)
+    )
+    assert len(hashed) == 1
+    assert inputs.raw_hash(copy) == raw_hash(prepared)
 
 
 # ---------------------------------------------------------------------------

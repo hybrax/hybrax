@@ -67,6 +67,7 @@ from .serialization import (
     PreparedInputCache,
     content_hash,
     file_hash,
+    raw_hash,
     read_initial_checkpoint,
     read_json,
     read_run_config_json,
@@ -530,6 +531,9 @@ def _handle_train(args: argparse.Namespace) -> int:
             log.error("%s", exc)
             return 1
 
+    # Hashed before loading; the bundle written below must hold these same bytes,
+    # because loading the model trusts the content hash on a raw-hash match.
+    prepared_raw_hash = raw_hash(cfg.data.prepared)
     collection = load_process_collection(cfg.data.prepared)
     prepared_hash = content_hash(collection)
     # Checkpoints copy the run dir's compressed prepared data, written below.
@@ -578,6 +582,9 @@ def _handle_train(args: argparse.Namespace) -> int:
     bundled_prepared = run_dir / "prepared.json.gz"
     if not (bundled_prepared.exists() and bundled_prepared.samefile(cfg.data.prepared)):
         _bundle_prepared_gz(Path(cfg.data.prepared), bundled_prepared)
+    if raw_hash(bundled_prepared) != prepared_raw_hash:
+        log.error("train: %s changed while the run started", cfg.data.prepared)
+        return 1
     bundled_custom = None
     if cfg.custom_py is not None:
         shutil.copyfile(cfg.custom_py, run_dir / "custom.py")
@@ -592,6 +599,7 @@ def _handle_train(args: argparse.Namespace) -> int:
             "prepared_input": {
                 "path": str(cfg.data.prepared),
                 "content_hash": prepared_hash,
+                "raw_hash": prepared_raw_hash,
             },
             "custom_py": {
                 "bundled": bundled_custom,
