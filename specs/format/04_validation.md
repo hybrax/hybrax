@@ -21,7 +21,7 @@ as `bounds`. This is built by one shared helper (`_check_result` in
 `src/hybrax/format/validate.py`) so every check's message is unambiguous about what
 was checked and why it failed, without having to parse prose.
 
-All 20 validators are exported from the package root: `bp.validate_process(...)`.
+All 20 validators are exported from the package root: `hxf.validate_process(...)`.
 
 Mapping keys are canonical identifiers. Embedded object names may instead be
 human-facing or source labels, so validation does not require keys and names to
@@ -326,12 +326,12 @@ both always non-empty (at least one `PASS` entry on a clean collection).
 ### One process
 
 ```python
-import hybrax.format as bp
+import hybrax.format as hxf
 
-collection = bp.serialization.load_process_collection("data.json")
+collection = hxf.serialization.load_process_collection("data.json")
 process = collection.processes["run_1"]
 
-ok, results = bp.validate_process(process)
+ok, results = hxf.validate_process(process)
 for check_ok, msg in results:
     print(("  " if check_ok else "  ! ") + msg)
 ```
@@ -339,7 +339,7 @@ for check_ok, msg in results:
 ### A whole case study
 
 ```python
-ok, report = bp.validate_for_publication(collection)
+ok, report = hxf.validate_for_publication(collection)
 if not ok:
     for key, results in report.items():
         print(f"\n{key}:")
@@ -351,7 +351,7 @@ if not ok:
 ### Volume balance against a measured endpoint
 
 ```python
-ok, msg, delta = bp.validate_volume_consistency(process, final_volume=1.85)
+ok, msg, delta = hxf.validate_volume_consistency(process, final_volume=1.85)
 print(msg)           # full balance table
 print(f"net change: {delta:+.3f} {process.volume.unit}")
 ```

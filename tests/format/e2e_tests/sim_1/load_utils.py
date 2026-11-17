@@ -13,7 +13,7 @@ os.environ.setdefault("JAX_ENABLE_X64", "true")
 
 import jax.numpy as jnp
 
-import hybrax.format as bp
+import hybrax.format as hxf
 
 from .simulation import (
     FEED_GLUCOSE,
@@ -47,7 +47,7 @@ def parse_all_processes(
     events_csv: Path,
     collection_name: str = "sim_1",
     process_ids: Iterable[str] | None = None,
-) -> bp.BioProcessCollection:
+) -> hxf.BioProcessCollection:
     dense_columns, dense_rows = _read_csv(dense_csv)
     event_columns, event_rows = _read_csv(events_csv)
     _require_columns(
@@ -82,12 +82,12 @@ def parse_all_processes(
             [row for row in dense_rows if row[PROCESS_ID_COLUMN] == process_id],
             [row for row in event_rows if row[PROCESS_ID_COLUMN] == process_id],
         )
-        is_valid, results = bp.validate.validate_process(process)
+        is_valid, results = hxf.validate.validate_process(process)
         if not is_valid:
             raise ValueError("\n".join(msg for _, msg in results))
         processes[process_id] = process
 
-    return bp.BioProcessCollection(
+    return hxf.BioProcessCollection(
         metadata={
             "name": collection_name,
             "source_example": "sim_1_intracellular",
@@ -104,7 +104,7 @@ def _load_single_process(
     process_id: str,
     dense_rows: list[dict[str, str]],
     event_rows: list[dict[str, str]],
-) -> bp.BioProcess:
+) -> hxf.BioProcess:
     online_rows = _sort_time_rows(
         row for row in dense_rows if row["row_type"] == "online"
     )
@@ -140,39 +140,39 @@ def _load_single_process(
 
     reactor_components = {}
     for name in REACTOR_MEDIUM_NAMES:
-        reactor_components[name] = bp.ReactorMediumComponent(
+        reactor_components[name] = hxf.ReactorMediumComponent(
             name=name,
             unit=STATE_UNITS[name],
-            concentration=bp.TimeSeries(
+            concentration=hxf.TimeSeries(
                 times=jnp.asarray(t_measure),
                 values=jnp.asarray([float(row[name]) for row in measurement_rows]),
             ),
         )
 
     process_variables = {
-        "pH": bp.ProcessVariable(
+        "pH": hxf.ProcessVariable(
             name="pH",
             unit="-",
             is_controlled=True,
-            values=bp.TimeSeries(
+            values=hxf.TimeSeries(
                 times=jnp.asarray(t_online),
                 values=jnp.asarray([float(row["pH"]) for row in online_rows]),
             ),
         ),
-        "temperature": bp.ProcessVariable(
+        "temperature": hxf.ProcessVariable(
             name="temperature",
             unit="degC",
             is_controlled=True,
-            values=bp.TimeSeries(
+            values=hxf.TimeSeries(
                 times=jnp.asarray(t_online),
                 values=jnp.asarray([float(row["temperature"]) for row in online_rows]),
             ),
         ),
-        "intracellular_product_ratio": bp.ProcessVariable(
+        "intracellular_product_ratio": hxf.ProcessVariable(
             name="intracellular_product_ratio",
             unit="-",
             is_controlled=False,
-            values=bp.TimeSeries(
+            values=hxf.TimeSeries(
                 times=jnp.asarray(t_measure),
                 values=jnp.asarray(
                     [
@@ -186,24 +186,24 @@ def _load_single_process(
 
     volume_changes = _build_volume_changes(online_rows, event_rows)
     reaction_ode = _build_reaction_ode()
-    return bp.BioProcess(
-        metadata=bp.BioProcessMetadata(
+    return hxf.BioProcess(
+        metadata=hxf.BioProcessMetadata(
             name=process_id,
             process_type="fed_batch",
             notes="sim 1 simulated intracellular-product process",
         ),
-        time_axis=bp.TimeAxis(
+        time_axis=hxf.TimeAxis(
             unit="h",
             start=float(t_online[0]),
             end=fermentation_end_time,
             time_reference="batch_start",
         ),
-        volume=bp.Volume(
+        volume=hxf.Volume(
             initial_volume=float(initial_row["volume"]),
             unit="L",
             volume_changes=volume_changes,
         ),
-        reactor_medium=bp.ReactorMedium(
+        reactor_medium=hxf.ReactorMedium(
             name="reactor_medium",
             density=1.0,
             density_unit="kg/L",
@@ -214,9 +214,9 @@ def _load_single_process(
     )
 
 
-def _build_reaction_ode() -> bp.ReactionOde:
+def _build_reaction_ode() -> hxf.ReactionOde:
     """Return the sim 1 intracellular-product ODE contract."""
-    return bp.ReactionOde(
+    return hxf.ReactionOde(
         algebraic={"X_active": "biomass - product_intracellular"},
         rates={
             "q_biomass": (None, None),
@@ -279,7 +279,7 @@ def _fermentation_end_time(event_rows: list[dict[str, str]]) -> float:
 def _build_volume_changes(
     online_rows: list[dict[str, str]],
     event_rows: list[dict[str, str]],
-) -> dict[str, bp.VolumeChange]:
+) -> dict[str, hxf.VolumeChange]:
     t_online = _times(online_rows)
     bolus_rows = _sort_time_rows(
         row for row in event_rows if row["event_type"] == "bolus"
@@ -287,8 +287,8 @@ def _build_volume_changes(
     sample_rows = _sort_time_rows(
         row for row in event_rows if row["event_type"] == "sample"
     )
-    volume_changes: dict[str, bp.VolumeChange] = {
-        "conti_feed": bp.Inflow(
+    volume_changes: dict[str, hxf.VolumeChange] = {
+        "conti_feed": hxf.Inflow(
             name="conti_feed",
             unit="L",
             is_controlled=True,
@@ -304,20 +304,20 @@ def _build_volume_changes(
                     "tracer_fed": TRACER_FED_FEED_CONCENTRATION,
                 },
             ),
-            values=bp.TimeSeries(
+            values=hxf.TimeSeries(
                 times=jnp.asarray(t_online),
                 values=jnp.asarray(
                     [float(row["cum_conti_feed"]) for row in online_rows]
                 ),
             ),
         ),
-        "base_feed": bp.Inflow(
+        "base_feed": hxf.Inflow(
             name="base_feed",
             unit="L",
             is_controlled=False,
             is_continuous=True,
             feed_medium=_feed_medium("base_feed_medium", {}),
-            values=bp.TimeSeries(
+            values=hxf.TimeSeries(
                 times=jnp.asarray(t_online),
                 values=jnp.asarray(
                     [float(row["cum_base_feed"]) for row in online_rows]
@@ -326,12 +326,12 @@ def _build_volume_changes(
         ),
     }
     if sample_rows:
-        volume_changes["sampling"] = bp.Outflow(
+        volume_changes["sampling"] = hxf.Outflow(
             name="sampling",
             unit="L",
             is_controlled=True,
             is_continuous=False,
-            values=bp.TimeSeries(
+            values=hxf.TimeSeries(
                 times=jnp.asarray(_times(sample_rows)),
                 values=jnp.asarray([float(row["delta_volume"]) for row in sample_rows]),
             ),
@@ -339,13 +339,13 @@ def _build_volume_changes(
     bolus_groups = _bolus_rows_by_feed_id(bolus_rows)
     for feed_id, rows in bolus_groups.items():
         change_name = _bolus_change_name(feed_id, single_group=len(bolus_groups) == 1)
-        volume_changes[change_name] = bp.Inflow(
+        volume_changes[change_name] = hxf.Inflow(
             name=change_name,
             unit="L",
             is_controlled=True,
             is_continuous=False,
             feed_medium=_feed_medium(feed_id, _bolus_feed_concentrations(rows)),
-            values=bp.TimeSeries(
+            values=hxf.TimeSeries(
                 times=jnp.asarray(_times(rows)),
                 values=jnp.asarray([float(row["delta_volume"]) for row in rows]),
             ),
@@ -353,18 +353,18 @@ def _build_volume_changes(
     return volume_changes
 
 
-def _feed_medium(name: str, concentrations: dict[str, float]) -> bp.FeedMedium:
+def _feed_medium(name: str, concentrations: dict[str, float]) -> hxf.FeedMedium:
     components = {}
     for state_name in REACTOR_MEDIUM_NAMES:
-        components[state_name] = bp.FeedMediumComponent(
+        components[state_name] = hxf.FeedMediumComponent(
             name=state_name,
             unit=STATE_UNITS[state_name],
-            concentration=bp.StaticVariable(
+            concentration=hxf.StaticVariable(
                 value=float(concentrations.get(state_name, 0.0))
             ),
             is_controlled=state_name in {"glucose", "glutamine"},
         )
-    return bp.FeedMedium(
+    return hxf.FeedMedium(
         name=name,
         density=1.0,
         density_unit="kg/L",

@@ -163,7 +163,7 @@ The chosen strategy per segment is recorded in `metadata["fit_strategies"]`.
 bundle — assign it yourself:
 
 ```python
-process.pseudobatch_transform = bp.splines.build_pseudobatch_transform(process)
+process.pseudobatch_transform = hxf.splines.build_pseudobatch_transform(process)
 ```
 
 It raises if `component.concentration` itself carries pseudobatch `c*`
@@ -250,13 +250,13 @@ The pipeline raises rather than producing plausible-looking wrong numbers:
 ### Build and use the transform
 
 ```python
-import hybrax.format as bp
+import hybrax.format as hxf
 import jax.numpy as jnp
 
-process.pseudobatch_transform = bp.splines.build_pseudobatch_transform(process)
+process.pseudobatch_transform = hxf.splines.build_pseudobatch_transform(process)
 
 t = jnp.linspace(process.time_axis.start, process.time_axis.end, 500)
-c = bp.splines.evaluate_pseudobatch_transform(process, "glucose", t)
+c = hxf.splines.evaluate_pseudobatch_transform(process, "glucose", t)
 ```
 
 ### Inspect `ADF` and `S(t)`
@@ -283,7 +283,7 @@ accounting is wrong.
 import equinox as eqx
 import jax
 
-bt = bp.splines.build_backtransform_spline(process, "glucose")
+bt = hxf.splines.build_backtransform_spline(process, "glucose")
 
 @eqx.filter_jit
 def concentrations(spline, times):
@@ -297,11 +297,11 @@ def rates(spline, times):
 ### Segmenting a fit at events
 
 ```python
-events = bp.splines.detect_discrete_state_events(process)
-bounds = bp.splines.make_segment_boundaries(
+events = hxf.splines.detect_discrete_state_events(process)
+bounds = hxf.splines.make_segment_boundaries(
     process.time_axis.start, process.time_axis.end, events.times
 )
-fitted = bp.splines.fit_timeseries_spline(raw_series, boundaries=bounds)
+fitted = hxf.splines.fit_timeseries_spline(raw_series, boundaries=bounds)
 ```
 
 ## Accuracy

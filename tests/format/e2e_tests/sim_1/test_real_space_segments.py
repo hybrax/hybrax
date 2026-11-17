@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-import hybrax.format as bp
+import hybrax.format as hxf
 
 from .real_space_segments import (
     EXPECTED_PROCESS_IDS,
@@ -92,7 +92,7 @@ def test_real_space_segments_synthetic_contract():
 
 
 def test_post_event_segment_spline_times_shift_selects_right_event_branch():
-    carrier = bp.TimeSeries(
+    carrier = hxf.TimeSeries(
         breaks=jnp.asarray([0.0, 2.0, 4.0]),
         coeffs=jnp.asarray([[10.0, 0.0, 0.0, 0.0], [20.0, 0.0, 0.0, 0.0]]),
         segment_start_piece_idx=jnp.asarray([0]),

@@ -74,27 +74,27 @@ Full field lists are in the [Data Model](02_data_model.md).
 ## A typical workflow
 
 ```python
-import hybrax.format as bp
+import hybrax.format as hxf
 
 # 1. load
-collection = bp.serialization.load_process_collection("data.json")
+collection = hxf.serialization.load_process_collection("data.json")
 process = collection.processes["run_1"]
 
 # 2. check
-ok, messages = bp.validate_process(process)
+ok, messages = hxf.validate_process(process)
 
 # 3. look
-bp.print_process_structure(process, verbosity=2)
-bp.print_rhs_ode(collection)
+hxf.print_process_structure(process, verbosity=2)
+hxf.print_rhs_ode(collection)
 
 # 4. build the pseudobatch transform (optional, fed-batch; Inflow + discrete
 #    Outflow sampling only — raises NotImplementedError for a continuous Outflow)
-process.pseudobatch_transform = bp.splines.build_pseudobatch_transform(process)
+process.pseudobatch_transform = hxf.splines.build_pseudobatch_transform(process)
 
 # 5. build the ODE pieces — hybrax.train integrates them
-ordering = bp.mechanistic.get_process_ordering(process)
-rhs_ode  = bp.mechanistic.build_rhs_ode(process, ordering)
-controls = bp.mechanistic.get_control_splines(process, ordering)
+ordering = hxf.mechanistic.get_process_ordering(process)
+rhs_ode  = hxf.mechanistic.build_rhs_ode(process, ordering)
+controls = hxf.mechanistic.get_control_splines(process, ordering)
 ```
 
 ## See also

@@ -21,7 +21,7 @@ solver over it is [`hybrax.train`](../train/README.md)'s job.
 ## `ProcessOrdering` — one layout, decided once
 
 ```python
-ordering = bp.mechanistic.get_process_ordering(process)
+ordering = hxf.mechanistic.get_process_ordering(process)
 ```
 
 Every other factory takes this same object, so a rate vector built for one is
@@ -62,7 +62,7 @@ Field list: [02_data_model.md](02_data_model.md#processordering).
 ## `ControlSplines`
 
 ```python
-controls = bp.mechanistic.get_control_splines(process, ordering)
+controls = hxf.mechanistic.get_control_splines(process, ordering)
 u = controls(t)            # shape (n_controlled_Inflows + n_controlled_Outflows + n_controlled_PVs,)
 ```
 
@@ -77,7 +77,7 @@ constant piece over the time axis.
 ## `RhsOde`
 
 ```python
-rhs_ode = bp.mechanistic.build_rhs_ode(process, ordering)
+rhs_ode = hxf.mechanistic.build_rhs_ode(process, ordering)
 dc_dt   = rhs_ode(c, rates, u, f_modeled_Inflows, f_modeled_Outflows)
 ```
 
@@ -177,7 +177,7 @@ penalize violations.
 ### `build_algebraic_func(process, ordering=None)`
 
 ```python
-f = bp.mechanistic.build_algebraic_func(process, ordering)
+f = hxf.mechanistic.build_algebraic_func(process, ordering)
 f(state_values, ctrl_pv_values, rates)   # -> {"X_active": ..., ...}
 ```
 
@@ -219,11 +219,11 @@ The pseudobatch bundle is validated first: a `c*` trace without a matching
 
 ```python
 import jax.numpy as jnp
-import hybrax.format as bp
+import hybrax.format as hxf
 
-ordering = bp.mechanistic.get_process_ordering(process)
-controls = bp.mechanistic.get_control_splines(process, ordering)
-rhs_ode  = bp.mechanistic.build_rhs_ode(process, ordering)
+ordering = hxf.mechanistic.get_process_ordering(process)
+controls = hxf.mechanistic.get_control_splines(process, ordering)
+rhs_ode  = hxf.mechanistic.build_rhs_ode(process, ordering)
 
 n_states = len(ordering.name_modeled_RMCs) + len(ordering.name_modeled_PVs) + 1
 

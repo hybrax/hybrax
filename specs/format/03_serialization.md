@@ -270,11 +270,11 @@ Loading fails loudly rather than guessing, for:
 ### Round trip
 
 ```python
-import hybrax.format as bp
+import hybrax.format as hxf
 from pathlib import Path
 
-bp.serialization.save_process_collection(collection, Path("output/"))
-restored = bp.serialization.load_process_collection(Path("output/"))
+hxf.serialization.save_process_collection(collection, Path("output/"))
+restored = hxf.serialization.load_process_collection(Path("output/"))
 
 assert restored.case_id == collection.case_id
 assert set(restored.processes) == set(collection.processes)
@@ -283,12 +283,12 @@ assert set(restored.processes) == set(collection.processes)
 ### Intermediate data
 
 ```python
-collection = bp.BioProcessCollection(
+collection = hxf.BioProcessCollection(
     metadata={"source": "preprocessing", "date": "2026-07-01"},
     processes={"run_1": process_1, "run_2": process_2},
 )
-bp.serialization.save_process_collection(collection, Path("intermediate/"))
-restored = bp.serialization.load_process_collection(Path("intermediate/"))
+hxf.serialization.save_process_collection(collection, Path("intermediate/"))
+restored = hxf.serialization.load_process_collection(Path("intermediate/"))
 ```
 
 ## See also

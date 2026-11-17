@@ -10,8 +10,8 @@ a plain `@dataclass`; the one exception is `TimeSeries`, which lives in
 `src/hybrax/format/time_series/` and is an `eqx.Module` so it can cross a JAX JIT
 boundary (see [Design Rationale §1](01_design_rationale.md#1-jax-first-but-only-where-it-matters)).
 
-All classes are re-exported from the package root: `bp.TimeAxis`,
-`bp.BioProcess`, and so on.
+All classes are re-exported from the package root: `hxf.TimeAxis`,
+`hxf.BioProcess`, and so on.
 
 ## Key choices
 
@@ -422,27 +422,27 @@ independent of case-study identity.
 ### A minimal batch process
 
 ```python
-import hybrax.format as bp
+import hybrax.format as hxf
 import jax.numpy as jnp
 
-process = bp.BioProcess(
-    metadata=bp.BioProcessMetadata(name="batch_001", process_type="batch"),
-    time_axis=bp.TimeAxis(unit="h", start=0.0, end=24.0,
+process = hxf.BioProcess(
+    metadata=hxf.BioProcessMetadata(name="batch_001", process_type="batch"),
+    time_axis=hxf.TimeAxis(unit="h", start=0.0, end=24.0,
                           time_reference="inoculation"),
-    volume=bp.Volume(initial_volume=1.0, unit="L"),
-    reactor_medium=bp.ReactorMedium(
+    volume=hxf.Volume(initial_volume=1.0, unit="L"),
+    reactor_medium=hxf.ReactorMedium(
         name="minimal_medium", density=1.0, density_unit="kg/L",
         components={
-            "biomass": bp.ReactorMediumComponent(
+            "biomass": hxf.ReactorMediumComponent(
                 name="biomass", unit="g/L",
-                concentration=bp.TimeSeries(
+                concentration=hxf.TimeSeries(
                     times=jnp.array([0.0, 6.0, 12.0, 18.0, 24.0]),
                     values=jnp.array([0.5, 1.2, 3.1, 7.5, 12.0]),
                 ),
             ),
-            "glucose": bp.ReactorMediumComponent(
+            "glucose": hxf.ReactorMediumComponent(
                 name="glucose", unit="g/L",
-                concentration=bp.TimeSeries(
+                concentration=hxf.TimeSeries(
                     times=jnp.array([0.0, 6.0, 12.0, 18.0, 24.0]),
                     values=jnp.array([20.0, 17.5, 12.0, 4.0, 0.1]),
                 ),
@@ -460,31 +460,31 @@ process.reaction_ode.derivatives  # {"biomass": "q_biomass * biomass",
 ### Adding a bolus feed and sampling
 
 ```python
-feed_medium = bp.FeedMedium(
+feed_medium = hxf.FeedMedium(
     name="glucose_feed", density=1.05, density_unit="kg/L",
     components={
         # every reactor species should appear — 0.0 means "truly absent"
-        "glucose": bp.FeedMediumComponent(
-            name="glucose", unit="g/L", concentration=bp.StaticVariable(500.0)),
-        "biomass": bp.FeedMediumComponent(
-            name="biomass", unit="g/L", concentration=bp.StaticVariable(0.0)),
+        "glucose": hxf.FeedMediumComponent(
+            name="glucose", unit="g/L", concentration=hxf.StaticVariable(500.0)),
+        "biomass": hxf.FeedMediumComponent(
+            name="biomass", unit="g/L", concentration=hxf.StaticVariable(0.0)),
     },
 )
 
-process.volume = bp.Volume(
+process.volume = hxf.Volume(
     initial_volume=1.0, unit="L",
     volume_changes={
-        "glucose_bolus": bp.Inflow(
+        "glucose_bolus": hxf.Inflow(
             name="glucose_bolus", unit="L",
             is_controlled=True, is_continuous=False,
-            values=bp.TimeSeries(times=jnp.array([12.0]),
+            values=hxf.TimeSeries(times=jnp.array([12.0]),
                                  values=jnp.array([0.1])),      # >= 0
             feed_medium=feed_medium,
         ),
-        "sampling": bp.Outflow(
+        "sampling": hxf.Outflow(
             name="sampling", unit="L",
             is_controlled=True, is_continuous=False,
-            values=bp.TimeSeries(times=jnp.array([6.0, 18.0]),
+            values=hxf.TimeSeries(times=jnp.array([6.0, 18.0]),
                                  values=jnp.array([-0.005, -0.005])),   # <= 0
         ),
     },
@@ -497,7 +497,7 @@ For an intracellular product, biomass measurements include the product, so the
 active biomass driving the rates is the difference:
 
 ```python
-process.reaction_ode = bp.ReactionOde(
+process.reaction_ode = hxf.ReactionOde(
     algebraic={"X_active": "biomass - product"},
     rates={
         "q_growth":  (0.0, None),     # growth cannot be negative

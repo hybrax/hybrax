@@ -76,21 +76,21 @@ figure immediately, and return `None`.
 ## Examples
 
 ```python
-import hybrax.format as bp
+import hybrax.format as hxf
 
-collection = bp.serialization.load_process_collection("data.json")
+collection = hxf.serialization.load_process_collection("data.json")
 process = collection.processes["run_1"]
 
-bp.print_process_structure(process, verbosity=1)
-bp.print_collection_structure(collection)
+hxf.print_process_structure(process, verbosity=1)
+hxf.print_collection_structure(collection)
 
 # what will actually be integrated
-bp.print_rhs_ode(collection)
+hxf.print_rhs_ode(collection)
 
-fig = bp.plot_process(process)
+fig = hxf.plot_process(process)
 fig.savefig("run_1.png", dpi=150, bbox_inches="tight")
 
-bp.plot_collection(collection, figsize_per_panel=(4, 2.5),
+hxf.plot_collection(collection, figsize_per_panel=(4, 2.5),
                    save_path="overview.png")
 ```
 

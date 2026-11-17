@@ -48,25 +48,25 @@ Run tests with `uv run pytest`. Add `-n 12` to use 12 pytest-xdist workers.
 ## Quick start
 
 ```python
-import hybrax.format as bp
+import hybrax.format as hxf
 
 # Load a process collection from JSON
-collection = bp.serialization.load_process_collection("data.json")
+collection = hxf.serialization.load_process_collection("data.json")
 
 # Explore the collection
-bp.print_collection_structure(collection, verbosity=1)
+hxf.print_collection_structure(collection, verbosity=1)
 
 # Access a specific process
 process = collection.processes["run_1"]
 
 # Validate data integrity
-is_valid, messages = bp.validate_process(process)
+is_valid, messages = hxf.validate_process(process)
 
 # Inspect a single process
-bp.print_process_structure(process, verbosity=3)
+hxf.print_process_structure(process, verbosity=3)
 
 # Plot
-fig = bp.plot_process(process)
+fig = hxf.plot_process(process)
 ```
 
 ## Modules
